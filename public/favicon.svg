@@ -1,0 +1,19 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
+  <defs>
+    <linearGradient id="grad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#0A192F" />
+      <stop offset="100%" stop-color="#163B66" />
+    </linearGradient>
+  </defs>
+  <!-- Background Badge -->
+  <rect width="64" height="64" rx="16" fill="url(#grad)" />
+  
+  <!-- Outer Shield Glow -->
+  <rect x="2" y="2" width="60" height="60" rx="14" fill="none" stroke="rgba(255,255,255,0.15)" stroke-width="1.5" />
+  
+  <!-- Red Cross Badge Base -->
+  <path d="M26 12 H38 V26 H52 V38 H38 V52 H26 V38 H12 V26 H26 Z" fill="#E63946" />
+
+  <!-- White Core Heartbeat Line -->
+  <path d="M16 32 H24 L28 22 L34 42 L38 27 L41 34 L44 32 H50" fill="none" stroke="#FFFFFF" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" />
+</svg>

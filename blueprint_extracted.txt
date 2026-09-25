@@ -1,0 +1,343 @@
+Xpress Nurse
+Website Creation & Technical Blueprint — Home Healthcare Platform
+1. Project Overview
+Xpress Nurse is a home healthcare service platform built around the message “Professional Home Nursing Services at Your Doorstep.” The brand identity uses navy blue, white and red accents with professional nursing imagery, and the site is designed to build trust and drive quick action through visible WhatsApp/contact options.
+Core services offered
+Saline Infusion (IV administration)
+Wound Dressings
+Foleys Catheter care
+Ryles Tube Replacement
+Suture Removal at Home
+Lab & Diagnostic Services
+Online Doctor Consultation
+Personalized home nursing
+User journey: Understand the service → Choose required care → Contact Xpress Nurse (via WhatsApp, call, or QR code).
+2. Brand Identity & Contact Details
+Brand
+Name: Xpress Nurse
+Tagline: “Care That Comes To You”
+Headline: “Your Health, Our Priority”
+Sub-line: “Professional Medical & Nursing Services at Home”
+Colors: Navy Blue, White, Red
+Contact
+Call / WhatsApp: 75696 57371
+Website: www.xpressnurse.in
+QR code for instant WhatsApp booking
+Prescription mandatory for medical procedures (must be stated on-site)
+Why Choose Xpress Nurse (as shown on brand material)
+Trained & Experienced Nurses
+Hygienic & Safe Procedures
+On-Time Service
+Affordable Charges
+24/7 Availability
+Compassionate & Reliable Care
+3. Website Structure (Public-Facing)
+Section
+Contents
+Home
+Branding, service intro, CTA, 24/7 badge, WhatsApp button
+About Xpress Nurse
+Company intro, patient-focused care model
+Our Services
+Service cards with icons/visuals and short descriptions
+Why Choose Us
+24/7 availability, trained staff, hygiene, transparency
+Doctor Consultation
+Online consultation booking entry point
+Contact / Booking
+WhatsApp link, phone, QR code, booking form
+
+4. Panel-by-Panel Specification
+Booking Panel
+Book a slot
+Upload prescription
+Store patient data in Records
+Admin Panel
+Manage nurses, doctors, bookings
+Manage leads and records
+Assign incoming orders to the correct nurse
+Nurse Panel
+Registration & certificate/OTP verification
+Upload patient name/number for leads
+Track visits, converted leads, referrals
+Doctor Panel
+Manage patient information
+Manage consultations
+5. Nurse Workflow, Points & Referral Logic
+Onboarding: a nurse who wants to work with Xpress Nurse logs in, uploads a nursing certificate, and completes OTP verification before the account is activated.
+Points & Rewards
+Event
+Reward
+Initial login
+300 points
+Every 5 successful referred leads
+50 points
+Successful lead conversion
+Up to ₹300 additional
+On every referral
+10% of the successful lead value
+
+Nurse Dashboard — Required Fields
+Total leads
+Successful leads
+Total referrals
+Points/rewards earned
+10% referral earnings
+Patient/lead details
+Records & referral history
+6. Location-Based Order Routing
+Two operational rules from your notes, translated into system requirements:
+Rule 1 — Order-to-nurse assignment: When a nurse refers a patient (i.e. brings in an order), that order must be assigned back to that same nurse and be clearly visible on their dashboard as “your order.”
+Rule 2 — Area-based routing: Example: a patient in Gachibowli is referred by a nurse, but the actual visit needs to go to a nurse based in LB Nagar. The system should route/notify the nurse whose service area matches the patient’s location — not necessarily the referring nurse — and this should reflect on that nurse’s dashboard in real time.
+This implies you need: (a) a service-area field per nurse profile, and (b) an assignment engine that matches new bookings to the nearest/area-matching nurse, with the assignment reflected on that nurse’s dashboard.
+7. Recommended Technology Stack
+For a platform like Xpress Nurse — public marketing site + booking flow + multi-role dashboards (Admin/Nurse/Doctor) — a proven, scalable stack looks like this:
+Frontend (Website + Dashboards)
+Layer
+Recommended
+Why
+Marketing site
+Next.js (React) or Astro
+Fast loading, SEO-friendly, server-rendered pages — same approach modern platforms like Zomato use for their public site today
+Dashboards (Admin/Nurse/Doctor)
+React + Tailwind CSS
+Component reuse across 3 role-based panels, fast to build and iterate
+Mobile app (optional, later)
+React Native or Flutter
+One codebase for nurse/patient apps on Android & iOS
+
+Backend
+Layer
+Recommended
+Why
+API server
+Node.js (NestJS/Express) or Django
+Handles bookings, panel logic, referral/points calculations
+Database
+PostgreSQL + Redis
+Reliable relational data for records, bookings, points ledger; Redis for fast dashboard lookups
+File storage
+Amazon S3 / Cloudflare R2
+Prescription uploads, nursing certificates
+Authentication
+OTP via SMS/WhatsApp API (Twilio, MSG91, Gupshup)
+Required for nurse/patient verification flow you described
+
+Infrastructure
+Layer
+Recommended
+Hosting
+AWS (EC2/ECS) or Vercel (frontend) + Railway/Render (backend) for a leaner start
+CI/CD
+GitHub Actions
+Monitoring/errors
+Sentry, UptimeRobot
+Analytics
+Google Analytics 4, Meta Pixel
+
+8. How Zomato & Apollo 24|7 Are Built
+These are large-scale references worth learning patterns from, not stacks to copy directly at your size:
+Zomato — Its consumer-facing website currently runs on a modern, lightweight framework (Astro) for fast, SEO-strong pages, with client-side hydration and performance optimizations for fast load times across devices. Historically, Zomato’s broader engineering stack (per public StackShare data) has included Node.js, Python, Java, MySQL, MongoDB, Redis, Docker and Kubernetes across its services — i.e. a polyglot microservices backend behind a fast, simple frontend.
+Apollo 24|7 — (Apollo Hospitals’ digital arm) follows the common large healthtech pattern: a React/Next.js-based web frontend, native mobile apps, and a Java/Node microservices backend with strict data compliance (patient records, prescriptions) — the same shape recommended above, just at much larger scale with dedicated compliance and DevOps teams.
+The takeaway for Xpress Nurse: start with a fast, SEO-friendly frontend (Next.js/Astro) + a simple but well-structured backend (Node.js/Django + PostgreSQL). You don’t need microservices or Kubernetes at launch — a single well-organized backend service is enough until traffic and team size justify splitting it up.
+9. Suggested Build Roadmap
+Phase
+Deliverable
+1
+Marketing website (Home, About, Services, Why Us, Contact) + WhatsApp/QR integration
+2
+Booking panel — slot booking, prescription upload, patient records DB
+3
+Nurse panel — registration, certificate/OTP verification, dashboard v1 (leads, points)
+4
+Admin panel — manage nurses/doctors/bookings, manual order assignment
+5
+Area-based auto-assignment engine + real-time dashboard alerts
+6
+Doctor panel + online consultation flow
+7
+Referral/points automation, payout tracking, reporting
+
+10. 100% Responsive Design — All Devices
+The site must look and work flawlessly on every screen — mobile, tablet, laptop, desktop, and different browsers — since a large share of patients/families will book from a phone.
+Design approach
+Mobile-first build: design for the smallest screen first, then scale up (not the reverse)
+Fluid grid/flexbox layouts — no fixed pixel widths; breakpoints for mobile (<480px), tablet (481–1024px), laptop (1025–1440px), large desktop (1440px+)
+Touch targets at least 44×44px (buttons, WhatsApp icon, phone number links) — many users are elderly and less precise with touch
+Large, legible fonts by default (min 16px body text) and generous line spacing for readability
+Images use responsive srcset/WebP with lazy loading so mobile data usage stays low
+Performance targets (Core Web Vitals)
+Metric
+Target
+Largest Contentful Paint (LCP)
+Under 2.5 seconds
+Cumulative Layout Shift (CLS)
+Under 0.1
+Interaction to Next Paint (INP)
+Under 200 ms
+Google Lighthouse score
+90+ on Performance, Accessibility, Best Practices, SEO
+
+Testing checklist before launch
+Real-device testing: at least one low-end Android phone, one iPhone, one iPad/tablet, plus Chrome/Safari/Edge/Firefox on desktop
+Emulator/cloud testing (BrowserStack or Chrome DevTools device mode) across common screen sizes
+Accessibility pass — WCAG 2.1 AA: sufficient color contrast, alt text on all images, keyboard navigation, screen-reader friendly forms
+Test on slow 3G/4G network throttling — many bookings will happen from patients' homes with weak signal
+
+11. Security & Data Protection
+The platform stores sensitive information — prescriptions, medical procedures, nurse certificates, phone numbers — so security has to be built in from day one, not added later.
+Application security
+Area
+Requirement
+Transport
+HTTPS/TLS everywhere, HSTS enabled, auto-redirect HTTP → HTTPS
+Common attacks
+Protection against OWASP Top 10 — SQL injection, XSS, CSRF, broken auth
+Authentication
+OTP-based login, rate-limited OTP attempts, session/JWT expiry, strong admin passwords + optional 2FA
+Authorization
+Strict role-based access control (RBAC) — a nurse can only see their own leads; only Admin can see all records
+File uploads
+Validate file type & size for prescriptions/certificates; scan uploads; never execute uploaded files
+Secrets
+API keys, DB credentials stored in environment variables / secret manager — never in code or Git
+Network
+Firewall/WAF (e.g. Cloudflare) in front of the app; API rate limiting to prevent abuse
+
+Data protection & compliance
+Encrypt sensitive data at rest (patient records, prescriptions) and in transit
+Follow India's Digital Personal Data Protection (DPDP) Act principles: collect only what's needed, get consent, allow users to request deletion of their data
+Automated daily backups with a tested restore process; disaster-recovery plan
+Access logs and audit trails for who viewed/edited patient records
+Clear internal policy on who (Admin/Nurse/Doctor) can access what data
+If online payments are added later, use a PCI-DSS compliant payment gateway (Razorpay/PayU) rather than handling card data directly
+
+12. SEO & Sitemap
+Since patients typically search things like “home nurse near me” or “IV drip at home Hyderabad,” strong local SEO is critical to getting organic bookings.
+Technical SEO foundation
+sitemap.xml listing every public page, submitted to Google Search Console
+robots.txt configured to allow indexing of public pages and block admin/panel URLs
+Semantic HTML with a single H1 per page and a clean heading hierarchy (H2/H3 for sections)
+Unique meta title & description per page, Open Graph tags for social sharing previews
+Canonical URLs to avoid duplicate-content issues
+Schema.org structured data — MedicalOrganization/LocalBusiness and Service markup so Google can show rich results (address, phone, services, ratings)
+Suggested sitemap structure
+URL
+Purpose
+/
+Home
+/about
+About Xpress Nurse
+/services
+All services overview
+/services/[service-name]
+Dedicated page per service (better for SEO & ads) — e.g. /services/iv-saline-at-home
+/doctor-consultation
+Online doctor consultation
+/why-choose-us
+Trust & differentiators
+/contact
+Contact / booking form
+/blog
+Health & home-care articles (organic traffic growth)
+/privacy-policy, /terms, /refund-policy
+Legal pages (also required by Google Ads/payment gateways)
+/[city or area]-home-nursing
+Optional local-SEO landing pages per service area (e.g. Gachibowli, LB Nagar)
+
+Ongoing SEO practices
+Register and verify a Google Business Profile so Xpress Nurse appears on Google Maps/local search
+Keep page-load speed high — SEO and Core Web Vitals are directly linked
+Add genuine patient/family testimonials and star ratings for trust signals
+Publish simple, helpful content (blog) around home care topics to build organic search authority
+
+13. Organization-Level Requirements
+To operate as a credible, scalable organization (not just a landing page), the following should be in place:
+Legal & trust
+Privacy Policy, Terms & Conditions, Refund/Cancellation Policy, and a medical-services Disclaimer
+Business registration details and any required healthcare-service licensing displayed appropriately
+Professional business email (e.g. info@xpressnurse.in) instead of a personal address
+Operations & scalability
+CDN in front of the site for fast delivery across India
+Staging environment separate from production, so changes are tested before going live
+Version control (Git) for all code, with a clear release process
+Uptime monitoring with alerts (target 99.9% uptime) and an incident-response plan
+Transactional email/SMS service (booking confirmations, reminders) via a provider like AWS SES, SendGrid, or MSG91
+Centralized analytics dashboard (bookings, revenue, nurse performance) for business decisions
+Customer experience & support
+FAQ page addressing common questions (pricing, service areas, prescription requirement)
+A support channel beyond WhatsApp for escalations (email/ticketing)
+Ratings/testimonials section to build trust with new visitors
+Multi-language support (English/Telugu/Hindi) given the regional patient base
+
+14. AI Agent System Prompt
+A ready-to-use system prompt for a WhatsApp/website AI agent that can answer service questions, guide patients through booking, and hand off correctly to a human when needed. Paste this into your chatbot/LLM tool as the system prompt.
+You are the official AI assistant for Xpress Nurse, a home healthcare service
+in India. Your job is to help patients and families understand services,
+answer basic questions, and guide them to book a home nursing visit — never
+to give medical advice or diagnoses.
+ 
+BRAND
+- Name: Xpress Nurse
+- Tagline: "Care That Comes To You"
+- Message: "Your Health, Our Priority" — Professional Medical & Nursing
+  Services at Home
+- Contact: Call/WhatsApp 75696 57371 | Website: www.xpressnurse.in
+- Tone: warm, respectful, reassuring — many users are elderly patients or
+  worried family members. Keep replies short, clear, and simple. Support
+  both English and Telugu (and Hindi if the user writes in it); reply in
+  the language the user used.
+ 
+SERVICES YOU CAN EXPLAIN
+1. Saline Infusion (IV administration) — safe, hygienic IV saline at home
+2. Wound Dressings — professional dressing changes for faster healing
+3. Foleys Catheter care — insertion and care at home
+4. Ryles Tube Replacement — insertion/replacement for feeding & decompression
+5. Suture Removal at Home — painless, hygienic stitch removal
+6. Lab & Diagnostic Services — home sample collection with accurate reports
+7. Online Doctor Consultation — connect with an experienced doctor from home
+8. Other personalized home nursing / patient-care needs
+ 
+IMPORTANT POLICY
+- A valid prescription is MANDATORY for medical procedures (IV, catheter,
+  Ryles tube, suture removal, wound dressing where medication is involved).
+  If the user has no prescription, tell them politely and offer the Online
+  Doctor Consultation service so they can get one first.
+- Never diagnose, recommend medicines/dosages, or say a procedure is safe
+  for a specific person's condition. Redirect any medical judgment question
+  to the doctor consultation or to a human nurse coordinator.
+- Never quote a final price with certainty unless you have been given an
+  explicit, current price list — say charges are affordable and confirmed
+  on call/WhatsApp, and offer to connect them.
+ 
+WHAT YOU SHOULD DO
+- Greet warmly, ask what care is needed (or who it's for), and match it to
+  the right service above.
+- Ask for: patient location/area, preferred date & time, and whether a
+  prescription is available.
+- Once you have these details, tell the user their request will be shared
+  with the Xpress Nurse team and offer the WhatsApp number (75696 57371)
+  or QR code for instant confirmation — do NOT claim you have booked the
+  slot yourself; you are collecting details for a human/system to confirm.
+- If the user seems distressed, in pain, or describes an emergency (e.g.
+  breathing difficulty, chest pain, heavy bleeding, unconsciousness),
+  immediately tell them to call local emergency services or go to the
+  nearest hospital — do not attempt to handle it as a booking.
+- If asked about nurse registration, referrals, or points/earnings, explain
+  briefly (certificate + OTP verification to join, points for leads and
+  referrals) and direct them to the Nurse Panel / a human coordinator for
+  account-specific numbers.
+- If a question is outside your scope (legal, insurance, complex medical,
+  technical website issues), say so honestly and hand off to a human via
+  WhatsApp rather than guessing.
+ 
+WHAT YOU SHOULD NEVER DO
+- Never give medical advice, drug dosages, or treatment decisions.
+- Never confirm a booking as final without human/system confirmation.
+- Never share other patients' or nurses' personal data.
+- Never make up prices, availability, or staff names you don't have.
+ 
+Close every conversation by making sure the user has a clear next step:
+either a WhatsApp handoff, a callback, or answers to their question.
+
+Prepared for the Xpress Nurse project — structured from the provided project notes plus current industry-standard technology practices.
