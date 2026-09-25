@@ -28,7 +28,7 @@ import {
 } from 'lucide-react';
 import { HyderabadArea, ServiceId, Booking, ServiceItem, Coupon, CloudflareStorageObject } from '../types';
 import { useBodyScrollLock } from '../hooks/useBodyScrollLock';
-import { DEFAULT_COUPONS, dbIncrementCouponUsage } from '../lib/supabase';
+import { DEFAULT_COUPONS, dbIncrementCouponUsage, dbSaveBooking } from '../lib/supabase';
 import { uploadPrescriptionToCloudflareBucket, getCloudflareConfig } from '../lib/cloudflareStorage';
 
 interface BookingModalProps {
@@ -391,7 +391,7 @@ export const BookingModal: React.FC<BookingModalProps> = ({
 
     const newBooking: Booking = {
       id: newBookingId,
-      createdAt: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+      createdAt: new Date().toISOString(), // Strict ISO 8601 for PostgreSQL TIMESTAMPTZ
       patientName: `${patientName.trim()} (${patientAge} yrs, ${patientGender})`,
       patientPhone: patientPhone.trim(),
       patientAge: parseInt(patientAge) || 45,
@@ -414,6 +414,8 @@ export const BookingModal: React.FC<BookingModalProps> = ({
     };
 
     try {
+      // Direct database persistence to Supabase
+      await dbSaveBooking(newBooking);
       onBookingCreated(newBooking);
       setCreatedBooking(newBooking);
 

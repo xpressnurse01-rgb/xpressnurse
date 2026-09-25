@@ -124,33 +124,46 @@ export async function dbFetchBookings(): Promise<Booking[] | null> {
 // 3. Insert or Update Booking in Supabase DB
 export async function dbSaveBooking(b: Booking): Promise<boolean> {
   try {
-    const { error } = await supabase.from('bookings').upsert({
+    let isoCreatedAt = new Date().toISOString();
+    if (b.createdAt && b.createdAt.includes('T')) {
+      isoCreatedAt = b.createdAt;
+    }
+
+    const payload: any = {
       id: b.id,
-      created_at: b.createdAt || new Date().toISOString(),
+      created_at: isoCreatedAt,
       patient_name: b.patientName,
       patient_phone: b.patientPhone,
-      patient_age: b.patientAge,
-      patient_gender: b.patientGender,
-      service_id: b.serviceId,
+      patient_age: Number(b.patientAge) || null,
+      patient_gender: b.patientGender || null,
+      service_id: b.serviceId || 'saline-infusion',
       service_title: b.serviceTitle,
       area: b.area,
       full_address: b.fullAddress,
-      preferred_date: b.preferredDate,
-      preferred_time: b.preferredTime,
-      has_prescription: b.hasPrescription,
-      prescription_file_name: b.prescriptionFileName,
-      prescription_url: b.prescriptionUrl,
-      status: b.status,
-      assigned_nurse_id: b.assignedNurseId,
-      assigned_nurse_name: b.assignedNurseName,
-      referring_nurse_id: b.referringNurseId,
-      referring_nurse_name: b.referringNurseName,
-      estimated_fee: b.estimatedFee,
-      notes: b.notes
-    });
+      preferred_date: b.preferredDate || 'Today',
+      preferred_time: b.preferredTime || 'Immediate',
+      has_prescription: Boolean(b.hasPrescription),
+      prescription_file_name: b.prescriptionFileName || null,
+      prescription_url: b.prescriptionUrl || null,
+      status: b.status || 'Pending',
+      assigned_nurse_id: (b.assignedNurseId && b.assignedNurseId.trim() !== '') ? b.assignedNurseId : null,
+      assigned_nurse_name: b.assignedNurseName || null,
+      referring_nurse_id: (b.referringNurseId && b.referringNurseId.trim() !== '' && b.referringNurseId !== 'none') ? b.referringNurseId : null,
+      referring_nurse_name: b.referringNurseName || null,
+      estimated_fee: Number(b.estimatedFee) || 800,
+      notes: b.notes || null
+    };
 
-    return !error;
-  } catch {
+    const { error } = await supabase.from('bookings').upsert(payload);
+    if (error) {
+      console.error('[DB] Supabase bookings save error:', error.message, error.details);
+      return false;
+    }
+
+    console.log('[DB] Booking successfully saved to Supabase:', b.id);
+    return true;
+  } catch (err) {
+    console.error('[DB] dbSaveBooking exception:', err);
     return false;
   }
 }

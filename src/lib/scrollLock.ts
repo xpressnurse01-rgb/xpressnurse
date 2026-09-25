@@ -15,8 +15,9 @@ export function lockBodyScroll(): void {
 export function unlockBodyScroll(): void {
   if (typeof window === 'undefined') return;
   activeLockCount = Math.max(0, activeLockCount - 1);
-  if (activeLockCount === 0) {
-    document.body.style.overflow = originalOverflow;
-    document.body.style.paddingRight = originalPaddingRight;
+  if (activeLockCount === 0 || !document.querySelector('.modal-overlay')) {
+    activeLockCount = 0;
+    document.body.style.overflow = '';
+    document.body.style.paddingRight = '';
   }
 }
