@@ -420,7 +420,7 @@ export const App: React.FC = () => {
 
     const autoAssignedBooking: Booking = {
       id: 'BK-' + Math.floor(1000 + Math.random() * 9000),
-      createdAt: 'Just now',
+      createdAt: new Date().toISOString(),
       patientName: newLead.patientName,
       patientPhone: newLead.patientPhone,
       serviceId: newLead.serviceId,
@@ -438,6 +438,7 @@ export const App: React.FC = () => {
         ? `${areaStationedNurse.name} (${targetArea} Station Match)`
         : `${referringNurse?.name} (Personal Referral)`,
       estimatedFee: fee,
+      nightSurcharge: 0,
       referralBonusRupees: 0, // Pending Admin Approval
       notes: isCrossArea
         ? `Cross-Area Referral: Referred by ${referringNurse?.name} (${referringNurse?.serviceArea}). Patient located in ${targetArea}. Order dispatched to ${areaStationedNurse.name}. Referral bonus awaiting Admin approval.`

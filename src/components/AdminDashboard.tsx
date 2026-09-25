@@ -885,7 +885,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
       patientPhone: l.patientPhone,
       serviceId: l.serviceId,
       area: l.area,
-      nurseId: l.nurseId,
+      nurseId: l.nurseId || 'nurse-101',
       status: l.status,
       leadValueRupees: l.leadValueRupees || 800,
       pointsAwarded: l.pointsAwarded || 50

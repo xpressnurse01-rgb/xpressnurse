@@ -28,7 +28,7 @@ import {
 } from 'lucide-react';
 import { HyderabadArea, ServiceId, Booking, ServiceItem, Coupon, CloudflareStorageObject } from '../types';
 import { useBodyScrollLock } from '../hooks/useBodyScrollLock';
-import { DEFAULT_COUPONS, dbIncrementCouponUsage, dbSaveBooking } from '../lib/supabase';
+import { DEFAULT_COUPONS, dbIncrementCouponUsage, dbSaveBooking, dbSaveConsultation } from '../lib/supabase';
 import { uploadPrescriptionToCloudflareBucket, getCloudflareConfig } from '../lib/cloudflareStorage';
 
 interface BookingModalProps {
@@ -407,6 +407,8 @@ export const BookingModal: React.FC<BookingModalProps> = ({
       prescriptionUrl: finalRxUrl || (finalRxName ? `https://pub-830eaa9d07034c8d985d7d00577f77e9.r2.dev/prescriptions/${finalRxName}` : undefined),
       status: 'Pending',
       estimatedFee: baseFee,
+      nightSurcharge: 0,
+      referralBonusRupees: 0,
       promoCode: appliedPromo?.code,
       discountRupees: appliedPromo ? discountRupees : undefined,
       finalFee: finalFee,
@@ -416,6 +418,24 @@ export const BookingModal: React.FC<BookingModalProps> = ({
     try {
       // Direct database persistence to Supabase
       await dbSaveBooking(newBooking);
+
+      // If online doctor consultation, also persist to consultations table
+      if (isDoctorConsult) {
+        await dbSaveConsultation({
+          id: `CNS-${Math.floor(1000 + Math.random() * 9000)}`,
+          patientName: patientName.trim(),
+          patientAge: parseInt(patientAge) || 45,
+          patientPhone: patientPhone.trim(),
+          symptoms: notes.trim() || 'Online Doctor Teleconsultation for Home Nursing',
+          area: area,
+          requestedAt: new Date().toISOString(),
+          status: 'Awaiting Call',
+          prescriptionIssued: false,
+          prescriptionText: '',
+          recommendedService: undefined
+        });
+      }
+
       onBookingCreated(newBooking);
       setCreatedBooking(newBooking);
 

@@ -4,6 +4,7 @@ export type ServiceId =
   | 'foleys-catheter'
   | 'ryles-tube'
   | 'suture-removal'
+  | 'injection-administration'
   | 'lab-diagnostics'
   | 'doctor-consult'
   | 'personalized-nursing';
@@ -11,20 +12,22 @@ export type ServiceId =
 export interface ServiceItem {
   id: ServiceId;
   title: string;
-  subtitle: string;
-  description: string;
-  prescriptionRequired: boolean;
-  duration: string;
-  indicativePrice: string;
-  priceNumber?: number;
+  subtitle?: string;
+  description?: string;
+  singleVisitPrice?: number;
   multiVisitPrice?: number;
   nightSurcharge?: number;
-  features: string[];
-  icon: string;
+  prescriptionRequired?: boolean;
+  duration?: string;
+  indicativePrice?: string;
+  priceNumber?: number;
+  features?: string[];
+  icon?: string;
   badge?: string;
-  procedureSteps: string[];
-  equipmentProvided: string[];
+  procedureSteps?: string[];
+  equipmentProvided?: string[];
   imageUrl?: string;
+  createdAt?: string;
 }
 
 export type HyderabadArea = 
@@ -45,13 +48,13 @@ export interface Booking {
   patientName: string;
   patientPhone: string;
   patientAge?: number;
-  patientGender?: 'Male' | 'Female' | 'Other';
+  patientGender?: 'Male' | 'Female' | 'Other' | string;
   serviceId: ServiceId;
   serviceTitle: string;
   area: HyderabadArea;
   fullAddress: string;
-  preferredDate: string;
-  preferredTime: string;
+  preferredDate?: string;
+  preferredTime?: string;
   hasPrescription: boolean;
   prescriptionFileName?: string;
   prescriptionUrl?: string;
@@ -61,12 +64,12 @@ export interface Booking {
   referringNurseId?: string; // Referring Nurse who originated the lead
   referringNurseName?: string; // Name of referring nurse
   estimatedFee: number;
+  nightSurcharge?: number;
+  referralBonusRupees?: number;
+  notes?: string;
   promoCode?: string; // e.g. FIRST100, SENIOR15, HYDCARE
   discountRupees?: number; // Discount deducted
   finalFee?: number; // Payable amount after discount
-  nightSurcharge?: number; // ₹399 after 9pm
-  referralBonusRupees?: number; // 10% referral benefit
-  notes?: string;
   invoiceNumber?: string;
   invoiceUrl?: string;
 }
@@ -78,7 +81,7 @@ export interface NurseProfile {
   email: string;
   experienceYears: number;
   qualification: string;
-  serviceArea: HyderabadArea; // Rule 2: Service area matching
+  serviceArea: HyderabadArea;
   status: 'Active' | 'Pending Verification' | 'On Leave';
   totalLeads: number;
   convertedLeads: number;
@@ -86,13 +89,14 @@ export interface NurseProfile {
   pointsEarned: number;
   referralEarningsRupees: number;
   rating: number;
-  avatarUrl: string;
+  avatarUrl?: string;
   certificateVerified: boolean;
+  createdAt?: string;
 }
 
 export interface NurseLead {
   id: string;
-  nurseId: string;
+  nurseId?: string;
   patientName: string;
   patientPhone: string;
   serviceId: ServiceId;
@@ -111,11 +115,11 @@ export interface NurseLead {
 export interface DoctorConsultation {
   id: string;
   patientName: string;
-  patientAge: number;
+  patientAge?: number;
   patientPhone: string;
   symptoms: string;
   area: HyderabadArea;
-  requestedAt: string;
+  requestedAt?: string;
   status: 'Awaiting Call' | 'In Call' | 'Prescription Issued' | 'Completed';
   prescriptionIssued?: boolean;
   prescriptionText?: string;
