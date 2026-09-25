@@ -11,10 +11,10 @@ import {
 // ============================================================================
 
 export const DEFAULT_CLOUDFLARE_CONFIG: CloudflareR2Config = {
-  accountId: '191a5a2501e16ad7236f97b921a8ebbf',
-  bucketName: 'xpressnurse-storage',
-  publicDomain: 'https://pub-830eaa9d07034c8d985d7d00577f77e9.r2.dev',
-  endpoint: 'https://191a5a2501e16ad7236f97b921a8ebbf.r2.cloudflarestorage.com',
+  accountId: import.meta.env.VITE_CLOUDFLARE_R2_ACCOUNT_ID || '',
+  bucketName: import.meta.env.VITE_CLOUDFLARE_R2_BUCKET_NAME || 'xpressnurse-storage',
+  publicDomain: import.meta.env.VITE_CLOUDFLARE_R2_PUBLIC_DOMAIN || '',
+  endpoint: import.meta.env.VITE_CLOUDFLARE_R2_ENDPOINT || '',
   corsEnabled: true
 };
 
@@ -26,16 +26,13 @@ export const getCloudflareConfig = (): CloudflareR2Config => {
     const saved = localStorage.getItem(R2_CONFIG_KEY);
     if (saved) {
       const parsed = JSON.parse(saved);
-      // Migrate previous configurations to active R2 bucket and domain
       const config = { 
         ...DEFAULT_CLOUDFLARE_CONFIG, 
         ...parsed,
-        accountId: '191a5a2501e16ad7236f97b921a8ebbf',
-        bucketName: 'xpressnurse-storage',
-        endpoint: 'https://191a5a2501e16ad7236f97b921a8ebbf.r2.cloudflarestorage.com',
-        publicDomain: (parsed.publicDomain && !parsed.publicDomain.includes('storage.xpressnurse.in'))
-          ? parsed.publicDomain 
-          : 'https://pub-830eaa9d07034c8d985d7d00577f77e9.r2.dev'
+        accountId: parsed.accountId || import.meta.env.VITE_CLOUDFLARE_R2_ACCOUNT_ID || '',
+        bucketName: parsed.bucketName || import.meta.env.VITE_CLOUDFLARE_R2_BUCKET_NAME || 'xpressnurse-storage',
+        endpoint: parsed.endpoint || import.meta.env.VITE_CLOUDFLARE_R2_ENDPOINT || '',
+        publicDomain: parsed.publicDomain || import.meta.env.VITE_CLOUDFLARE_R2_PUBLIC_DOMAIN || ''
       };
       return config;
     }

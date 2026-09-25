@@ -9,30 +9,19 @@ import {
   Coupon 
 } from '../types';
 
-const DEFAULT_SUPABASE_URL = 'https://ncgugriphhrhvdunluiz.supabase.co';
-const DEFAULT_SUPABASE_ANON_KEY = 
-  'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im5jZ3VncmlwaGhyaHZkdW5sdWl6Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTAwNTExNzAsImV4cCI6MjEwNTYyNzE3MH0.5MADQjkka8Of25SwPncEb6lrP3mxL713tcLBrGW6erQ';
+export const SUPABASE_URL: string = import.meta.env.VITE_SUPABASE_URL || '';
+export const SUPABASE_ANON_KEY: string = import.meta.env.VITE_SUPABASE_ANON_KEY || '';
 
-export const SUPABASE_URL: string = 
-  (import.meta.env.VITE_SUPABASE_URL && import.meta.env.VITE_SUPABASE_URL.trim() !== '')
-    ? import.meta.env.VITE_SUPABASE_URL
-    : DEFAULT_SUPABASE_URL;
+// Safe initialization that purely reads from env vars and avoids throwing at bundle import
+const clientUrl = SUPABASE_URL.trim() || 'https://placeholder.supabase.co';
+const clientKey = SUPABASE_ANON_KEY.trim() || 'placeholder-anon-key';
 
-export const SUPABASE_ANON_KEY: string = 
-  (import.meta.env.VITE_SUPABASE_ANON_KEY && import.meta.env.VITE_SUPABASE_ANON_KEY.trim() !== '')
-    ? import.meta.env.VITE_SUPABASE_ANON_KEY
-    : DEFAULT_SUPABASE_ANON_KEY;
-
-export const supabase = createClient(
-  SUPABASE_URL || DEFAULT_SUPABASE_URL, 
-  SUPABASE_ANON_KEY || DEFAULT_SUPABASE_ANON_KEY, 
-  {
-    auth: {
-      persistSession: true,
-      autoRefreshToken: true
-    }
+export const supabase = createClient(clientUrl, clientKey, {
+  auth: {
+    persistSession: true,
+    autoRefreshToken: true
   }
-);
+});
 
 /**
  * Robust Database Service - Fetches all entities directly from Supabase DB:
