@@ -223,12 +223,6 @@ export const generateInvoiceDetails = (booking: Booking): InvoiceDetails => {
   const nightSurcharge = Number(booking.nightSurcharge) || 0;
   const subtotal = Math.max(0, baseFee + nightSurcharge - discount);
 
-  // 18% GST calculation (Healthcare professional home services breakdown)
-  const taxableAmount = Math.round(subtotal / 1.18);
-  const totalGst = subtotal - taxableAmount;
-  const cgst = Math.round(totalGst / 2);
-  const sgst = totalGst - cgst;
-
   const r2StorageKey = `invoices/${invoiceNumber}.pdf`;
   const r2PublicUrl = `${config.publicDomain.replace(/\/+$/, '')}/${r2StorageKey}`;
 
@@ -252,9 +246,6 @@ export const generateInvoiceDetails = (booking: Booking): InvoiceDetails => {
     baseAmount: baseFee,
     nightSurcharge,
     discountRupees: discount,
-    taxableAmount,
-    cgst,
-    sgst,
     totalAmount: subtotal,
     paymentStatus: booking.status === 'Completed' ? 'Paid' : 'Pending',
     paymentMode: 'UPI / Online',
@@ -276,8 +267,7 @@ export const saveInvoiceToCloudflareBucket = async (booking: Booking): Promise<C
       patientName: booking.patientName,
       nurseName: booking.assignedNurseName,
       amount: inv.totalAmount,
-      gstin: '36AAACX9876Q1Z5',
-      description: `Tax Invoice for ${booking.serviceTitle}`
+      description: `Service Invoice for ${booking.serviceTitle}`
     }
   });
 };
@@ -318,10 +308,7 @@ export const generatePrintableInvoiceHtml = (inv: InvoiceDetails): string => {
   </style>
 </head>
 <body>
-  <div style="max-width: 800px; margin: 0 auto 16px auto; display: flex; justify-content: space-between; align-items: center;" class="no-print">
-    <div style="font-size: 13px; color: #64748B;">
-      Cloudflare R2 Bucket: <code style="background: #E2E8F0; padding: 2px 6px; border-radius: 4px;">xpressnurse-storage/${inv.r2StorageKey}</code>
-    </div>
+  <div style="max-width: 800px; margin: 0 auto 16px auto; display: flex; justify-content: flex-end; align-items: center;" class="no-print">
     <div style="display: flex; gap: 8px;">
       <button onclick="window.print()" style="background: #E11D48; color: #FFF; border: none; padding: 8px 18px; border-radius: 9999px; font-weight: 700; cursor: pointer; font-size: 13px;">Print / Save as PDF</button>
       <button onclick="window.close()" style="background: #F1F5F9; color: #334155; border: 1px solid #CBD5E1; padding: 8px 14px; border-radius: 9999px; font-weight: 600; cursor: pointer; font-size: 13px;">Close</button>
@@ -334,12 +321,12 @@ export const generatePrintableInvoiceHtml = (inv: InvoiceDetails): string => {
         <div class="brand-title">Xpress Nurse</div>
         <div class="brand-subtitle">Hyderabad 24/7 Clinical Home Care</div>
         <div style="font-size: 12px; color: #475569; margin-top: 6px;">
-          GSTIN: <strong>36AAACX9876Q1Z5</strong> | Reg: TS/HYD/MED-2026/410<br>
+          Reg: TS/HYD/MED-2026/410<br>
           Banjara Hills Road No. 12, Hyderabad, Telangana 500034
         </div>
       </div>
       <div style="text-align: right;">
-        <div style="font-size: 20px; font-weight: 800; color: #0A192F;">TAX INVOICE</div>
+        <div style="font-size: 20px; font-weight: 800; color: #0A192F;">INVOICE</div>
         <div style="font-size: 13px; font-weight: 700; color: #0284C7; margin: 4px 0;">${inv.invoiceNumber}</div>
         <div style="font-size: 12px; color: #64748B;">Date: ${inv.invoiceDate}</div>
         <div style="margin-top: 8px;">
@@ -373,7 +360,6 @@ export const generatePrintableInvoiceHtml = (inv: InvoiceDetails): string => {
       <thead>
         <tr>
           <th>Description of Clinical Procedure</th>
-          <th>SAC Code</th>
           <th style="text-align: center;">Qty</th>
           <th style="text-align: right;">Rate (₹)</th>
           <th style="text-align: right;">Amount (₹)</th>
@@ -385,7 +371,6 @@ export const generatePrintableInvoiceHtml = (inv: InvoiceDetails): string => {
             <strong>${inv.serviceTitle}</strong><br>
             <span style="font-size: 11.5px; color: #64748B;">Doorstep nursing visit with aseptic consumables, vitals check & digital report</span>
           </td>
-          <td>999312</td>
           <td style="text-align: center;">1</td>
           <td style="text-align: right;">₹${inv.baseAmount}</td>
           <td style="text-align: right;">₹${inv.baseAmount}</td>
@@ -396,7 +381,6 @@ export const generatePrintableInvoiceHtml = (inv: InvoiceDetails): string => {
             <strong>Night Visit Emergency Surcharge</strong><br>
             <span style="font-size: 11.5px; color: #64748B;">Dispatch after 8:00 PM rapid response fee</span>
           </td>
-          <td>999312</td>
           <td style="text-align: center;">1</td>
           <td style="text-align: right;">₹${inv.nightSurcharge}</td>
           <td style="text-align: right;">₹${inv.nightSurcharge}</td>
@@ -407,7 +391,6 @@ export const generatePrintableInvoiceHtml = (inv: InvoiceDetails): string => {
           <td>
             <strong style="color: #059669;">Promotional Coupon Discount</strong>
           </td>
-          <td>—</td>
           <td style="text-align: center;">1</td>
           <td style="text-align: right; color: #059669;">-₹${inv.discountRupees}</td>
           <td style="text-align: right; color: #059669;">-₹${inv.discountRupees}</td>
@@ -418,17 +401,10 @@ export const generatePrintableInvoiceHtml = (inv: InvoiceDetails): string => {
 
     <div class="totals">
       <div class="total-row">
-        <span>Taxable Value:</span>
-        <strong>₹${inv.taxableAmount}</strong>
+        <span>Base Service Fee:</span>
+        <strong>₹${inv.baseAmount}</strong>
       </div>
-      <div class="total-row">
-        <span>CGST (9%):</span>
-        <span>₹${inv.cgst}</span>
-      </div>
-      <div class="total-row">
-        <span>SGST (9%):</span>
-        <span>₹${inv.sgst}</span>
-      </div>
+
       <div class="total-row grand">
         <span>Grand Total:</span>
         <span>₹${inv.totalAmount}</span>
@@ -436,10 +412,7 @@ export const generatePrintableInvoiceHtml = (inv: InvoiceDetails): string => {
     </div>
 
     <div class="cloud-footer">
-      <div>
-        <span class="r2-tag">☁️ Cloudflare R2 Verified Storage</span>
-        <div style="margin-top: 4px;">Public Link: <a href="${inv.r2PublicUrl}" target="_blank" style="color: #0284C7; text-decoration: none;">${inv.r2PublicUrl}</a></div>
-      </div>
+      <div></div>
       <div style="text-align: right;">
         <div style="font-weight: 700; color: #1E293B;">Xpress Nurse Healthcare Pvt. Ltd.</div>
         <div>Digitally Authorized Signatory</div>

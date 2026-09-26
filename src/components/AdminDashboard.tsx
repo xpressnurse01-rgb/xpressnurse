@@ -1584,7 +1584,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                                 background: '#F0F9FF',
                                 fontWeight: 700
                               }}
-                              title="Issue and preview official GST invoice"
+                              title="Issue and preview official invoice"
                             >
                               <Receipt size={13} />
                               <span>Invoice</span>
@@ -1616,7 +1616,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                 onClick={handleSyncAllInvoicesToCloudflare}
                 className="btn btn-outline btn-sm"
                 style={{ borderRadius: 9999, fontWeight: 700, gap: '0.4rem', borderColor: '#BAE6FD', color: '#0284C7', background: '#F0F9FF' }}
-                title="Issue and sync tax invoices for all bookings into Cloudflare R2 bucket"
+                title="Issue and sync invoices for all bookings into Cloudflare R2 bucket"
               >
                 <Receipt size={15} />
                 <span>Issue All Invoices ({bookings.length})</span>
@@ -1768,7 +1768,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                           <button
                             type="button"
                             onClick={() => handleViewBookingInvoice(b)}
-                            title="Issue Official GST Invoice (Save to Cloudflare R2)"
+                            title="Issue Official Invoice (Save to Cloudflare R2)"
                             style={{
                               background: '#F0FDF4',
                               border: '1px solid #BBF7D0',
@@ -3631,7 +3631,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
             <div className="card" style={{ padding: '1.15rem' }}>
               <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '0.5rem' }}>
                 <span style={{ fontSize: '0.75rem', fontWeight: 700, color: 'var(--neutral-500)', textTransform: 'uppercase' }}>
-                  Tax Invoices Stored
+                  Invoices Stored
                 </span>
                 <div style={{ width: 32, height: 32, borderRadius: 8, background: '#FFFBEB', color: '#D97706', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
                   <Receipt size={16} />
@@ -3641,7 +3641,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                 {storageObjects.filter((o) => o.category === 'invoices').length}
               </div>
               <div style={{ fontSize: '0.74rem', color: 'var(--neutral-500)', marginTop: '0.25rem' }}>
-                GST Compliant Doorstep Invoices
+                Doorstep Clinical Invoices
               </div>
             </div>
 
@@ -5890,11 +5890,9 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                 </div>
                 <div>
                   <h3 style={{ fontSize: '1.15rem', fontWeight: 800, color: 'var(--primary-navy-950)', margin: 0 }}>
-                    Tax Invoice {previewInvoice.invoiceNumber}
+                    Invoice {previewInvoice.invoiceNumber}
                   </h3>
-                  <div style={{ fontSize: '0.76rem', color: 'var(--neutral-500)' }}>
-                    Saved to Cloudflare R2: xpressnurse-storage/{previewInvoice.r2StorageKey}
-                  </div>
+
                 </div>
               </div>
               <button 
@@ -5912,10 +5910,9 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                 <div>
                   <div style={{ fontSize: '1.3rem', fontWeight: 900, color: '#0A192F' }}>Xpress Nurse</div>
                   <div style={{ fontSize: '0.8rem', color: '#0284C7', fontWeight: 700 }}>24/7 Clinical Home Care Hyderabad</div>
-                  <div style={{ fontSize: '0.74rem', color: '#64748B', marginTop: '0.2rem' }}>GSTIN: 36AAACX9876Q1Z5</div>
                 </div>
                 <div style={{ textAlign: 'right' }}>
-                  <div style={{ fontSize: '1.1rem', fontWeight: 800 }}>TAX INVOICE</div>
+                  <div style={{ fontSize: '1.1rem', fontWeight: 800 }}>INVOICE</div>
                   <div style={{ fontSize: '0.82rem', color: '#0284C7', fontWeight: 700 }}>{previewInvoice.invoiceNumber}</div>
                   <div style={{ fontSize: '0.74rem', color: '#64748B' }}>Date: {previewInvoice.invoiceDate}</div>
                 </div>
@@ -5940,7 +5937,6 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                 <thead>
                   <tr>
                     <th>Procedure Description</th>
-                    <th>SAC</th>
                     <th style={{ textAlign: 'right' }}>Rate (₹)</th>
                     <th style={{ textAlign: 'right' }}>Amount (₹)</th>
                   </tr>
@@ -5948,14 +5944,19 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                 <tbody>
                   <tr>
                     <td><strong>{previewInvoice.serviceTitle}</strong></td>
-                    <td>999312</td>
                     <td style={{ textAlign: 'right' }}>₹{previewInvoice.baseAmount}</td>
                     <td style={{ textAlign: 'right' }}>₹{previewInvoice.baseAmount}</td>
                   </tr>
+                  {Boolean(previewInvoice.nightSurcharge && previewInvoice.nightSurcharge > 0) && (
+                    <tr>
+                      <td><strong>Night Emergency Surcharge</strong></td>
+                      <td style={{ textAlign: 'right' }}>₹{previewInvoice.nightSurcharge}</td>
+                      <td style={{ textAlign: 'right' }}>₹{previewInvoice.nightSurcharge}</td>
+                    </tr>
+                  )}
                   {Boolean(previewInvoice.discountRupees && previewInvoice.discountRupees > 0) && (
                     <tr>
                       <td style={{ color: '#059669' }}>Coupon Discount</td>
-                      <td>—</td>
                       <td style={{ textAlign: 'right', color: '#059669' }}>-₹{previewInvoice.discountRupees}</td>
                       <td style={{ textAlign: 'right', color: '#059669' }}>-₹{previewInvoice.discountRupees}</td>
                     </tr>
@@ -5965,19 +5966,19 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
 
               <div style={{ width: 280, marginLeft: 'auto', marginBottom: '1.25rem' }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', padding: '0.25rem 0', fontSize: '0.82rem' }}>
-                  <span>Taxable Value:</span>
-                  <strong>₹{previewInvoice.taxableAmount}</strong>
+                  <span>Subtotal:</span>
+                  <strong>₹{previewInvoice.baseAmount}</strong>
                 </div>
-                <div style={{ display: 'flex', justifyContent: 'space-between', padding: '0.25rem 0', fontSize: '0.82rem' }}>
-                  <span>CGST (9%):</span>
-                  <span>₹{previewInvoice.cgst}</span>
-                </div>
-                <div style={{ display: 'flex', justifyContent: 'space-between', padding: '0.25rem 0', fontSize: '0.82rem' }}>
-                  <span>SGST (9%):</span>
-                  <span>₹{previewInvoice.sgst}</span>
-                </div>
+
+                {Boolean(previewInvoice.discountRupees && previewInvoice.discountRupees > 0) && (
+                  <div style={{ display: 'flex', justifyContent: 'space-between', padding: '0.25rem 0', fontSize: '0.82rem', color: '#059669' }}>
+                    <span>Discount:</span>
+                    <strong>-₹{previewInvoice.discountRupees}</strong>
+                  </div>
+                )}
+
                 <div style={{ display: 'flex', justifyContent: 'space-between', padding: '0.4rem 0', borderTop: '2px solid #0A192F', fontSize: '1.1rem', fontWeight: 900 }}>
-                  <span>Grand Total:</span>
+                  <span>Total Payable:</span>
                   <span style={{ color: '#059669' }}>₹{previewInvoice.totalAmount}</span>
                 </div>
               </div>

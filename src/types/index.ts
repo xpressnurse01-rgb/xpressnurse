@@ -183,7 +183,6 @@ export interface CloudflareStorageObject {
     nurseId?: string;
     nurseName?: string;
     amount?: number;
-    gstin?: string;
     description?: string;
   };
 }
@@ -204,9 +203,6 @@ export interface InvoiceDetails {
   baseAmount: number;
   nightSurcharge?: number;
   discountRupees?: number;
-  taxableAmount: number;
-  cgst: number; // 9%
-  sgst: number; // 9%
   totalAmount: number;
   paymentStatus: 'Paid' | 'Pending' | 'Refunded';
   paymentMode: 'UPI / Online' | 'Cash on Visit' | 'Corporate Direct';

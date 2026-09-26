@@ -72,7 +72,6 @@ export const BookingModal: React.FC<BookingModalProps> = ({
   const [patientAge, setPatientAge] = useState('');
   const [patientGender, setPatientGender] = useState<'Male' | 'Female' | 'Other'>('Male');
   const [patientPhone, setPatientPhone] = useState('');
-  const [area, setArea] = useState<HyderabadArea>('Gachibowli');
   const [fullAddress, setFullAddress] = useState('');
   const [preferredDate, setPreferredDate] = useState('Today (Immediate)');
   const [preferredTime, setPreferredTime] = useState('Within 60-90 minutes');
@@ -214,16 +213,7 @@ export const BookingModal: React.FC<BookingModalProps> = ({
 
             setFullAddress(detectedStr);
 
-            // Match closest known Hyderabad area
-            const foundArea = HYDERABAD_AREAS.find((a) =>
-              (data.display_name || '').toLowerCase().includes(a.toLowerCase()) ||
-              suburb.toLowerCase().includes(a.toLowerCase())
-            );
-            if (foundArea) {
-              setArea(foundArea);
-            }
-
-            setLocationSuccessMsg(`✓ Location detected (${foundArea || suburb || 'Hyderabad'})`);
+            setLocationSuccessMsg(`✓ Location detected (${suburb || 'Hyderabad'})`);
           } else {
             setFullAddress(`Lat: ${latitude.toFixed(4)}, Lon: ${longitude.toFixed(4)}, Hyderabad`);
             setLocationSuccessMsg('✓ Coordinates detected');
@@ -398,7 +388,7 @@ export const BookingModal: React.FC<BookingModalProps> = ({
       patientGender,
       serviceId,
       serviceTitle: currentService.title,
-      area,
+      area: 'Gachibowli' as HyderabadArea,
       fullAddress: fullAddress.trim(),
       preferredDate,
       preferredTime,
@@ -427,7 +417,7 @@ export const BookingModal: React.FC<BookingModalProps> = ({
           patientAge: parseInt(patientAge) || 45,
           patientPhone: patientPhone.trim(),
           symptoms: notes.trim() || 'Online Doctor Teleconsultation for Home Nursing',
-          area: area,
+          area: 'Gachibowli' as HyderabadArea,
           requestedAt: new Date().toISOString(),
           status: 'Awaiting Call',
           prescriptionIssued: false,
@@ -740,42 +730,24 @@ export const BookingModal: React.FC<BookingModalProps> = ({
               </div>
             </div>
 
-            {/* 3. Phone & Area Row */}
-            <div style={{ display: 'grid', gridTemplateColumns: '1.2fr 1fr', gap: '0.65rem', marginBottom: '0.85rem' }}>
-              <div>
-                <label className="form-label" style={{ fontSize: '0.78rem', fontWeight: 600, marginBottom: '0.25rem' }}>
-                  Mobile Number *
-                </label>
-                <div style={{ position: 'relative' }}>
-                  <input
-                    type="tel"
-                    placeholder="10-digit mobile"
-                    maxLength={10}
-                    className={`form-control ${errors.patientPhone ? 'is-invalid' : ''}`}
-                    value={patientPhone}
-                    onChange={(e) => setPatientPhone(e.target.value.replace(/\D/g, ''))}
-                    style={{ padding: '0.55rem 0.75rem 0.55rem 2rem', fontSize: '0.86rem', borderRadius: 10 }}
-                  />
-                  <Phone size={14} style={{ position: 'absolute', left: 8, top: '50%', transform: 'translateY(-50%)', color: 'var(--neutral-400)' }} />
-                </div>
-                {errors.patientPhone && <span className="field-error">{errors.patientPhone}</span>}
+            {/* 3. Phone Row */}
+            <div style={{ marginBottom: '0.85rem' }}>
+              <label className="form-label" style={{ fontSize: '0.78rem', fontWeight: 600, marginBottom: '0.25rem' }}>
+                Mobile Number *
+              </label>
+              <div style={{ position: 'relative' }}>
+                <input
+                  type="tel"
+                  placeholder="10-digit mobile"
+                  maxLength={10}
+                  className={`form-control ${errors.patientPhone ? 'is-invalid' : ''}`}
+                  value={patientPhone}
+                  onChange={(e) => setPatientPhone(e.target.value.replace(/\\D/g, ''))}
+                  style={{ padding: '0.55rem 0.75rem 0.55rem 2rem', fontSize: '0.86rem', borderRadius: 10 }}
+                />
+                <Phone size={14} style={{ position: 'absolute', left: 8, top: '50%', transform: 'translateY(-50%)', color: 'var(--neutral-400)' }} />
               </div>
-
-              <div>
-                <label className="form-label" style={{ fontSize: '0.78rem', fontWeight: 600, marginBottom: '0.25rem' }}>
-                  Hyderabad Area
-                </label>
-                <select
-                  className="form-control"
-                  value={area}
-                  onChange={(e) => setArea(e.target.value as HyderabadArea)}
-                  style={{ padding: '0.55rem 0.75rem', fontSize: '0.86rem', borderRadius: 10 }}
-                >
-                  {HYDERABAD_AREAS.map((a) => (
-                    <option key={a} value={a}>{a}</option>
-                  ))}
-                </select>
-              </div>
+              {errors.patientPhone && <span className="field-error">{errors.patientPhone}</span>}
             </div>
 
             {/* 4. Home Address with Auto-Detect GPS Button */}
@@ -1060,7 +1032,7 @@ export const BookingModal: React.FC<BookingModalProps> = ({
                 onChange={(e) => setPreferredTime(e.target.value)}
                 style={{ padding: '0.55rem 0.75rem', fontSize: '0.84rem', borderRadius: 10 }}
               >
-                <option value="Within 60-90 minutes">Prompt (Within 60-90 mins)</option>
+                <option value="Within 60-90 minutes">Immediate (Within 60-90 mins)</option>
                 <option value="Morning (8:00 AM - 12:00 PM)">Morning (8 AM - 12 PM)</option>
                 <option value="Afternoon (12:00 PM - 4:00 PM)">Afternoon (12 PM - 4 PM)</option>
                 <option value="Evening (4:00 PM - 8:00 PM)">Evening (4 PM - 8 PM)</option>

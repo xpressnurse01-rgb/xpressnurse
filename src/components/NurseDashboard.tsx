@@ -544,7 +544,7 @@ export const NurseDashboard: React.FC<NurseDashboardProps> = ({
                                 background: '#F0F9FF',
                                 borderRadius: 6
                               }}
-                              title="Generate Official GST Invoice"
+                              title="Generate Official Invoice"
                             >
                               <Receipt size={12} />
                               <span>Invoice</span>
@@ -671,7 +671,7 @@ export const NurseDashboard: React.FC<NurseDashboardProps> = ({
                                 background: '#F0F9FF',
                                 fontWeight: 700
                               }}
-                              title="Generate Official GST Tax Invoice"
+                              title="Generate Official Invoice"
                             >
                               <Receipt size={13} />
                               <span>Invoice</span>
@@ -1107,7 +1107,7 @@ export const NurseDashboard: React.FC<NurseDashboardProps> = ({
         </div>
       )}
 
-      {/* NURSE TAX INVOICE PREVIEW MODAL */}
+      {/* NURSE INVOICE PREVIEW MODAL */}
       {isInvoiceModalOpen && previewInvoice && (
         <div 
           className="modal-overlay" 
@@ -1126,7 +1126,7 @@ export const NurseDashboard: React.FC<NurseDashboardProps> = ({
                 </div>
                 <div>
                   <h3 style={{ fontSize: '1.15rem', fontWeight: 800, color: 'var(--primary-navy-950)', margin: 0 }}>
-                    Tax Invoice {previewInvoice.invoiceNumber}
+                    Invoice {previewInvoice.invoiceNumber}
                   </h3>
                   <div style={{ fontSize: '0.76rem', color: 'var(--neutral-500)' }}>
                     Attending Nurse: {currentNurse.name} ({currentNurse.qualification}) • Station: {currentNurse.serviceArea}
@@ -1165,10 +1165,8 @@ export const NurseDashboard: React.FC<NurseDashboardProps> = ({
                 <thead>
                   <tr>
                     <th>Procedure Description</th>
-                    <th>SAC Code</th>
-                    <th style={{ textAlign: 'right' }}>Taxable</th>
-                    <th style={{ textAlign: 'right' }}>GST (18%)</th>
-                    <th style={{ textAlign: 'right' }}>Total</th>
+                    <th style={{ textAlign: 'right' }}>Rate (₹)</th>
+                    <th style={{ textAlign: 'right' }}>Total (₹)</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -1177,29 +1175,41 @@ export const NurseDashboard: React.FC<NurseDashboardProps> = ({
                       <strong>{previewInvoice.serviceTitle}</strong>
                       <div style={{ fontSize: '0.75rem', color: '#64748B' }}>Doorstep clinical nursing visit with aseptic consumables</div>
                     </td>
-                    <td>999312</td>
-                    <td style={{ textAlign: 'right' }}>₹{previewInvoice.taxableAmount}</td>
-                    <td style={{ textAlign: 'right' }}>₹{previewInvoice.cgst + previewInvoice.sgst}</td>
-                    <td style={{ textAlign: 'right', fontWeight: 700 }}>₹{previewInvoice.totalAmount}</td>
+                    <td style={{ textAlign: 'right' }}>₹{previewInvoice.baseAmount}</td>
+                    <td style={{ textAlign: 'right', fontWeight: 700 }}>₹{previewInvoice.baseAmount}</td>
                   </tr>
+                  {Boolean(previewInvoice.nightSurcharge && previewInvoice.nightSurcharge > 0) && (
+                    <tr>
+                      <td>
+                        <strong>Night Emergency Surcharge</strong>
+                      </td>
+                      <td style={{ textAlign: 'right' }}>₹{previewInvoice.nightSurcharge}</td>
+                      <td style={{ textAlign: 'right', fontWeight: 700 }}>₹{previewInvoice.nightSurcharge}</td>
+                    </tr>
+                  )}
+                  {Boolean(previewInvoice.discountRupees && previewInvoice.discountRupees > 0) && (
+                    <tr>
+                      <td style={{ color: '#059669' }}>Promotional Discount</td>
+                      <td style={{ textAlign: 'right', color: '#059669' }}>-₹{previewInvoice.discountRupees}</td>
+                      <td style={{ textAlign: 'right', color: '#059669', fontWeight: 700 }}>-₹{previewInvoice.discountRupees}</td>
+                    </tr>
+                  )}
                 </tbody>
               </table>
 
               {/* Total Summary */}
               <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: '1.5rem' }}>
                 <div style={{ width: 280, background: '#F8FAFC', padding: '1rem', borderRadius: 10, border: '1px solid #E2E8F0' }}>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.85rem', marginBottom: 4 }}>
-                    <span>Taxable Value:</span>
-                    <span>₹{previewInvoice.taxableAmount}</span>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.85rem', marginBottom: 6 }}>
+                    <span>Subtotal:</span>
+                    <span>₹{previewInvoice.baseAmount}</span>
                   </div>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.85rem', marginBottom: 4 }}>
-                    <span>CGST (9%):</span>
-                    <span>₹{previewInvoice.cgst}</span>
-                  </div>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.85rem', marginBottom: 8 }}>
-                    <span>SGST (9%):</span>
-                    <span>₹{previewInvoice.sgst}</span>
-                  </div>
+                  {Boolean(previewInvoice.discountRupees && previewInvoice.discountRupees > 0) && (
+                    <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.85rem', color: '#059669', marginBottom: 6 }}>
+                      <span>Discount:</span>
+                      <span>-₹{previewInvoice.discountRupees}</span>
+                    </div>
+                  )}
                   <div style={{ display: 'flex', justifyContent: 'space-between', fontWeight: 800, fontSize: '1.05rem', color: '#0F172A', borderTop: '1px solid #CBD5E1', paddingTop: 8 }}>
                     <span>Total Payable:</span>
                     <span style={{ color: '#059669' }}>₹{previewInvoice.totalAmount}</span>
@@ -1223,7 +1233,7 @@ export const NurseDashboard: React.FC<NurseDashboardProps> = ({
                   style={{ display: 'inline-flex', alignItems: 'center', gap: '0.4rem', fontWeight: 700 }}
                 >
                   <Printer size={15} />
-                  <span>Print / Save Tax Invoice</span>
+                  <span>Print / Save Invoice</span>
                 </button>
               </div>
             </div>
