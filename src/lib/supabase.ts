@@ -1267,6 +1267,29 @@ export async function dbVerifyUserPin(
     return { success: false, message: 'PIN must be exactly 4 numeric digits.' };
   }
 
+  // Check nurse approval status first
+  if (role === 'nurse') {
+    try {
+      const { data: nursesData } = await supabase.from('nurses').select('*');
+      if (nursesData && nursesData.length > 0) {
+        const matchedNurse = nursesData.find((n: any) => {
+          const nEmail = (n.email || '').toLowerCase().replace(/[\s-+]/g, '');
+          const nPhone = (n.phone || '').toLowerCase().replace(/[\s-+]/g, '');
+          const nId = (n.id || '').toLowerCase().replace(/[\s-+]/g, '');
+          return nEmail === cleanId || nPhone === cleanId || nId === cleanId;
+        });
+
+        if (matchedNurse) {
+          if (matchedNurse.status === 'Pending Verification' || !matchedNurse.certificate_verified) {
+            return { success: false, message: 'Your account is pending admin approval. You can login once verified.' };
+          }
+        }
+      }
+    } catch {
+      // Proceed to fallback
+    }
+  }
+
   // 1. Try querying Supabase app_users table if present
   try {
     const { data, error } = await supabase

@@ -3665,6 +3665,23 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
             <div className="card" style={{ padding: '1.15rem' }}>
               <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '0.5rem' }}>
                 <span style={{ fontSize: '0.75rem', fontWeight: 700, color: 'var(--neutral-500)', textTransform: 'uppercase' }}>
+                  Nursing Certificates
+                </span>
+                <div style={{ width: 32, height: 32, borderRadius: 8, background: '#F3E8FF', color: '#9333EA', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                  <Award size={16} />
+                </div>
+              </div>
+              <div style={{ fontSize: '1.6rem', fontWeight: 900, color: '#9333EA' }}>
+                {storageObjects.filter((o) => o.category === 'certificates').length}
+              </div>
+              <div style={{ fontSize: '0.74rem', color: 'var(--neutral-500)', marginTop: '0.25rem' }}>
+                Verified Credentials
+              </div>
+            </div>
+
+            <div className="card" style={{ padding: '1.15rem' }}>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '0.5rem' }}>
+                <span style={{ fontSize: '0.75rem', fontWeight: 700, color: 'var(--neutral-500)', textTransform: 'uppercase' }}>
                   Bucket Size Stored
                 </span>
                 <div style={{ width: 32, height: 32, borderRadius: 8, background: '#F5F3FF', color: '#7C3AED', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
@@ -3695,9 +3712,9 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
             }}>
               {/* Category Filter Pills */}
               <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', flexWrap: 'wrap' }}>
-                {(['all', 'prescriptions', 'invoices', 'certificates', 'teleconsult-rx', 'lab-reports'] as const).map((cat) => {
+                {(['all', 'prescriptions', 'certificates', 'invoices'] as const).map((cat) => {
                   const count = cat === 'all' ? storageObjects.length : storageObjects.filter((o) => o.category === cat).length;
-                  const label = cat === 'all' ? 'All Objects' : cat === 'prescriptions' ? 'Prescriptions (Rx)' : cat === 'teleconsult-rx' ? 'Doctor Tele-Rx' : cat.charAt(0).toUpperCase() + cat.slice(1);
+                  const label = cat === 'all' ? 'All Objects' : cat === 'prescriptions' ? 'Prescriptions (Rx)' : cat === 'certificates' ? 'Nurse Certificates' : 'Invoices';
                   const isSelected = storageCategoryFilter === cat;
                   return (
                     <button
@@ -5751,28 +5768,38 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                       </div>
                     </div>
 
-                    {/* Rx Symbol & Instructions */}
-                    <div style={{ marginBottom: '1.5rem' }}>
-                      <div style={{ fontSize: '2rem', fontWeight: 900, color: '#E11D48', fontFamily: 'serif', lineHeight: 1, marginBottom: '0.5rem' }}>
-                        ℞
-                      </div>
-                      <div style={{ background: '#F8FAFC', padding: '1.15rem', borderRadius: 10, border: '1px solid #E2E8F0' }}>
-                        <div style={{ fontSize: '0.84rem', fontWeight: 700, color: 'var(--primary-navy-900)', marginBottom: '0.35rem' }}>
-                          Approved Clinical Procedure: {previewPrescriptionConsultation ? previewPrescriptionConsultation.recommendedService : (previewPrescriptionBooking?.serviceTitle || previewPrescriptionObject?.metadata?.serviceTitle || 'Home Clinical Nursing Visit')}
-                        </div>
-                        {previewPrescriptionConsultation?.symptoms && (
-                          <div style={{ fontSize: '0.82rem', color: '#64748B', marginBottom: '0.65rem' }}>
-                            <strong>Reported Symptoms / Triage:</strong> "{previewPrescriptionConsultation.symptoms}"
-                          </div>
+                    {/* Actual Uploaded File or Mock Text */}
+                    {previewPrescriptionObject?.dataUrl ? (
+                      <div style={{ marginBottom: '1.5rem', textAlign: 'center' }}>
+                        {previewPrescriptionObject.contentType?.startsWith('image/') || previewPrescriptionObject.fileName.toLowerCase().match(/\.(jpg|jpeg|png|gif|webp)$/) ? (
+                          <img src={previewPrescriptionObject.dataUrl} alt="Prescription" style={{ maxWidth: '100%', maxHeight: '50vh', borderRadius: 8, border: '1px solid #CBD5E1', objectFit: 'contain' }} />
+                        ) : (
+                          <iframe src={previewPrescriptionObject.dataUrl} style={{ width: '100%', height: '50vh', borderRadius: 8, border: '1px solid #CBD5E1' }} title="Prescription Document" />
                         )}
-                        <div style={{ fontSize: '0.74rem', color: '#475569', textTransform: 'uppercase', fontWeight: 700, letterSpacing: '0.04em', marginBottom: '0.35rem' }}>
-                          Doctor Clinical Orders & Instructions:
-                        </div>
-                        <p style={{ fontSize: '0.92rem', color: '#0F172A', lineHeight: 1.6, margin: 0, fontWeight: 600, whiteSpace: 'pre-wrap', background: '#FFFFFF', padding: '0.85rem 1rem', borderRadius: 8, border: '1px solid #CBD5E1' }}>
-                          {previewPrescriptionConsultation?.prescriptionText || 'Administer sterile doorstep nursing care in strict compliance with attending physician orders. Ensure vitals evaluation (BP, Pulse, SpO2, Temperature) prior to procedure initiation and secure cannula/aseptic dressing upon conclusion.'}
-                        </p>
                       </div>
-                    </div>
+                    ) : (
+                      <div style={{ marginBottom: '1.5rem' }}>
+                        <div style={{ fontSize: '2rem', fontWeight: 900, color: '#E11D48', fontFamily: 'serif', lineHeight: 1, marginBottom: '0.5rem' }}>
+                          ℞
+                        </div>
+                        <div style={{ background: '#F8FAFC', padding: '1.15rem', borderRadius: 10, border: '1px solid #E2E8F0' }}>
+                          <div style={{ fontSize: '0.84rem', fontWeight: 700, color: 'var(--primary-navy-900)', marginBottom: '0.35rem' }}>
+                            Approved Clinical Procedure: {previewPrescriptionConsultation ? previewPrescriptionConsultation.recommendedService : (previewPrescriptionBooking?.serviceTitle || previewPrescriptionObject?.metadata?.serviceTitle || 'Home Clinical Nursing Visit')}
+                          </div>
+                          {previewPrescriptionConsultation?.symptoms && (
+                            <div style={{ fontSize: '0.82rem', color: '#64748B', marginBottom: '0.65rem' }}>
+                              <strong>Reported Symptoms / Triage:</strong> "{previewPrescriptionConsultation.symptoms}"
+                            </div>
+                          )}
+                          <div style={{ fontSize: '0.74rem', color: '#475569', textTransform: 'uppercase', fontWeight: 700, letterSpacing: '0.04em', marginBottom: '0.35rem' }}>
+                            Doctor Clinical Orders & Instructions:
+                          </div>
+                          <p style={{ fontSize: '0.92rem', color: '#0F172A', lineHeight: 1.6, margin: 0, fontWeight: 600, whiteSpace: 'pre-wrap', background: '#FFFFFF', padding: '0.85rem 1rem', borderRadius: 8, border: '1px solid #CBD5E1' }}>
+                            {previewPrescriptionConsultation?.prescriptionText || 'Administer sterile doorstep nursing care in strict compliance with attending physician orders. Ensure vitals evaluation (BP, Pulse, SpO2, Temperature) prior to procedure initiation and secure cannula/aseptic dressing upon conclusion.'}
+                          </p>
+                        </div>
+                      </div>
+                    )}
 
                     {/* Attending RN & R2 Cloud Verification Tag */}
                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end', paddingTop: '1rem', borderTop: '1px dashed #CBD5E1' }}>
