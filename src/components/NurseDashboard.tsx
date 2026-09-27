@@ -233,11 +233,6 @@ export const NurseDashboard: React.FC<NurseDashboardProps> = ({
             Station: {nurse.serviceArea}
           </span>
         </div>
-
-        <div style={{ display: 'flex', alignItems: 'center', gap: '0.45rem', fontSize: '0.78rem', color: 'var(--success-green)', background: '#ECFDF5', padding: '0.3rem 0.65rem', borderRadius: 'var(--radius-full)', border: '1px solid #A7F3D0' }}>
-          <Database size={13} />
-          <span>Supabase Real-Time Connected</span>
-        </div>
       </div>
 
       {/* Header */}
