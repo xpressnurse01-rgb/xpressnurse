@@ -61,7 +61,7 @@ import {
   Share2
 } from 'lucide-react';
 import { EmptyState } from './EmptyState';
-import { DEFAULT_COUPONS, SEED_APP_USERS } from '../lib/supabase';
+import { SEED_APP_USERS } from '../lib/supabase';
 import {
   getCloudflareConfig,
   saveCloudflareConfig,
@@ -122,7 +122,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
   leads,
   services = [],
   consultations = [],
-  coupons = DEFAULT_COUPONS,
+  coupons = [],
   appUsers = SEED_APP_USERS,
   onAssignOrder,
   onAutoRouteAll,

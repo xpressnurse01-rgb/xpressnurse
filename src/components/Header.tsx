@@ -92,16 +92,27 @@ export const Header: React.FC<HeaderProps> = ({
             </div>
           )}
 
-          {/* Action CTAs: Book a Home Visit Pill */}
-          <div className="nav-actions-group">
-            <button 
-              onClick={onOpenBooking} 
-              className="nav-book-pill-btn"
-            >
-              <HeartPulse size={15} />
-              <span>Book a Home Visit</span>
-            </button>
-          </div>
+          {/* Action CTAs: Book a Home Visit Pill (Hidden on dedicated portal/login routes) */}
+          {!isPortalRoute && (
+            <div className="nav-actions-group">
+              <a
+                href="tel:+917569657371"
+                className="header-phone-quick-link mobile-only-cta"
+                aria-label="Direct Clinical Call 24/7"
+                title="Call 24/7 Helpline"
+              >
+                <HeartPulse size={15} />
+                <span>24/7 Help</span>
+              </a>
+              <button 
+                onClick={onOpenBooking} 
+                className="nav-book-pill-btn desktop-only-cta"
+              >
+                <HeartPulse size={15} />
+                <span>Book a Home Visit</span>
+              </button>
+            </div>
+          )}
         </div>
       </nav>
     </header>

@@ -28,7 +28,7 @@ import {
 } from 'lucide-react';
 import { HyderabadArea, ServiceId, Booking, ServiceItem, Coupon, CloudflareStorageObject } from '../types';
 import { useBodyScrollLock } from '../hooks/useBodyScrollLock';
-import { DEFAULT_COUPONS, dbIncrementCouponUsage, dbSaveBooking, dbSaveConsultation } from '../lib/supabase';
+import { dbIncrementCouponUsage, dbSaveBooking, dbSaveConsultation } from '../lib/supabase';
 import { uploadPrescriptionToCloudflareBucket, getCloudflareConfig } from '../lib/cloudflareStorage';
 
 interface BookingModalProps {
@@ -59,12 +59,12 @@ export const BookingModal: React.FC<BookingModalProps> = ({
   onClose,
   preSelectedServiceId = 'saline-infusion',
   services = [],
-  coupons = DEFAULT_COUPONS,
+  coupons = [],
   onBookingCreated,
   onNeedDoctorConsult
 }) => {
   const serviceList = services;
-  const couponList = coupons && coupons.length > 0 ? coupons : DEFAULT_COUPONS;
+  const couponList = coupons;
 
   // Form Fields
   const [serviceId, setServiceId] = useState<ServiceId>(preSelectedServiceId);

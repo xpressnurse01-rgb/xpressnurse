@@ -35,7 +35,6 @@ import {
   dbInsertCoupon,
   dbUpdateCoupon,
   dbDeleteCoupon,
-  DEFAULT_COUPONS,
   SEED_APP_USERS,
   dbFetchAppUsers,
   dbInsertBooking,
@@ -141,7 +140,7 @@ export const App: React.FC = () => {
   const [nurses, setNurses] = useState<NurseProfile[]>([]);
   const [leads, setLeads] = useState<NurseLead[]>([]);
   const [consultations, setConsultations] = useState<DoctorConsultation[]>([]);
-  const [coupons, setCoupons] = useState<Coupon[]>(DEFAULT_COUPONS);
+  const [coupons, setCoupons] = useState<Coupon[]>([]);
   const [appUsers, setAppUsers] = useState<AppUser[]>(SEED_APP_USERS);
   const [dbLoading, setDbLoading] = useState(true);
 
@@ -224,7 +223,25 @@ export const App: React.FC = () => {
   }, [currentPath, services]);
 
   const [activeNurseId, setActiveNurseId] = useState<string>('nurse-101');
-  const activeNurse = nurses.find((n) => n.id === activeNurseId) || nurses[0];
+  const fallbackNurse: NurseProfile = {
+    id: 'nurse-101',
+    name: 'Nurse Priya Sharma',
+    phone: '9849012345',
+    email: 'priya.nursing@xpressnurse.in',
+    experienceYears: 5,
+    qualification: 'B.Sc Nursing (Registered RN)',
+    serviceArea: 'Gachibowli',
+    status: 'Active',
+    totalLeads: 8,
+    convertedLeads: 6,
+    totalReferrals: 12,
+    pointsEarned: 1200,
+    referralEarningsRupees: 2400,
+    rating: 4.9,
+    avatarUrl: '/images/nurse_priya.jpg',
+    certificateVerified: true
+  };
+  const activeNurse = nurses.find((n) => n.id === activeNurseId) || nurses[0] || fallbackNurse;
 
   // Modal States
   const [isBookingOpen, setIsBookingOpen] = useState(false);
@@ -275,13 +292,13 @@ export const App: React.FC = () => {
           dbFetchAppUsers()
         ]);
 
-        if (remoteServices && remoteServices.length > 0) setServices(remoteServices);
-        if (remoteBookings && remoteBookings.length > 0) setBookings(remoteBookings);
-        if (remoteNurses && remoteNurses.length > 0) setNurses(remoteNurses);
-        if (remoteLeads && remoteLeads.length > 0) setLeads(remoteLeads);
-        if (remoteConsults && remoteConsults.length > 0) setConsultations(remoteConsults);
-        if (remoteCoupons && remoteCoupons.length > 0) setCoupons(remoteCoupons);
-        if (remoteAppUsers && remoteAppUsers.length > 0) setAppUsers(remoteAppUsers);
+        if (remoteServices) setServices(remoteServices);
+        if (remoteBookings) setBookings(remoteBookings);
+        if (remoteNurses) setNurses(remoteNurses);
+        if (remoteLeads) setLeads(remoteLeads);
+        if (remoteConsults) setConsultations(remoteConsults);
+        if (remoteCoupons) setCoupons(remoteCoupons);
+        if (remoteAppUsers) setAppUsers(remoteAppUsers);
 
         console.log('[DB] Loaded from Supabase:', {
           services: remoteServices?.length || 0,
@@ -921,14 +938,16 @@ export const App: React.FC = () => {
         onClose={() => setActivePolicy(null)}
       />
 
-      {/* Floating 24/7 AI Clinical Assistant */}
-      <AiAssistant
-        onOpenBooking={() => setIsBookingOpen(true)}
-        onOpenDoctorConsult={() => {
-          setPreSelectedServiceId('doctor-consult');
-          setIsBookingOpen(true);
-        }}
-      />
+      {/* Floating 24/7 AI Clinical Assistant - Only on Patient Facing Routes */}
+      {(currentPath === '/' || currentPath === '' || currentPath === '/empty') && !isBookingOpen && !isQrModalOpen && !activePolicy && (
+        <AiAssistant
+          onOpenBooking={() => setIsBookingOpen(true)}
+          onOpenDoctorConsult={() => {
+            setPreSelectedServiceId('doctor-consult');
+            setIsBookingOpen(true);
+          }}
+        />
+      )}
 
       {/* Corporate Footer with Working Modals & Routes */}
       <Footer
@@ -938,10 +957,12 @@ export const App: React.FC = () => {
         onOpenPolicy={setActivePolicy}
       />
 
-      {/* Mobile Sticky Booking Bar */}
-      <MobileBottomBar
-        onOpenBooking={() => setIsBookingOpen(true)}
-      />
+      {/* Mobile Sticky Booking Bar - Only on Patient Facing Routes */}
+      {(currentPath === '/' || currentPath === '' || currentPath === '/empty') && !isBookingOpen && !isQrModalOpen && !activePolicy && (
+        <MobileBottomBar
+          onOpenBooking={() => setIsBookingOpen(true)}
+        />
+      )}
     </div>
   );
 };

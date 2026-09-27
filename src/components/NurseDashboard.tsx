@@ -57,6 +57,25 @@ export const NurseDashboard: React.FC<NurseDashboardProps> = ({
   onReassignBooking
 }) => {
   const serviceList = services;
+  const nurse: NurseProfile = currentNurse || (allNurses && allNurses[0]) || {
+    id: 'nurse-101',
+    name: 'Nurse Priya Sharma',
+    phone: '9849012345',
+    email: 'priya.nursing@xpressnurse.in',
+    experienceYears: 5,
+    qualification: 'B.Sc Nursing (Registered RN)',
+    serviceArea: 'Gachibowli',
+    status: 'Active',
+    totalLeads: 8,
+    convertedLeads: 6,
+    totalReferrals: 12,
+    pointsEarned: 1200,
+    referralEarningsRupees: 2400,
+    rating: 4.9,
+    avatarUrl: '/images/nurse_priya.jpg',
+    certificateVerified: true
+  };
+
   const [activeTab, setActiveTab] = useState<'overview' | 'new-lead' | 'visits' | 'referrals' | 'onboarding'>('overview');
 
   // New lead form states
@@ -89,26 +108,26 @@ export const NurseDashboard: React.FC<NurseDashboardProps> = ({
   // OTP Verification state
   const [otpSent, setOtpSent] = useState(false);
   const [otpCode, setOtpCode] = useState('');
-  const [otpVerified, setOtpVerified] = useState(currentNurse.certificateVerified);
+  const [otpVerified, setOtpVerified] = useState(nurse.certificateVerified ?? true);
   const [otpNotice, setOtpNotice] = useState<{ type: 'info' | 'success' | 'error'; message: string } | null>(null);
 
   // Bookings assigned to THIS nurse to execute
-  const assignedVisits = bookings.filter((b) => b.assignedNurseId === currentNurse.id);
+  const assignedVisits = bookings.filter((b) => b.assignedNurseId === nurse.id);
 
   // Leads referred by THIS nurse (from Supabase leads table)
-  const myLeads = leads.filter((l) => l.nurseId === currentNurse.id);
+  const myLeads = leads.filter((l) => l.nurseId === nurse.id);
   const pendingLeads = myLeads.filter((l) => l.status === 'Pending Approval');
   const approvedLeads = myLeads.filter((l) => l.status === 'Approved' || l.status === 'Converted');
 
   // Bookings referred by THIS nurse (to cross-reference dispatch)
-  const myReferrals = bookings.filter((b) => b.referringNurseId === currentNurse.id);
+  const myReferrals = bookings.filter((b) => b.referringNurseId === nurse.id);
 
   // Cross-area matching preview for the new lead form
-  const previewExecutingNurse = allNurses.find((n) => n.serviceArea === area) || allNurses[0];
+  const previewExecutingNurse = allNurses.find((n) => n.serviceArea === area) || allNurses[0] || nurse;
   const selectedServiceObj = serviceList.find((s) => s.id === serviceId) || serviceList[0];
-  const previewFee = selectedServiceObj.priceNumber || 800;
+  const previewFee = selectedServiceObj ? (selectedServiceObj.priceNumber || 800) : 800;
   const previewReferralBonus = Math.round(previewFee * 0.1);
-  const isCrossAreaReferral = currentNurse.serviceArea !== area;
+  const isCrossAreaReferral = nurse.serviceArea !== area;
 
   const handleLeadSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -127,7 +146,7 @@ export const NurseDashboard: React.FC<NurseDashboardProps> = ({
     // Points and referral commission will be decided and credited by Admin upon review.
     const newLead: NurseLead = {
       id: 'LD-' + Math.floor(1000 + Math.random() * 9000),
-      nurseId: currentNurse.id,
+      nurseId: nurse.id,
       patientName: patientName.trim(),
       patientPhone: patientPhone.trim(),
       serviceId,
@@ -173,7 +192,7 @@ export const NurseDashboard: React.FC<NurseDashboardProps> = ({
     setOtpSent(true);
     setOtpNotice({
       type: 'info',
-      message: `Simulation: OTP sent to ${currentNurse.phone}. Please enter demo code 7569.`
+      message: `Simulation: OTP sent to ${nurse.phone}. Please enter demo code 7569.`
     });
   };
 
@@ -181,9 +200,9 @@ export const NurseDashboard: React.FC<NurseDashboardProps> = ({
     if (otpCode === '7569' || otpCode === '1234') {
       setOtpVerified(true);
       onUpdateNurse({
-        ...currentNurse,
+        ...nurse,
         certificateVerified: true,
-        pointsEarned: currentNurse.pointsEarned + 300
+        pointsEarned: nurse.pointsEarned + 300
       });
       confetti({
         particleCount: 100,
@@ -209,9 +228,9 @@ export const NurseDashboard: React.FC<NurseDashboardProps> = ({
         <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', fontSize: '0.85rem', color: 'var(--neutral-600)' }}>
           <span>Nurse Staff Portal</span>
           <span>•</span>
-          <span style={{ fontWeight: 700, color: 'var(--primary-navy-900)' }}>{currentNurse.name}</span>
+          <span style={{ fontWeight: 700, color: 'var(--primary-navy-900)' }}>{nurse.name}</span>
           <span style={{ background: '#F1F5F9', padding: '0.2rem 0.55rem', borderRadius: 9999, fontSize: '0.74rem', fontWeight: 600, color: 'var(--neutral-600)' }}>
-            Station: {currentNurse.serviceArea}
+            Station: {nurse.serviceArea}
           </span>
         </div>
 
@@ -225,18 +244,18 @@ export const NurseDashboard: React.FC<NurseDashboardProps> = ({
       <div className="panel-header">
         <div style={{ display: 'flex', alignItems: 'center', gap: '1rem', flexWrap: 'wrap' }}>
           <img
-            src={currentNurse.avatarUrl}
-            alt={currentNurse.name}
+            src={nurse.avatarUrl}
+            alt={nurse.name}
             style={{ width: 56, height: 56, borderRadius: '50%', objectFit: 'cover', border: '2px solid var(--primary-navy-700)' }}
           />
           <div>
             <h2 style={{ fontSize: '1.35rem', color: 'var(--primary-navy-900)' }}>
-              {currentNurse.name}
+              {nurse.name}
             </h2>
             <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', fontSize: '0.85rem', color: 'var(--neutral-600)', flexWrap: 'wrap' }}>
-              <span>Stationed Base: <strong>{currentNurse.serviceArea}</strong></span>
+              <span>Stationed Base: <strong>{nurse.serviceArea}</strong></span>
               <span>•</span>
-              <span>Exp: {currentNurse.experienceYears} Years</span>
+              <span>Exp: {nurse.experienceYears} Years</span>
               <span>•</span>
               {otpVerified ? (
                 <span className="status-pill success"><ShieldCheck size={12} /> Verified RN</span>
@@ -357,7 +376,7 @@ export const NurseDashboard: React.FC<NurseDashboardProps> = ({
                 <Users size={24} />
               </div>
               <div>
-                <div className="stat-val">{currentNurse.totalLeads}</div>
+                <div className="stat-val">{nurse.totalLeads}</div>
                 <div className="stat-label">Total Leads Referred</div>
               </div>
             </div>
@@ -367,7 +386,7 @@ export const NurseDashboard: React.FC<NurseDashboardProps> = ({
                 <CheckCircle2 size={24} />
               </div>
               <div>
-                <div className="stat-val">{currentNurse.convertedLeads}</div>
+                <div className="stat-val">{nurse.convertedLeads}</div>
                 <div className="stat-label">Successful Conversions</div>
               </div>
             </div>
@@ -377,7 +396,7 @@ export const NurseDashboard: React.FC<NurseDashboardProps> = ({
                 <Coins size={24} />
               </div>
               <div>
-                <div className="stat-val">{currentNurse.pointsEarned}</div>
+                <div className="stat-val">{nurse.pointsEarned}</div>
                 <div className="stat-label">Total Points Earned</div>
               </div>
             </div>
@@ -387,7 +406,7 @@ export const NurseDashboard: React.FC<NurseDashboardProps> = ({
                 <TrendingUp size={24} />
               </div>
               <div>
-                <div className="stat-val">₹{currentNurse.referralEarningsRupees}</div>
+                <div className="stat-val">₹{nurse.referralEarningsRupees}</div>
                 <div className="stat-label">10% Referral Earnings</div>
               </div>
             </div>
@@ -440,7 +459,7 @@ export const NurseDashboard: React.FC<NurseDashboardProps> = ({
           <div className="card">
             <div className="card-header">
               <div>
-                <h3 className="card-title">My Assigned Visits Schedule ({currentNurse.serviceArea} Base)</h3>
+                <h3 className="card-title">My Assigned Visits Schedule ({nurse.serviceArea} Base)</h3>
                 <span style={{ fontSize: '0.82rem', color: 'var(--neutral-500)' }}>
                   Patient procedures you are dispatched to execute at home
                 </span>
@@ -453,7 +472,7 @@ export const NurseDashboard: React.FC<NurseDashboardProps> = ({
               <EmptyState
                 compact
                 title="No Assigned Visits Yet"
-                description={`You have no patient visits assigned in ${currentNurse.serviceArea} right now.`}
+                description={`You have no patient visits assigned in ${nurse.serviceArea} right now.`}
               />
             ) : (
               <div className="table-responsive">
@@ -472,7 +491,7 @@ export const NurseDashboard: React.FC<NurseDashboardProps> = ({
                   </thead>
                   <tbody>
                     {assignedVisits.slice(0, 5).map((booking) => {
-                      const isReferredFromColleague = booking.referringNurseId && booking.referringNurseId !== currentNurse.id;
+                      const isReferredFromColleague = booking.referringNurseId && booking.referringNurseId !== nurse.id;
                       return (
                         <tr key={booking.id} style={{ background: isReferredFromColleague ? '#FFFBEB' : undefined }}>
                           <td><strong>{booking.id}</strong></td>
@@ -518,7 +537,7 @@ export const NurseDashboard: React.FC<NurseDashboardProps> = ({
                               <span className="status-pill warning" title={booking.notes}>
                                 ⚡ Cross-Area Referral: {booking.referringNurseName || 'Colleague RN'}
                               </span>
-                            ) : booking.referringNurseId === currentNurse.id ? (
+                            ) : booking.referringNurseId === nurse.id ? (
                               <span className="status-pill info">Your Personal Lead</span>
                             ) : (
                               <span className="status-pill success">Station Match: {booking.area}</span>
@@ -566,7 +585,7 @@ export const NurseDashboard: React.FC<NurseDashboardProps> = ({
         <div className="card">
           <div className="card-header">
             <div>
-              <h3 className="card-title">Patient Visits Dispatched to You ({currentNurse.serviceArea})</h3>
+              <h3 className="card-title">Patient Visits Dispatched to You ({nurse.serviceArea})</h3>
               <span style={{ fontSize: '0.82rem', color: 'var(--neutral-500)' }}>
                 Direct location-matched and colleague-referred orders assigned for home execution
               </span>
@@ -577,7 +596,7 @@ export const NurseDashboard: React.FC<NurseDashboardProps> = ({
           {assignedVisits.length === 0 ? (
             <EmptyState
               title="No Patient Visits Stationed"
-              description={`There are currently no home visits assigned to you in ${currentNurse.serviceArea}.`}
+              description={`There are currently no home visits assigned to you in ${nurse.serviceArea}.`}
             />
           ) : (
             <div className="table-responsive">
@@ -595,7 +614,7 @@ export const NurseDashboard: React.FC<NurseDashboardProps> = ({
                 </thead>
                 <tbody>
                   {assignedVisits.map((booking) => {
-                    const isReferredFromColleague = booking.referringNurseId && booking.referringNurseId !== currentNurse.id;
+                    const isReferredFromColleague = booking.referringNurseId && booking.referringNurseId !== nurse.id;
                     return (
                       <tr key={booking.id} style={{ background: isReferredFromColleague ? '#FFFBEB' : undefined }}>
                         <td><strong>{booking.id}</strong></td>
@@ -680,7 +699,7 @@ export const NurseDashboard: React.FC<NurseDashboardProps> = ({
                               type="button"
                               onClick={() => {
                                 setReassignModalBooking(booking);
-                                setTargetReassignNurseId(allNurses.find((n) => n.id !== currentNurse.id)?.id || 'nurse-102');
+                                setTargetReassignNurseId(allNurses.find((n) => n.id !== nurse.id)?.id || 'nurse-102');
                               }}
                               className="btn btn-outline btn-sm"
                               style={{ fontSize: '0.75rem', padding: '0.3rem 0.55rem' }}
@@ -713,10 +732,10 @@ export const NurseDashboard: React.FC<NurseDashboardProps> = ({
             </div>
             <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center', flexWrap: 'wrap' }}>
               <span className="status-pill success">
-                Approved Referral Earnings: ₹{currentNurse.referralEarningsRupees}
+                Approved Referral Earnings: ₹{nurse.referralEarningsRupees}
               </span>
               <span className="status-pill info">
-                Approved Points: {currentNurse.pointsEarned} pts
+                Approved Points: {nurse.pointsEarned} pts
               </span>
               {pendingLeads.length > 0 && (
                 <span className="status-pill warning" style={{ background: '#FEF3C7', color: '#92400E', border: '1px solid #FCD34D' }}>
@@ -758,14 +777,14 @@ export const NurseDashboard: React.FC<NurseDashboardProps> = ({
                     pointsAwarded: 50,
                     referralCommissionRupees: b.referralBonusRupees || Math.round((b.estimatedFee || 800) * 0.1),
                     status: 'Approved',
-                    nurseId: currentNurse.id,
+                    nurseId: nurse.id,
                     adminNotes: undefined
                   }))).map((leadItem) => {
                     const isPending = leadItem.status === 'Pending Approval';
                     const isApproved = leadItem.status === 'Approved' || leadItem.status === 'Converted';
                     const isRejected = leadItem.status === 'Rejected';
                     const executingNurse = allNurses.find((n) => n.id === leadItem.assignedNurseId);
-                    const isSelf = leadItem.assignedNurseId === currentNurse.id;
+                    const isSelf = leadItem.assignedNurseId === nurse.id;
 
                     return (
                       <tr 
@@ -794,7 +813,7 @@ export const NurseDashboard: React.FC<NurseDashboardProps> = ({
                         </td>
                         <td>
                           {isSelf ? (
-                            <span style={{ fontWeight: 600 }}>Self ({currentNurse.serviceArea})</span>
+                            <span style={{ fontWeight: 600 }}>Self ({nurse.serviceArea})</span>
                           ) : (
                             <div>
                               <div style={{ fontWeight: 600, color: 'var(--primary-navy-800)' }}>
@@ -964,7 +983,7 @@ export const NurseDashboard: React.FC<NurseDashboardProps> = ({
                   <span>
                     {isCrossAreaReferral
                       ? `Cross-Area Dispatch: Order will be assigned to ${previewExecutingNurse.name} (${area})`
-                      : `Local Area Match: Order will be assigned to your own schedule (${currentNurse.serviceArea})`}
+                      : `Local Area Match: Order will be assigned to your own schedule (${nurse.serviceArea})`}
                   </span>
                 </div>
                 <div style={{ color: 'var(--neutral-700)', lineHeight: 1.5 }}>
@@ -1000,9 +1019,9 @@ export const NurseDashboard: React.FC<NurseDashboardProps> = ({
               <label className="form-label">Nursing Degree / Council Registration Certificate</label>
               <div style={{ border: '2px dashed var(--neutral-300)', padding: '2rem', borderRadius: 'var(--radius-md)', textAlign: 'center', background: 'var(--neutral-50)' }}>
                 <FileCheck size={36} style={{ color: 'var(--primary-navy-700)', margin: '0 auto 0.5rem' }} />
-                <div style={{ fontWeight: 600 }}>{currentNurse.qualification} Verified</div>
+                <div style={{ fontWeight: 600 }}>{nurse.qualification} Verified</div>
                 <div style={{ fontSize: '0.8rem', color: 'var(--neutral-500)', marginTop: '0.25rem' }}>
-                  Certificate: RN_Telangana_Council_{currentNurse.id.toUpperCase()}.pdf
+                  Certificate: RN_Telangana_Council_{nurse.id.toUpperCase()}.pdf
                 </div>
               </div>
             </div>
@@ -1014,7 +1033,7 @@ export const NurseDashboard: React.FC<NurseDashboardProps> = ({
                 <span>Mobile P.O.T.P. / OTP Authentication</span>
               </h4>
               <p style={{ fontSize: '0.82rem', color: 'var(--neutral-600)', marginBottom: '1rem' }}>
-                Verify your registered mobile number ({currentNurse.phone}) to unlock full visit dispatch access and 300 Welcome Points.
+                Verify your registered mobile number ({nurse.phone}) to unlock full visit dispatch access and 300 Welcome Points.
               </p>
 
               {otpNotice && (
@@ -1033,7 +1052,7 @@ export const NurseDashboard: React.FC<NurseDashboardProps> = ({
                   {!otpSent ? (
                     <button onClick={handleSendOtp} className="btn btn-outline btn-sm">
                       <Phone size={14} />
-                      <span>Send OTP to {currentNurse.phone}</span>
+                      <span>Send OTP to {nurse.phone}</span>
                     </button>
                   ) : (
                     <div style={{ display: 'flex', gap: '0.5rem', maxWidth: 320 }}>
@@ -1076,7 +1095,7 @@ export const NurseDashboard: React.FC<NurseDashboardProps> = ({
                   value={targetReassignNurseId}
                   onChange={(e) => setTargetReassignNurseId(e.target.value)}
                 >
-                  {allNurses.filter((n) => n.id !== currentNurse.id).map((n) => (
+                  {allNurses.filter((n) => n.id !== nurse.id).map((n) => (
                     <option key={n.id} value={n.id}>
                       {n.name} (Station: {n.serviceArea})
                     </option>
@@ -1129,7 +1148,7 @@ export const NurseDashboard: React.FC<NurseDashboardProps> = ({
                     Invoice {previewInvoice.invoiceNumber}
                   </h3>
                   <div style={{ fontSize: '0.76rem', color: 'var(--neutral-500)' }}>
-                    Attending Nurse: {currentNurse.name} ({currentNurse.qualification}) • Station: {currentNurse.serviceArea}
+                    Attending Nurse: {nurse.name} ({nurse.qualification}) • Station: {nurse.serviceArea}
                   </div>
                 </div>
               </div>

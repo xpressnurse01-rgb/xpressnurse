@@ -370,224 +370,9 @@ export const DEFAULT_NURSES: NurseProfile[] = [
     certificateVerified: true
   }
 ];
+// Real-time Supabase Database: Bookings, Leads, Consultations, and Coupons
+// are queried dynamically and stored directly in PostgreSQL. No mock data.
 
-export const DEFAULT_BOOKINGS: Booking[] = [
-  {
-    id: 'BK-8901',
-    createdAt: new Date(Date.now() - 2 * 3600 * 1000).toISOString(),
-    patientName: 'K. Venkatesh Rao (68 yrs, Male)',
-    patientPhone: '98765 43210',
-    patientAge: 68,
-    patientGender: 'Male',
-    serviceId: 'saline-infusion',
-    serviceTitle: 'IV Infusions & Antibiotics Infusion',
-    area: 'Gachibowli',
-    fullAddress: 'Flat 402, Aditya Empress Towers, Gachibowli, Hyderabad',
-    preferredDate: 'Today',
-    preferredTime: '11:00 AM - 12:30 PM',
-    hasPrescription: true,
-    prescriptionFileName: 'Dr_Reddy_IV_Prescription.pdf',
-    prescriptionUrl: 'https://pub-830eaa9d07034c8d985d7d00577f77e9.r2.dev/prescriptions/Dr_Reddy_IV_Prescription.pdf',
-    status: 'Assigned',
-    assignedNurseId: 'nurse-101',
-    assignedNurseName: 'Nurse Priya Sharma (Gachibowli Area Match)',
-    referringNurseId: undefined,
-    referringNurseName: undefined,
-    estimatedFee: 899,
-    nightSurcharge: 0,
-    referralBonusRupees: 0,
-    notes: 'Normal Saline 500ml post gastroenteritis.'
-  },
-  {
-    id: 'BK-8902',
-    createdAt: new Date(Date.now() - 3600 * 1000).toISOString(),
-    patientName: 'Smt. Lakshmi Devi (74 yrs, Female)',
-    patientPhone: '97654 32109',
-    patientAge: 74,
-    patientGender: 'Female',
-    serviceId: 'foleys-catheter',
-    serviceTitle: 'Foley Catheter Replacement',
-    area: 'LB Nagar',
-    fullAddress: 'H.No 3-4-12, Near Kamineni Hospital, LB Nagar, Hyderabad',
-    preferredDate: 'Today',
-    preferredTime: '02:00 PM - 03:00 PM',
-    hasPrescription: true,
-    prescriptionFileName: 'Urology_Catheter_Order.pdf',
-    prescriptionUrl: 'https://pub-830eaa9d07034c8d985d7d00577f77e9.r2.dev/prescriptions/Urology_Catheter_Order.pdf',
-    status: 'Assigned',
-    assignedNurseId: 'nurse-102',
-    assignedNurseName: 'Nurse Rajesh Kumar (LB Nagar Area Match)',
-    referringNurseId: 'nurse-101',
-    referringNurseName: 'Nurse Priya Sharma (Gachibowli - 10% Referral)',
-    estimatedFee: 1299,
-    nightSurcharge: 0,
-    referralBonusRupees: 129.90,
-    notes: 'Referred by Nurse Priya from Gachibowli for LB Nagar resident. 10% bonus credited to Priya.'
-  },
-  {
-    id: 'BK-8903',
-    createdAt: new Date(Date.now() - 1800 * 1000).toISOString(),
-    patientName: 'Arun Kumar (45 yrs, Male)',
-    patientPhone: '96543 21098',
-    patientAge: 45,
-    patientGender: 'Male',
-    serviceId: 'wound-dressing',
-    serviceTitle: 'Wound Dressing',
-    area: 'LB Nagar',
-    fullAddress: 'Villa 18, Golf View, LB Nagar, Hyderabad',
-    preferredDate: 'Tomorrow',
-    preferredTime: '09:00 AM - 10:00 AM',
-    hasPrescription: true,
-    prescriptionFileName: 'PostOp_Dressing.pdf',
-    status: 'Assigned',
-    assignedNurseId: 'nurse-102',
-    assignedNurseName: 'Nurse Rajesh Kumar (LB Nagar Area Match)',
-    referringNurseId: 'nurse-101',
-    referringNurseName: 'Nurse Priya Sharma (Gachibowli - 10% Referral)',
-    estimatedFee: 800,
-    nightSurcharge: 0,
-    referralBonusRupees: 80,
-    notes: 'Post knee arthroscopy dressing change. Referred by Nurse Priya.'
-  }
-];
-
-export const DEFAULT_LEADS: NurseLead[] = [
-  {
-    id: 'LD-4001',
-    nurseId: 'nurse-101',
-    patientName: 'Smt. Lakshmi Devi',
-    patientPhone: '97654 32109',
-    serviceId: 'foleys-catheter',
-    area: 'LB Nagar',
-    submittedAt: new Date(Date.now() - 3600 * 1000).toISOString(),
-    status: 'Converted',
-    assignedNurseId: 'nurse-102',
-    leadValueRupees: 1299,
-    pointsAwarded: 50,
-    referralCommissionRupees: 129.90
-  },
-  {
-    id: 'LD-4002',
-    nurseId: 'nurse-101',
-    patientName: 'Arun Kumar',
-    patientPhone: '96543 21098',
-    serviceId: 'wound-dressing',
-    area: 'LB Nagar',
-    submittedAt: new Date(Date.now() - 1800 * 1000).toISOString(),
-    status: 'Converted',
-    assignedNurseId: 'nurse-102',
-    leadValueRupees: 800,
-    pointsAwarded: 50,
-    referralCommissionRupees: 80
-  }
-];
-
-export const DEFAULT_CONSULTATIONS: DoctorConsultation[] = [
-  {
-    id: 'CNS-5001',
-    patientName: 'K. Venkatesh Rao',
-    patientAge: 68,
-    patientPhone: '98765 43210',
-    symptoms: 'Mild dehydration & electrolyte depletion following acute gastroenteritis.',
-    area: 'Gachibowli',
-    requestedAt: new Date(Date.now() - 2 * 3600 * 1000).toISOString(),
-    status: 'Prescription Issued',
-    prescriptionIssued: true,
-    prescriptionText: 'Rx: Normal Saline 0.9% 500ml IV Infusion slowly over 60 mins. Monitor BP & vitals pre/post.',
-    recommendedService: 'saline-infusion'
-  },
-  {
-    id: 'CNS-5002',
-    patientName: 'Suresh Babu',
-    patientAge: 58,
-    patientPhone: '98490 55667',
-    symptoms: 'Post-op knee arthroscopy dressing replacement & stitch line check.',
-    area: 'Madhapur',
-    requestedAt: new Date(Date.now() - 30 * 60 * 1000).toISOString(),
-    status: 'Awaiting Call',
-    prescriptionIssued: false,
-    prescriptionText: '',
-    recommendedService: 'wound-dressing'
-  }
-];
-
-export const DEFAULT_COUPONS: Coupon[] = [
-  {
-    id: 'CPN-FIRST100',
-    code: 'FIRST100',
-    discountType: 'flat',
-    discountValue: 100,
-    minOrderAmount: 500,
-    description: 'Flat ₹100 instant off on your first home visit in Hyderabad',
-    status: 'Active',
-    usageLimit: 1000,
-    timesUsed: 38,
-    validUntil: '2026-12-31T23:59:59.000Z'
-  },
-  {
-    id: 'CPN-CARE15',
-    code: 'CARE15',
-    discountType: 'percent',
-    discountValue: 15,
-    maxDiscount: 200,
-    minOrderAmount: 600,
-    description: '15% off up to ₹200 on all clinical nursing procedures',
-    status: 'Active',
-    usageLimit: 500,
-    timesUsed: 24,
-    validUntil: '2026-11-30T23:59:59.000Z'
-  },
-  {
-    id: 'CPN-SENIOR20',
-    code: 'SENIOR20',
-    discountType: 'percent',
-    discountValue: 20,
-    maxDiscount: 250,
-    minOrderAmount: 700,
-    description: '20% off up to ₹250 dedicated to senior citizen care',
-    status: 'Active',
-    usageLimit: 500,
-    timesUsed: 19,
-    validUntil: '2026-12-31T23:59:59.000Z'
-  },
-  {
-    id: 'CPN-HYD50',
-    code: 'HYD50',
-    discountType: 'flat',
-    discountValue: 50,
-    minOrderAmount: 300,
-    description: 'Flat ₹50 quick discount across all Hyderabad zones',
-    status: 'Active',
-    usageLimit: 2000,
-    timesUsed: 85,
-    validUntil: '2026-10-31T23:59:59.000Z'
-  },
-  {
-    id: 'CPN-HYDCARE150',
-    code: 'HYDCARE150',
-    discountType: 'flat',
-    discountValue: 150,
-    minOrderAmount: 1000,
-    description: 'Special ₹150 off on critical procedures & catheter/tube care',
-    status: 'Active',
-    usageLimit: 200,
-    timesUsed: 12,
-    validUntil: '2026-11-15T23:59:59.000Z'
-  },
-  {
-    id: 'CPN-WELCOME50',
-    code: 'WELCOME50',
-    discountType: 'percent',
-    discountValue: 10,
-    maxDiscount: 100,
-    minOrderAmount: 400,
-    description: '10% welcome bonus for all new patient registrations',
-    status: 'Active',
-    usageLimit: 1000,
-    timesUsed: 42,
-    validUntil: '2026-12-31T23:59:59.000Z'
-  }
-];
 
 export const SEED_APP_USERS: AppUser[] = [
   {
@@ -911,7 +696,11 @@ export async function dbFetchBookings(): Promise<Booking[] | null> {
       .select('*')
       .order('created_at', { ascending: false });
 
-    if (error || !data || data.length === 0) return DEFAULT_BOOKINGS;
+    if (error) {
+      console.warn('[DB] Supabase bookings fetch error:', error.message);
+      return [];
+    }
+    if (!data) return [];
 
     return data.map((b: any) => ({
       id: b.id,
@@ -939,8 +728,9 @@ export async function dbFetchBookings(): Promise<Booking[] | null> {
       referralBonusRupees: Number(b.referral_bonus_rupees) || 0,
       notes: b.notes
     }));
-  } catch {
-    return DEFAULT_BOOKINGS;
+  } catch (err) {
+    console.error('[DB] dbFetchBookings exception:', err);
+    return [];
   }
 }
 
@@ -1065,7 +855,11 @@ export async function dbFetchLeads(): Promise<NurseLead[] | null> {
       .select('*')
       .order('submitted_at', { ascending: false });
 
-    if (error || !data || data.length === 0) return DEFAULT_LEADS;
+    if (error) {
+      console.warn('[DB] Supabase leads fetch error:', error.message);
+      return [];
+    }
+    if (!data) return [];
 
     return data.map((l: any) => ({
       id: l.id,
@@ -1081,8 +875,9 @@ export async function dbFetchLeads(): Promise<NurseLead[] | null> {
       pointsAwarded: Math.round(Number(l.points_awarded)) || 50,
       referralCommissionRupees: Number(l.referral_commission_rupees) || 100.00
     }));
-  } catch {
-    return DEFAULT_LEADS;
+  } catch (err) {
+    console.error('[DB] dbFetchLeads exception:', err);
+    return [];
   }
 }
 
@@ -1172,7 +967,11 @@ export async function dbFetchConsultations(): Promise<DoctorConsultation[] | nul
       .select('*')
       .order('requested_at', { ascending: false });
 
-    if (error || !data || data.length === 0) return DEFAULT_CONSULTATIONS;
+    if (error) {
+      console.warn('[DB] Supabase consultations fetch error:', error.message);
+      return [];
+    }
+    if (!data) return [];
 
     return data.map((c: any) => ({
       id: c.id,
@@ -1187,8 +986,9 @@ export async function dbFetchConsultations(): Promise<DoctorConsultation[] | nul
       prescriptionText: c.prescription_text,
       recommendedService: c.recommended_service
     }));
-  } catch {
-    return DEFAULT_CONSULTATIONS;
+  } catch (err) {
+    console.error('[DB] dbFetchConsultations exception:', err);
+    return [];
   }
 }
 
@@ -1264,9 +1064,11 @@ export async function dbFetchCoupons(): Promise<Coupon[] | null> {
       .select('*')
       .order('created_at', { ascending: false });
 
-    if (error || !data || data.length === 0) {
-      return DEFAULT_COUPONS;
+    if (error) {
+      console.warn('[DB] Supabase coupons fetch error:', error.message);
+      return [];
     }
+    if (!data) return [];
 
     return data.map((c: any) => ({
       id: c.id,
@@ -1284,8 +1086,8 @@ export async function dbFetchCoupons(): Promise<Coupon[] | null> {
       updatedAt: c.updated_at
     }));
   } catch (err) {
-    console.warn('[DB] Using fallback default coupons:', err);
-    return DEFAULT_COUPONS;
+    console.error('[DB] dbFetchCoupons exception:', err);
+    return [];
   }
 }
 
