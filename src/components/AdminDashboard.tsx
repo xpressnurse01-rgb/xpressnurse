@@ -270,7 +270,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
     if (window.confirm(`Permanently delete "${obj.key}" from Cloudflare R2 bucket?`)) {
       await deleteFromCloudflareStorage(obj.id);
       setStorageObjects(getCloudflareObjects());
-      showToast(`Deleted ${obj.fileName} from Cloudflare bucket.`);
+      showToast(`Deleted ${obj.fileName} from Storage bucket.`);
     }
   };
 
@@ -1293,7 +1293,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
             style={{ display: 'inline-flex', alignItems: 'center', gap: '0.35rem' }}
           >
             <Cloud size={14} />
-            <span>Cloudflare Bucket ({storageObjects.length})</span>
+            <span>Storage Bucket ({storageObjects.length})</span>
           </button>
         </div>
       </div>
@@ -3927,7 +3927,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                                   display: 'flex',
                                   alignItems: 'center'
                                 }}
-                                title="Delete from Cloudflare Bucket"
+                                title="Delete from Storage Bucket"
                               >
                                 <Trash2 size={13} />
                               </button>

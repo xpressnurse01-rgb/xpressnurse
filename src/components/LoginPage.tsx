@@ -16,8 +16,8 @@ import {
   UploadCloud,
   FileText
 } from 'lucide-react';
-import { dbVerifyUserPin } from '../lib/supabase';
-import { AppUser } from '../types';
+import { dbVerifyUserPin, dbInsertNurse, dbInsertAppUser } from '../lib/supabase';
+import { AppUser, NurseProfile } from '../types';
 
 interface LoginPageProps {
   onNavigate: (path: string) => void;
@@ -78,8 +78,40 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onNavigate, onLoginSuccess
 
     setIsLoading(true);
     try {
-      // Simulate API call for registration
-      await new Promise((resolve) => setTimeout(resolve, 1500));
+      const newId = `NUR-${Math.floor(1000 + Math.random() * 9000)}`;
+      
+      const newNurse: NurseProfile = {
+        id: newId,
+        name: regName.trim(),
+        phone: regPhone.trim(),
+        email: regEmail.trim(),
+        experienceYears: 0,
+        qualification: 'Registered Nurse',
+        serviceArea: 'Gachibowli',
+        status: 'Pending Verification',
+        totalLeads: 0,
+        convertedLeads: 0,
+        totalReferrals: 0,
+        pointsEarned: 0,
+        referralEarningsRupees: 0,
+        rating: 0,
+        certificateVerified: false,
+        createdAt: new Date().toISOString()
+      };
+      
+      const newAppUser: AppUser = {
+        id: `USR-${Math.floor(1000 + Math.random() * 9000)}`,
+        role: 'nurse',
+        identifier: regEmail.trim().toLowerCase(),
+        name: regName.trim(),
+        pin: regPin.trim(),
+        phone: regPhone.trim(),
+        email: regEmail.trim()
+      };
+      
+      await dbInsertNurse(newNurse);
+      await dbInsertAppUser(newAppUser);
+      
       setIsLoading(false);
       setSuccessMsg('Registration submitted! Your profile is pending Admin approval.');
       setRegName(''); setRegPhone(''); setRegEmail(''); setRegPin(''); setRegCertificate(null); setRegDisclaimer(false);
@@ -393,11 +425,11 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onNavigate, onLoginSuccess
                 </div>
               </div>
 
-              <div className="form-group" style={{ marginBottom: '1rem' }}>
-                <label style={{ display: 'flex', alignItems: 'flex-start', gap: '0.5rem', cursor: 'pointer' }}>
-                  <input type="checkbox" checked={regDisclaimer} onChange={e => setRegDisclaimer(e.target.checked)} style={{ marginTop: '0.2rem' }} />
-                  <span style={{ fontSize: '0.75rem', color: 'var(--neutral-600)', lineHeight: 1.4 }}>
-                    I confirm that I am a registered nurse. I agree to Xpress Nurse's verification terms and clinical policies. My submitted credentials are authentic.
+              <div className="form-group" style={{ marginBottom: '1.25rem', background: '#FEF2F2', padding: '0.85rem', borderRadius: 8, border: '1px solid #FCA5A5' }}>
+                <label style={{ display: 'flex', alignItems: 'flex-start', gap: '0.65rem', cursor: 'pointer' }}>
+                  <input type="checkbox" checked={regDisclaimer} onChange={e => setRegDisclaimer(e.target.checked)} style={{ marginTop: '0.25rem', transform: 'scale(1.2)' }} />
+                  <span style={{ fontSize: '0.88rem', color: '#991B1B', lineHeight: 1.45, fontWeight: 600 }}>
+                    I confirm that I am a registered nurse and hold a valid nursing license. I understand that I am solely responsible for the clinical care provided to patients. Xpress Nurse is a technology platform connecting patients with nurses, and I agree to indemnify the platform against any clinical liabilities or malpractices. My submitted credentials are authentic.
                   </span>
                 </label>
               </div>
