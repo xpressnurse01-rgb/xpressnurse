@@ -583,6 +583,7 @@ export async function dbFetchNurses(): Promise<NurseProfile[] | null> {
       rating: Number(n.rating) || 4.90,
       avatarUrl: n.avatar_url || 'https://images.unsplash.com/photo-1594824813589-9a25b42d768a?w=150&auto=format&fit=crop&q=80',
       certificateVerified: Boolean(n.certificate_verified),
+      certificateUrl: n.certificate_url || undefined,
       createdAt: n.created_at
     }));
   } catch {
@@ -612,7 +613,8 @@ export async function dbUpdateNurse(n: NurseProfile): Promise<boolean> {
       referral_earnings_rupees: Number(n.referralEarningsRupees) || 0,
       rating: Number(n.rating) || 4.90,
       avatar_url: n.avatarUrl || null,
-      certificate_verified: Boolean(n.certificateVerified ?? true)
+      certificate_verified: Boolean(n.certificateVerified ?? true),
+      certificate_url: n.certificateUrl || null
     };
 
     const { error } = await supabase.from('nurses').upsert(payload);
@@ -640,7 +642,8 @@ export async function dbInsertNurse(n: NurseProfile): Promise<boolean> {
       referral_earnings_rupees: Number(n.referralEarningsRupees) || 0,
       rating: Number(n.rating) || 4.90,
       avatar_url: n.avatarUrl || 'https://images.unsplash.com/photo-1594824813589-9a25b42d768a?w=150&auto=format&fit=crop&q=80',
-      certificate_verified: Boolean(n.certificateVerified ?? true)
+      certificate_verified: Boolean(n.certificateVerified ?? true),
+      certificate_url: n.certificateUrl || null
     };
 
     const { error } = await supabase.from('nurses').insert(payload);
@@ -666,12 +669,15 @@ export async function dbUpdateNurseById(id: string, updates: Partial<NurseProfil
   if (updates.referralEarningsRupees !== undefined) payload.referral_earnings_rupees = Number(updates.referralEarningsRupees);
   if (updates.rating !== undefined) payload.rating = Number(updates.rating);
   if (updates.certificateVerified !== undefined) payload.certificate_verified = Boolean(updates.certificateVerified);
+  if (updates.certificateUrl !== undefined) payload.certificate_url = updates.certificateUrl;
   if (updates.avatarUrl !== undefined) payload.avatar_url = updates.avatarUrl;
 
   try {
     const { error } = await supabase.from('nurses').update(payload).eq('id', id);
+    if (error) console.error("Supabase Update Error:", error.message, error.details);
     return !error;
-  } catch {
+  } catch (err) {
+    console.error("Supabase Update Catch Error:", err);
     return false;
   }
 }

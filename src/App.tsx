@@ -709,8 +709,17 @@ export const App: React.FC = () => {
     await dbInsertNurse(n);
   };
   const handleUpdateNurseRecord = async (id: string, updates: Partial<NurseProfile>) => {
-    setNurses((prev) => prev.map((n) => (n.id === id ? { ...n, ...updates } : n)));
-    await dbUpdateNurseById(id, updates);
+    let originalState: NurseProfile[] = [];
+    setNurses((prev) => {
+      originalState = [...prev];
+      return prev.map((n) => (n.id === id ? { ...n, ...updates } : n));
+    });
+    
+    const success = await dbUpdateNurseById(id, updates);
+    if (!success) {
+      alert("Database Update Failed! Please ensure Supabase RLS policies allow UPDATE on the 'nurses' table. Check browser console for details.");
+      setNurses(originalState);
+    }
   };
   const handleDeleteNurse = async (id: string) => {
     setNurses((prev) => prev.filter((n) => n.id !== id));
