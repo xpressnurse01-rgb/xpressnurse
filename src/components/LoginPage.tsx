@@ -17,6 +17,7 @@ import {
   FileText
 } from 'lucide-react';
 import { dbVerifyUserPin, dbInsertNurse, dbInsertAppUser } from '../lib/supabase';
+import { uploadToCloudflareStorage } from '../lib/cloudflareStorage';
 import { AppUser, NurseProfile } from '../types';
 
 interface LoginPageProps {
@@ -78,6 +79,27 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onNavigate, onLoginSuccess
 
     setIsLoading(true);
     try {
+      let certUrl = '';
+      if (regCertificate) {
+        const dataUrl = await new Promise<string>((resolve) => {
+          const reader = new FileReader();
+          reader.onload = () => resolve(reader.result as string);
+          reader.onerror = () => resolve('');
+          reader.readAsDataURL(regCertificate);
+        });
+        
+        if (dataUrl) {
+          const uploadRes = await uploadToCloudflareStorage({
+            fileName: regCertificate.name,
+            category: 'certificates',
+            contentType: regCertificate.type,
+            sizeBytes: regCertificate.size,
+            dataUrl
+          });
+          certUrl = uploadRes.publicUrl;
+        }
+      }
+
       const newId = `NUR-${Math.floor(1000 + Math.random() * 9000)}`;
       
       const newNurse: NurseProfile = {
@@ -96,6 +118,7 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onNavigate, onLoginSuccess
         referralEarningsRupees: 0,
         rating: 0,
         certificateVerified: false,
+        certificateUrl: certUrl,
         createdAt: new Date().toISOString()
       };
       

@@ -1990,7 +1990,24 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                           {n.certificateVerified ? (
                             <span className="status-pill success">Verified Certificate</span>
                           ) : (
-                            <span className="status-pill warning">Pending Review</span>
+                            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.4rem', alignItems: 'flex-start' }}>
+                              <span className="status-pill warning">Pending Review</span>
+                              {n.certificateUrl && (
+                                <a href={n.certificateUrl} target="_blank" rel="noopener noreferrer" className="btn btn-sm" style={{ fontSize: '0.7rem', padding: '0.2rem 0.5rem', background: '#F1F5F9', border: '1px solid #CBD5E1', color: 'var(--primary-navy-900)', textDecoration: 'none', borderRadius: 4, display: 'flex', alignItems: 'center', gap: '0.25rem' }}>
+                                  <FileText size={12} />
+                                  View Certificate
+                                </a>
+                              )}
+                              <button 
+                                onClick={() => {
+                                  if(window.confirm(`Verify and approve ${n.name}? This confirms you have reviewed their signup details and certificate.`)) {
+                                    onUpdateNurseRecord?.(n.id, { certificateVerified: true, status: 'Active' });
+                                  }
+                                }}
+                                className="btn btn-sm btn-primary" style={{ fontSize: '0.7rem', padding: '0.2rem 0.5rem', background: '#0284C7', color: 'white', border: 'none', borderRadius: 4, cursor: 'pointer' }}>
+                                Approve Nurse
+                              </button>
+                            </div>
                           )}
                         </td>
                         <td style={{ textAlign: 'right' }}>

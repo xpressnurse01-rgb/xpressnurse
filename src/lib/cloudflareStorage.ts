@@ -62,15 +62,8 @@ export const getCloudflareObjects = (): CloudflareStorageObject[] => {
     const saved = localStorage.getItem(R2_OBJECTS_KEY);
     if (saved) {
       const parsed = JSON.parse(saved);
-      if (Array.isArray(parsed)) {
-        // Filter out any legacy mock seed objects from early demos
-        return parsed.filter(
-          (o) => !o.id?.startsWith('r2-inv-104') &&
-                 !o.id?.startsWith('r2-rx-10') &&
-                 !o.id?.startsWith('r2-cert-20') &&
-                 !o.id?.startsWith('r2-tele-301') &&
-                 !o.id?.startsWith('r2-lab-401')
-        );
+      if (Array.isArray(parsed) && parsed.length > 0) {
+        return parsed;
       }
     }
   } catch (err) {

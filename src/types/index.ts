@@ -91,6 +91,7 @@ export interface NurseProfile {
   rating: number;
   avatarUrl?: string;
   certificateVerified: boolean;
+  certificateUrl?: string;
   createdAt?: string;
 }
 
