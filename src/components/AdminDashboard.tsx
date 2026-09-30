@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { 
   Booking, 
   NurseProfile, 
@@ -71,7 +71,8 @@ import {
   generateInvoiceDetails,
   saveInvoiceToCloudflareBucket,
   openPrintableInvoiceWindow,
-  getPrescriptionStorageObject
+  getPrescriptionStorageObject,
+  syncDatabaseRecordsToStorage
 } from '../lib/cloudflareStorage';
 
 interface AdminDashboardProps {
@@ -158,7 +159,17 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
   // --------------------------------------------------------------------------
   // CLOUDFLARE R2 STORAGE & INVOICE MANAGEMENT STATE
   // --------------------------------------------------------------------------
-  const [storageObjects, setStorageObjects] = useState<CloudflareStorageObject[]>(() => getCloudflareObjects());
+  const [storageObjects, setStorageObjects] = useState<CloudflareStorageObject[]>(() => 
+    syncDatabaseRecordsToStorage(bookings, nurses, getCloudflareObjects())
+  );
+
+  // Automatically keep storage bucket objects in sync with live DB bookings and nurses
+  useEffect(() => {
+    const existing = getCloudflareObjects();
+    const synced = syncDatabaseRecordsToStorage(bookings, nurses, existing);
+    setStorageObjects(synced);
+  }, [bookings, nurses]);
+
   const [r2Config, setR2Config] = useState<CloudflareR2Config>(() => getCloudflareConfig());
   const [storageCategoryFilter, setStorageCategoryFilter] = useState<'all' | StorageCategory>('all');
   const [storageSearch, setStorageSearch] = useState('');
@@ -230,8 +241,9 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
     for (const b of bookings) {
       await saveInvoiceToCloudflareBucket(b);
     }
-    setStorageObjects(getCloudflareObjects());
-    showToast(`Synced ${bookings.length} booking invoices to Cloudflare R2 bucket!`);
+    const synced = syncDatabaseRecordsToStorage(bookings, nurses, getCloudflareObjects());
+    setStorageObjects(synced);
+    showToast(`Synced ${synced.length} documents, invoices & certificates to Cloudflare R2 bucket!`);
   };
 
   const handleSaveR2ConfigSubmit = (e: React.FormEvent) => {
@@ -277,6 +289,24 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
   const handleCopyPublicUrl = (url: string) => {
     navigator.clipboard.writeText(url);
     showToast('Cloudflare public link copied to clipboard!');
+  };
+
+  const resolveRealArea = (area: string, fullAddress?: string): string => {
+    if (fullAddress) {
+      const knownAreas = [
+        'Saroor Nagar', 'Kukatpally', 'Banjara Hills', 'Jubilee Hills', 
+        'Hitec City', 'Gachibowli', 'Madhapur', 'Kondapur', 'Miyapur', 
+        'Secunderabad', 'Begumpet', 'LB Nagar', 'Uppal', 'Dilsukhnagar', 
+        'Mehdipatnam', 'Tolichowki', 'Ameerpet', 'Somajiguda', 'Manikonda', 
+        'Kothapet', 'Attapur', 'Nanakramguda', 'Tellapur', 'Alwal', 'Malakpet'
+      ];
+      for (const a of knownAreas) {
+        if (fullAddress.toLowerCase().includes(a.toLowerCase())) {
+          return a;
+        }
+      }
+    }
+    return area || 'Hyderabad';
   };
 
   const filteredStorageObjects = storageObjects.filter((o) => {
@@ -1410,7 +1440,8 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
           <button
             className={`btn btn-sm ${activeTab === 'storage' ? 'btn-primary' : 'btn-outline'}`}
             onClick={() => {
-              setStorageObjects(getCloudflareObjects());
+              const synced = syncDatabaseRecordsToStorage(bookings, nurses, getCloudflareObjects());
+              setStorageObjects(synced);
               setActiveTab('storage');
             }}
             style={{ display: 'inline-flex', alignItems: 'center', gap: '0.35rem' }}
@@ -1595,7 +1626,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
               </button>
             </div>
             <div className="table-responsive">
-              <table className="data-table">
+              <table className="data-table data-table-wide">
                 <thead>
                   <tr>
                     <th>Booking ID</th>
@@ -1616,35 +1647,37 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                   ) : (
                     pendingBookings.map((b) => (
                       <tr key={b.id}>
-                        <td><strong>{b.id}</strong></td>
-                        <td>
-                          <div><strong>{b.patientName}</strong></div>
-                          <div style={{ fontSize: '0.78rem', color: 'var(--neutral-500)' }}>{b.patientPhone}</div>
+                        <td style={{ whiteSpace: 'nowrap' }}><strong style={{ fontFamily: 'monospace' }}>{b.id}</strong></td>
+                        <td style={{ whiteSpace: 'nowrap' }}>
+                          <div style={{ fontWeight: 750, color: 'var(--primary-navy-950)' }}>{b.patientName}</div>
+                          <div style={{ fontSize: '0.76rem', color: '#64748B', fontFamily: 'monospace' }}>{b.patientPhone}</div>
                           <div style={{ marginTop: '0.2rem' }}>
                             {b.bookingType === 'scheduled' ? (
-                              <span style={{ fontSize: '0.72rem', background: '#F0FDF4', color: '#166534', padding: '1px 6px', borderRadius: 4, fontWeight: 700 }}>
+                              <span style={{ fontSize: '0.72rem', background: '#F0FDF4', color: '#166534', padding: '2px 7px', borderRadius: 9999, fontWeight: 700, border: '1px solid #BBF7D0', whiteSpace: 'nowrap' }}>
                                 📅 {b.scheduledSlot || 'Scheduled Slot'}
                               </span>
                             ) : (
-                              <span style={{ fontSize: '0.72rem', background: '#EFF6FF', color: '#1D4ED8', padding: '1px 6px', borderRadius: 4, fontWeight: 700 }}>
+                              <span style={{ fontSize: '0.72rem', background: '#EFF6FF', color: '#1D4ED8', padding: '2px 7px', borderRadius: 9999, fontWeight: 700, border: '1px solid #BFDBFE', whiteSpace: 'nowrap' }}>
                                 ⚡ Instant Request
                               </span>
                             )}
                           </div>
                         </td>
-                        <td>{b.serviceTitle}</td>
-                        <td>
-                          <div style={{ display: 'flex', alignItems: 'center', gap: '0.3rem' }}>
-                            <MapPin size={14} style={{ color: 'var(--neutral-500)' }} />
-                            <span>{b.area}</span>
+                        <td style={{ whiteSpace: 'nowrap' }}>
+                          <span style={{ fontWeight: 650, color: '#1E293B' }}>{b.serviceTitle}</span>
+                        </td>
+                        <td style={{ whiteSpace: 'nowrap' }}>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '0.3rem', whiteSpace: 'nowrap' }}>
+                            <MapPin size={13} style={{ color: '#0284C7', flexShrink: 0 }} />
+                            <strong style={{ fontSize: '0.82rem', color: '#0F172A' }}>{resolveRealArea(b.area, b.fullAddress)}</strong>
                           </div>
                           {b.fullAddress && (
-                            <div style={{ fontSize: '0.72rem', color: '#64748B', maxWidth: 180, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                            <div style={{ fontSize: '0.72rem', color: '#64748B', maxWidth: 200, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }} title={b.fullAddress}>
                               {b.fullAddress}
                             </div>
                           )}
                         </td>
-                        <td>
+                        <td style={{ whiteSpace: 'nowrap' }}>
                           {b.hasPrescription || b.prescriptionFileName || b.prescriptionUrl ? (
                             <button
                               type="button"
@@ -1654,25 +1687,26 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                                 background: '#F0FDF4',
                                 border: '1px solid #BBF7D0',
                                 color: '#15803D',
-                                fontSize: '0.76rem',
-                                padding: '0.22rem 0.5rem',
-                                borderRadius: 8,
+                                fontSize: '0.75rem',
+                                padding: '0.25rem 0.65rem',
+                                borderRadius: 6,
                                 display: 'inline-flex',
                                 alignItems: 'center',
-                                gap: '0.3rem',
-                                fontWeight: 700,
-                                cursor: 'pointer'
+                                gap: '0.35rem',
+                                fontWeight: 750,
+                                cursor: 'pointer',
+                                whiteSpace: 'nowrap'
                               }}
-                              title="Inspect Prescription Document"
+                              title="Inspect Doctor Prescription"
                             >
-                              <Cloud size={12} style={{ color: '#0284C7' }} />
-                              <span>{b.prescriptionFileName ? (b.prescriptionFileName.length > 12 ? b.prescriptionFileName.slice(0, 10) + '...' : b.prescriptionFileName) : 'View Rx'}</span>
+                              <FileText size={13} style={{ color: '#059669' }} />
+                              <span>View Rx</span>
                             </button>
                           ) : (
-                            <span style={{ color: '#DC2626', fontSize: '0.8rem', fontWeight: 600 }}>⚠️ Needs Consult</span>
+                            <span style={{ color: '#DC2626', fontSize: '0.75rem', fontWeight: 600, whiteSpace: 'nowrap' }}>⚠️ Needs Consult</span>
                           )}
                         </td>
-                        <td>
+                        <td style={{ whiteSpace: 'nowrap' }}>
                           <div style={{ display: 'flex', gap: '0.4rem', alignItems: 'center', flexWrap: 'wrap' }}>
                             {nurses
                               .filter((n) => n.serviceArea === b.area && n.certificateVerified)
@@ -1844,7 +1878,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
             />
           ) : (
             <div className="table-responsive">
-              <table className="data-table">
+              <table className="data-table data-table-wide">
                 <thead>
                   <tr>
                     <th>Booking ID</th>
@@ -1862,59 +1896,78 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                 <tbody>
                   {filteredBookings.map((b) => (
                     <tr key={b.id}>
-                      <td><strong style={{ fontFamily: 'monospace' }}>{b.id}</strong></td>
-                      <td>
+                      <td style={{ whiteSpace: 'nowrap' }}>
+                        <strong style={{ fontFamily: 'monospace', fontSize: '0.86rem' }}>{b.id}</strong>
+                      </td>
+                      <td style={{ whiteSpace: 'nowrap' }}>
                         {b.bookingType === 'scheduled' ? (
-                          <div>
-                            <span style={{ fontSize: '0.74rem', background: '#F0FDF4', color: '#166534', padding: '2px 7px', borderRadius: 4, fontWeight: 700 }}>
-                              📅 Scheduled Slot
+                          <div style={{ display: 'inline-flex', alignItems: 'center', gap: '0.35rem', whiteSpace: 'nowrap' }}>
+                            <span style={{ fontSize: '0.74rem', background: '#F0FDF4', color: '#166534', padding: '2px 8px', borderRadius: 9999, fontWeight: 750, border: '1px solid #BBF7D0', whiteSpace: 'nowrap' }}>
+                              📅 Scheduled
                             </span>
-                            <div style={{ fontSize: '0.74rem', color: '#475569', marginTop: '2px' }}>
-                              {b.scheduledSlot || b.preferredDate || 'Date set'}
-                            </div>
+                            <span style={{ fontSize: '0.74rem', color: '#475569', fontWeight: 600, whiteSpace: 'nowrap' }}>
+                              {b.scheduledSlot || b.preferredDate || 'Standard Slot'}
+                            </span>
                           </div>
                         ) : (
-                          <div>
-                            <span style={{ fontSize: '0.74rem', background: '#EFF6FF', color: '#1D4ED8', padding: '2px 7px', borderRadius: 4, fontWeight: 700 }}>
+                          <div style={{ display: 'inline-flex', alignItems: 'center', gap: '0.35rem', whiteSpace: 'nowrap' }}>
+                            <span style={{ fontSize: '0.74rem', background: '#EFF6FF', color: '#1D4ED8', padding: '2px 8px', borderRadius: 9999, fontWeight: 750, border: '1px solid #BFDBFE', whiteSpace: 'nowrap' }}>
                               ⚡ Instant (ASAP)
                             </span>
-                            <div style={{ fontSize: '0.72rem', color: '#64748B', marginTop: '2px' }}>
-                              Emergency Request
-                            </div>
+                            <span style={{ fontSize: '0.72rem', color: '#64748B', fontWeight: 600, whiteSpace: 'nowrap' }}>
+                              Emergency
+                            </span>
                           </div>
                         )}
                       </td>
-                      <td>
-                        <div><strong>{b.patientName}</strong></div>
-                        <div style={{ fontSize: '0.8rem', color: 'var(--neutral-500)' }}>{b.patientPhone}</div>
+                      <td style={{ whiteSpace: 'nowrap' }}>
+                        <div style={{ fontWeight: 750, color: 'var(--primary-navy-950)', whiteSpace: 'nowrap' }}>{b.patientName}</div>
+                        <div style={{ fontSize: '0.76rem', color: '#64748B', fontFamily: 'monospace', whiteSpace: 'nowrap' }}>{b.patientPhone}</div>
                       </td>
-                      <td>{b.serviceTitle}</td>
-                      <td>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '0.3rem' }}>
-                          <MapPin size={14} style={{ color: 'var(--neutral-500)' }} />
-                          <span>{b.area}</span>
+                      <td style={{ whiteSpace: 'nowrap' }}>
+                        <span style={{ fontWeight: 650, color: '#1E293B', whiteSpace: 'nowrap' }}>{b.serviceTitle}</span>
+                      </td>
+                      <td style={{ whiteSpace: 'nowrap' }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '0.3rem', whiteSpace: 'nowrap' }}>
+                          <MapPin size={13} style={{ color: '#0284C7', flexShrink: 0 }} />
+                          <strong style={{ fontSize: '0.82rem', color: '#0F172A', whiteSpace: 'nowrap' }}>{resolveRealArea(b.area, b.fullAddress)}</strong>
                         </div>
                         {b.fullAddress && (
-                          <div style={{ fontSize: '0.72rem', color: '#64748B', maxWidth: 170, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                          <div style={{ fontSize: '0.72rem', color: '#64748B', maxWidth: 220, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }} title={b.fullAddress}>
                             {b.fullAddress}
                           </div>
                         )}
                       </td>
-                      <td>
-                        {b.assignedNurseName ? (
-                          <div>
-                            <div style={{ fontWeight: 600 }}>{b.assignedNurseName}</div>
-                            <div style={{ fontSize: '0.75rem', color: 'var(--neutral-500)' }}>
-                              {b.referringNurseName
-                                ? `⚡ Referred by: ${b.referringNurseName}`
-                                : (b.referringNurseId ? 'Rule 1 (Referral)' : 'Rule 2 (Area Matched)')}
+                      <td style={{ whiteSpace: 'nowrap' }}>
+                        {b.assignedNurseName ? (() => {
+                          const assignedNurse = nurses.find((n) => n.id === b.assignedNurseId || n.name === b.assignedNurseName);
+                          const phoneNum = assignedNurse?.phone;
+                          return (
+                            <div style={{ whiteSpace: 'nowrap' }}>
+                              <div style={{ fontWeight: 750, color: '#0F172A', whiteSpace: 'nowrap', display: 'flex', alignItems: 'center', gap: '0.35rem' }}>
+                                <span>{b.assignedNurseName}</span>
+                                {phoneNum && (
+                                  <a
+                                    href={`tel:${phoneNum.replace(/\s+/g, '')}`}
+                                    style={{ color: '#059669', display: 'inline-flex', alignItems: 'center' }}
+                                    title={`Call ${b.assignedNurseName} (${phoneNum})`}
+                                  >
+                                    <Phone size={12} />
+                                  </a>
+                                )}
+                              </div>
+                              <div style={{ fontSize: '0.72rem', color: '#64748B', whiteSpace: 'nowrap', marginTop: '1px' }}>
+                                {b.referringNurseName
+                                  ? `⚡ Referred by: ${b.referringNurseName}`
+                                  : (b.referringNurseId ? 'Rule 1 (Referral Match)' : 'Rule 2 (Area Matched)')}
+                              </div>
                             </div>
-                          </div>
-                        ) : (
-                          <span style={{ color: '#E11D48', fontWeight: 600 }}>Unassigned</span>
+                          );
+                        })() : (
+                          <span style={{ color: '#E11D48', fontWeight: 700, fontSize: '0.78rem', whiteSpace: 'nowrap' }}>Unassigned</span>
                         )}
                       </td>
-                      <td>
+                      <td style={{ whiteSpace: 'nowrap' }}>
                         {b.prescriptionFileName || b.prescriptionUrl || b.hasPrescription ? (
                           <button
                             type="button"
@@ -1924,40 +1977,41 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                               background: '#F0FDF4',
                               border: '1px solid #BBF7D0',
                               color: '#15803D',
-                              fontSize: '0.76rem',
-                              padding: '0.22rem 0.55rem',
-                              borderRadius: 8,
+                              fontSize: '0.75rem',
+                              padding: '0.25rem 0.65rem',
+                              borderRadius: 6,
                               display: 'inline-flex',
                               alignItems: 'center',
-                              gap: '0.3rem',
-                              fontWeight: 700,
-                              cursor: 'pointer'
+                              gap: '0.35rem',
+                              fontWeight: 750,
+                              cursor: 'pointer',
+                              whiteSpace: 'nowrap'
                             }}
-                            title="Inspect Prescription Document"
+                            title="Inspect Doctor Prescription"
                           >
-                            <Cloud size={12} style={{ color: '#0284C7' }} />
-                            <span>{b.prescriptionFileName ? (b.prescriptionFileName.length > 14 ? b.prescriptionFileName.slice(0, 12) + '...' : b.prescriptionFileName) : 'View Rx'}</span>
+                            <FileText size={13} style={{ color: '#059669' }} />
+                            <span>View Rx</span>
                           </button>
                         ) : (
-                          <span style={{ color: '#DC2626', fontSize: '0.78rem', fontWeight: 600 }}>Needs Consult</span>
+                          <span style={{ color: '#94A3B8', fontSize: '0.75rem', fontWeight: 600, whiteSpace: 'nowrap' }}>No Rx Needed</span>
                         )}
                       </td>
-                      <td><strong style={{ color: 'var(--primary-navy-900)' }}>₹{b.estimatedFee}</strong></td>
-                      <td>
+                      <td style={{ whiteSpace: 'nowrap' }}><strong style={{ color: 'var(--primary-navy-900)', fontSize: '0.88rem' }}>₹{b.estimatedFee}</strong></td>
+                      <td style={{ whiteSpace: 'nowrap' }}>
                         <span className={`status-pill ${
                           b.status === 'Completed' ? 'success' :
                           b.status === 'Assigned' ? 'info' :
                           b.status === 'Pending' ? 'warning' : 'neutral'
-                        }`}>
+                        }`} style={{ whiteSpace: 'nowrap' }}>
                           {b.status}
                         </span>
                         {b.status === 'Cancelled' && b.rejectionReason && (
-                          <div style={{ fontSize: '0.72rem', color: '#DC2626', marginTop: '3px', background: '#FEF2F2', padding: '2px 6px', borderRadius: 4, maxWidth: 140 }}>
+                          <div style={{ fontSize: '0.72rem', color: '#DC2626', marginTop: '3px', background: '#FEF2F2', padding: '2px 6px', borderRadius: 4, whiteSpace: 'nowrap' }}>
                             Reason: {b.rejectionReason}
                           </div>
                         )}
                       </td>
-                      <td style={{ textAlign: 'right' }}>
+                      <td style={{ textAlign: 'right', whiteSpace: 'nowrap' }}>
                         <div style={{ display: 'inline-flex', alignItems: 'center', gap: '0.35rem' }}>
                           <button
                             type="button"

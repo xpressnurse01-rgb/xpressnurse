@@ -2693,16 +2693,20 @@ img {
 
 .data-table {
   width: 100%;
-  min-width: 700px;
+  min-width: 950px;
   border-collapse: separate;
   border-spacing: 0;
   text-align: left;
   font-size: 0.87rem;
 }
 
+.data-table-wide {
+  min-width: 1150px !important;
+}
+
 .data-table th {
   background: #F1F5F9;
-  padding: 0.95rem 1.25rem;
+  padding: 0.85rem 1.15rem;
   font-weight: 750;
   color: #334155;
   border-bottom: 1.5px solid var(--neutral-300);
@@ -2713,11 +2717,12 @@ img {
 }
 
 .data-table td {
-  padding: 1rem 1.25rem;
+  padding: 0.85rem 1.15rem;
   border-bottom: 1px solid #F1F5F9;
   vertical-align: middle;
   transition: background-color 0.15s ease;
   color: #1E293B;
+  white-space: nowrap;
 }
 
 .data-table tbody tr:hover td {

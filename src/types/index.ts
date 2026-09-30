@@ -210,7 +210,10 @@ export interface CloudflareStorageObject {
     experienceYears?: number;
     certificateVerified?: boolean;
     amount?: number;
+    totalAmount?: number;
+    serviceArea?: string;
     description?: string;
+    [key: string]: any;
   };
 }
 
