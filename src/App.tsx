@@ -222,7 +222,24 @@ export const App: React.FC = () => {
     };
   }, [currentPath, services]);
 
-  const [activeNurseId, setActiveNurseId] = useState<string>('nurse-101');
+  const [authUser, setAuthUser] = useState<AppUser | null>(() => {
+    const saved = localStorage.getItem('xn_auth_user');
+    return saved ? JSON.parse(saved) : null;
+  });
+
+  const [activeNurseId, setActiveNurseId] = useState<string>(() => {
+    try {
+      const savedNurseId = localStorage.getItem('xn_active_nurse_id');
+      if (savedNurseId) return savedNurseId;
+      const saved = localStorage.getItem('xn_auth_user');
+      if (saved) {
+        const u = JSON.parse(saved);
+        if (u.role === 'nurse' && u.id) return u.id;
+      }
+    } catch {}
+    return 'nurse-101';
+  });
+
   const fallbackNurse: NurseProfile = {
     id: 'nurse-101',
     name: 'Nurse Priya Sharma',
@@ -230,7 +247,7 @@ export const App: React.FC = () => {
     email: 'priya.nursing@xpressnurse.in',
     experienceYears: 5,
     qualification: 'B.Sc Nursing (Registered RN)',
-    serviceArea: 'Gachibowli',
+    serviceArea: 'Hyderabad Central',
     status: 'Active',
     totalLeads: 8,
     convertedLeads: 6,
@@ -241,29 +258,39 @@ export const App: React.FC = () => {
     avatarUrl: '/images/nurse_priya.jpg',
     certificateVerified: true
   };
-  const activeNurse = nurses.find((n) => n.id === activeNurseId) || nurses[0] || fallbackNurse;
+
+  const activeNurse = nurses.find((n) => n.id === activeNurseId) ||
+    (authUser?.role === 'nurse' ? {
+      id: authUser.id,
+      name: authUser.name,
+      phone: authUser.phone || '',
+      email: authUser.email || authUser.identifier,
+      experienceYears: 5,
+      qualification: authUser.designation || 'Registered Nurse',
+      serviceArea: authUser.serviceArea || 'Hyderabad Central',
+      status: 'Active' as const,
+      totalLeads: 0,
+      convertedLeads: 0,
+      totalReferrals: 0,
+      pointsEarned: 0,
+      referralEarningsRupees: 0,
+      rating: 4.9,
+      certificateVerified: true
+    } : (nurses[0] || fallbackNurse));
 
   // Modal States
   const [isBookingOpen, setIsBookingOpen] = useState(false);
   const [preSelectedServiceId, setPreSelectedServiceId] = useState<ServiceId>('saline-infusion');
   const [isQrModalOpen, setIsQrModalOpen] = useState(false);
 
-  // Authenticated user (set after successful 4-digit PIN login)
-  const [authUser, setAuthUser] = useState<AppUser | null>(() => {
-    const saved = localStorage.getItem('xn_auth_user');
-    return saved ? JSON.parse(saved) : null;
-  });
-
   // Login success handler — set active nurse based on logged-in user
   const handleLoginSuccess = (user: AppUser) => {
     setAuthUser(user);
     localStorage.setItem('xn_auth_user', JSON.stringify(user));
-    // If nurse, switch active nurse to their profile
+    // If nurse, switch active nurse directly to their own account
     if (user.role === 'nurse') {
-      const matchedNurse = nurses.find(
-        (n) => n.email === user.email || n.id === user.id
-      );
-      if (matchedNurse) setActiveNurseId(matchedNurse.id);
+      setActiveNurseId(user.id);
+      localStorage.setItem('xn_active_nurse_id', user.id);
     }
   };
 
@@ -294,7 +321,25 @@ export const App: React.FC = () => {
 
         if (remoteServices) setServices(remoteServices);
         if (remoteBookings) setBookings(remoteBookings);
-        if (remoteNurses) setNurses(remoteNurses);
+        if (remoteNurses) {
+          setNurses(remoteNurses);
+          // If authUser is logged in as a nurse, sync active nurse ID
+          const savedAuth = localStorage.getItem('xn_auth_user');
+          if (savedAuth) {
+            try {
+              const u = JSON.parse(savedAuth);
+              if (u.role === 'nurse') {
+                const found = remoteNurses.find(
+                  (n) => n.id === u.id || (n.email && n.email.toLowerCase() === (u.email || u.identifier || '').toLowerCase()) || (n.phone && n.phone.replace(/\D/g, '') === (u.phone || '').replace(/\D/g, ''))
+                );
+                if (found) {
+                  setActiveNurseId(found.id);
+                  localStorage.setItem('xn_active_nurse_id', found.id);
+                }
+              }
+            } catch {}
+          }
+        }
         if (remoteLeads) setLeads(remoteLeads);
         if (remoteConsults) setConsultations(remoteConsults);
         if (remoteCoupons) setCoupons(remoteCoupons);
@@ -438,9 +483,9 @@ export const App: React.FC = () => {
     const autoAssignedBooking: Booking = {
       id: 'BK-' + Math.floor(1000 + Math.random() * 9000),
       createdAt: new Date().toISOString(),
-      patientName: newLead.patientName,
-      patientPhone: newLead.patientPhone,
-      serviceId: newLead.serviceId,
+      patientName: newLead.patientName || newLead.referredNurseName || 'Referred Client',
+      patientPhone: newLead.patientPhone || newLead.referredNursePhone || '9876543210',
+      serviceId: newLead.serviceId || 'saline-infusion',
       serviceTitle: currentService.title,
       area: targetArea,
       fullAddress: `${targetArea}, Hyderabad`,
@@ -600,7 +645,10 @@ export const App: React.FC = () => {
     setBookings((prev) =>
       prev.map((b) => {
         if (b.status === 'Pending') {
-          const areaNurse = nurses.find((n) => n.serviceArea === b.area) || nurses[0];
+          const areaNurse = nurses.find((n) => n.serviceArea === b.area && n.certificateVerified) || nurses.find((n) => n.certificateVerified);
+          if (!areaNurse) {
+            return b; // Do not assign if no verified nurse is available
+          }
           const updated: Booking = {
             ...b,
             status: 'Assigned',
@@ -909,6 +957,7 @@ export const App: React.FC = () => {
         {currentPath === '/login' && (
           <LoginPage
             onNavigate={navigate}
+            onLoginSuccess={handleLoginSuccess}
           />
         )}
 

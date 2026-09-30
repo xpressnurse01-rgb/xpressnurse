@@ -74,7 +74,23 @@ export const BookingModal: React.FC<BookingModalProps> = ({
   const [patientPhone, setPatientPhone] = useState('');
   const [fullAddress, setFullAddress] = useState('');
   const [preferredDate, setPreferredDate] = useState('Today (Immediate)');
-  const [preferredTime, setPreferredTime] = useState('Within 60-90 minutes');
+  const [preferredTime, setPreferredTime] = useState('Immediate (ASAP)');
+  const [bookingType, setBookingType] = useState<'Instant' | 'Scheduled'>('Instant');
+  const [selectedScheduledDate, setSelectedScheduledDate] = useState<string>(() => {
+    return new Date().toISOString().split('T')[0];
+  });
+  const [selectedSlot, setSelectedSlot] = useState<string>('10:00 AM - 12:00 PM');
+
+  const TIME_SLOTS = [
+    '08:00 AM - 10:00 AM',
+    '10:00 AM - 12:00 PM',
+    '12:00 PM - 02:00 PM',
+    '02:00 PM - 04:00 PM',
+    '04:00 PM - 06:00 PM',
+    '06:00 PM - 08:00 PM',
+    '08:00 PM - 10:00 PM'
+  ];
+
   const [hasPrescription, setHasPrescription] = useState<boolean>(true);
   const [prescriptionFile, setPrescriptionFile] = useState<File | null>(null);
   const [prescriptionFileName, setPrescriptionFileName] = useState<string>('');
@@ -341,12 +357,13 @@ export const BookingModal: React.FC<BookingModalProps> = ({
     }
 
     // MANDATORY PRESCRIPTION ENFORCEMENT:
-    // Attaching a doctor's prescription is strictly compulsory for all home nursing procedures.
-    // Only Online Doctor Consultation does not require an existing Rx (as the doctor will issue one).
+    // Attaching a doctor's prescription is strictly mandatory for procedures that require it.
+    // Online Doctor Consultation and Vitals Monitoring do not require an existing Rx.
     const isDoctorConsult = serviceId === 'doctor-consult';
-    if (!isDoctorConsult) {
+    const isPrescriptionRequired = currentService.prescriptionRequired !== false && !isDoctorConsult && serviceId !== 'vitals-monitoring';
+    if (isPrescriptionRequired) {
       if (!prescriptionFile && !prescriptionFileName) {
-        errs.prescription = 'Attaching doctor prescription is COMPULSORY for clinical home nursing care. Please attach your prescription file (PDF or image).';
+        errs.prescription = 'Attaching doctor prescription is MANDATORY for this clinical procedure. Please attach your prescription file (PDF or image).';
       }
     }
 
@@ -379,20 +396,26 @@ export const BookingModal: React.FC<BookingModalProps> = ({
       }
     }
 
+    // Extract real area / locality from full address
+    const parts = fullAddress.trim().split(',').map((p) => p.trim()).filter(Boolean);
+    const resolvedArea = parts.length > 1 ? parts[parts.length - 2] || parts[parts.length - 1] : parts[0] || 'Hyderabad';
+
     const newBooking: Booking = {
       id: newBookingId,
-      createdAt: new Date().toISOString(), // Strict ISO 8601 for PostgreSQL TIMESTAMPTZ
+      createdAt: new Date().toISOString(),
       patientName: `${patientName.trim()} (${patientAge} yrs, ${patientGender})`,
       patientPhone: patientPhone.trim(),
       patientAge: parseInt(patientAge) || 45,
       patientGender,
       serviceId,
       serviceTitle: currentService.title,
-      area: 'Gachibowli' as HyderabadArea,
+      area: resolvedArea,
       fullAddress: fullAddress.trim(),
-      preferredDate,
-      preferredTime,
-      hasPrescription: true,
+      bookingType,
+      preferredDate: bookingType === 'Instant' ? 'Today (Instant ASAP)' : selectedScheduledDate,
+      preferredTime: bookingType === 'Instant' ? 'Immediate (ASAP Dispatch)' : selectedSlot,
+      scheduledSlot: bookingType === 'Scheduled' ? selectedSlot : undefined,
+      hasPrescription: isPrescriptionRequired ? true : Boolean(prescriptionFileName || prescriptionFile),
       prescriptionFileName: finalRxName || (isDoctorConsult ? undefined : 'Rx_HomeVisit_Verified.pdf'),
       prescriptionUrl: finalRxUrl || (finalRxName ? `https://pub-830eaa9d07034c8d985d7d00577f77e9.r2.dev/prescriptions/${finalRxName}` : undefined),
       status: 'Pending',
@@ -417,7 +440,7 @@ export const BookingModal: React.FC<BookingModalProps> = ({
           patientAge: parseInt(patientAge) || 45,
           patientPhone: patientPhone.trim(),
           symptoms: notes.trim() || 'Online Doctor Teleconsultation for Home Nursing',
-          area: 'Gachibowli' as HyderabadArea,
+          area: resolvedArea,
           requestedAt: new Date().toISOString(),
           status: 'Awaiting Call',
           prescriptionIssued: false,
@@ -677,6 +700,12 @@ export const BookingModal: React.FC<BookingModalProps> = ({
                   </option>
                 ))}
               </select>
+              {serviceId === 'wound-dressing' && (
+                <div style={{ marginTop: '0.4rem', fontSize: '0.74rem', color: '#92400E', background: '#FEF3C7', padding: '0.35rem 0.65rem', borderRadius: 8, border: '1px solid #FDE68A', display: 'flex', alignItems: 'center', gap: '0.35rem' }}>
+                  <span>ℹ️</span>
+                  <span><strong>Pricing Notice:</strong> Wound dressing starts from ₹799. Final pricing depends on wound type, depth & complexity.</span>
+                </div>
+              )}
             </div>
 
             {/* 2. Patient Details Grid: Name (flex), Age, Gender */}
@@ -805,7 +834,7 @@ export const BookingModal: React.FC<BookingModalProps> = ({
               {errors.fullAddress && <span className="field-error">{errors.fullAddress}</span>}
             </div>
 
-            {/* 5. Compulsory Prescription Attachment & Cloudflare R2 Bucket Upload */}
+            {/* 5. Mandatory Prescription Attachment */}
             <div 
               style={{ 
                 background: errors.prescription ? '#FFF5F5' : '#F8FAFC', 
@@ -820,7 +849,7 @@ export const BookingModal: React.FC<BookingModalProps> = ({
                 <div style={{ display: 'flex', alignItems: 'center', gap: '0.35rem' }}>
                   <FileText size={15} style={{ color: '#E11D48' }} />
                   <label className="form-label" style={{ fontSize: '0.82rem', fontWeight: 800, margin: 0, color: 'var(--primary-navy-950)' }}>
-                    Doctor's Prescription {serviceId !== 'doctor-consult' ? <span style={{ color: '#E11D48' }}>* (Compulsory)</span> : <span style={{ color: '#64748B', fontWeight: 500 }}>(Optional for Teleconsult)</span>}
+                    Doctor's Prescription {currentService.prescriptionRequired !== false && serviceId !== 'doctor-consult' && serviceId !== 'vitals-monitoring' ? <span style={{ color: '#E11D48' }}>* (Mandatory)</span> : <span style={{ color: '#059669', fontWeight: 600 }}>(Optional for this service)</span>}
                   </label>
                 </div>
                 <div style={{ display: 'inline-flex', alignItems: 'center', gap: '0.3rem', background: '#F0FDF4', border: '1px solid #BBF7D0', padding: '2px 8px', borderRadius: 9999, fontSize: '0.7rem', color: '#166534', fontWeight: 700 }}>
@@ -829,9 +858,9 @@ export const BookingModal: React.FC<BookingModalProps> = ({
                 </div>
               </div>
 
-              {serviceId !== 'doctor-consult' && (
+              {currentService.prescriptionRequired !== false && serviceId !== 'doctor-consult' && serviceId !== 'vitals-monitoring' && (
                 <p style={{ fontSize: '0.73rem', color: '#64748B', margin: '0 0 0.6rem 0', lineHeight: 1.4 }}>
-                  As per clinical protocols, our registered visiting nurse requires a valid doctor's prescription before performing home procedures.
+                  As per clinical protocols, our registered visiting nurse requires a valid doctor's prescription before performing this procedure.
                 </p>
               )}
 
@@ -858,7 +887,7 @@ export const BookingModal: React.FC<BookingModalProps> = ({
                       Click to Browse or Drag & Drop Prescription
                     </span>
                     <span style={{ fontSize: '0.74rem', color: '#64748B', marginTop: '0.25rem', lineHeight: 1.4 }}>
-                      Supports PDF, JPG, PNG, WEBP (Max 15 MB) • End-to-End Encrypted Cloudflare R2 Storage
+                      Supports PDF, JPG, PNG, WEBP (Max 15 MB) • Secure Document Storage
                     </span>
                     <input 
                       type="file" 
@@ -1021,22 +1050,116 @@ export const BookingModal: React.FC<BookingModalProps> = ({
               )}
             </div>
 
-            {/* Arrival Window Selector */}
+            {/* Visit Timing: Instant (ASAP Dispatch) vs Scheduled (2-hr slots) */}
             <div style={{ marginBottom: '1.15rem' }}>
-              <label className="form-label" style={{ fontSize: '0.78rem', fontWeight: 600, marginBottom: '0.25rem' }}>
-                Arrival Window *
+              <label className="form-label" style={{ fontSize: '0.78rem', fontWeight: 700, marginBottom: '0.35rem', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                <span>Visit Timing & Slot *</span>
+                <span style={{ fontSize: '0.72rem', color: '#64748B', fontWeight: 500 }}>Instant or Scheduled</span>
               </label>
-              <select
-                className="form-control"
-                value={preferredTime}
-                onChange={(e) => setPreferredTime(e.target.value)}
-                style={{ padding: '0.55rem 0.75rem', fontSize: '0.84rem', borderRadius: 10 }}
-              >
-                <option value="Within 60-90 minutes">Immediate (Within 60-90 mins)</option>
-                <option value="Morning (8:00 AM - 12:00 PM)">Morning (8 AM - 12 PM)</option>
-                <option value="Afternoon (12:00 PM - 4:00 PM)">Afternoon (12 PM - 4 PM)</option>
-                <option value="Evening (4:00 PM - 8:00 PM)">Evening (4 PM - 8 PM)</option>
-              </select>
+
+              {/* Instant vs Schedule Toggle Buttons */}
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.5rem', marginBottom: '0.75rem' }}>
+                <button
+                  type="button"
+                  onClick={() => setBookingType('Instant')}
+                  style={{
+                    padding: '0.55rem 0.65rem',
+                    borderRadius: 10,
+                    fontSize: '0.82rem',
+                    fontWeight: 800,
+                    border: bookingType === 'Instant' ? '2px solid #D97706' : '1px solid #CBD5E1',
+                    background: bookingType === 'Instant' ? '#FEF3C7' : '#FFFFFF',
+                    color: bookingType === 'Instant' ? '#92400E' : '#475569',
+                    cursor: 'pointer',
+                    display: 'flex',
+                    flexDirection: 'column',
+                    alignItems: 'center',
+                    gap: '0.15rem',
+                    transition: 'all 0.15s ease'
+                  }}
+                >
+                  <span style={{ display: 'inline-flex', alignItems: 'center', gap: '0.3rem' }}>
+                    ⚡ Instant (ASAP)
+                  </span>
+                  <span style={{ fontSize: '0.68rem', fontWeight: 500, color: '#B45309' }}>
+                    Emergency / Urgent nurse
+                  </span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => setBookingType('Scheduled')}
+                  style={{
+                    padding: '0.55rem 0.65rem',
+                    borderRadius: 10,
+                    fontSize: '0.82rem',
+                    fontWeight: 800,
+                    border: bookingType === 'Scheduled' ? '2px solid #0284C7' : '1px solid #CBD5E1',
+                    background: bookingType === 'Scheduled' ? '#EFF6FF' : '#FFFFFF',
+                    color: bookingType === 'Scheduled' ? '#0369A1' : '#475569',
+                    cursor: 'pointer',
+                    display: 'flex',
+                    flexDirection: 'column',
+                    alignItems: 'center',
+                    gap: '0.15rem',
+                    transition: 'all 0.15s ease'
+                  }}
+                >
+                  <span style={{ display: 'inline-flex', alignItems: 'center', gap: '0.3rem' }}>
+                    📅 Schedule Slot
+                  </span>
+                  <span style={{ fontSize: '0.68rem', fontWeight: 500, color: '#0284C7' }}>
+                    Choose date & 2-hr slot
+                  </span>
+                </button>
+              </div>
+
+              {bookingType === 'Instant' ? (
+                <div style={{ background: '#FFFBEB', border: '1px solid #FDE68A', borderRadius: 10, padding: '0.65rem 0.85rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                  <Clock size={16} style={{ color: '#D97706', flexShrink: 0 }} />
+                  <div style={{ fontSize: '0.76rem', color: '#92400E' }}>
+                    <strong>Instant Nurse Request:</strong> We will dispatch the closest available certified nurse to your address immediately.
+                  </div>
+                </div>
+              ) : (
+                <div style={{ background: '#F8FAFC', border: '1px solid #E2E8F0', borderRadius: 12, padding: '0.75rem 0.85rem' }}>
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.6rem', marginBottom: '0.6rem' }}>
+                    <div>
+                      <label style={{ fontSize: '0.72rem', fontWeight: 700, color: '#475569', marginBottom: '0.2rem', display: 'block' }}>
+                        Preferred Date *
+                      </label>
+                      <input
+                        type="date"
+                        min={new Date().toISOString().split('T')[0]}
+                        value={selectedScheduledDate}
+                        onChange={(e) => setSelectedScheduledDate(e.target.value)}
+                        className="form-control"
+                        style={{ fontSize: '0.82rem', padding: '0.45rem 0.65rem', borderRadius: 8 }}
+                      />
+                    </div>
+                    <div>
+                      <label style={{ fontSize: '0.72rem', fontWeight: 700, color: '#475569', marginBottom: '0.2rem', display: 'block' }}>
+                        2-Hour Window Slot *
+                      </label>
+                      <select
+                        value={selectedSlot}
+                        onChange={(e) => setSelectedSlot(e.target.value)}
+                        className="form-control"
+                        style={{ fontSize: '0.82rem', padding: '0.45rem 0.65rem', borderRadius: 8 }}
+                      >
+                        {TIME_SLOTS.map((slot) => (
+                          <option key={slot} value={slot}>
+                            {slot}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                  </div>
+                  <div style={{ fontSize: '0.72rem', color: '#0284C7', fontWeight: 600 }}>
+                    ✓ Nurse will arrive during your selected 2-hour window ({selectedSlot})
+                  </div>
+                </div>
+              )}
             </div>
 
             {/* 6. Promo Code Section (District / Zomato Minimalist Style) */}

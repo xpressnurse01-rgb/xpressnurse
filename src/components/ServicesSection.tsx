@@ -51,7 +51,7 @@ export const ServicesSection: React.FC<ServicesSectionProps> = ({ services = [],
 
   const filteredServices = serviceList.filter((srv) => {
     if (activeCategory === 'all') return true;
-    if (activeCategory === 'infusion') return srv.id === 'saline-infusion' || srv.id === 'lab-diagnostics';
+    if (activeCategory === 'infusion') return srv.id === 'saline-infusion' || srv.id === 'lab-diagnostics' || srv.id === 'injection-administration' || srv.id === 'vitals-monitoring';
     if (activeCategory === 'wound') return srv.id === 'wound-dressing' || srv.id === 'suture-removal';
     if (activeCategory === 'catheter') return srv.id === 'foleys-catheter' || srv.id === 'ryles-tube';
     if (activeCategory === 'consult') return srv.id === 'doctor-consult' || srv.id === 'personalized-nursing';
@@ -59,6 +59,7 @@ export const ServicesSection: React.FC<ServicesSectionProps> = ({ services = [],
   });
 
   const cleanPriceDisplay = (srv: ServiceItem) => {
+    if (srv.id === 'wound-dressing') return 'Starts ₹799*';
     if (srv.priceNumber) return `₹${srv.priceNumber.toLocaleString('en-IN')}`;
     const match = (srv.indicativePrice || '').match(/₹[\d,]+/);
     return match ? match[0] : (srv.indicativePrice || '₹799');
@@ -173,7 +174,9 @@ export const ServicesSection: React.FC<ServicesSectionProps> = ({ services = [],
                 <div className="service-district-bottom-row">
                   <div className="district-price-col">
                     <div className="district-price-value">{cleanPriceDisplay(service)}</div>
-                    <div className="district-price-note">All-inclusive • Zero advance</div>
+                    <div className="district-price-note">
+                      {service.id === 'wound-dressing' ? 'Depends on wound type & depth' : 'All-inclusive • Zero advance'}
+                    </div>
                   </div>
 
                   <button

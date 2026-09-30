@@ -498,11 +498,14 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
     serviceId: 'saline-infusion' as ServiceId,
     area: 'LB Nagar' as HyderabadArea,
     fullAddress: '',
-    status: 'Assigned' as 'Pending' | 'Assigned' | 'In-Progress' | 'Completed' | 'Cancelled',
+    status: 'Assigned' as 'Pending' | 'Assigned' | 'In-Progress' | 'Completed' | 'Cancelled' | 'Rejected',
     assignedNurseId: '',
     estimatedFee: 800,
     hasPrescription: true,
-    notes: ''
+    notes: '',
+    bookingType: 'instant' as 'instant' | 'scheduled' | 'Instant' | 'Scheduled',
+    scheduledSlot: '',
+    rejectionReason: ''
   });
 
   const handleOpenCreateBookingModal = () => {
@@ -521,7 +524,10 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
       assignedNurseId: '',
       estimatedFee: services[0]?.priceNumber || 800,
       hasPrescription: false,
-      notes: ''
+      notes: '',
+      bookingType: 'instant',
+      scheduledSlot: '',
+      rejectionReason: ''
     });
     setIsBookingModalOpen(true);
   };
@@ -542,7 +548,10 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
       assignedNurseId: b.assignedNurseId || '',
       estimatedFee: b.estimatedFee,
       hasPrescription: b.hasPrescription,
-      notes: b.notes || ''
+      notes: b.notes || '',
+      bookingType: (b.bookingType || 'instant') as any,
+      scheduledSlot: b.scheduledSlot || '',
+      rejectionReason: b.rejectionReason || ''
     });
     setIsBookingModalOpen(true);
   };
@@ -565,14 +574,17 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
       serviceId: bookingForm.serviceId,
       area: bookingForm.area,
       fullAddress: bookingForm.fullAddress.trim() || `${bookingForm.area}, Hyderabad`,
-      preferredDate: editingBooking?.preferredDate || 'Today',
-      preferredTime: editingBooking?.preferredTime || 'Immediate (Within 45 mins)',
+      preferredDate: editingBooking?.preferredDate || (bookingForm.bookingType === 'scheduled' ? (bookingForm.scheduledSlot || 'Scheduled') : 'Today (ASAP)'),
+      preferredTime: editingBooking?.preferredTime || (bookingForm.bookingType === 'scheduled' ? (bookingForm.scheduledSlot || 'Scheduled Slot') : 'Instant Request'),
       status: bookingForm.status,
       assignedNurseId: assignedNurseObj?.id,
       assignedNurseName: assignedNurseObj?.name,
       estimatedFee: Number(bookingForm.estimatedFee),
       hasPrescription: bookingForm.hasPrescription,
-      notes: bookingForm.notes.trim()
+      notes: bookingForm.notes.trim(),
+      bookingType: bookingForm.bookingType,
+      scheduledSlot: bookingForm.bookingType === 'scheduled' ? bookingForm.scheduledSlot : undefined,
+      rejectionReason: bookingForm.status === 'Cancelled' ? bookingForm.rejectionReason : undefined
     };
 
     if (editingBooking && onUpdateBooking) {
@@ -604,11 +616,113 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
     return matchesSearch && matchesStatus;
   });
 
+  // Export Bookings to CSV / Excel
+  const exportBookingsToCSV = () => {
+    const headers = [
+      'Booking ID',
+      'Created Date',
+      'Booking Type',
+      'Scheduled Slot',
+      'Patient Name',
+      'Patient Phone',
+      'Area',
+      'Full Address',
+      'Procedure',
+      'Status',
+      'Estimated Fee (INR)',
+      'Assigned Nurse',
+      'Prescription Mandatory',
+      'Prescription Attached',
+      'Rejection Reason',
+      'Notes'
+    ];
+    const rows = bookings.map((b) => [
+      `"${b.id}"`,
+      `"${b.createdAt ? new Date(b.createdAt).toLocaleDateString('en-IN') : 'N/A'}"`,
+      `"${b.bookingType === 'scheduled' ? 'Scheduled Slot' : 'Instant (ASAP)'}"`,
+      `"${b.scheduledSlot || 'Immediate'}"`,
+      `"${(b.patientName || '').replace(/"/g, '""')}"`,
+      `"${b.patientPhone || ''}"`,
+      `"${(b.area || '').replace(/"/g, '""')}"`,
+      `"${(b.fullAddress || '').replace(/"/g, '""')}"`,
+      `"${(b.serviceTitle || '').replace(/"/g, '""')}"`,
+      `"${b.status || ''}"`,
+      b.estimatedFee || 0,
+      `"${(b.assignedNurseName || 'Unassigned').replace(/"/g, '""')}"`,
+      b.hasPrescription ? 'Yes' : 'No',
+      `"${(b.prescriptionFileName || (b.hasPrescription ? 'Prescription Uploaded' : 'None')).replace(/"/g, '""')}"`,
+      `"${(b.rejectionReason || '').replace(/"/g, '""')}"`,
+      `"${(b.notes || '').replace(/"/g, '""')}"`
+    ]);
+    const csvContent = 'data:text/csv;charset=utf-8,\uFEFF' + [headers.join(','), ...rows.map((r) => r.join(','))].join('\n');
+    const encodedUri = encodeURI(csvContent);
+    const link = document.createElement('a');
+    link.setAttribute('href', encodedUri);
+    link.setAttribute('download', `XpressNurse_Bookings_${new Date().toISOString().slice(0, 10)}.csv`);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    showToast('Exported all bookings to CSV/Excel report!');
+  };
+
+  // Export Nurse Fleet to CSV / Excel
+  const exportNursesToCSV = () => {
+    const headers = [
+      'Nurse ID',
+      'Full Name',
+      'Phone',
+      'Email',
+      'Service Zone / Area',
+      'Qualification',
+      'Experience (Years)',
+      'Experience Tier',
+      'Certificate Verified',
+      'Status',
+      'Completed Visits',
+      'Active Visits',
+      'Referral Points',
+      'Earnings Paid (INR)',
+      'Earnings Pending (INR)',
+      'Total Earnings (INR)'
+    ];
+    const rows = nurses.map((n) => {
+      const exp = n.experienceYears || (parseInt(n.experience || '0', 10) || 0);
+      const tier = exp >= 10 ? 'Senior (> 10 Years)' : exp >= 5 ? 'Mid-Level (5-10 Years)' : 'Junior (< 5 Years)';
+      return [
+        `"${n.id}"`,
+        `"${(n.name || '').replace(/"/g, '""')}"`,
+        `"${n.phone || ''}"`,
+        `"${n.email || ''}"`,
+        `"${(n.serviceArea || '').replace(/"/g, '""')}"`,
+        `"${(n.qualification || '').replace(/"/g, '""')}"`,
+        exp,
+        `"${tier}"`,
+        n.certificateVerified ? 'Verified' : 'Pending Review',
+        `"${n.status || 'Active'}"`,
+        n.completedVisits || 0,
+        n.activeVisits || 0,
+        n.points || 0,
+        n.earningsPaid || 0,
+        n.earningsPending || 0,
+        (n.earningsPaid || 0) + (n.earningsPending || 0)
+      ];
+    });
+    const csvContent = 'data:text/csv;charset=utf-8,\uFEFF' + [headers.join(','), ...rows.map((r) => r.join(','))].join('\n');
+    const encodedUri = encodeURI(csvContent);
+    const link = document.createElement('a');
+    link.setAttribute('href', encodedUri);
+    link.setAttribute('download', `XpressNurse_Roster_Fleet_${new Date().toISOString().slice(0, 10)}.csv`);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    showToast('Exported nurse fleet roster to CSV/Excel report!');
+  };
+
   // --------------------------------------------------------------------------
   // 2. NURSES CRUD STATE & HANDLERS
   // --------------------------------------------------------------------------
   const [nurseSearch, setNurseSearch] = useState('');
-  const [nurseAreaFilter, setNurseAreaFilter] = useState<string>('all');
+  const [nurseExpFilter, setNurseExpFilter] = useState<'all' | '>10' | '5-10' | '<5'>('all');
   const [isNurseModalOpen, setIsNurseModalOpen] = useState(false);
   const [editingNurse, setEditingNurse] = useState<NurseProfile | null>(null);
   const [nurseForm, setNurseForm] = useState({
@@ -733,9 +847,16 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
       n.name.toLowerCase().includes(nurseSearch.toLowerCase()) ||
       n.phone.includes(nurseSearch) ||
       n.email.toLowerCase().includes(nurseSearch.toLowerCase()) ||
-      n.qualification.toLowerCase().includes(nurseSearch.toLowerCase());
-    const matchesArea = nurseAreaFilter === 'all' ? true : n.serviceArea === nurseAreaFilter;
-    return matchesSearch && matchesArea;
+      n.qualification.toLowerCase().includes(nurseSearch.toLowerCase()) ||
+      (n.serviceArea && n.serviceArea.toLowerCase().includes(nurseSearch.toLowerCase()));
+    
+    const exp = n.experienceYears || (parseInt(n.experience || '0', 10) || 0);
+    const matchesExp = 
+      nurseExpFilter === 'all' ? true :
+      nurseExpFilter === '>10' ? exp >= 10 :
+      nurseExpFilter === '5-10' ? (exp >= 5 && exp < 10) :
+      exp < 5;
+    return matchesSearch && matchesExp;
   });
 
   // --------------------------------------------------------------------------
@@ -881,9 +1002,9 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
     setEditingLead(l);
     setLeadForm({
       id: l.id,
-      patientName: l.patientName,
-      patientPhone: l.patientPhone,
-      serviceId: l.serviceId,
+      patientName: l.patientName || l.referredNurseName || '',
+      patientPhone: l.patientPhone || l.referredNursePhone || '',
+      serviceId: l.serviceId || 'saline-infusion',
       area: l.area,
       nurseId: l.nurseId || 'nurse-101',
       status: l.status,
@@ -986,9 +1107,11 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
   };
 
   const filteredLeads = leads.filter((l) => {
+    const pName = (l.patientName || l.referredNurseName || '').toLowerCase();
+    const pPhone = l.patientPhone || l.referredNursePhone || '';
     const matchesSearch = 
-      l.patientName.toLowerCase().includes(leadSearch.toLowerCase()) ||
-      l.patientPhone.includes(leadSearch) ||
+      pName.includes(leadSearch.toLowerCase()) ||
+      pPhone.includes(leadSearch) ||
       l.area.toLowerCase().includes(leadSearch.toLowerCase());
     const matchesStatus = leadStatusFilter === 'all' ? true : l.status === leadStatusFilter;
     return matchesSearch && matchesStatus;
@@ -1008,7 +1131,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
     patientPhone: '',
     symptoms: '',
     area: 'Gachibowli' as HyderabadArea,
-    status: 'Awaiting Call' as 'Awaiting Call' | 'In Call' | 'Prescription Issued' | 'Completed',
+    status: 'Awaiting Call' as 'Awaiting Call' | 'In Call' | 'Prescription Issued' | 'Completed' | 'Rejected',
     prescriptionIssued: false,
     prescriptionText: '',
     recommendedService: 'saline-infusion' as ServiceId
@@ -1406,18 +1529,25 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
 
               <div className="routing-sim-grid">
                 <div>
-                  <label className="form-label">Patient Hyderabad Location</label>
-                  <select
+                  <label className="form-label">Patient Hyderabad Location / Area</label>
+                  <input
+                    type="text"
+                    list="sim-areas-list"
                     className="form-control"
+                    placeholder="Enter locality e.g. Kondapur, Gachibowli, Kukatpally..."
                     value={testSimPatientArea}
-                    onChange={(e) => setTestSimPatientArea(e.target.value as HyderabadArea)}
-                  >
-                    <option value="Gachibowli">Gachibowli (Zone West)</option>
-                    <option value="LB Nagar">LB Nagar (Zone East)</option>
-                    <option value="Madhapur">Madhapur (Zone Hitec)</option>
-                    <option value="Banjara Hills">Banjara Hills (Zone Central)</option>
-                    <option value="Kukatpally">Kukatpally (Zone North-West)</option>
-                  </select>
+                    onChange={(e) => setTestSimPatientArea(e.target.value)}
+                  />
+                  <datalist id="sim-areas-list">
+                    <option value="Gachibowli" />
+                    <option value="LB Nagar" />
+                    <option value="Madhapur" />
+                    <option value="Banjara Hills" />
+                    <option value="Kukatpally" />
+                    <option value="Kondapur" />
+                    <option value="Jubilee Hills" />
+                    <option value="Secunderabad" />
+                  </datalist>
                 </div>
 
                 <div>
@@ -1487,13 +1617,32 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                     pendingBookings.map((b) => (
                       <tr key={b.id}>
                         <td><strong>{b.id}</strong></td>
-                        <td>{b.patientName} ({b.patientPhone})</td>
+                        <td>
+                          <div><strong>{b.patientName}</strong></div>
+                          <div style={{ fontSize: '0.78rem', color: 'var(--neutral-500)' }}>{b.patientPhone}</div>
+                          <div style={{ marginTop: '0.2rem' }}>
+                            {b.bookingType === 'scheduled' ? (
+                              <span style={{ fontSize: '0.72rem', background: '#F0FDF4', color: '#166534', padding: '1px 6px', borderRadius: 4, fontWeight: 700 }}>
+                                📅 {b.scheduledSlot || 'Scheduled Slot'}
+                              </span>
+                            ) : (
+                              <span style={{ fontSize: '0.72rem', background: '#EFF6FF', color: '#1D4ED8', padding: '1px 6px', borderRadius: 4, fontWeight: 700 }}>
+                                ⚡ Instant Request
+                              </span>
+                            )}
+                          </div>
+                        </td>
                         <td>{b.serviceTitle}</td>
                         <td>
                           <div style={{ display: 'flex', alignItems: 'center', gap: '0.3rem' }}>
                             <MapPin size={14} style={{ color: 'var(--neutral-500)' }} />
                             <span>{b.area}</span>
                           </div>
+                          {b.fullAddress && (
+                            <div style={{ fontSize: '0.72rem', color: '#64748B', maxWidth: 180, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                              {b.fullAddress}
+                            </div>
+                          )}
                         </td>
                         <td>
                           {b.hasPrescription || b.prescriptionFileName || b.prescriptionUrl ? (
@@ -1514,7 +1663,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                                 fontWeight: 700,
                                 cursor: 'pointer'
                               }}
-                              title="Inspect Prescription in Cloudflare R2 Bucket"
+                              title="Inspect Prescription Document"
                             >
                               <Cloud size={12} style={{ color: '#0284C7' }} />
                               <span>{b.prescriptionFileName ? (b.prescriptionFileName.length > 12 ? b.prescriptionFileName.slice(0, 10) + '...' : b.prescriptionFileName) : 'View Rx'}</span>
@@ -1526,7 +1675,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                         <td>
                           <div style={{ display: 'flex', gap: '0.4rem', alignItems: 'center', flexWrap: 'wrap' }}>
                             {nurses
-                              .filter((n) => n.serviceArea === b.area)
+                              .filter((n) => n.serviceArea === b.area && n.certificateVerified)
                               .map((matchingNurse) => (
                                 <button
                                   key={matchingNurse.id}
@@ -1534,11 +1683,11 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                                     onAssignOrder(
                                       b.id,
                                       matchingNurse.id,
-                                      `Rule 2 Matched: ${b.area} Area Specialist (${matchingNurse.name})`
+                                      `Rule 2 Matched: Verified ${b.area} Area Nurse (${matchingNurse.name})`
                                     )
                                   }
                                   className="btn btn-primary btn-sm"
-                                  title={`Route to ${matchingNurse.name} (${b.area})`}
+                                  title={`Route to verified ${matchingNurse.name} (${b.area})`}
                                   style={{ padding: '0.35rem 0.65rem', fontSize: '0.8rem', whiteSpace: 'nowrap' }}
                                 >
                                   <span>Assign to {matchingNurse.name.split(' ')[0]} RN</span>
@@ -1553,6 +1702,10 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                               onChange={(e) => {
                                 if (e.target.value) {
                                   const selectedNurse = nurses.find((n) => n.id === e.target.value);
+                                  if (!selectedNurse?.certificateVerified) {
+                                    alert('Cannot assign booking: Nurse certificate is not verified. Unverified nurses can only refer fellow nurses.');
+                                    return;
+                                  }
                                   onAssignOrder(
                                     b.id,
                                     e.target.value,
@@ -1561,10 +1714,10 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                                 }
                               }}
                             >
-                              <option value="" disabled>Or Assign Any Nurse...</option>
+                              <option value="" disabled>Or Assign Verified Nurse...</option>
                               {nurses.map((n) => (
-                                <option key={n.id} value={n.id}>
-                                  {n.name} ({n.serviceArea})
+                                <option key={n.id} value={n.id} disabled={!n.certificateVerified}>
+                                  {n.name} ({n.serviceArea}) {n.certificateVerified ? '✓ Verified' : '⚠️ No Certificate (Refer Only)'}
                                 </option>
                               ))}
                             </select>
@@ -1613,10 +1766,19 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
             </div>
             <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center', flexWrap: 'wrap' }}>
               <button
+                onClick={exportBookingsToCSV}
+                className="btn btn-outline btn-sm"
+                style={{ borderRadius: 9999, fontWeight: 700, gap: '0.4rem', borderColor: '#10B981', color: '#059669', background: '#ECFDF5' }}
+                title="Download all booking records as Excel/CSV spreadsheet"
+              >
+                <Download size={15} />
+                <span>Export Bookings (Excel/CSV)</span>
+              </button>
+              <button
                 onClick={handleSyncAllInvoicesToCloudflare}
                 className="btn btn-outline btn-sm"
                 style={{ borderRadius: 9999, fontWeight: 700, gap: '0.4rem', borderColor: '#BAE6FD', color: '#0284C7', background: '#F0F9FF' }}
-                title="Issue and sync invoices for all bookings into Cloudflare R2 bucket"
+                title="Issue and sync invoices for all bookings"
               >
                 <Receipt size={15} />
                 <span>Issue All Invoices ({bookings.length})</span>
@@ -1686,9 +1848,10 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                 <thead>
                   <tr>
                     <th>Booking ID</th>
+                    <th>Type & Timing</th>
                     <th>Patient & Phone</th>
                     <th>Procedure</th>
-                    <th>Area</th>
+                    <th>Area & Address</th>
                     <th>Assigned Nurse</th>
                     <th>Prescription</th>
                     <th>Fee</th>
@@ -1701,6 +1864,27 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                     <tr key={b.id}>
                       <td><strong style={{ fontFamily: 'monospace' }}>{b.id}</strong></td>
                       <td>
+                        {b.bookingType === 'scheduled' ? (
+                          <div>
+                            <span style={{ fontSize: '0.74rem', background: '#F0FDF4', color: '#166534', padding: '2px 7px', borderRadius: 4, fontWeight: 700 }}>
+                              📅 Scheduled Slot
+                            </span>
+                            <div style={{ fontSize: '0.74rem', color: '#475569', marginTop: '2px' }}>
+                              {b.scheduledSlot || b.preferredDate || 'Date set'}
+                            </div>
+                          </div>
+                        ) : (
+                          <div>
+                            <span style={{ fontSize: '0.74rem', background: '#EFF6FF', color: '#1D4ED8', padding: '2px 7px', borderRadius: 4, fontWeight: 700 }}>
+                              ⚡ Instant (ASAP)
+                            </span>
+                            <div style={{ fontSize: '0.72rem', color: '#64748B', marginTop: '2px' }}>
+                              Emergency Request
+                            </div>
+                          </div>
+                        )}
+                      </td>
+                      <td>
                         <div><strong>{b.patientName}</strong></div>
                         <div style={{ fontSize: '0.8rem', color: 'var(--neutral-500)' }}>{b.patientPhone}</div>
                       </td>
@@ -1710,6 +1894,11 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                           <MapPin size={14} style={{ color: 'var(--neutral-500)' }} />
                           <span>{b.area}</span>
                         </div>
+                        {b.fullAddress && (
+                          <div style={{ fontSize: '0.72rem', color: '#64748B', maxWidth: 170, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                            {b.fullAddress}
+                          </div>
+                        )}
                       </td>
                       <td>
                         {b.assignedNurseName ? (
@@ -1744,7 +1933,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                               fontWeight: 700,
                               cursor: 'pointer'
                             }}
-                            title="Inspect Prescription in Cloudflare R2 Bucket"
+                            title="Inspect Prescription Document"
                           >
                             <Cloud size={12} style={{ color: '#0284C7' }} />
                             <span>{b.prescriptionFileName ? (b.prescriptionFileName.length > 14 ? b.prescriptionFileName.slice(0, 12) + '...' : b.prescriptionFileName) : 'View Rx'}</span>
@@ -1762,6 +1951,11 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                         }`}>
                           {b.status}
                         </span>
+                        {b.status === 'Cancelled' && b.rejectionReason && (
+                          <div style={{ fontSize: '0.72rem', color: '#DC2626', marginTop: '3px', background: '#FEF2F2', padding: '2px 6px', borderRadius: 4, maxWidth: 140 }}>
+                            Reason: {b.rejectionReason}
+                          </div>
+                        )}
                       </td>
                       <td style={{ textAlign: 'right' }}>
                         <div style={{ display: 'inline-flex', alignItems: 'center', gap: '0.35rem' }}>
@@ -1832,67 +2026,148 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
       )}
 
       {/* NURSE ROSTER TAB (FULL SUPABASE CRUD) */}
-      {activeTab === 'nurses' && (
-        <div className="card">
-          <div className="card-header" style={{ flexWrap: 'wrap', gap: '0.75rem' }}>
-            <div>
-              <h3 className="card-title">Registered Nursing Fleet & Service Areas</h3>
-              <p style={{ fontSize: '0.82rem', color: 'var(--neutral-500)', margin: 0 }}>
-                Total: {nurses.length} certified nurses | Synced with Supabase <code>nurses</code> table
-              </p>
-            </div>
-            <button
-              onClick={handleOpenCreateNurseModal}
-              className="btn btn-danger btn-sm"
-              style={{ borderRadius: 9999, fontWeight: 700, gap: '0.4rem' }}
-            >
-              <Plus size={16} />
-              <span>Add New Nurse</span>
-            </button>
-          </div>
+      {activeTab === 'nurses' && (() => {
+        const totalNursesCount = nurses.length;
+        const activeNursesCount = nurses.filter((n) => n.status === 'Active' || (n.activeVisits && n.activeVisits > 0)).length;
+        const verifiedNursesCount = nurses.filter((n) => n.certificateVerified).length;
+        const pendingNursesCount = nurses.filter((n) => !n.certificateVerified).length;
+        const expOver10Count = nurses.filter((n) => (n.experienceYears || (parseInt(n.experience || '0', 10) || 0)) >= 10).length;
+        const exp5to10Count = nurses.filter((n) => {
+          const exp = n.experienceYears || (parseInt(n.experience || '0', 10) || 0);
+          return exp >= 5 && exp < 10;
+        }).length;
+        const expUnder5Count = nurses.filter((n) => (n.experienceYears || (parseInt(n.experience || '0', 10) || 0)) < 5).length;
 
-          {/* Filter & Search Toolbar */}
-          <div style={{ padding: '0.85rem 1.25rem', borderBottom: '1px solid var(--neutral-200)', background: '#FAFAFA', display: 'flex', gap: '0.75rem', flexWrap: 'wrap', alignItems: 'center', justifyContent: 'space-between' }}>
-            <div style={{ position: 'relative', minWidth: 260, flex: 1 }}>
-              <input
-                type="text"
-                placeholder="Search nurse by name, phone, email, qualification..."
-                value={nurseSearch}
-                onChange={(e) => setNurseSearch(e.target.value)}
-                style={{
-                  width: '100%',
-                  padding: '0.45rem 0.75rem 0.45rem 2rem',
-                  fontSize: '0.85rem',
-                  borderRadius: 8,
-                  border: '1px solid #CBD5E1'
-                }}
-              />
-              <Search size={14} style={{ position: 'absolute', left: 8, top: '50%', transform: 'translateY(-50%)', color: 'var(--neutral-400)' }} />
+        return (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
+          {/* Nurse Roster Summary Stats Cards */}
+          <div className="stats-grid" style={{ marginBottom: 0 }}>
+            <div className="stat-card">
+              <div className="stat-icon" style={{ background: '#EEF2FF', color: '#4F46E5' }}>
+                <Users size={22} />
+              </div>
+              <div>
+                <div className="stat-val">{totalNursesCount}</div>
+                <div className="stat-label">Total Registered Fleet</div>
+              </div>
             </div>
 
-            <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
-              <span style={{ fontSize: '0.8rem', color: 'var(--neutral-600)', fontWeight: 600 }}>Area:</span>
-              <select
-                value={nurseAreaFilter}
-                onChange={(e) => setNurseAreaFilter(e.target.value)}
-                style={{
-                  padding: '0.4rem 0.75rem',
-                  fontSize: '0.82rem',
-                  borderRadius: 8,
-                  border: '1px solid #CBD5E1',
-                  background: '#FFFFFF',
-                  fontWeight: 600
-                }}
-              >
-                <option value="all">All Service Areas</option>
-                <option value="Gachibowli">Gachibowli</option>
-                <option value="LB Nagar">LB Nagar</option>
-                <option value="Madhapur">Madhapur</option>
-                <option value="Banjara Hills">Banjara Hills</option>
-                <option value="Kukatpally">Kukatpally</option>
-              </select>
+            <div className="stat-card">
+              <div className="stat-icon" style={{ background: '#ECFDF5', color: '#059669' }}>
+                <Activity size={22} />
+              </div>
+              <div>
+                <div className="stat-val">{activeNursesCount}</div>
+                <div className="stat-label">Active on Duty</div>
+              </div>
+            </div>
+
+            <div className="stat-card">
+              <div className="stat-icon" style={{ background: '#EFF6FF', color: '#1D4ED8' }}>
+                <ShieldCheck size={22} />
+              </div>
+              <div>
+                <div className="stat-val">{verifiedNursesCount}</div>
+                <div className="stat-label">Certificate Verified RNs</div>
+              </div>
+            </div>
+
+            <div className="stat-card">
+              <div className="stat-icon" style={{ background: '#FEF3C7', color: '#B45309' }}>
+                <Award size={22} />
+              </div>
+              <div>
+                <div className="stat-val">{pendingNursesCount}</div>
+                <div className="stat-label">Pending Review (Refer Only)</div>
+              </div>
             </div>
           </div>
+
+          <div className="card">
+            <div className="card-header" style={{ flexWrap: 'wrap', gap: '0.75rem' }}>
+              <div>
+                <h3 className="card-title">Registered Nursing Fleet & Service Zones</h3>
+                <p style={{ fontSize: '0.82rem', color: 'var(--neutral-500)', margin: 0 }}>
+                  Total: {totalNursesCount} nurses | {verifiedNursesCount} assignable | {pendingNursesCount} unverified (referral only)
+                </p>
+              </div>
+              <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center', flexWrap: 'wrap' }}>
+                <button
+                  onClick={exportNursesToCSV}
+                  className="btn btn-outline btn-sm"
+                  style={{ borderRadius: 9999, fontWeight: 700, gap: '0.4rem', borderColor: '#10B981', color: '#059669', background: '#ECFDF5' }}
+                  title="Download complete nurse roster spreadsheet (CSV/Excel)"
+                >
+                  <Download size={15} />
+                  <span>Export Fleet (Excel/CSV)</span>
+                </button>
+                <button
+                  onClick={handleOpenCreateNurseModal}
+                  className="btn btn-danger btn-sm"
+                  style={{ borderRadius: 9999, fontWeight: 700, gap: '0.4rem' }}
+                >
+                  <Plus size={16} />
+                  <span>Add New Nurse</span>
+                </button>
+              </div>
+            </div>
+
+            {/* Filter & Search Toolbar */}
+            <div style={{ padding: '0.85rem 1.25rem', borderBottom: '1px solid var(--neutral-200)', background: '#FAFAFA', display: 'flex', gap: '0.75rem', flexWrap: 'wrap', alignItems: 'center', justifyContent: 'space-between' }}>
+              <div style={{ position: 'relative', minWidth: 260, flex: 1 }}>
+                <input
+                  type="text"
+                  placeholder="Search nurse by name, phone, email, qualification, zone..."
+                  value={nurseSearch}
+                  onChange={(e) => setNurseSearch(e.target.value)}
+                  style={{
+                    width: '100%',
+                    padding: '0.45rem 0.75rem 0.45rem 2rem',
+                    fontSize: '0.85rem',
+                    borderRadius: 8,
+                    border: '1px solid #CBD5E1'
+                  }}
+                />
+                <Search size={14} style={{ position: 'absolute', left: 8, top: '50%', transform: 'translateY(-50%)', color: 'var(--neutral-400)' }} />
+              </div>
+
+              {/* Experience Categories */}
+              <div style={{ display: 'flex', gap: '0.4rem', alignItems: 'center', flexWrap: 'wrap' }}>
+                <span style={{ fontSize: '0.8rem', color: 'var(--neutral-600)', fontWeight: 700 }}>Experience:</span>
+                <button
+                  type="button"
+                  onClick={() => setNurseExpFilter('all')}
+                  className={`btn btn-sm ${nurseExpFilter === 'all' ? 'btn-primary' : 'btn-outline'}`}
+                  style={{ padding: '0.3rem 0.65rem', fontSize: '0.78rem', borderRadius: 9999 }}
+                >
+                  All ({totalNursesCount})
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setNurseExpFilter('>10')}
+                  className={`btn btn-sm ${nurseExpFilter === '>10' ? 'btn-primary' : 'btn-outline'}`}
+                  style={{ padding: '0.3rem 0.65rem', fontSize: '0.78rem', borderRadius: 9999 }}
+                >
+                  &gt; 10 Yrs ({expOver10Count})
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setNurseExpFilter('5-10')}
+                  className={`btn btn-sm ${nurseExpFilter === '5-10' ? 'btn-primary' : 'btn-outline'}`}
+                  style={{ padding: '0.3rem 0.65rem', fontSize: '0.78rem', borderRadius: 9999 }}
+                >
+                  5 – 10 Yrs ({exp5to10Count})
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setNurseExpFilter('<5')}
+                  className={`btn btn-sm ${nurseExpFilter === '<5' ? 'btn-primary' : 'btn-outline'}`}
+                  style={{ padding: '0.3rem 0.65rem', fontSize: '0.78rem', borderRadius: 9999 }}
+                >
+                  &lt; 5 Yrs ({expUnder5Count})
+                </button>
+              </div>
+            </div>
 
           {filteredNurses.length === 0 ? (
             <EmptyState
@@ -2056,7 +2331,9 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
             </div>
           )}
         </div>
-      )}
+        </div>
+        );
+      })()}
 
       {/* SERVICES & PRICING CATALOG TAB (FULL SUPABASE CRUD) */}
       {activeTab === 'services' && (
@@ -2191,11 +2468,35 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                           <div style={{ fontSize: '0.72rem', color: 'var(--neutral-500)' }}>after 8:00 PM</div>
                         </td>
                         <td>
-                          {s.prescriptionRequired ? (
-                            <span className="status-pill danger" style={{ fontSize: '0.75rem' }}>Mandatory Rx</span>
-                          ) : (
-                            <span className="status-pill success" style={{ fontSize: '0.75rem' }}>No Rx Needed</span>
-                          )}
+                          <button
+                            type="button"
+                            onClick={async () => {
+                              if (onUpdateService) {
+                                await onUpdateService(s.id, { prescriptionRequired: !s.prescriptionRequired });
+                                showToast(`Updated ${s.title}: Rx is now ${!s.prescriptionRequired ? 'Mandatory' : 'Optional'}`);
+                              }
+                            }}
+                            style={{
+                              border: 'none',
+                              background: 'transparent',
+                              padding: 0,
+                              cursor: 'pointer',
+                              display: 'inline-flex'
+                            }}
+                            title="Click to toggle Mandatory Prescription on/off"
+                          >
+                            {s.prescriptionRequired ? (
+                              <span className="status-pill danger" style={{ fontSize: '0.74rem', cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: '0.25rem' }}>
+                                <span>⚠️ Mandatory Rx</span>
+                                <span style={{ fontSize: '0.66rem', opacity: 0.85 }}>(Toggle)</span>
+                              </span>
+                            ) : (
+                              <span className="status-pill success" style={{ fontSize: '0.74rem', cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: '0.25rem' }}>
+                                <span>✓ No Rx Needed</span>
+                                <span style={{ fontSize: '0.66rem', opacity: 0.85 }}>(Toggle)</span>
+                              </span>
+                            )}
+                          </button>
                         </td>
                         <td>
                           <span style={{ fontSize: '0.82rem', color: 'var(--neutral-600)' }}>{s.duration || '45 - 60 mins'}</span>
@@ -3631,7 +3932,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
             <div className="card" style={{ padding: '1.15rem' }}>
               <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '0.5rem' }}>
                 <span style={{ fontSize: '0.75rem', fontWeight: 700, color: 'var(--neutral-500)', textTransform: 'uppercase' }}>
-                  Compulsory Prescriptions
+                  Mandatory Prescriptions
                 </span>
                 <div style={{ width: 32, height: 32, borderRadius: 8, background: '#ECFDF5', color: '#059669', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
                   <FileText size={16} />
@@ -3692,7 +3993,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                 {(storageObjects.reduce((acc, o) => acc + (o.sizeBytes || 0), 0) / (1024 * 1024)).toFixed(2)} MB
               </div>
               <div style={{ fontSize: '0.74rem', color: '#0284C7', marginTop: '0.25rem', fontWeight: 600 }}>
-                Global CDN Edge Distribution
+                Verified Document Storage
               </div>
             </div>
           </div>
@@ -3755,7 +4056,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                 <Search size={14} style={{ position: 'absolute', left: 10, top: '50%', transform: 'translateY(-50%)', color: 'var(--neutral-400)' }} />
                 <input
                   type="text"
-                  placeholder="Search file, patient, ref..."
+                  placeholder="Search file, patient, nurse..."
                   value={storageSearch}
                   onChange={(e) => setStorageSearch(e.target.value)}
                   className="form-control"
@@ -3780,7 +4081,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                     <tr>
                       <th>Object Key & File Name</th>
                       <th>Category</th>
-                      <th>Patient / Booking Metadata</th>
+                      <th>Owner / Metadata (Patient / Nurse)</th>
                       <th>Size</th>
                       <th>Uploaded At</th>
                       <th style={{ textAlign: 'right' }}>Actions</th>
@@ -3839,7 +4140,48 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
 
                           {/* Metadata */}
                           <td>
-                            {obj.metadata?.patientName ? (
+                            {obj.category === 'certificates' ? (
+                              (() => {
+                                const matchedNurse = nurses.find((n) =>
+                                  n.id === obj.metadata?.nurseId ||
+                                  n.id === obj.metadata?.bookingId ||
+                                  obj.key.toLowerCase().includes(n.id.toLowerCase()) ||
+                                  (obj.metadata?.patientName && n.name.toLowerCase() === obj.metadata.patientName.toLowerCase()) ||
+                                  obj.fileName.toLowerCase().includes(n.name.toLowerCase().split(' ')[0] || '')
+                                );
+                                const nurseName = matchedNurse?.name || obj.metadata?.patientName || 'Registered Nurse';
+                                const nurseArea = matchedNurse?.serviceArea || 'Hyderabad Zone';
+                                const certVerified = matchedNurse?.certificateVerified;
+                                return (
+                                  <div>
+                                    <div style={{ fontSize: '0.84rem', fontWeight: 700, color: 'var(--primary-navy-950)', display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
+                                      <span>{nurseName}</span>
+                                      {certVerified ? (
+                                        <span style={{ fontSize: '0.68rem', padding: '1px 6px', background: '#DCFCE7', color: '#166534', borderRadius: 9999, fontWeight: 700 }}>
+                                          ✓ Verified RN
+                                        </span>
+                                      ) : (
+                                        <span style={{ fontSize: '0.68rem', padding: '1px 6px', background: '#FEF3C7', color: '#92400E', borderRadius: 9999, fontWeight: 700 }}>
+                                          ⏳ Pending Review
+                                        </span>
+                                      )}
+                                    </div>
+                                    <div style={{ fontSize: '0.74rem', color: '#64748B', marginTop: '2px' }}>
+                                      {matchedNurse ? `${matchedNurse.qualification} • ${nurseArea} • ${matchedNurse.phone}` : (obj.metadata?.description || 'Nursing Council Reg Certificate')}
+                                    </div>
+                                  </div>
+                                );
+                              })()
+                            ) : obj.category === 'invoices' ? (
+                              <div>
+                                <div style={{ fontSize: '0.82rem', fontWeight: 600, color: 'var(--primary-navy-900)' }}>
+                                  Patient: {obj.metadata?.patientName || 'Direct Billing'}
+                                </div>
+                                <div style={{ fontSize: '0.72rem', color: '#64748B' }}>
+                                  Ref: {obj.metadata?.bookingId || 'Direct'}
+                                </div>
+                              </div>
+                            ) : obj.metadata?.patientName ? (
                               <div>
                                 <div style={{ fontSize: '0.82rem', fontWeight: 600, color: 'var(--primary-navy-900)' }}>
                                   {obj.metadata.patientName}
@@ -3875,6 +4217,42 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                           {/* Actions */}
                           <td style={{ textAlign: 'right' }}>
                             <div style={{ display: 'inline-flex', alignItems: 'center', gap: '0.35rem' }}>
+                              {obj.category === 'certificates' && (() => {
+                                const matchedNurse = nurses.find((n) =>
+                                  n.id === obj.metadata?.nurseId ||
+                                  n.id === obj.metadata?.bookingId ||
+                                  obj.key.toLowerCase().includes(n.id.toLowerCase()) ||
+                                  (obj.metadata?.patientName && n.name.toLowerCase() === obj.metadata.patientName.toLowerCase()) ||
+                                  obj.fileName.toLowerCase().includes(n.name.toLowerCase().split(' ')[0] || '')
+                                );
+                                if (matchedNurse && !matchedNurse.certificateVerified && onUpdateNurseRecord) {
+                                  return (
+                                    <button
+                                      type="button"
+                                      onClick={async () => {
+                                        await onUpdateNurseRecord(matchedNurse.id, { certificateVerified: true });
+                                        showToast(`Verified & Approved Certificate for ${matchedNurse.name}!`);
+                                      }}
+                                      className="btn btn-sm"
+                                      style={{
+                                        background: '#ECFDF5',
+                                        border: '1px solid #A7F3D0',
+                                        color: '#059669',
+                                        padding: '0.25rem 0.55rem',
+                                        borderRadius: 6,
+                                        fontSize: '0.72rem',
+                                        fontWeight: 700,
+                                        cursor: 'pointer'
+                                      }}
+                                      title="Approve and verify this nurse certificate"
+                                    >
+                                      ✓ Approve RN
+                                    </button>
+                                  );
+                                }
+                                return null;
+                              })()}
+
                               {isPrescription && (
                                 <button
                                   type="button"
@@ -4095,12 +4473,11 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                   </label>
                   <input
                     type="number"
-                    placeholder="No limit"
+                    placeholder="e.g. 500 (No limit)"
                     value={couponForm.maxDiscount}
-                    disabled={couponForm.discountType === 'flat'}
                     onChange={(e) => setCouponForm({ ...couponForm, maxDiscount: e.target.value })}
                     className="form-control"
-                    style={{ background: couponForm.discountType === 'flat' ? '#F1F5F9' : '#FFFFFF' }}
+                    style={{ background: '#FFFFFF' }}
                   />
                 </div>
               </div>
@@ -4290,18 +4667,64 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                   </select>
                 </div>
                 <div>
-                  <label className="form-label" style={{ fontSize: '0.78rem', fontWeight: 700 }}>AREA (RULE 2)</label>
+                  <label className="form-label" style={{ fontSize: '0.78rem', fontWeight: 700 }}>AREA / LOCALITY</label>
+                  <input
+                    type="text"
+                    list="booking-modal-areas-list"
+                    className="form-control"
+                    placeholder="e.g. Kondapur, Gachibowli, Kukatpally..."
+                    value={bookingForm.area}
+                    onChange={(e) => setBookingForm({ ...bookingForm, area: e.target.value })}
+                    required
+                  />
+                  <datalist id="booking-modal-areas-list">
+                    <option value="Gachibowli" />
+                    <option value="LB Nagar" />
+                    <option value="Madhapur" />
+                    <option value="Banjara Hills" />
+                    <option value="Kukatpally" />
+                    <option value="Kondapur" />
+                    <option value="Jubilee Hills" />
+                    <option value="Secunderabad" />
+                  </datalist>
+                </div>
+              </div>
+
+              {/* Timing Concept: Instant vs Scheduled */}
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem', marginBottom: '0.85rem' }}>
+                <div>
+                  <label className="form-label" style={{ fontSize: '0.78rem', fontWeight: 700 }}>BOOKING TYPE</label>
                   <select
                     className="form-control"
-                    value={bookingForm.area}
-                    onChange={(e) => setBookingForm({ ...bookingForm, area: e.target.value as HyderabadArea })}
+                    value={bookingForm.bookingType}
+                    onChange={(e) => setBookingForm({ ...bookingForm, bookingType: e.target.value as any })}
                   >
-                    <option value="Gachibowli">Gachibowli</option>
-                    <option value="LB Nagar">LB Nagar</option>
-                    <option value="Madhapur">Madhapur</option>
-                    <option value="Banjara Hills">Banjara Hills</option>
-                    <option value="Kukatpally">Kukatpally</option>
+                    <option value="instant">⚡ Instant (ASAP Emergency Visit)</option>
+                    <option value="scheduled">📅 Scheduled (Specific Date & 2-Hour Slot)</option>
                   </select>
+                </div>
+                <div>
+                  <label className="form-label" style={{ fontSize: '0.78rem', fontWeight: 700 }}>
+                    {bookingForm.bookingType === 'scheduled' ? 'SCHEDULED 2-HR SLOT *' : 'DISPATCH TIMING'}
+                  </label>
+                  {bookingForm.bookingType === 'scheduled' ? (
+                    <input
+                      type="text"
+                      placeholder="e.g. Tomorrow: 10:00 AM - 12:00 PM"
+                      value={bookingForm.scheduledSlot}
+                      onChange={(e) => setBookingForm({ ...bookingForm, scheduledSlot: e.target.value })}
+                      className="form-control"
+                      required
+                    />
+                  ) : (
+                    <input
+                      type="text"
+                      disabled
+                      value="Immediate Dispatch (Within 45 Mins)"
+                      className="form-control"
+                      style={{ background: '#F1F5F9', color: '#475569' }}
+                    />
+                  )}
                 </div>
               </div>
 
@@ -4362,11 +4785,30 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                   >
                     <option value="">— Unassigned —</option>
                     {nurses.map((n) => (
-                      <option key={n.id} value={n.id}>{n.name} ({n.serviceArea})</option>
+                      <option key={n.id} value={n.id} disabled={!n.certificateVerified}>
+                        {n.name} ({n.serviceArea}) {n.certificateVerified ? '✓ Verified' : '⚠️ No Certificate (Refer Only)'}
+                      </option>
                     ))}
                   </select>
                 </div>
               </div>
+
+              {bookingForm.status === 'Cancelled' && (
+                <div style={{ marginBottom: '0.85rem' }}>
+                  <label className="form-label" style={{ fontSize: '0.78rem', fontWeight: 700, color: '#DC2626' }}>
+                    CANCELLATION / REJECTION REASON *
+                  </label>
+                  <textarea
+                    rows={2}
+                    placeholder="Specify why this booking was cancelled/rejected (shown to patient and nurse)..."
+                    value={bookingForm.rejectionReason}
+                    onChange={(e) => setBookingForm({ ...bookingForm, rejectionReason: e.target.value })}
+                    className="form-control"
+                    style={{ borderColor: '#FCA5A5', background: '#FEF2F2' }}
+                    required
+                  />
+                </div>
+              )}
 
               <div style={{ marginBottom: '0.85rem' }}>
                 <label className="form-label" style={{ fontSize: '0.78rem', fontWeight: 700 }}>STREET ADDRESS</label>
@@ -4544,18 +4986,26 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
 
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem', marginBottom: '0.85rem' }}>
                 <div>
-                  <label className="form-label" style={{ fontSize: '0.78rem', fontWeight: 700 }}>SERVICE AREA (RULE 2)</label>
-                  <select
+                  <label className="form-label" style={{ fontSize: '0.78rem', fontWeight: 700 }}>SERVICE ZONE / AREA</label>
+                  <input
+                    type="text"
+                    list="nurse-modal-areas-list"
                     className="form-control"
+                    placeholder="e.g. Gachibowli, Kondapur, LB Nagar..."
                     value={nurseForm.serviceArea}
-                    onChange={(e) => setNurseForm({ ...nurseForm, serviceArea: e.target.value as HyderabadArea })}
-                  >
-                    <option value="Gachibowli">Gachibowli</option>
-                    <option value="LB Nagar">LB Nagar</option>
-                    <option value="Madhapur">Madhapur</option>
-                    <option value="Banjara Hills">Banjara Hills</option>
-                    <option value="Kukatpally">Kukatpally</option>
-                  </select>
+                    onChange={(e) => setNurseForm({ ...nurseForm, serviceArea: e.target.value })}
+                    required
+                  />
+                  <datalist id="nurse-modal-areas-list">
+                    <option value="Gachibowli" />
+                    <option value="LB Nagar" />
+                    <option value="Madhapur" />
+                    <option value="Banjara Hills" />
+                    <option value="Kukatpally" />
+                    <option value="Kondapur" />
+                    <option value="Jubilee Hills" />
+                    <option value="Secunderabad" />
+                  </datalist>
                 </div>
                 <div>
                   <label className="form-label" style={{ fontSize: '0.78rem', fontWeight: 700 }}>ROSTER STATUS</label>

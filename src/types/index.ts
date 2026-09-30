@@ -5,6 +5,7 @@ export type ServiceId =
   | 'ryles-tube'
   | 'suture-removal'
   | 'injection-administration'
+  | 'vitals-monitoring'
   | 'lab-diagnostics'
   | 'doctor-consult'
   | 'personalized-nursing';
@@ -30,17 +31,7 @@ export interface ServiceItem {
   createdAt?: string;
 }
 
-export type HyderabadArea = 
-  | 'Gachibowli'
-  | 'LB Nagar'
-  | 'Madhapur'
-  | 'Banjara Hills'
-  | 'Jubilee Hills'
-  | 'Kukatpally'
-  | 'Secunderabad'
-  | 'Kondapur'
-  | 'Dilsukhnagar'
-  | 'Hitec City';
+export type HyderabadArea = string;
 
 export interface Booking {
   id: string;
@@ -51,27 +42,42 @@ export interface Booking {
   patientGender?: 'Male' | 'Female' | 'Other' | string;
   serviceId: ServiceId;
   serviceTitle: string;
-  area: HyderabadArea;
+  area: string;
   fullAddress: string;
+  bookingType?: 'Instant' | 'Scheduled' | 'instant' | 'scheduled';
   preferredDate?: string;
   preferredTime?: string;
+  scheduledSlot?: string;
   hasPrescription: boolean;
   prescriptionFileName?: string;
   prescriptionUrl?: string;
-  status: 'Pending' | 'Assigned' | 'In-Progress' | 'Completed' | 'Cancelled';
+  status: 'Pending' | 'Assigned' | 'In-Progress' | 'Completed' | 'Cancelled' | 'Rejected';
   assignedNurseId?: string;
   assignedNurseName?: string;
-  referringNurseId?: string; // Referring Nurse who originated the lead
-  referringNurseName?: string; // Name of referring nurse
+  referringNurseId?: string;
+  referringNurseName?: string;
   estimatedFee: number;
   nightSurcharge?: number;
   referralBonusRupees?: number;
   notes?: string;
-  promoCode?: string; // e.g. FIRST100, SENIOR15, HYDCARE
-  discountRupees?: number; // Discount deducted
-  finalFee?: number; // Payable amount after discount
+  promoCode?: string;
+  discountRupees?: number;
+  finalFee?: number;
   invoiceNumber?: string;
   invoiceUrl?: string;
+  rejectionReason?: string;
+}
+
+export interface NursePayoutRecord {
+  id: string;
+  nurseId: string;
+  amount: number;
+  status: 'Paid' | 'Pending';
+  description: string;
+  date: string;
+  transactionRef?: string;
+  serviceTitle?: string;
+  rejectionReason?: string;
 }
 
 export interface NurseProfile {
@@ -80,28 +86,43 @@ export interface NurseProfile {
   phone: string;
   email: string;
   experienceYears: number;
+  experience?: string;
   qualification: string;
-  serviceArea: HyderabadArea;
-  status: 'Active' | 'Pending Verification' | 'On Leave';
+  serviceArea: string;
+  status: 'Active' | 'Pending Verification' | 'On Leave' | 'Rejected' | string;
   totalLeads: number;
   convertedLeads: number;
   totalReferrals: number;
   pointsEarned: number;
+  completedVisits?: number;
+  activeVisits?: number;
+  points?: number;
+  earningsPaid?: number;
+  earningsPending?: number;
   referralEarningsRupees: number;
+  totalEarningsRupees?: number;
+  paidEarningsRupees?: number;
+  pendingEarningsRupees?: number;
+  payouts?: NursePayoutRecord[];
   rating: number;
   avatarUrl?: string;
   certificateVerified: boolean;
   certificateUrl?: string;
   createdAt?: string;
+  rejectionReason?: string;
 }
 
 export interface NurseLead {
   id: string;
   nurseId?: string;
-  patientName: string;
-  patientPhone: string;
-  serviceId: ServiceId;
-  area: HyderabadArea;
+  referredNurseName?: string;
+  referredNursePhone?: string;
+  patientName?: string;
+  patientPhone?: string;
+  qualification?: string;
+  experienceYears?: number;
+  serviceId?: ServiceId;
+  area: string;
   submittedAt: string;
   status: 'Pending Approval' | 'Approved' | 'Rejected' | 'Converted' | 'Submitted' | 'Contacted' | 'Lost';
   assignedNurseId?: string;
@@ -111,6 +132,7 @@ export interface NurseLead {
   approvedAt?: string;
   approvedBy?: string;
   adminNotes?: string;
+  rejectionReason?: string;
 }
 
 export interface DoctorConsultation {
@@ -119,13 +141,14 @@ export interface DoctorConsultation {
   patientAge?: number;
   patientPhone: string;
   symptoms: string;
-  area: HyderabadArea;
+  area: string;
   requestedAt?: string;
-  status: 'Awaiting Call' | 'In Call' | 'Prescription Issued' | 'Completed';
+  status: 'Awaiting Call' | 'In Call' | 'Prescription Issued' | 'Completed' | 'Rejected';
   prescriptionIssued?: boolean;
   prescriptionText?: string;
   recommendedService?: ServiceId;
   doctorNotes?: string;
+  rejectionReason?: string;
 }
 
 export interface AppUser {
@@ -137,7 +160,7 @@ export interface AppUser {
   phone?: string;
   email?: string;
   designation?: string;
-  serviceArea?: HyderabadArea;
+  serviceArea?: string;
   avatarUrl?: string;
 }
 
@@ -175,7 +198,7 @@ export interface CloudflareStorageObject {
   sizeBytes: number;
   uploadedAt: string;
   publicUrl: string;
-  dataUrl?: string; // Base64 / Data URL for in-browser instant preview
+  dataUrl?: string;
   metadata?: {
     bookingId?: string;
     patientName?: string;
@@ -183,13 +206,16 @@ export interface CloudflareStorageObject {
     serviceTitle?: string;
     nurseId?: string;
     nurseName?: string;
+    qualification?: string;
+    experienceYears?: number;
+    certificateVerified?: boolean;
     amount?: number;
     description?: string;
   };
 }
 
 export interface InvoiceDetails {
-  invoiceNumber: string; // e.g. XN-INV-2026-1042
+  invoiceNumber: string;
   invoiceDate: string;
   bookingId: string;
   patientName: string;
@@ -219,4 +245,3 @@ export interface CloudflareR2Config {
   endpoint?: string;
   corsEnabled?: boolean;
 }
-

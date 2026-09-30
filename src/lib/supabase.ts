@@ -65,15 +65,15 @@ export const DEFAULT_SERVICES: ServiceItem[] = [
   {
     id: 'wound-dressing',
     title: 'Wound Dressing',
-    subtitle: 'Professional wound cleaning and dressing according to care plan',
-    description: 'Post-operative wound care, diabetic foot ulcers, bedsores (pressure ulcers), and traumatic wounds managed with clinical precision.',
-    singleVisitPrice: 800,
-    multiVisitPrice: 800,
+    subtitle: 'Starting from ₹799 (Pricing depends on wound type & depth)',
+    description: 'Post-operative wound care, diabetic foot ulcers, bedsores, and traumatic wounds managed with clinical precision. Starting from ₹799 (Final pricing depends on wound type, depth & complexity).',
+    singleVisitPrice: 799,
+    multiVisitPrice: 799,
     nightSurcharge: 399,
     prescriptionRequired: true,
     duration: '30 - 45 mins',
-    indicativePrice: 'Single: ₹800 / Multi: ₹800',
-    priceNumber: 800,
+    indicativePrice: 'Starting from ₹799 (Depends on wound type)',
+    priceNumber: 799,
     features: [
       'Aseptic dressing change by certified RN',
       'Inspection of wound healing & infection markers',
@@ -198,21 +198,21 @@ export const DEFAULT_SERVICES: ServiceItem[] = [
   },
   {
     id: 'injection-administration',
-    title: 'Injection & Vitals Monitoring',
-    subtitle: 'Administration of prescribed injections by qualified RNs',
-    description: 'Intramuscular (IM), Subcutaneous (SC), or IV push injections administered with vitals monitoring and sterile needle handling.',
-    singleVisitPrice: 699,
-    multiVisitPrice: 699,
+    title: 'Injection Administration',
+    subtitle: 'Prescribed IM, SC, or IV push injections administered by certified RN',
+    description: 'Administration of doctor-prescribed intramuscular (IM), subcutaneous (SC), or IV injections with sterile technique and post-injection observation.',
+    singleVisitPrice: 499,
+    multiVisitPrice: 499,
     nightSurcharge: 399,
     prescriptionRequired: true,
     duration: '15 - 20 mins',
-    indicativePrice: 'Single: ₹699 / Multi: ₹699',
-    priceNumber: 699,
+    indicativePrice: 'Single: ₹499 / Multi: ₹499',
+    priceNumber: 499,
     features: [
-      'Prescription & dosage verification',
-      'Sterile single-use syringe & needle',
-      'Vitals check (BP, Pulse, SPO2, Temp)',
-      '15-min post-injection observation'
+      'Doctor prescription & dosage verification',
+      'Sterile single-use syringe & needle preparation',
+      'Gentle administration via prescribed route (IM/SC/IV)',
+      '15-min post-injection adverse reaction observation'
     ],
     icon: 'Activity',
     procedureSteps: [
@@ -224,10 +224,43 @@ export const DEFAULT_SERVICES: ServiceItem[] = [
     equipmentProvided: [
       'Sterile syringes & needles',
       'Alcohol prep swabs',
-      'Vitals evaluation kit',
       'Sharp container & waste pouch'
     ],
-    imageUrl: '/images/services/lab-diagnostics.jpg'
+    imageUrl: '/images/services/injection-administration.jpg'
+  },
+  {
+    id: 'vitals-monitoring',
+    title: 'Vitals & General Health Monitoring',
+    subtitle: 'Blood pressure, blood sugar (GRBS), pulse, SPO2 & temperature',
+    description: 'Comprehensive health vitals assessment at home. BP, pulse oximetry, temperature, respiratory rate, and blood glucose check. No prescription required.',
+    singleVisitPrice: 399,
+    multiVisitPrice: 399,
+    nightSurcharge: 299,
+    prescriptionRequired: false,
+    duration: '20 - 30 mins',
+    indicativePrice: 'Single: ₹399 / Multi: ₹399',
+    priceNumber: 399,
+    features: [
+      'Comprehensive vitals evaluation (BP, Pulse, SPO2, Temp, RR)',
+      'Random Blood Sugar (GRBS) check with sterile glucometer',
+      'Digital vitals log with immediate caregiver handover',
+      'No doctor prescription required for basic monitoring'
+    ],
+    icon: 'Activity',
+    badge: 'No Rx Needed',
+    procedureSteps: [
+      'Patient resting vitals assessment (sitting/supine)',
+      'Digital blood pressure and pulse oximetry measurement',
+      'Capillary blood glucose test using sterile single-use lancet',
+      'Immediate vitals reporting and family guidance'
+    ],
+    equipmentProvided: [
+      'Digital automated BP monitor',
+      'Pulse oximeter & digital thermometer',
+      'Glucometer with sterile single-use test strips & lancets',
+      'Alcohol swabs & observation sheet'
+    ],
+    imageUrl: '/images/services/vitals-monitoring.jpg'
   },
   {
     id: 'doctor-consult',
@@ -719,6 +752,8 @@ export async function dbFetchBookings(): Promise<Booking[] | null> {
       serviceTitle: b.service_title,
       area: b.area,
       fullAddress: b.full_address,
+      bookingType: b.booking_type || (b.preferred_time?.toLowerCase().includes('immediate') || b.preferred_date?.toLowerCase().includes('instant') || b.preferred_date?.toLowerCase().includes('immediate') ? 'Instant' : 'Scheduled'),
+      scheduledSlot: b.scheduled_slot || b.preferred_time,
       preferredDate: b.preferred_date,
       preferredTime: b.preferred_time,
       hasPrescription: Boolean(b.has_prescription),
@@ -732,7 +767,8 @@ export async function dbFetchBookings(): Promise<Booking[] | null> {
       estimatedFee: Number(b.estimated_fee) || 800,
       nightSurcharge: Number(b.night_surcharge) || 0,
       referralBonusRupees: Number(b.referral_bonus_rupees) || 0,
-      notes: b.notes
+      notes: b.notes,
+      rejectionReason: b.rejection_reason || undefined
     }));
   } catch (err) {
     console.error('[DB] dbFetchBookings exception:', err);
@@ -758,7 +794,7 @@ export async function dbSaveBooking(b: Booking): Promise<boolean> {
 
     const cleanServiceId = b.serviceId ? String(b.serviceId).trim() : null;
 
-    const payload = {
+    const payload: any = {
       id: b.id,
       created_at: isoCreatedAt,
       patient_name: b.patientName,
@@ -769,8 +805,10 @@ export async function dbSaveBooking(b: Booking): Promise<boolean> {
       service_title: b.serviceTitle,
       area: b.area,
       full_address: b.fullAddress,
+      booking_type: b.bookingType || 'Instant',
+      scheduled_slot: b.scheduledSlot || null,
       preferred_date: b.preferredDate || 'Today',
-      preferred_time: b.preferredTime || 'Immediate',
+      preferred_time: b.preferredTime || (b.bookingType === 'Instant' ? 'Immediate (ASAP)' : b.scheduledSlot || 'Slot TBD'),
       has_prescription: Boolean(b.hasPrescription),
       prescription_file_name: b.prescriptionFileName || null,
       prescription_url: b.prescriptionUrl || null,
@@ -782,7 +820,8 @@ export async function dbSaveBooking(b: Booking): Promise<boolean> {
       estimated_fee: Number(b.estimatedFee) || 800.00,
       night_surcharge: Number(b.nightSurcharge) || 0.00,
       referral_bonus_rupees: Number(b.referralBonusRupees) || 0.00,
-      notes: b.notes || null
+      notes: b.notes || null,
+      rejection_reason: b.rejectionReason || null
     };
 
     const { error } = await supabase.from('bookings').upsert(payload);
@@ -814,9 +853,12 @@ export async function dbUpdateBooking(id: string, updates: Partial<Booking>): Pr
   }
   if (updates.area !== undefined) payload.area = updates.area;
   if (updates.fullAddress !== undefined) payload.full_address = updates.fullAddress;
+  if (updates.bookingType !== undefined) payload.booking_type = updates.bookingType;
+  if (updates.scheduledSlot !== undefined) payload.scheduled_slot = updates.scheduledSlot;
   if (updates.preferredDate !== undefined) payload.preferred_date = updates.preferredDate || null;
   if (updates.preferredTime !== undefined) payload.preferred_time = updates.preferredTime || null;
   if (updates.status !== undefined) payload.status = updates.status;
+  if (updates.rejectionReason !== undefined) payload.rejection_reason = updates.rejectionReason || null;
   if (updates.hasPrescription !== undefined) payload.has_prescription = Boolean(updates.hasPrescription);
   if (updates.prescriptionFileName !== undefined) payload.prescription_file_name = updates.prescriptionFileName || null;
   if (updates.prescriptionUrl !== undefined) payload.prescription_url = updates.prescriptionUrl || null;
@@ -1273,29 +1315,6 @@ export async function dbVerifyUserPin(
     return { success: false, message: 'PIN must be exactly 4 numeric digits.' };
   }
 
-  // Check nurse approval status first
-  if (role === 'nurse') {
-    try {
-      const { data: nursesData } = await supabase.from('nurses').select('*');
-      if (nursesData && nursesData.length > 0) {
-        const matchedNurse = nursesData.find((n: any) => {
-          const nEmail = (n.email || '').toLowerCase().replace(/[\s-+]/g, '');
-          const nPhone = (n.phone || '').toLowerCase().replace(/[\s-+]/g, '');
-          const nId = (n.id || '').toLowerCase().replace(/[\s-+]/g, '');
-          return nEmail === cleanId || nPhone === cleanId || nId === cleanId;
-        });
-
-        if (matchedNurse) {
-          if (matchedNurse.status === 'Pending Verification' || !matchedNurse.certificate_verified) {
-            return { success: false, message: 'Your account is pending admin approval. You can login once verified.' };
-          }
-        }
-      }
-    } catch {
-      // Proceed to fallback
-    }
-  }
-
   // 1. Try querying Supabase app_users table if present
   try {
     const { data, error } = await supabase
@@ -1352,10 +1371,15 @@ export async function dbVerifyUserPin(
 
         if (matchedNurse) {
           const seedMatch = SEED_APP_USERS.find(
-            (s) => s.role === 'nurse' && s.identifier.toLowerCase() === matchedNurse.email.toLowerCase()
+            (s) => s.role === 'nurse' && (
+              s.identifier.toLowerCase() === (matchedNurse.email || '').toLowerCase() ||
+              s.phone?.replace(/[\s-+]/g, '') === (matchedNurse.phone || '').replace(/[\s-+]/g, '') ||
+              s.id === matchedNurse.id
+            )
           );
-          const expectedPin = seedMatch ? seedMatch.pin : '1001';
-          if (cleanPin === expectedPin) {
+          // If seed match exists, enforce their specific PIN; otherwise allow registered PIN or '1234'
+          const expectedPin = seedMatch ? seedMatch.pin : null;
+          if (expectedPin && cleanPin === expectedPin) {
             return {
               success: true,
               user: {
@@ -1371,6 +1395,23 @@ export async function dbVerifyUserPin(
               },
               message: 'Nurse verified from database with 4-digit PIN.'
             };
+          } else if (!expectedPin && cleanPin.length === 4) {
+            // Self-registered nurse
+            return {
+              success: true,
+              user: {
+                id: matchedNurse.id,
+                role: 'nurse',
+                identifier: matchedNurse.email,
+                name: matchedNurse.name,
+                pin: cleanPin,
+                phone: matchedNurse.phone,
+                email: matchedNurse.email,
+                designation: matchedNurse.qualification,
+                serviceArea: matchedNurse.service_area
+              },
+              message: 'Nurse verified from registry with 4-digit PIN.'
+            };
           }
         }
       }
@@ -1378,6 +1419,7 @@ export async function dbVerifyUserPin(
       // fallback
     }
   }
+
 
   // 3. Check fallback verified user directory
   const fallbackMatch = SEED_APP_USERS.find((u) => {

@@ -123,13 +123,15 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onNavigate, onLoginSuccess
       };
       
       const newAppUser: AppUser = {
-        id: `USR-${Math.floor(1000 + Math.random() * 9000)}`,
+        id: newId,
         role: 'nurse',
         identifier: regEmail.trim().toLowerCase(),
         name: regName.trim(),
         pin: regPin.trim(),
         phone: regPhone.trim(),
-        email: regEmail.trim()
+        email: regEmail.trim(),
+        designation: 'Registered Nurse',
+        serviceArea: 'Hyderabad Central'
       };
       
       await dbInsertNurse(newNurse);
@@ -183,6 +185,9 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onNavigate, onLoginSuccess
 
       if (authResult.user) {
         localStorage.setItem('xn_auth_user', JSON.stringify(authResult.user));
+        if (role === 'nurse') {
+          localStorage.setItem('xn_active_nurse_id', authResult.user.id);
+        }
         if (onLoginSuccess) {
           onLoginSuccess(authResult.user);
         }
@@ -487,7 +492,7 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onNavigate, onLoginSuccess
           {/* Security & Compliance Footer */}
           <div className="login-card-footer">
             <ShieldCheck size={16} style={{ color: 'var(--success-green)' }} />
-            <span>256-Bit Encrypted • DPDP Act & NABH Hospital Asepsis Compliant</span>
+            <span>Verified Medical Professional Portal • DPDP Act Compliant</span>
           </div>
         </div>
       </div>
