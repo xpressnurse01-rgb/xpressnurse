@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { 
   HeartPulse, 
   User, 
@@ -14,20 +14,37 @@ import {
   Eye,
   EyeOff,
   UploadCloud,
-  FileText
+  FileText,
+  Sparkles
 } from 'lucide-react';
-import { dbVerifyUserPin, dbInsertNurse, dbInsertAppUser } from '../lib/supabase';
+import { 
+  dbVerifyUserPin, 
+  dbInsertNurse, 
+  dbInsertAppUser, 
+  dbInsertLead, 
+  dbUpdateNurseById, 
+  DEFAULT_NURSES, 
+  findNurseByReferralCode, 
+  generateNurseReferralCode 
+} from '../lib/supabase';
 import { uploadToCloudflareStorage } from '../lib/cloudflareStorage';
-import { AppUser, NurseProfile } from '../types';
+import { AppUser, NurseProfile, NurseLead } from '../types';
 
 interface LoginPageProps {
   onNavigate: (path: string) => void;
   onLoginSuccess?: (user: AppUser) => void;
+  nurses?: NurseProfile[];
+  onRefreshNurses?: () => void;
 }
 
 type LoginRole = 'nurse' | 'doctor' | 'admin';
 
-export const LoginPage: React.FC<LoginPageProps> = ({ onNavigate, onLoginSuccess }) => {
+export const LoginPage: React.FC<LoginPageProps> = ({ 
+  onNavigate, 
+  onLoginSuccess,
+  nurses = [],
+  onRefreshNurses
+}) => {
   const [role, setRole] = useState<LoginRole>('nurse');
   const [identifier, setIdentifier] = useState('');
   const [pin, setPin] = useState('');
@@ -42,8 +59,29 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onNavigate, onLoginSuccess
   const [regPhone, setRegPhone] = useState('');
   const [regEmail, setRegEmail] = useState('');
   const [regPin, setRegPin] = useState('');
+  const [regReferralCode, setRegReferralCode] = useState('');
   const [regCertificate, setRegCertificate] = useState<File | null>(null);
   const [regDisclaimer, setRegDisclaimer] = useState(false);
+
+  // Check URL query parameters for referral link (e.g. ?ref=XN-PRIYA101)
+  useEffect(() => {
+    try {
+      const urlParams = new URLSearchParams(window.location.search);
+      const refCode = urlParams.get('ref') || urlParams.get('referral');
+      if (refCode) {
+        setRole('nurse');
+        setIsRegistering(true);
+        setRegReferralCode(refCode.trim().toUpperCase());
+      }
+    } catch {
+      // ignore
+    }
+  }, []);
+
+  const activeNursesList = nurses && nurses.length > 0 ? nurses : DEFAULT_NURSES;
+  const matchedReferringNurse = regReferralCode.trim()
+    ? findNurseByReferralCode(regReferralCode.trim(), activeNursesList)
+    : undefined;
 
   // Switch roles and reset inputs cleanly (no pins or ids shown)
   const handleRoleChange = (newRole: LoginRole) => {
@@ -101,6 +139,7 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onNavigate, onLoginSuccess
       }
 
       const newId = `NUR-${Math.floor(1000 + Math.random() * 9000)}`;
+      const myReferralCode = generateNurseReferralCode(regName.trim(), newId, regPhone.trim());
       
       const newNurse: NurseProfile = {
         id: newId,
@@ -119,7 +158,10 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onNavigate, onLoginSuccess
         rating: 0,
         certificateVerified: false,
         certificateUrl: certUrl,
-        createdAt: new Date().toISOString()
+        createdAt: new Date().toISOString(),
+        referredByNurseId: matchedReferringNurse?.id || undefined,
+        referredByNurseName: matchedReferringNurse?.name || undefined,
+        referralCode: myReferralCode
       };
       
       const newAppUser: AppUser = {
@@ -136,10 +178,42 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onNavigate, onLoginSuccess
       
       await dbInsertNurse(newNurse);
       await dbInsertAppUser(newAppUser);
+
+      // Record referral in leads table so referring nurse and admin track it in real-time
+      if (matchedReferringNurse) {
+        const refLead: NurseLead = {
+          id: `LEAD-REF-${Date.now().toString().slice(-6)}`,
+          nurseId: matchedReferringNurse.id,
+          nurseName: matchedReferringNurse.name,
+          patientName: regName.trim(),
+          patientPhone: regPhone.trim(),
+          area: 'Hyderabad Central',
+          qualification: 'Registered Nurse',
+          status: 'Pending Approval',
+          leadValueRupees: 500,
+          pointsAwarded: 50,
+          referralCommissionRupees: 500,
+          referredNurseName: regName.trim(),
+          referredNursePhone: regPhone.trim(),
+          submittedAt: new Date().toISOString()
+        };
+        await dbInsertLead(refLead);
+
+        // Update referring nurse pending stats in DB
+        await dbUpdateNurseById(matchedReferringNurse.id, {
+          totalReferrals: (matchedReferringNurse.totalReferrals || 0) + 1,
+          earningsPending: (matchedReferringNurse.earningsPending || 0) + 500,
+          pointsEarned: (matchedReferringNurse.pointsEarned || 0) + 50
+        });
+      }
       
+      onRefreshNurses?.();
       setIsLoading(false);
-      setSuccessMsg('Registration submitted! Your profile is pending Admin approval.');
-      setRegName(''); setRegPhone(''); setRegEmail(''); setRegPin(''); setRegCertificate(null); setRegDisclaimer(false);
+      setSuccessMsg(matchedReferringNurse 
+        ? `Application submitted with referral from ${matchedReferringNurse.name}! Profile pending verification.`
+        : 'Registration submitted! Your profile is pending Admin approval.'
+      );
+      setRegName(''); setRegPhone(''); setRegEmail(''); setRegPin(''); setRegCertificate(null); setRegDisclaimer(false); setRegReferralCode('');
       setTimeout(() => setIsRegistering(false), 3000);
     } catch (err: any) {
       setIsLoading(false);
@@ -171,8 +245,8 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onNavigate, onLoginSuccess
     setIsLoading(true);
 
     try {
-      // Authenticate directly against Supabase database with 4-digit PIN
-      const authResult = await dbVerifyUserPin(role, identifier.trim(), cleanPin);
+      // Authenticate against database with smart unified role detection across Nurse, Doctor, and Admin
+      const authResult = await dbVerifyUserPin('any', identifier.trim(), cleanPin);
 
       if (!authResult.success) {
         setIsLoading(false);
@@ -181,27 +255,32 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onNavigate, onLoginSuccess
       }
 
       setIsLoading(false);
-      setSuccessMsg(`Welcome, ${authResult.user?.name || 'Authorized User'}!`);
+      const matchedUser = authResult.user;
+      const detectedRole = (matchedUser?.role as LoginRole) || role;
 
-      if (authResult.user) {
-        localStorage.setItem('xn_auth_user', JSON.stringify(authResult.user));
-        if (role === 'nurse') {
-          localStorage.setItem('xn_active_nurse_id', authResult.user.id);
+      setSuccessMsg(`Welcome, ${matchedUser?.name || 'Staff Member'}! Redirecting to ${detectedRole.toUpperCase()} Dashboard...`);
+
+      if (matchedUser) {
+        localStorage.setItem('xn_auth_user', JSON.stringify(matchedUser));
+        if (detectedRole === 'nurse') {
+          localStorage.setItem('xn_active_nurse_id', matchedUser.id);
         }
         if (onLoginSuccess) {
-          onLoginSuccess(authResult.user);
+          onLoginSuccess(matchedUser);
         }
       }
 
       setTimeout(() => {
-        if (role === 'nurse') {
+        if (detectedRole === 'nurse') {
           onNavigate('/nurse');
-        } else if (role === 'doctor') {
+        } else if (detectedRole === 'doctor') {
           onNavigate('/doctor');
-        } else if (role === 'admin') {
+        } else if (detectedRole === 'admin') {
+          onNavigate('/admin');
+        } else {
           onNavigate('/admin');
         }
-      }, 600);
+      }, 500);
     } catch (err: any) {
       setIsLoading(false);
       setErrorMsg(err.message || 'Authentication error. Please try again.');
@@ -426,6 +505,51 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onNavigate, onLoginSuccess
                   <label className="form-label">Phone</label>
                   <input type="tel" value={regPhone} onChange={e => setRegPhone(e.target.value)} className="form-control" placeholder="Mobile" />
                 </div>
+              </div>
+
+              {/* Colleague Referral Code Input */}
+              <div className="form-group" style={{ marginBottom: '0.85rem' }}>
+                <label className="form-label" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', margin: '0 0 0.35rem 0' }}>
+                  <span style={{ display: 'inline-flex', alignItems: 'center', gap: '0.35rem', fontWeight: 700, fontSize: '0.82rem' }}>
+                    <Sparkles size={14} style={{ color: '#9333EA' }} />
+                    <span>Colleague Referral Code (Optional)</span>
+                  </span>
+                  {matchedReferringNurse && (
+                    <span style={{ fontSize: '0.72rem', color: '#059669', fontWeight: 750 }}>
+                      ✓ Verified Colleague
+                    </span>
+                  )}
+                </label>
+                <input
+                  type="text"
+                  value={regReferralCode}
+                  onChange={(e) => setRegReferralCode(e.target.value.toUpperCase())}
+                  className="form-control"
+                  placeholder="e.g. XN-PRIYA101"
+                  style={{
+                    textTransform: 'uppercase',
+                    letterSpacing: '0.08em',
+                    fontWeight: 700,
+                    borderColor: matchedReferringNurse ? '#10B981' : undefined,
+                    background: matchedReferringNurse ? '#F0FDF4' : undefined
+                  }}
+                />
+                {matchedReferringNurse ? (
+                  <div style={{ fontSize: '0.76rem', color: '#047857', background: '#ECFDF5', border: '1px solid #A7F3D0', padding: '0.45rem 0.65rem', borderRadius: 8, marginTop: '0.4rem', display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
+                    <CheckCircle2 size={14} style={{ color: '#10B981', flexShrink: 0 }} />
+                    <span>
+                      Referred by <strong>{matchedReferringNurse.name}</strong> ({matchedReferringNurse.serviceArea}). Joining benefits will be activated!
+                    </span>
+                  </div>
+                ) : regReferralCode.trim().length >= 4 ? (
+                  <div style={{ fontSize: '0.74rem', color: '#B45309', background: '#FFFBEB', border: '1px solid #FDE68A', padding: '0.35rem 0.65rem', borderRadius: 6, marginTop: '0.35rem' }}>
+                    ℹ️ Code not found in registered fleet, but you can continue registration as an individual nurse.
+                  </div>
+                ) : (
+                  <div style={{ fontSize: '0.72rem', color: '#64748B', marginTop: '0.25rem' }}>
+                    Enter the referral code sent by an existing nurse to link your registration.
+                  </div>
+                )}
               </div>
 
               <div className="form-group" style={{ marginBottom: '0.75rem' }}>

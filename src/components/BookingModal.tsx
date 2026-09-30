@@ -620,16 +620,13 @@ export const BookingModal: React.FC<BookingModalProps> = ({
               {createdBooking.prescriptionFileName && (
                 <div style={{ display: 'flex', justifyContent: 'space-between', paddingBottom: '0.5rem', borderBottom: '1px solid var(--neutral-200)', marginBottom: '0.5rem', alignItems: 'center' }}>
                   <span style={{ fontSize: '0.8rem', color: 'var(--neutral-500)', fontWeight: 600 }}>Doctor's Prescription</span>
-                  <a
-                    href={createdBooking.prescriptionUrl || `https://pub-830eaa9d07034c8d985d7d00577f77e9.r2.dev/prescriptions/${createdBooking.prescriptionFileName}`}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    style={{ fontSize: '0.8rem', fontWeight: 700, color: '#0284C7', textDecoration: 'none', display: 'inline-flex', alignItems: 'center', gap: '0.25rem' }}
+                  <span
+                    style={{ fontSize: '0.8rem', fontWeight: 700, color: '#0284C7', display: 'inline-flex', alignItems: 'center', gap: '0.35rem' }}
                   >
-                    <FileText size={12} />
-                    <span>{createdBooking.prescriptionFileName.length > 20 ? createdBooking.prescriptionFileName.slice(0, 18) + '...' : createdBooking.prescriptionFileName}</span>
-                    <ExternalLink size={11} />
-                  </a>
+                    <FileText size={13} />
+                    <span>{createdBooking.prescriptionFileName.length > 22 ? createdBooking.prescriptionFileName.slice(0, 20) + '...' : createdBooking.prescriptionFileName}</span>
+                    <span style={{ fontSize: '0.7rem', color: '#16A34A', background: '#DCFCE7', padding: '1px 6px', borderRadius: 4, fontWeight: 700 }}>✓ Attached</span>
+                  </span>
                 </div>
               )}
               {createdBooking.promoCode && (

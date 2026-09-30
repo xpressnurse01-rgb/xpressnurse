@@ -346,7 +346,8 @@ export const DEFAULT_NURSES: NurseProfile[] = [
     referralEarningsRupees: 3800,
     rating: 4.90,
     avatarUrl: 'https://images.unsplash.com/photo-1594824813589-9a25b42d768a?w=150&auto=format&fit=crop&q=80',
-    certificateVerified: true
+    certificateVerified: true,
+    referralCode: 'XN-PRIYA101'
   },
   {
     id: 'nurse-102',
@@ -364,7 +365,8 @@ export const DEFAULT_NURSES: NurseProfile[] = [
     referralEarningsRupees: 5400,
     rating: 4.95,
     avatarUrl: 'https://images.unsplash.com/photo-1622253692010-333f2da6031d?w=150&auto=format&fit=crop&q=80',
-    certificateVerified: true
+    certificateVerified: true,
+    referralCode: 'XN-RAJESH102'
   },
   {
     id: 'nurse-103',
@@ -382,7 +384,10 @@ export const DEFAULT_NURSES: NurseProfile[] = [
     referralEarningsRupees: 2900,
     rating: 4.88,
     avatarUrl: 'https://images.unsplash.com/photo-1559839734-2b71ea197ec2?w=150&auto=format&fit=crop&q=80',
-    certificateVerified: true
+    certificateVerified: true,
+    referralCode: 'XN-ANJALI103',
+    referredByNurseId: 'nurse-101',
+    referredByNurseName: 'Nurse Priya Sharma'
   },
   {
     id: 'nurse-104',
@@ -400,7 +405,8 @@ export const DEFAULT_NURSES: NurseProfile[] = [
     referralEarningsRupees: 6700,
     rating: 5.00,
     avatarUrl: 'https://images.unsplash.com/photo-1582750433449-648ed127bb54?w=150&auto=format&fit=crop&q=80',
-    certificateVerified: true
+    certificateVerified: true,
+    referralCode: 'XN-SUNITA104'
   }
 ];
 // Real-time Supabase Database: Bookings, Leads, Consultations, and Coupons
@@ -587,8 +593,33 @@ export async function dbDeleteService(id: string): Promise<boolean> {
 }
 
 // ============================================================================
-// 2. NURSES TABLE (public.nurses)
+// 2. NURSES TABLE (public.nurses) & REFERRAL CODE ENGINE
 // ============================================================================
+
+export function generateNurseReferralCode(name: string, id: string, phone?: string): string {
+  const cleanFirst = (name || '')
+    .replace(/^nurse\s+/i, '')
+    .trim()
+    .split(' ')[0]
+    .replace(/[^a-zA-Z]/g, '')
+    .toUpperCase() || 'RN';
+  const digits = (id || '').replace(/\D/g, '').slice(-3) || (phone || '').replace(/\D/g, '').slice(-3) || '101';
+  return `XN-${cleanFirst}${digits}`;
+}
+
+export function findNurseByReferralCode(code: string, nurses: NurseProfile[]): NurseProfile | undefined {
+  if (!code || !code.trim()) return undefined;
+  const clean = code.trim().toUpperCase().replace(/\s+/g, '');
+  return nurses.find((n) => {
+    const genCode = generateNurseReferralCode(n.name, n.id, n.phone);
+    return (
+      (n.referralCode && n.referralCode.toUpperCase() === clean) ||
+      genCode === clean ||
+      n.id.toUpperCase() === clean ||
+      n.phone.replace(/\D/g, '') === clean
+    );
+  });
+}
 
 export async function dbFetchNurses(): Promise<NurseProfile[] | null> {
   try {
@@ -617,7 +648,12 @@ export async function dbFetchNurses(): Promise<NurseProfile[] | null> {
       avatarUrl: n.avatar_url || 'https://images.unsplash.com/photo-1594824813589-9a25b42d768a?w=150&auto=format&fit=crop&q=80',
       certificateVerified: Boolean(n.certificate_verified),
       certificateUrl: n.certificate_url || undefined,
-      createdAt: n.created_at
+      createdAt: n.created_at,
+      referredByNurseId: n.referred_by_nurse_id || undefined,
+      referralCode: n.referral_code || generateNurseReferralCode(n.name, n.id, n.phone),
+      earningsPaid: Number(n.earnings_paid) || 0,
+      earningsPending: Number(n.earnings_pending) || 0,
+      rejectionReason: n.rejection_reason || undefined
     }));
   } catch {
     return DEFAULT_NURSES;
@@ -647,7 +683,11 @@ export async function dbUpdateNurse(n: NurseProfile): Promise<boolean> {
       rating: Number(n.rating) || 4.90,
       avatar_url: n.avatarUrl || null,
       certificate_verified: Boolean(n.certificateVerified ?? true),
-      certificate_url: n.certificateUrl || null
+      certificate_url: n.certificateUrl || null,
+      referred_by_nurse_id: n.referredByNurseId || null,
+      earnings_paid: Number(n.earningsPaid) || 0,
+      earnings_pending: Number(n.earningsPending) || 0,
+      rejection_reason: n.rejectionReason || null
     };
 
     const { error } = await supabase.from('nurses').upsert(payload);
@@ -676,7 +716,11 @@ export async function dbInsertNurse(n: NurseProfile): Promise<boolean> {
       rating: Number(n.rating) || 4.90,
       avatar_url: n.avatarUrl || 'https://images.unsplash.com/photo-1594824813589-9a25b42d768a?w=150&auto=format&fit=crop&q=80',
       certificate_verified: Boolean(n.certificateVerified ?? true),
-      certificate_url: n.certificateUrl || null
+      certificate_url: n.certificateUrl || null,
+      referred_by_nurse_id: n.referredByNurseId || null,
+      earnings_paid: Number(n.earningsPaid) || 0,
+      earnings_pending: Number(n.earningsPending) || 0,
+      rejection_reason: n.rejectionReason || null
     };
 
     const { error } = await supabase.from('nurses').insert(payload);
@@ -704,6 +748,10 @@ export async function dbUpdateNurseById(id: string, updates: Partial<NurseProfil
   if (updates.certificateVerified !== undefined) payload.certificate_verified = Boolean(updates.certificateVerified);
   if (updates.certificateUrl !== undefined) payload.certificate_url = updates.certificateUrl;
   if (updates.avatarUrl !== undefined) payload.avatar_url = updates.avatarUrl;
+  if (updates.referredByNurseId !== undefined) payload.referred_by_nurse_id = updates.referredByNurseId;
+  if (updates.earningsPaid !== undefined) payload.earnings_paid = Number(updates.earningsPaid);
+  if (updates.earningsPending !== undefined) payload.earnings_pending = Number(updates.earningsPending);
+  if (updates.rejectionReason !== undefined) payload.rejection_reason = updates.rejectionReason;
 
   try {
     const { error } = await supabase.from('nurses').update(payload).eq('id', id);
@@ -912,8 +960,8 @@ export async function dbFetchLeads(): Promise<NurseLead[] | null> {
     return data.map((l: any) => ({
       id: l.id,
       nurseId: l.nurse_id,
-      patientName: l.patient_name,
-      patientPhone: l.patient_phone,
+      patientName: l.patient_name || l.referred_nurse_name,
+      patientPhone: l.patient_phone || l.referred_nurse_phone,
       serviceId: l.service_id,
       area: l.area,
       submittedAt: l.submitted_at,
@@ -921,7 +969,12 @@ export async function dbFetchLeads(): Promise<NurseLead[] | null> {
       assignedNurseId: l.assigned_nurse_id,
       leadValueRupees: Number(l.lead_value_rupees) || 1000.00,
       pointsAwarded: Math.round(Number(l.points_awarded)) || 50,
-      referralCommissionRupees: Number(l.referral_commission_rupees) || 100.00
+      referralCommissionRupees: Number(l.referral_commission_rupees) || 100.00,
+      referredNurseName: l.referred_nurse_name || l.patient_name || undefined,
+      referredNursePhone: l.referred_nurse_phone || l.patient_phone || undefined,
+      qualification: l.qualification || undefined,
+      experienceYears: Number(l.experience_years) || 3,
+      rejectionReason: l.rejection_reason || undefined
     }));
   } catch (err) {
     console.error('[DB] dbFetchLeads exception:', err);
@@ -939,19 +992,24 @@ export async function dbSaveLead(lead: NurseLead): Promise<boolean> {
     const cleanNurseId = (lead.nurseId && lead.nurseId.trim() !== '' && lead.nurseId !== 'none') ? lead.nurseId.trim() : null;
     const cleanAssignedNurseId = (lead.assignedNurseId && lead.assignedNurseId.trim() !== '' && lead.assignedNurseId !== 'none') ? lead.assignedNurseId.trim() : null;
 
-    const payload = {
+    const payload: any = {
       id: lead.id,
       nurse_id: cleanNurseId,
-      patient_name: lead.patientName,
-      patient_phone: lead.patientPhone,
-      service_id: lead.serviceId,
+      patient_name: lead.patientName || lead.referredNurseName || null,
+      patient_phone: lead.patientPhone || lead.referredNursePhone || null,
+      service_id: lead.serviceId || null,
       area: lead.area,
       submitted_at: isoSubmittedAt,
       status: lead.status || 'Converted',
       assigned_nurse_id: cleanAssignedNurseId,
       lead_value_rupees: Number(lead.leadValueRupees) || 1000.00,
       points_awarded: Math.round(Number(lead.pointsAwarded)) || 50,
-      referral_commission_rupees: Number(lead.referralCommissionRupees) || 100.00
+      referral_commission_rupees: Number(lead.referralCommissionRupees) || 100.00,
+      referred_nurse_name: lead.referredNurseName || lead.patientName || null,
+      referred_nurse_phone: lead.referredNursePhone || lead.patientPhone || null,
+      qualification: lead.qualification || null,
+      experience_years: Math.round(Number(lead.experienceYears)) || 3,
+      rejection_reason: lead.rejectionReason || null
     };
 
     const { error } = await supabase.from('leads').upsert(payload);
@@ -986,6 +1044,11 @@ export async function dbUpdateLeadById(id: string, updates: Partial<NurseLead>):
   if (updates.pointsAwarded !== undefined) payload.points_awarded = Math.round(Number(updates.pointsAwarded));
   if (updates.leadValueRupees !== undefined) payload.lead_value_rupees = Number(updates.leadValueRupees);
   if (updates.referralCommissionRupees !== undefined) payload.referral_commission_rupees = Number(updates.referralCommissionRupees);
+  if (updates.referredNurseName !== undefined) payload.referred_nurse_name = updates.referredNurseName;
+  if (updates.referredNursePhone !== undefined) payload.referred_nurse_phone = updates.referredNursePhone;
+  if (updates.qualification !== undefined) payload.qualification = updates.qualification;
+  if (updates.experienceYears !== undefined) payload.experience_years = Math.round(Number(updates.experienceYears));
+  if (updates.rejectionReason !== undefined) payload.rejection_reason = updates.rejectionReason;
 
   try {
     const { error } = await supabase.from('leads').update(payload).eq('id', id);
@@ -1304,7 +1367,7 @@ export async function dbFetchAppUsers(): Promise<AppUser[]> {
 }
 
 export async function dbVerifyUserPin(
-  role: 'patient' | 'nurse' | 'doctor' | 'admin',
+  role: 'patient' | 'nurse' | 'doctor' | 'admin' | 'any' = 'any',
   inputIdentifier: string,
   inputPin: string
 ): Promise<{ success: boolean; user?: AppUser; message: string }> {
@@ -1315,15 +1378,48 @@ export async function dbVerifyUserPin(
     return { success: false, message: 'PIN must be exactly 4 numeric digits.' };
   }
 
-  // 1. Try querying Supabase app_users table if present
+  // 1. Try querying Supabase app_users table
   try {
-    const { data, error } = await supabase
-      .from('app_users')
-      .select('*')
-      .eq('role', role);
+    let query = supabase.from('app_users').select('*');
+    if (role && role !== 'any') {
+      // First try with specified role
+      const { data: specificData } = await query.eq('role', role);
+      if (specificData && specificData.length > 0) {
+        const matched = specificData.find((u: any) => {
+          const uId = (u.identifier || '').toLowerCase().replace(/[\s-+]/g, '');
+          const uPhone = (u.phone || '').toLowerCase().replace(/[\s-+]/g, '');
+          const uEmail = (u.email || '').toLowerCase().replace(/[\s-+]/g, '');
+          return uId === cleanId || uPhone === cleanId || uEmail === cleanId;
+        });
+        if (matched) {
+          if (matched.pin === cleanPin) {
+            return {
+              success: true,
+              user: {
+                id: matched.id,
+                role: matched.role,
+                identifier: matched.identifier,
+                name: matched.name,
+                pin: matched.pin,
+                phone: matched.phone,
+                email: matched.email,
+                designation: matched.designation,
+                serviceArea: matched.service_area,
+                avatarUrl: matched.avatar_url
+              },
+              message: `Verified successfully as ${matched.role.toUpperCase()}.`
+            };
+          } else {
+            return { success: false, message: 'Incorrect 4-digit PIN. Please verify credentials.' };
+          }
+        }
+      }
+    }
 
-    if (!error && data && data.length > 0) {
-      const matched = data.find((u: any) => {
+    // Try finding across ALL roles in app_users (Smart Unified Search)
+    const { data: allUsers } = await supabase.from('app_users').select('*');
+    if (allUsers && allUsers.length > 0) {
+      const matched = allUsers.find((u: any) => {
         const uId = (u.identifier || '').toLowerCase().replace(/[\s-+]/g, '');
         const uPhone = (u.phone || '').toLowerCase().replace(/[\s-+]/g, '');
         const uEmail = (u.email || '').toLowerCase().replace(/[\s-+]/g, '');
@@ -1346,10 +1442,10 @@ export async function dbVerifyUserPin(
               serviceArea: matched.service_area,
               avatarUrl: matched.avatar_url
             },
-            message: '4-Digit PIN verified successfully from database.'
+            message: `Verified successfully as ${matched.role.toUpperCase()}.`
           };
         } else {
-          return { success: false, message: 'Incorrect 4-digit PIN. Please verify credentials.' };
+          return { success: false, message: 'Incorrect 4-digit PIN for this account.' };
         }
       }
     }
@@ -1357,73 +1453,70 @@ export async function dbVerifyUserPin(
     // proceed to nurses table and seed directory
   }
 
-  // 2. Query nurses table directly if nurse login
-  if (role === 'nurse') {
-    try {
-      const { data: nursesData } = await supabase.from('nurses').select('*');
-      if (nursesData && nursesData.length > 0) {
-        const matchedNurse = nursesData.find((n: any) => {
-          const nEmail = (n.email || '').toLowerCase().replace(/[\s-+]/g, '');
-          const nPhone = (n.phone || '').toLowerCase().replace(/[\s-+]/g, '');
-          const nId = (n.id || '').toLowerCase().replace(/[\s-+]/g, '');
-          return nEmail === cleanId || nPhone === cleanId || nId === cleanId;
-        });
+  // 2. Query nurses table directly for nurse credentials
+  try {
+    const { data: nursesData } = await supabase.from('nurses').select('*');
+    if (nursesData && nursesData.length > 0) {
+      const matchedNurse = nursesData.find((n: any) => {
+        const nEmail = (n.email || '').toLowerCase().replace(/[\s-+]/g, '');
+        const nPhone = (n.phone || '').toLowerCase().replace(/[\s-+]/g, '');
+        const nId = (n.id || '').toLowerCase().replace(/[\s-+]/g, '');
+        return nEmail === cleanId || nPhone === cleanId || nId === cleanId;
+      });
 
-        if (matchedNurse) {
-          const seedMatch = SEED_APP_USERS.find(
-            (s) => s.role === 'nurse' && (
-              s.identifier.toLowerCase() === (matchedNurse.email || '').toLowerCase() ||
-              s.phone?.replace(/[\s-+]/g, '') === (matchedNurse.phone || '').replace(/[\s-+]/g, '') ||
-              s.id === matchedNurse.id
-            )
-          );
-          // If seed match exists, enforce their specific PIN; otherwise allow registered PIN or '1234'
-          const expectedPin = seedMatch ? seedMatch.pin : null;
-          if (expectedPin && cleanPin === expectedPin) {
-            return {
-              success: true,
-              user: {
-                id: matchedNurse.id,
-                role: 'nurse',
-                identifier: matchedNurse.email,
-                name: matchedNurse.name,
-                pin: cleanPin,
-                phone: matchedNurse.phone,
-                email: matchedNurse.email,
-                designation: matchedNurse.qualification,
-                serviceArea: matchedNurse.service_area
-              },
-              message: 'Nurse verified from database with 4-digit PIN.'
-            };
-          } else if (!expectedPin && cleanPin.length === 4) {
-            // Self-registered nurse
-            return {
-              success: true,
-              user: {
-                id: matchedNurse.id,
-                role: 'nurse',
-                identifier: matchedNurse.email,
-                name: matchedNurse.name,
-                pin: cleanPin,
-                phone: matchedNurse.phone,
-                email: matchedNurse.email,
-                designation: matchedNurse.qualification,
-                serviceArea: matchedNurse.service_area
-              },
-              message: 'Nurse verified from registry with 4-digit PIN.'
-            };
-          }
+      if (matchedNurse) {
+        const seedMatch = SEED_APP_USERS.find(
+          (s) => s.role === 'nurse' && (
+            s.identifier.toLowerCase() === (matchedNurse.email || '').toLowerCase() ||
+            s.phone?.replace(/[\s-+]/g, '') === (matchedNurse.phone || '').replace(/[\s-+]/g, '') ||
+            s.id === matchedNurse.id
+          )
+        );
+        const expectedPin = seedMatch ? seedMatch.pin : null;
+        if (expectedPin && cleanPin === expectedPin) {
+          return {
+            success: true,
+            user: {
+              id: matchedNurse.id,
+              role: 'nurse',
+              identifier: matchedNurse.email,
+              name: matchedNurse.name,
+              pin: cleanPin,
+              phone: matchedNurse.phone,
+              email: matchedNurse.email,
+              designation: matchedNurse.qualification,
+              serviceArea: matchedNurse.service_area
+            },
+            message: 'Nurse verified from database with 4-digit PIN.'
+          };
+        } else if (!expectedPin && cleanPin.length === 4) {
+          // Self-registered nurse
+          return {
+            success: true,
+            user: {
+              id: matchedNurse.id,
+              role: 'nurse',
+              identifier: matchedNurse.email,
+              name: matchedNurse.name,
+              pin: cleanPin,
+              phone: matchedNurse.phone,
+              email: matchedNurse.email,
+              designation: matchedNurse.qualification,
+              serviceArea: matchedNurse.service_area
+            },
+            message: 'Nurse verified from registry with 4-digit PIN.'
+          };
+        } else {
+          return { success: false, message: 'Incorrect 4-digit PIN for registered nurse.' };
         }
       }
-    } catch {
-      // fallback
     }
+  } catch {
+    // fallback
   }
 
-
-  // 3. Check fallback verified user directory
+  // 3. Check fallback verified user directory (Across ANY role)
   const fallbackMatch = SEED_APP_USERS.find((u) => {
-    if (u.role !== role) return false;
     const uId = u.identifier.toLowerCase().replace(/[\s-+]/g, '');
     const uPhone = (u.phone || '').toLowerCase().replace(/[\s-+]/g, '');
     const uEmail = (u.email || '').toLowerCase().replace(/[\s-+]/g, '');
@@ -1435,7 +1528,7 @@ export async function dbVerifyUserPin(
       return {
         success: true,
         user: fallbackMatch,
-        message: '4-Digit PIN verified from database directory.'
+        message: `Verified successfully as ${fallbackMatch.role.toUpperCase()}.`
       };
     } else {
       return { success: false, message: 'Incorrect 4-digit PIN for this account.' };
@@ -1443,7 +1536,7 @@ export async function dbVerifyUserPin(
   }
 
   // For patient testing with 10-digit mobile number
-  if (role === 'patient' && cleanId.length === 10 && (cleanPin === '7569' || cleanPin === '1234' || cleanPin === '8899')) {
+  if (cleanId.length === 10 && (cleanPin === '7569' || cleanPin === '1234' || cleanPin === '8899')) {
     return {
       success: true,
       user: {
@@ -1460,7 +1553,7 @@ export async function dbVerifyUserPin(
 
   return {
     success: false,
-    message: `Account not found in ${role} directory. Please check your staff ID or phone number.`
+    message: 'No registered staff account found matching that email, phone, or staff ID.'
   };
 }
 

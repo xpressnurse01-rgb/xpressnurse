@@ -128,9 +128,18 @@ export const App: React.FC = () => {
     if (window.location.pathname !== path) {
       window.history.pushState({}, '', path);
     }
-    setCurrentPath(path);
+    setCurrentPath(path.split('?')[0]);
     window.scrollTo({ top: 0, behavior: 'smooth' });
   };
+
+  // Automatically direct users with referral links (?ref= or ?referral=) to the registration portal
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const refCode = params.get('ref') || params.get('referral');
+    if (refCode && currentPath !== '/login') {
+      navigate('/login' + window.location.search);
+    }
+  }, [currentPath]);
 
   // =========================================================================
   // ALL DATA FETCHED FROM SUPABASE DATABASE — NO MOCK DATA
@@ -363,9 +372,159 @@ export const App: React.FC = () => {
   }, []);
 
   // =========================================================================
-  // SUPABASE REALTIME SUBSCRIPTION — LIVE DATABASE SYNC ACROSS ALL PAGES
+  // =========================================================================
+  // HELPER: Broadcast realtime updates across browser tabs & windows instantly
+  // Uses dual mechanism: BroadcastChannel (0ms in modern browsers) + localStorage storage event fallback
+  // =========================================================================
+  const broadcastRealtimeUpdate = (type: string, data: any) => {
+    const payload = { type, data, timestamp: Date.now() };
+    try {
+      if (typeof window !== 'undefined' && 'BroadcastChannel' in window) {
+        const bc = new BroadcastChannel('xn_live_sync_bus');
+        bc.postMessage(payload);
+        bc.close();
+      }
+    } catch {}
+    try {
+      if (typeof window !== 'undefined' && window.localStorage) {
+        localStorage.setItem('xn_realtime_sync_event', JSON.stringify(payload));
+      }
+    } catch {}
+  };
+
+  // Safe background data refresh with equality checking to prevent unnecessary re-renders
+  const refreshAllDataFromDb = async () => {
+    try {
+      const [remoteBookings, remoteNurses, remoteLeads, remoteConsults] = await Promise.all([
+        dbFetchBookings(),
+        dbFetchNurses(),
+        dbFetchLeads(),
+        dbFetchConsultations()
+      ]);
+
+      if (remoteBookings && remoteBookings.length > 0) {
+        setBookings((prev) => {
+          if (prev.length === remoteBookings.length && JSON.stringify(prev) === JSON.stringify(remoteBookings)) {
+            return prev;
+          }
+          return remoteBookings;
+        });
+      }
+      if (remoteNurses && remoteNurses.length > 0) {
+        setNurses((prev) => {
+          if (prev.length === remoteNurses.length && JSON.stringify(prev) === JSON.stringify(remoteNurses)) {
+            return prev;
+          }
+          return remoteNurses;
+        });
+      }
+      if (remoteLeads && remoteLeads.length > 0) {
+        setLeads((prev) => {
+          if (prev.length === remoteLeads.length && JSON.stringify(prev) === JSON.stringify(remoteLeads)) {
+            return prev;
+          }
+          return remoteLeads;
+        });
+      }
+      if (remoteConsults && remoteConsults.length > 0) {
+        setConsultations((prev) => {
+          if (prev.length === remoteConsults.length && JSON.stringify(prev) === JSON.stringify(remoteConsults)) {
+            return prev;
+          }
+          return remoteConsults;
+        });
+      }
+    } catch (e) {
+      console.warn('[Realtime Sync] Background sync warning:', e);
+    }
+  };
+
+  // =========================================================================
+  // ZERO-DELAY REALTIME SYNC ENGINE
+  // Layer 1: BroadcastChannel (Instant Cross-Tab)
+  // Layer 2: localStorage StorageEvent (Instant Cross-Window)
+  // Layer 3: Focus & Tab Visibility Change (Instant when user switches tabs)
+  // Layer 4: Supabase Realtime WebSocket Subscriptions
+  // Layer 5: High-Frequency Background Heartbeat Poller (Every 1.5 seconds)
   // =========================================================================
   useEffect(() => {
+    const handleSyncEvent = (type: string, data: any) => {
+      if (!type) return;
+
+      if (type === 'BOOKING_UPDATE' && data?.id) {
+        setBookings((prev) => prev.map((b) => (b.id === data.id ? { ...b, ...data } : b)));
+      } else if (type === 'BOOKING_CREATE' && data?.id) {
+        setBookings((prev) => {
+          const exists = prev.some((b) => b.id === data.id);
+          return exists ? prev.map((b) => (b.id === data.id ? { ...b, ...data } : b)) : [data, ...prev];
+        });
+      } else if (type === 'BOOKING_DELETE' && data?.id) {
+        setBookings((prev) => prev.filter((b) => b.id !== data.id));
+      } else if (type === 'NURSE_UPDATE' && data?.id) {
+        setNurses((prev) => prev.map((n) => (n.id === data.id ? { ...n, ...data } : n)));
+      } else if (type === 'NURSE_CREATE' && data?.id) {
+        setNurses((prev) => {
+          const exists = prev.some((n) => n.id === data.id);
+          return exists ? prev.map((n) => (n.id === data.id ? { ...n, ...data } : n)) : [...prev, data];
+        });
+      } else if (type === 'NURSE_DELETE' && data?.id) {
+        setNurses((prev) => prev.filter((n) => n.id !== data.id));
+      } else if (type === 'LEAD_UPDATE' && data?.id) {
+        setLeads((prev) => prev.map((l) => (l.id === data.id ? { ...l, ...data } : l)));
+      } else if (type === 'LEAD_CREATE' && data?.id) {
+        setLeads((prev) => {
+          const exists = prev.some((l) => l.id === data.id);
+          return exists ? prev.map((l) => (l.id === data.id ? { ...l, ...data } : l)) : [data, ...prev];
+        });
+      } else if (type === 'LEAD_DELETE' && data?.id) {
+        setLeads((prev) => prev.filter((l) => l.id !== data.id));
+      } else if (type === 'CONSULTATION_UPDATE' && data?.id) {
+        setConsultations((prev) => prev.map((c) => (c.id === data.id ? { ...c, ...data } : c)));
+      } else if (type === 'CONSULTATION_CREATE' && data?.id) {
+        setConsultations((prev) => {
+          const exists = prev.some((c) => c.id === data.id);
+          return exists ? prev.map((c) => (c.id === data.id ? { ...c, ...data } : c)) : [data, ...prev];
+        });
+      } else if (type === 'CONSULTATION_DELETE' && data?.id) {
+        setConsultations((prev) => prev.filter((c) => c.id !== data.id));
+      } else if (type === 'RESYNC_ALL') {
+        refreshAllDataFromDb();
+      }
+    };
+
+    // 1. Cross-Tab Broadcast Channel
+    let bc: BroadcastChannel | null = null;
+    try {
+      if (typeof window !== 'undefined' && 'BroadcastChannel' in window) {
+        bc = new BroadcastChannel('xn_live_sync_bus');
+        bc.onmessage = (event) => {
+          const { type, data } = event.data || {};
+          handleSyncEvent(type, data);
+        };
+      }
+    } catch {}
+
+    // 2. Storage event listener (fires across all tabs/windows in the browser)
+    const handleStorageEvent = (e: StorageEvent) => {
+      if (e.key === 'xn_realtime_sync_event' && e.newValue) {
+        try {
+          const { type, data } = JSON.parse(e.newValue);
+          handleSyncEvent(type, data);
+        } catch {}
+      }
+    };
+    window.addEventListener('storage', handleStorageEvent);
+
+    // 3. Tab Focus & Visibility Resync (instantly sync when switching between tabs without reload)
+    const handleFocusOrVisibility = () => {
+      if (typeof document !== 'undefined' && document.visibilityState === 'visible') {
+        refreshAllDataFromDb();
+      }
+    };
+    window.addEventListener('focus', handleFocusOrVisibility);
+    document.addEventListener('visibilitychange', handleFocusOrVisibility);
+
+    // 4. Supabase Realtime WebSocket Subscriptions for all tables
     const channel = supabase
       .channel('realtime-xpressnurse-live-sync')
       .on(
@@ -373,6 +532,44 @@ export const App: React.FC = () => {
         { event: '*', schema: 'public', table: 'bookings' },
         async (payload) => {
           console.log('[Realtime DB] Live Booking update:', payload);
+          if (payload.new && (payload.eventType === 'UPDATE' || payload.eventType === 'INSERT')) {
+            const raw: any = payload.new;
+            setBookings((prev) => {
+              const mapped: Booking = {
+                id: raw.id,
+                createdAt: raw.created_at,
+                patientName: raw.patient_name || '',
+                patientPhone: raw.patient_phone || '',
+                patientAge: raw.patient_age ? Number(raw.patient_age) : undefined,
+                patientGender: raw.patient_gender,
+                serviceId: raw.service_id,
+                serviceTitle: raw.service_title || 'Home Visit',
+                area: raw.area || 'Hyderabad',
+                fullAddress: raw.full_address || `${raw.area}, Hyderabad`,
+                preferredDate: raw.preferred_date || 'Today',
+                preferredTime: raw.preferred_time || 'ASAP',
+                hasPrescription: Boolean(raw.has_prescription),
+                prescriptionFileName: raw.prescription_file_name,
+                prescriptionUrl: raw.prescription_url,
+                status: raw.status || 'Pending',
+                assignedNurseId: raw.assigned_nurse_id,
+                assignedNurseName: raw.assigned_nurse_name,
+                referringNurseId: raw.referring_nurse_id,
+                referringNurseName: raw.referring_nurse_name,
+                estimatedFee: Number(raw.estimated_fee) || 800,
+                nightSurcharge: Number(raw.night_surcharge) || 0,
+                referralBonusRupees: Number(raw.referral_bonus_rupees) || 0,
+                notes: raw.notes || '',
+                bookingType: raw.booking_type || 'instant',
+                scheduledSlot: raw.scheduled_slot,
+                rejectionReason: raw.rejection_reason || undefined
+              };
+              const exists = prev.some((b) => b.id === mapped.id);
+              return exists ? prev.map((b) => (b.id === mapped.id ? mapped : b)) : [mapped, ...prev];
+            });
+          } else if (payload.eventType === 'DELETE' && payload.old) {
+            setBookings((prev) => prev.filter((b) => b.id !== payload.old.id));
+          }
           const fresh = await dbFetchBookings();
           if (fresh) setBookings(fresh);
         }
@@ -380,8 +577,7 @@ export const App: React.FC = () => {
       .on(
         'postgres_changes',
         { event: '*', schema: 'public', table: 'nurses' },
-        async (payload) => {
-          console.log('[Realtime DB] Live Nurse update:', payload);
+        async () => {
           const fresh = await dbFetchNurses();
           if (fresh) setNurses(fresh);
         }
@@ -389,8 +585,7 @@ export const App: React.FC = () => {
       .on(
         'postgres_changes',
         { event: '*', schema: 'public', table: 'leads' },
-        async (payload) => {
-          console.log('[Realtime DB] Live Lead update:', payload);
+        async () => {
           const fresh = await dbFetchLeads();
           if (fresh) setLeads(fresh);
         }
@@ -398,8 +593,7 @@ export const App: React.FC = () => {
       .on(
         'postgres_changes',
         { event: '*', schema: 'public', table: 'consultations' },
-        async (payload) => {
-          console.log('[Realtime DB] Live Consultation update:', payload);
+        async () => {
           const fresh = await dbFetchConsultations();
           if (fresh) setConsultations(fresh);
         }
@@ -407,8 +601,7 @@ export const App: React.FC = () => {
       .on(
         'postgres_changes',
         { event: '*', schema: 'public', table: 'services' },
-        async (payload) => {
-          console.log('[Realtime DB] Live Services update:', payload);
+        async () => {
           const fresh = await dbFetchServices();
           if (fresh) setServices(fresh);
         }
@@ -416,16 +609,27 @@ export const App: React.FC = () => {
       .on(
         'postgres_changes',
         { event: '*', schema: 'public', table: 'coupons' },
-        async (payload) => {
-          console.log('[Realtime DB] Live Coupons update:', payload);
+        async () => {
           const fresh = await dbFetchCoupons();
           if (fresh) setCoupons(fresh);
         }
       )
       .subscribe();
 
+    // 5. Active Heartbeat Poller: Every 1.5 seconds, refresh to ensure zero desync across all devices
+    const heartbeatTimer = setInterval(() => {
+      if (typeof document !== 'undefined' && document.visibilityState === 'visible') {
+        refreshAllDataFromDb();
+      }
+    }, 1500);
+
     return () => {
       supabase.removeChannel(channel);
+      clearInterval(heartbeatTimer);
+      window.removeEventListener('storage', handleStorageEvent);
+      window.removeEventListener('focus', handleFocusOrVisibility);
+      document.removeEventListener('visibilitychange', handleFocusOrVisibility);
+      if (bc) bc.close();
     };
   }, []);
 
@@ -453,70 +657,37 @@ export const App: React.FC = () => {
     };
 
     setBookings((prev) => [finalizedBooking, ...prev]);
+    broadcastRealtimeUpdate('BOOKING_CREATE', finalizedBooking);
     dbSaveBooking(finalizedBooking);
   };
 
-  // Handler: Nurse submits a lead (Cross-Area Dispatch: e.g. Gachibowli nurse refers LB Nagar patient)
+  // Handler: Nurse submits a lead (Direct to Admin - NOT auto-assigned to any nurse)
   const handleAddNewLead = (newLead: NurseLead) => {
-    // Lead enters "Pending Approval" state; Points and Commission will be decided by Admin
+    // Lead enters "Pending Approval" state directly for Admin review; NOT assigned to any nurse
+    const isColleagueReferral = Boolean(newLead.referredNurseName || newLead.id.startsWith('REF-NUR'));
     const pendingLead: NurseLead = {
       ...newLead,
+      assignedNurseId: undefined, // Explicitly not assigned to any nurse; Admin will decide
       status: 'Pending Approval',
-      pointsAwarded: 0,
-      referralCommissionRupees: 0
+      pointsAwarded: isColleagueReferral ? 50 : 0,
+      referralCommissionRupees: isColleagueReferral ? 500 : 0
     };
 
     setLeads((prev) => [pendingLead, ...prev]);
+    broadcastRealtimeUpdate('LEAD_CREATE', pendingLead);
     dbSaveLead(pendingLead);
 
-    const currentService = services.find((s) => s.id === newLead.serviceId) || services[0];
+    // Increment nurse's total submitted leads / referrals counter
     const referringNurse = nurses.find((n) => n.id === newLead.nurseId);
-    const targetArea = newLead.area;
-
-    // Intelligent Cross-Area Dispatch:
-    // If patient is in LB Nagar and Nurse Priya (Gachibowli) refers,
-    // find nurse stationed in LB Nagar (Nurse Rajesh Kumar)!
-    const areaStationedNurse = nurses.find((n) => n.serviceArea === targetArea) || referringNurse || nurses[0];
-    const isCrossArea = referringNurse ? referringNurse.serviceArea !== targetArea : false;
-    const fee = currentService.priceNumber || 800;
-
-    const autoAssignedBooking: Booking = {
-      id: 'BK-' + Math.floor(1000 + Math.random() * 9000),
-      createdAt: new Date().toISOString(),
-      patientName: newLead.patientName || newLead.referredNurseName || 'Referred Client',
-      patientPhone: newLead.patientPhone || newLead.referredNursePhone || '9876543210',
-      serviceId: newLead.serviceId || 'saline-infusion',
-      serviceTitle: currentService.title,
-      area: targetArea,
-      fullAddress: `${targetArea}, Hyderabad`,
-      preferredDate: 'Today (Immediate)',
-      preferredTime: 'Coordinated with nurse',
-      hasPrescription: true,
-      status: 'Assigned',
-      referringNurseId: referringNurse?.id,
-      referringNurseName: referringNurse ? `${referringNurse.name} (${referringNurse.serviceArea})` : undefined,
-      assignedNurseId: areaStationedNurse.id,
-      assignedNurseName: isCrossArea
-        ? `${areaStationedNurse.name} (${targetArea} Station Match)`
-        : `${referringNurse?.name} (Personal Referral)`,
-      estimatedFee: fee,
-      nightSurcharge: 0,
-      referralBonusRupees: 0, // Pending Admin Approval
-      notes: isCrossArea
-        ? `Cross-Area Referral: Referred by ${referringNurse?.name} (${referringNurse?.serviceArea}). Patient located in ${targetArea}. Order dispatched to ${areaStationedNurse.name}. Referral bonus awaiting Admin approval.`
-        : `Personal Referral by ${referringNurse?.name}. Reward points & referral commission awaiting Admin approval.`
-    };
-
-    setBookings((prev) => [autoAssignedBooking, ...prev]);
-    dbSaveBooking(autoAssignedBooking);
-
-    // Increment nurse's total submitted leads counter (points & earnings await Admin approval)
     if (referringNurse) {
       const updatedReferringNurse: NurseProfile = {
         ...referringNurse,
-        totalLeads: referringNurse.totalLeads + 1
+        totalLeads: referringNurse.totalLeads + 1,
+        totalReferrals: isColleagueReferral ? (referringNurse.totalReferrals || 0) + 1 : referringNurse.totalReferrals,
+        earningsPending: isColleagueReferral ? (referringNurse.earningsPending || 0) + 500 : referringNurse.earningsPending
       };
       setNurses((prev) => prev.map((n) => (n.id === updatedReferringNurse.id ? updatedReferringNurse : n)));
+      broadcastRealtimeUpdate('NURSE_UPDATE', updatedReferringNurse);
       dbUpdateNurse(updatedReferringNurse);
     }
   };
@@ -542,6 +713,7 @@ export const App: React.FC = () => {
     };
 
     setLeads((prev) => prev.map((l) => (l.id === leadId ? approvedLead : l)));
+    broadcastRealtimeUpdate('LEAD_UPDATE', approvedLead);
     await dbUpdateLeadById(leadId, approvedLead);
 
     // Credit Referring Nurse with Admin-decided points & referral earnings
@@ -555,6 +727,7 @@ export const App: React.FC = () => {
         totalReferrals: (referringNurse.totalReferrals || 0) + 1
       };
       setNurses((prev) => prev.map((n) => (n.id === updatedNurse.id ? updatedNurse : n)));
+      broadcastRealtimeUpdate('NURSE_UPDATE', updatedNurse);
       await dbUpdateNurse(updatedNurse);
     }
 
@@ -562,11 +735,13 @@ export const App: React.FC = () => {
     setBookings((prev) =>
       prev.map((b) => {
         if (b.patientPhone === lead.patientPhone || (b.referringNurseId === lead.nurseId && b.patientName === lead.patientName)) {
-          return {
+          const updatedB = {
             ...b,
             referralBonusRupees: referralRupees,
             notes: `${b.notes || ''} [Admin Approved: +${pointsAwarded} pts, ₹${referralRupees} referral earning credited]`.trim()
           };
+          broadcastRealtimeUpdate('BOOKING_UPDATE', updatedB);
+          return updatedB;
         }
         return b;
       })
@@ -585,10 +760,13 @@ export const App: React.FC = () => {
       referralCommissionRupees: 0,
       approvedAt: new Date().toISOString(),
       approvedBy: 'Admin',
-      adminNotes: adminNotes || 'Rejected by Admin'
+      rejectedBy: 'Admin',
+      rejectionReason: adminNotes || 'Rejected by Admin review',
+      adminNotes: adminNotes || 'Rejected by Admin review'
     };
 
     setLeads((prev) => prev.map((l) => (l.id === leadId ? rejectedLead : l)));
+    broadcastRealtimeUpdate('LEAD_UPDATE', rejectedLead);
     await dbUpdateLeadById(leadId, rejectedLead);
   };
 
@@ -606,6 +784,7 @@ export const App: React.FC = () => {
             assignedNurseName: `${targetNurse.name} (${targetNurse.serviceArea})`,
             notes: (b.notes ? b.notes + ' • ' : '') + `Transferred to ${targetNurse.name} (${targetNurse.serviceArea})`
           };
+          broadcastRealtimeUpdate('BOOKING_UPDATE', updated);
           dbSaveBooking(updated);
           return updated;
         }
@@ -617,6 +796,7 @@ export const App: React.FC = () => {
   // Handler: Update Nurse Profile
   const handleUpdateNurse = (updated: NurseProfile) => {
     setNurses((prev) => prev.map((n) => (n.id === updated.id ? updated : n)));
+    broadcastRealtimeUpdate('NURSE_UPDATE', updated);
     dbUpdateNurse(updated);
   };
 
@@ -632,6 +812,7 @@ export const App: React.FC = () => {
             assignedNurseId: nurseId,
             assignedNurseName: `${nurseObj?.name} (${ruleExplanation})`
           };
+          broadcastRealtimeUpdate('BOOKING_UPDATE', updated);
           dbSaveBooking(updated);
           return updated;
         }
@@ -642,8 +823,8 @@ export const App: React.FC = () => {
 
   // Handler: Admin Auto-Routes all pending via Rule 2
   const handleAutoRouteAll = () => {
-    setBookings((prev) =>
-      prev.map((b) => {
+    setBookings((prev) => {
+      const updatedList = prev.map((b) => {
         if (b.status === 'Pending') {
           const areaNurse = nurses.find((n) => n.serviceArea === b.area && n.certificateVerified) || nurses.find((n) => n.certificateVerified);
           if (!areaNurse) {
@@ -655,31 +836,43 @@ export const App: React.FC = () => {
             assignedNurseId: areaNurse.id,
             assignedNurseName: `${areaNurse.name} (Auto Area Match - Rule 2)`
           };
+          broadcastRealtimeUpdate('BOOKING_UPDATE', updated);
           dbSaveBooking(updated);
           return updated;
         }
         return b;
-      })
-    );
+      });
+      broadcastRealtimeUpdate('RESYNC_ALL', {});
+      return updatedList;
+    });
   };
 
   // Handler: Doctor issues prescription — persist to Supabase & Cloudflare R2
   const handleDoctorIssueRx = async (consultId: string, rxText: string, recommendedService: ServiceId) => {
-    // 1. Update React state
+    const targetConsult = consultations.find((c) => c.id === consultId);
+    const patName = targetConsult?.patientName || 'Patient';
+    const rxFileName = `Doctor_Rx_${consultId}_${patName.replace(/[^a-zA-Z0-9]/g, '_')}.pdf`;
+
+    // 1. Update React state for consultations
+    const updatedConsultationRecord = {
+      id: consultId,
+      status: 'Prescription Issued' as const,
+      prescriptionIssued: true,
+      prescriptionText: rxText,
+      recommendedService
+    };
     setConsultations((prev) =>
       prev.map((c) => {
         if (c.id === consultId) {
           return {
             ...c,
-            status: 'Prescription Issued',
-            prescriptionIssued: true,
-            prescriptionText: rxText,
-            recommendedService
+            ...updatedConsultationRecord
           };
         }
         return c;
       })
     );
+    broadcastRealtimeUpdate('CONSULTATION_UPDATE', updatedConsultationRecord);
 
     // 2. Persist to Supabase DB consultations table
     try {
@@ -694,13 +887,11 @@ export const App: React.FC = () => {
       console.error('[Supabase] Failed to update consult prescription:', err);
     }
 
-    // 3. Register prescription in Cloudflare R2 storage under teleconsult-rx category
+    // 3. Register prescription in Cloudflare R2 storage under prescriptions category for instant in-app viewing
     try {
-      const targetConsult = consultations.find((c) => c.id === consultId);
-      const patName = targetConsult?.patientName || 'Patient';
       await uploadToCloudflareStorage({
-        fileName: `TeleRx_${consultId}_${patName.replace(/[^a-zA-Z0-9]/g, '_')}.pdf`,
-        category: 'teleconsult-rx',
+        fileName: rxFileName,
+        category: 'prescriptions',
         contentType: 'application/pdf',
         sizeBytes: 128400,
         metadata: {
@@ -716,6 +907,60 @@ export const App: React.FC = () => {
       console.log(`[Cloudflare R2] Prescription record created for ${patName}.`);
     } catch (err) {
       console.warn('[Cloudflare R2] Rx record error:', err);
+    }
+
+    // 4. Synchronize or create patient booking so Admin and Nurse dashboards immediately receive the authorized visit
+    const matchedService = services.find((s) => s.id === recommendedService);
+    const serviceTitle = matchedService?.title || 'Saline Infusion Therapy';
+    const fee = matchedService?.priceNumber || 629;
+
+    let hasMatchedBooking = false;
+    setBookings((prev) =>
+      prev.map((b) => {
+        const phoneMatch = targetConsult?.patientPhone && b.patientPhone.replace(/\D/g, '').endsWith(targetConsult.patientPhone.replace(/\D/g, '').slice(-10));
+        const nameMatch = b.patientName.toLowerCase().trim() === patName.toLowerCase().trim();
+        if (phoneMatch || nameMatch) {
+          hasMatchedBooking = true;
+          const updated: Booking = {
+            ...b,
+            hasPrescription: true,
+            prescriptionIssued: true,
+            prescriptionFileName: rxFileName,
+            serviceId: recommendedService,
+            serviceTitle,
+            notes: `${b.notes ? b.notes + ' • ' : ''}Authorized by Dr. Vikramaditya, MD: "${rxText.slice(0, 70)}..."`
+          };
+          broadcastRealtimeUpdate('BOOKING_UPDATE', updated);
+          dbSaveBooking(updated);
+          return updated;
+        }
+        return b;
+      })
+    );
+
+    if (!hasMatchedBooking && targetConsult) {
+      const newBooking: Booking = {
+        id: `BK-DOC-${Date.now().toString().slice(-4)}`,
+        serviceId: recommendedService,
+        serviceTitle,
+        patientName: patName,
+        patientPhone: targetConsult.patientPhone,
+        patientAge: targetConsult.patientAge,
+        patientGender: 'Female',
+        area: targetConsult.area,
+        fullAddress: `${targetConsult.area}, Hyderabad (Doctor Tele-Consult Order)`,
+        preferredDate: new Date().toISOString().split('T')[0],
+        preferredTime: 'Immediate (Doctor Prescribed)',
+        bookingType: 'Instant',
+        status: 'Pending',
+        hasPrescription: true,
+        prescriptionFileName: rxFileName,
+        estimatedFee: fee,
+        finalFee: fee,
+        createdAt: new Date().toISOString(),
+        notes: `Doctor Authorized Rx: "${rxText.slice(0, 80)}"`
+      };
+      await handleCreateBooking(newBooking);
     }
   };
 
@@ -740,20 +985,24 @@ export const App: React.FC = () => {
   // 1. Bookings CRUD Handlers
   const handleCreateBooking = async (b: Booking) => {
     setBookings((prev) => [b, ...prev]);
+    broadcastRealtimeUpdate('BOOKING_CREATE', b);
     await dbInsertBooking(b);
   };
   const handleUpdateBooking = async (id: string, updates: Partial<Booking>) => {
     setBookings((prev) => prev.map((b) => (b.id === id ? { ...b, ...updates } : b)));
+    broadcastRealtimeUpdate('BOOKING_UPDATE', { id, ...updates });
     await dbUpdateBooking(id, updates);
   };
   const handleDeleteBooking = async (id: string) => {
     setBookings((prev) => prev.filter((b) => b.id !== id));
+    broadcastRealtimeUpdate('BOOKING_DELETE', { id });
     await dbDeleteBooking(id);
   };
 
   // 2. Nurses CRUD Handlers
   const handleCreateNurse = async (n: NurseProfile) => {
     setNurses((prev) => [...prev, n]);
+    broadcastRealtimeUpdate('NURSE_CREATE', n);
     await dbInsertNurse(n);
   };
   const handleUpdateNurseRecord = async (id: string, updates: Partial<NurseProfile>) => {
@@ -762,6 +1011,7 @@ export const App: React.FC = () => {
       originalState = [...prev];
       return prev.map((n) => (n.id === id ? { ...n, ...updates } : n));
     });
+    broadcastRealtimeUpdate('NURSE_UPDATE', { id, ...updates });
     
     const success = await dbUpdateNurseById(id, updates);
     if (!success) {
@@ -771,20 +1021,24 @@ export const App: React.FC = () => {
   };
   const handleDeleteNurse = async (id: string) => {
     setNurses((prev) => prev.filter((n) => n.id !== id));
+    broadcastRealtimeUpdate('NURSE_DELETE', { id });
     await dbDeleteNurse(id);
   };
 
   // 3. Leads CRUD Handlers
   const handleCreateLead = async (l: NurseLead) => {
     setLeads((prev) => [l, ...prev]);
+    broadcastRealtimeUpdate('LEAD_CREATE', l);
     await dbInsertLead(l);
   };
   const handleUpdateLead = async (id: string, updates: Partial<NurseLead>) => {
     setLeads((prev) => prev.map((l) => (l.id === id ? { ...l, ...updates } : l)));
+    broadcastRealtimeUpdate('LEAD_UPDATE', { id, ...updates });
     await dbUpdateLeadById(id, updates);
   };
   const handleDeleteLead = async (id: string) => {
     setLeads((prev) => prev.filter((l) => l.id !== id));
+    broadcastRealtimeUpdate('LEAD_DELETE', { id });
     await dbDeleteLead(id);
   };
 
@@ -805,14 +1059,17 @@ export const App: React.FC = () => {
   // 5. Consultations CRUD Handlers
   const handleCreateConsultation = async (c: DoctorConsultation) => {
     setConsultations((prev) => [c, ...prev]);
+    broadcastRealtimeUpdate('CONSULTATION_CREATE', c);
     await dbInsertConsultation(c);
   };
   const handleUpdateConsultation = async (id: string, updates: Partial<DoctorConsultation>) => {
     setConsultations((prev) => prev.map((c) => (c.id === id ? { ...c, ...updates } : c)));
+    broadcastRealtimeUpdate('CONSULTATION_UPDATE', { id, ...updates });
     await dbUpdateConsultationById(id, updates);
   };
   const handleDeleteConsultation = async (id: string) => {
     setConsultations((prev) => prev.filter((c) => c.id !== id));
+    broadcastRealtimeUpdate('CONSULTATION_DELETE', { id });
     await dbDeleteConsultation(id);
   };
 
@@ -941,7 +1198,7 @@ export const App: React.FC = () => {
             consultations={consultations}
             services={services}
             onIssuePrescription={handleDoctorIssueRx}
-            onAddNewConsultation={(newC) => setConsultations((prev) => [newC, ...prev])}
+            onAddNewConsultation={handleCreateConsultation}
           />
         )}
 
@@ -958,6 +1215,15 @@ export const App: React.FC = () => {
           <LoginPage
             onNavigate={navigate}
             onLoginSuccess={handleLoginSuccess}
+            nurses={nurses}
+            onRefreshNurses={async () => {
+              const [remoteNurses, remoteLeads] = await Promise.all([
+                dbFetchNurses(),
+                dbFetchLeads()
+              ]);
+              if (remoteNurses) setNurses(remoteNurses);
+              if (remoteLeads) setLeads(remoteLeads);
+            }}
           />
         )}
 

@@ -61,7 +61,8 @@ import {
   Share2
 } from 'lucide-react';
 import { EmptyState } from './EmptyState';
-import { SEED_APP_USERS } from '../lib/supabase';
+import { SEED_APP_USERS, generateNurseReferralCode } from '../lib/supabase';
+import { getSafeBlobUrl } from './NurseDashboard';
 import {
   getCloudflareConfig,
   saveCloudflareConfig,
@@ -178,6 +179,8 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
   // Modals
   const [isInvoicePreviewModalOpen, setIsInvoicePreviewModalOpen] = useState(false);
   const [previewInvoice, setPreviewInvoice] = useState<InvoiceDetails | null>(null);
+  const [adminCertModalOpen, setAdminCertModalOpen] = useState(false);
+  const [adminCertModalNurse, setAdminCertModalNurse] = useState<NurseProfile | null>(null);
   const [isR2ConfigModalOpen, setIsR2ConfigModalOpen] = useState(false);
   const [isUploadModalOpen, setIsUploadModalOpen] = useState(false);
   const [isPrescriptionModalOpen, setIsPrescriptionModalOpen] = useState(false);
@@ -613,8 +616,8 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
       hasPrescription: bookingForm.hasPrescription,
       notes: bookingForm.notes.trim(),
       bookingType: bookingForm.bookingType,
-      scheduledSlot: bookingForm.bookingType === 'scheduled' ? bookingForm.scheduledSlot : undefined,
-      rejectionReason: bookingForm.status === 'Cancelled' ? bookingForm.rejectionReason : undefined
+      rejectionReason: (bookingForm.status === 'Cancelled' || bookingForm.status === 'Rejected') ? bookingForm.rejectionReason : undefined,
+      rejectedBy: (bookingForm.status === 'Cancelled' || bookingForm.status === 'Rejected') ? 'Admin' : undefined
     };
 
     if (editingBooking && onUpdateBooking) {
@@ -700,6 +703,9 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
     const headers = [
       'Nurse ID',
       'Full Name',
+      'Referral Code',
+      'Signup Origin',
+      'Referred By Nurse ID',
       'Phone',
       'Email',
       'Service Zone / Area',
@@ -718,9 +724,14 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
     const rows = nurses.map((n) => {
       const exp = n.experienceYears || (parseInt(n.experience || '0', 10) || 0);
       const tier = exp >= 10 ? 'Senior (> 10 Years)' : exp >= 5 ? 'Mid-Level (5-10 Years)' : 'Junior (< 5 Years)';
+      const nurseCode = n.referralCode || generateNurseReferralCode(n.name, n.id, n.phone);
+      const origin = n.referredByNurseId ? `Referred (${n.referredByNurseName || n.referredByNurseId})` : 'Individual / Direct';
       return [
         `"${n.id}"`,
         `"${(n.name || '').replace(/"/g, '""')}"`,
+        `"${nurseCode}"`,
+        `"${origin}"`,
+        `"${n.referredByNurseId || ''}"`,
         `"${n.phone || ''}"`,
         `"${n.email || ''}"`,
         `"${(n.serviceArea || '').replace(/"/g, '""')}"`,
@@ -731,7 +742,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
         `"${n.status || 'Active'}"`,
         n.completedVisits || 0,
         n.activeVisits || 0,
-        n.points || 0,
+        n.pointsEarned || n.points || 0,
         n.earningsPaid || 0,
         n.earningsPending || 0,
         (n.earningsPaid || 0) + (n.earningsPending || 0)
@@ -753,6 +764,8 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
   // --------------------------------------------------------------------------
   const [nurseSearch, setNurseSearch] = useState('');
   const [nurseExpFilter, setNurseExpFilter] = useState<'all' | '>10' | '5-10' | '<5'>('all');
+  const [nurseOriginFilter, setNurseOriginFilter] = useState<'all' | 'referred' | 'direct'>('all');
+  const [copiedRefCodeId, setCopiedRefCodeId] = useState<string | null>(null);
   const [isNurseModalOpen, setIsNurseModalOpen] = useState(false);
   const [editingNurse, setEditingNurse] = useState<NurseProfile | null>(null);
   const [nurseForm, setNurseForm] = useState({
@@ -878,7 +891,9 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
       n.phone.includes(nurseSearch) ||
       n.email.toLowerCase().includes(nurseSearch.toLowerCase()) ||
       n.qualification.toLowerCase().includes(nurseSearch.toLowerCase()) ||
-      (n.serviceArea && n.serviceArea.toLowerCase().includes(nurseSearch.toLowerCase()));
+      (n.serviceArea && n.serviceArea.toLowerCase().includes(nurseSearch.toLowerCase())) ||
+      (n.referredByNurseName && n.referredByNurseName.toLowerCase().includes(nurseSearch.toLowerCase())) ||
+      (n.referralCode && n.referralCode.toLowerCase().includes(nurseSearch.toLowerCase()));
     
     const exp = n.experienceYears || (parseInt(n.experience || '0', 10) || 0);
     const matchesExp = 
@@ -886,7 +901,13 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
       nurseExpFilter === '>10' ? exp >= 10 :
       nurseExpFilter === '5-10' ? (exp >= 5 && exp < 10) :
       exp < 5;
-    return matchesSearch && matchesExp;
+
+    const matchesOrigin = 
+      nurseOriginFilter === 'all' ? true :
+      nurseOriginFilter === 'referred' ? Boolean(n.referredByNurseId) :
+      !n.referredByNurseId;
+
+    return matchesSearch && matchesExp && matchesOrigin;
   });
 
   // --------------------------------------------------------------------------
@@ -1476,47 +1497,385 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
         </div>
       )}
 
-      {/* High-level KPIs */}
-      <div className="stats-grid">
-        <div className="stat-card">
-          <div className="stat-icon" style={{ background: '#EEF5FF', color: 'var(--primary-navy-700)' }}>
-            <Calendar size={24} />
+      {/* Contextual Top Stat Cards for each Tab Option */}
+      <div style={{ marginBottom: '1.5rem' }}>
+        {activeTab === 'routing' && (
+          <div className="stats-grid" style={{ marginBottom: 0 }}>
+            <div className="stat-card">
+              <div className="stat-icon" style={{ background: '#FFF1F2', color: '#E11D48' }}>
+                <Clock size={22} />
+              </div>
+              <div>
+                <div className="stat-val">{pendingBookings.length}</div>
+                <div className="stat-label">Pending Orders to Dispatch</div>
+              </div>
+            </div>
+            <div className="stat-card">
+              <div className="stat-icon" style={{ background: '#ECFDF5', color: '#10B981' }}>
+                <Users size={22} />
+              </div>
+              <div>
+                <div className="stat-val">{nurses.filter(n => n.certificateVerified).length}</div>
+                <div className="stat-label">Available Verified Nurses</div>
+              </div>
+            </div>
+            <div className="stat-card">
+              <div className="stat-icon" style={{ background: '#EFF6FF', color: '#0284C7' }}>
+                <CheckCircle size={22} />
+              </div>
+              <div>
+                <div className="stat-val">{bookings.filter(b => b.status === 'Assigned' || b.status === 'In-Progress').length}</div>
+                <div className="stat-label">Active Dispatched Visits</div>
+              </div>
+            </div>
+            <div className="stat-card">
+              <div className="stat-icon" style={{ background: '#FFFBEB', color: '#D97706' }}>
+                <Shuffle size={22} />
+              </div>
+              <div>
+                <div className="stat-val">100%</div>
+                <div className="stat-label">Locality Match Accuracy</div>
+              </div>
+            </div>
           </div>
-          <div>
-            <div className="stat-val">{bookings.length}</div>
-            <div className="stat-label">Total Platform Bookings</div>
-          </div>
-        </div>
+        )}
 
-        <div className="stat-card">
-          <div className="stat-icon" style={{ background: '#FFF1F2', color: '#E11D48' }}>
-            <Clock size={24} />
+        {activeTab === 'bookings' && (
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 190px), 1fr))', gap: '0.85rem' }}>
+            <div className="stat-card">
+              <div className="stat-icon" style={{ background: '#EFF6FF', color: '#0284C7' }}>
+                <Calendar size={22} />
+              </div>
+              <div>
+                <div className="stat-val">{bookings.length}</div>
+                <div className="stat-label">Total Bookings</div>
+              </div>
+            </div>
+            <div className="stat-card">
+              <div className="stat-icon" style={{ background: '#ECFDF5', color: '#10B981' }}>
+                <Activity size={22} />
+              </div>
+              <div>
+                <div className="stat-val" style={{ color: '#10B981' }}>{bookings.filter(b => b.status === 'Assigned' || b.status === 'In-Progress').length}</div>
+                <div className="stat-label">In-Progress Visits</div>
+              </div>
+            </div>
+            <div className="stat-card">
+              <div className="stat-icon" style={{ background: '#F0FDF4', color: '#16A34A' }}>
+                <CheckCircle size={22} />
+              </div>
+              <div>
+                <div className="stat-val" style={{ color: '#16A34A' }}>{bookings.filter(b => b.status === 'Completed').length}</div>
+                <div className="stat-label">Completed Visits</div>
+              </div>
+            </div>
+            <div className="stat-card">
+              <div className="stat-icon" style={{ background: '#FEF2F2', color: '#DC2626' }}>
+                <X size={22} />
+              </div>
+              <div>
+                <div className="stat-val" style={{ color: '#DC2626' }}>{bookings.filter(b => b.status === 'Rejected' || b.status === 'Cancelled').length}</div>
+                <div className="stat-label">Rejected by Admin (₹0)</div>
+              </div>
+            </div>
+            <div className="stat-card" style={{ background: 'linear-gradient(135deg, #0284C7 0%, #0369A1 100%)', color: '#FFFFFF', border: 'none' }}>
+              <div className="stat-icon" style={{ background: 'rgba(255,255,255,0.2)', color: '#FFFFFF' }}>
+                <DollarSign size={22} />
+              </div>
+              <div>
+                <div className="stat-val" style={{ color: '#FFFFFF' }}>₹{bookings.filter(b => b.status !== 'Rejected' && b.status !== 'Cancelled').reduce((sum, b) => sum + (b.estimatedFee || 0), 0)}</div>
+                <div className="stat-label" style={{ color: 'rgba(255,255,255,0.85)' }}>Active Platform Fee</div>
+              </div>
+            </div>
           </div>
-          <div>
-            <div className="stat-val">{pendingBookings.length}</div>
-            <div className="stat-label">Pending Dispatches</div>
-          </div>
-        </div>
+        )}
 
-        <div className="stat-card">
-          <div className="stat-icon" style={{ background: '#ECFDF5', color: '#10B981' }}>
-            <Users size={24} />
+        {activeTab === 'nurses' && (
+          <div className="stats-grid" style={{ marginBottom: 0 }}>
+            <div className="stat-card">
+              <div className="stat-icon" style={{ background: '#EFF6FF', color: '#0284C7' }}>
+                <Users size={22} />
+              </div>
+              <div>
+                <div className="stat-val">{nurses.length}</div>
+                <div className="stat-label">Total Nurse Fleet</div>
+              </div>
+            </div>
+            <div className="stat-card">
+              <div className="stat-icon" style={{ background: '#ECFDF5', color: '#10B981' }}>
+                <ShieldCheck size={22} />
+              </div>
+              <div>
+                <div className="stat-val" style={{ color: '#10B981' }}>{nurses.filter(n => n.certificateVerified).length}</div>
+                <div className="stat-label">Verified Registered RNs</div>
+              </div>
+            </div>
+            <div className="stat-card">
+              <div className="stat-icon" style={{ background: '#FFFBEB', color: '#D97706' }}>
+                <AlertCircle size={22} />
+              </div>
+              <div>
+                <div className="stat-val" style={{ color: '#D97706' }}>{nurses.filter(n => !n.certificateVerified).length}</div>
+                <div className="stat-label">Pending Verification</div>
+              </div>
+            </div>
+            <div className="stat-card">
+              <div className="stat-icon" style={{ background: '#FAF5FF', color: '#9333EA' }}>
+                <Activity size={22} />
+              </div>
+              <div>
+                <div className="stat-val" style={{ color: '#9333EA' }}>{nurses.filter(n => n.status === 'Active').length}</div>
+                <div className="stat-label">Active On Standby</div>
+              </div>
+            </div>
           </div>
-          <div>
-            <div className="stat-val">{nurses.length}</div>
-            <div className="stat-label">Active Verified Nurses</div>
-          </div>
-        </div>
+        )}
 
-        <div className="stat-card">
-          <div className="stat-icon" style={{ background: '#FFFBEB', color: '#D97706' }}>
-            <Activity size={24} />
+        {activeTab === 'services' && (
+          <div className="stats-grid" style={{ marginBottom: 0 }}>
+            <div className="stat-card">
+              <div className="stat-icon" style={{ background: '#EFF6FF', color: '#0284C7' }}>
+                <Layers size={22} />
+              </div>
+              <div>
+                <div className="stat-val">{services.length}</div>
+                <div className="stat-label">Total Catalog Services</div>
+              </div>
+            </div>
+            <div className="stat-card">
+              <div className="stat-icon" style={{ background: '#ECFDF5', color: '#10B981' }}>
+                <CheckCircle size={22} />
+              </div>
+              <div>
+                <div className="stat-val" style={{ color: '#10B981' }}>{services.length}</div>
+                <div className="stat-label">Active Procedures</div>
+              </div>
+            </div>
+            <div className="stat-card">
+              <div className="stat-icon" style={{ background: '#FAF5FF', color: '#9333EA' }}>
+                <Stethoscope size={22} />
+              </div>
+              <div>
+                <div className="stat-val" style={{ color: '#9333EA' }}>{services.filter(s => s.prescriptionRequired).length}</div>
+                <div className="stat-label">Mandatory Rx Procedures</div>
+              </div>
+            </div>
+            <div className="stat-card">
+              <div className="stat-icon" style={{ background: '#FFFBEB', color: '#D97706' }}>
+                <DollarSign size={22} />
+              </div>
+              <div>
+                <div className="stat-val" style={{ color: '#D97706' }}>₹{Math.round(services.reduce((sum, s) => sum + (s.singleVisitPrice || s.priceNumber || 800), 0) / (services.length || 1))}</div>
+                <div className="stat-label">Avg Base Procedure Fee</div>
+              </div>
+            </div>
           </div>
-          <div>
-            <div className="stat-val">100%</div>
-            <div className="stat-label">SLA Response Rate</div>
+        )}
+
+        {activeTab === 'leads' && (
+          <div className="stats-grid" style={{ marginBottom: 0 }}>
+            <div className="stat-card">
+              <div className="stat-icon" style={{ background: '#EFF6FF', color: '#0284C7' }}>
+                <Users size={22} />
+              </div>
+              <div>
+                <div className="stat-val">{leads.length}</div>
+                <div className="stat-label">Total Leads Received</div>
+              </div>
+            </div>
+            <div className="stat-card">
+              <div className="stat-icon" style={{ background: '#FFFBEB', color: '#D97706' }}>
+                <Clock size={22} />
+              </div>
+              <div>
+                <div className="stat-val" style={{ color: '#D97706' }}>{leads.filter(l => l.status === 'Pending Approval' || l.status === 'Submitted').length}</div>
+                <div className="stat-label">Awaiting Admin Decision</div>
+              </div>
+            </div>
+            <div className="stat-card">
+              <div className="stat-icon" style={{ background: '#ECFDF5', color: '#10B981' }}>
+                <CheckCircle size={22} />
+              </div>
+              <div>
+                <div className="stat-val" style={{ color: '#10B981' }}>{leads.filter(l => l.status === 'Approved' || l.status === 'Converted').length}</div>
+                <div className="stat-label">Approved & Credited (+50 pts)</div>
+              </div>
+            </div>
+            <div className="stat-card">
+              <div className="stat-icon" style={{ background: '#FEF2F2', color: '#DC2626' }}>
+                <X size={22} />
+              </div>
+              <div>
+                <div className="stat-val" style={{ color: '#DC2626' }}>{leads.filter(l => l.status === 'Rejected' || Boolean(l.rejectionReason)).length}</div>
+                <div className="stat-label">Rejected by Admin (₹0)</div>
+              </div>
+            </div>
           </div>
-        </div>
+        )}
+
+        {activeTab === 'consultations' && (
+          <div className="stats-grid" style={{ marginBottom: 0 }}>
+            <div className="stat-card">
+              <div className="stat-icon" style={{ background: '#EFF6FF', color: '#0284C7' }}>
+                <Stethoscope size={22} />
+              </div>
+              <div>
+                <div className="stat-val">{consultations.length}</div>
+                <div className="stat-label">Total Tele-Consultations</div>
+              </div>
+            </div>
+            <div className="stat-card">
+              <div className="stat-icon" style={{ background: '#FFFBEB', color: '#D97706' }}>
+                <Clock size={22} />
+              </div>
+              <div>
+                <div className="stat-val" style={{ color: '#D97706' }}>{consultations.filter(c => c.status === 'Awaiting Call').length}</div>
+                <div className="stat-label">Awaiting Doctor Call</div>
+              </div>
+            </div>
+            <div className="stat-card">
+              <div className="stat-icon" style={{ background: '#ECFDF5', color: '#10B981' }}>
+                <FileText size={22} />
+              </div>
+              <div>
+                <div className="stat-val" style={{ color: '#10B981' }}>{consultations.filter(c => c.status === 'Prescription Issued').length}</div>
+                <div className="stat-label">Prescriptions Issued</div>
+              </div>
+            </div>
+            <div className="stat-card">
+              <div className="stat-icon" style={{ background: '#FAF5FF', color: '#9333EA' }}>
+                <CheckCircle size={22} />
+              </div>
+              <div>
+                <div className="stat-val" style={{ color: '#9333EA' }}>{consultations.filter(c => c.status === 'Completed').length}</div>
+                <div className="stat-label">Completed Consults</div>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {activeTab === 'coupons' && (
+          <div className="stats-grid" style={{ marginBottom: 0 }}>
+            <div className="stat-card">
+              <div className="stat-icon" style={{ background: '#EFF6FF', color: '#0284C7' }}>
+                <Tag size={22} />
+              </div>
+              <div>
+                <div className="stat-val">{coupons.length}</div>
+                <div className="stat-label">Total Promo Coupons</div>
+              </div>
+            </div>
+            <div className="stat-card">
+              <div className="stat-icon" style={{ background: '#ECFDF5', color: '#10B981' }}>
+                <CheckCircle size={22} />
+              </div>
+              <div>
+                <div className="stat-val" style={{ color: '#10B981' }}>{coupons.filter(c => c.status === 'Active').length}</div>
+                <div className="stat-label">Active Live Coupons</div>
+              </div>
+            </div>
+            <div className="stat-card">
+              <div className="stat-icon" style={{ background: '#FAF5FF', color: '#9333EA' }}>
+                <Users size={22} />
+              </div>
+              <div>
+                <div className="stat-val" style={{ color: '#9333EA' }}>{coupons.reduce((sum, c) => sum + (c.timesUsed || 0), 0)}</div>
+                <div className="stat-label">Total Times Redeemed</div>
+              </div>
+            </div>
+            <div className="stat-card">
+              <div className="stat-icon" style={{ background: '#FFFBEB', color: '#D97706' }}>
+                <Percent size={22} />
+              </div>
+              <div>
+                <div className="stat-val" style={{ color: '#D97706' }}>Active</div>
+                <div className="stat-label">Discount Engine Status</div>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {activeTab === 'credentials' && (
+          <div className="stats-grid" style={{ marginBottom: 0 }}>
+            <div className="stat-card">
+              <div className="stat-icon" style={{ background: '#EFF6FF', color: '#0284C7' }}>
+                <KeyRound size={22} />
+              </div>
+              <div>
+                <div className="stat-val">{appUsers.length}</div>
+                <div className="stat-label">Total Staff Credentials</div>
+              </div>
+            </div>
+            <div className="stat-card">
+              <div className="stat-icon" style={{ background: '#FAF5FF', color: '#9333EA' }}>
+                <ShieldCheck size={22} />
+              </div>
+              <div>
+                <div className="stat-val" style={{ color: '#9333EA' }}>{appUsers.filter(u => u.role === 'admin').length}</div>
+                <div className="stat-label">Central Admin Accounts</div>
+              </div>
+            </div>
+            <div className="stat-card">
+              <div className="stat-icon" style={{ background: '#ECFDF5', color: '#10B981' }}>
+                <Stethoscope size={22} />
+              </div>
+              <div>
+                <div className="stat-val" style={{ color: '#10B981' }}>{appUsers.filter(u => u.role === 'doctor').length}</div>
+                <div className="stat-label">Clinical Doctor Accounts</div>
+              </div>
+            </div>
+            <div className="stat-card">
+              <div className="stat-icon" style={{ background: '#FFFBEB', color: '#D97706' }}>
+                <Users size={22} />
+              </div>
+              <div>
+                <div className="stat-val" style={{ color: '#D97706' }}>{appUsers.filter(u => u.role === 'nurse').length}</div>
+                <div className="stat-label">Registered Nurse Logins</div>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {activeTab === 'storage' && (
+          <div className="stats-grid" style={{ marginBottom: 0 }}>
+            <div className="stat-card">
+              <div className="stat-icon" style={{ background: '#EFF6FF', color: '#0284C7' }}>
+                <Cloud size={22} />
+              </div>
+              <div>
+                <div className="stat-val">{storageObjects.length}</div>
+                <div className="stat-label">Total Cloudflare R2 Files</div>
+              </div>
+            </div>
+            <div className="stat-card">
+              <div className="stat-icon" style={{ background: '#ECFDF5', color: '#10B981' }}>
+                <FileText size={22} />
+              </div>
+              <div>
+                <div className="stat-val" style={{ color: '#10B981' }}>{storageObjects.filter(o => o.category === 'prescriptions').length}</div>
+                <div className="stat-label">Digital Prescriptions</div>
+              </div>
+            </div>
+            <div className="stat-card">
+              <div className="stat-icon" style={{ background: '#FAF5FF', color: '#9333EA' }}>
+                <Receipt size={22} />
+              </div>
+              <div>
+                <div className="stat-val" style={{ color: '#9333EA' }}>{storageObjects.filter(o => o.category === 'invoices').length}</div>
+                <div className="stat-label">Invoices Stored</div>
+              </div>
+            </div>
+            <div className="stat-card">
+              <div className="stat-icon" style={{ background: '#FFFBEB', color: '#D97706' }}>
+                <ShieldCheck size={22} />
+              </div>
+              <div>
+                <div className="stat-val" style={{ color: '#D97706' }}>{storageObjects.filter(o => o.category === 'certificates').length}</div>
+                <div className="stat-label">Nurse Certificates</div>
+              </div>
+            </div>
+          </div>
+        )}
       </div>
 
       {/* SMART ROUTING ENGINE (SECTION 6 BLUEPRINT) */}
@@ -1922,7 +2281,11 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                       </td>
                       <td style={{ whiteSpace: 'nowrap' }}>
                         <div style={{ fontWeight: 750, color: 'var(--primary-navy-950)', whiteSpace: 'nowrap' }}>{b.patientName}</div>
-                        <div style={{ fontSize: '0.76rem', color: '#64748B', fontFamily: 'monospace', whiteSpace: 'nowrap' }}>{b.patientPhone}</div>
+                        {b.status === 'Cancelled' || b.status === 'Rejected' ? (
+                          <span style={{ fontSize: '0.74rem', color: '#94A3B8', fontWeight: 600 }}>✕ Contact Hidden (Rejected)</span>
+                        ) : (
+                          <div style={{ fontSize: '0.76rem', color: '#64748B', fontFamily: 'monospace', whiteSpace: 'nowrap' }}>{b.patientPhone}</div>
+                        )}
                       </td>
                       <td style={{ whiteSpace: 'nowrap' }}>
                         <span style={{ fontWeight: 650, color: '#1E293B', whiteSpace: 'nowrap' }}>{b.serviceTitle}</span>
@@ -1946,7 +2309,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                             <div style={{ whiteSpace: 'nowrap' }}>
                               <div style={{ fontWeight: 750, color: '#0F172A', whiteSpace: 'nowrap', display: 'flex', alignItems: 'center', gap: '0.35rem' }}>
                                 <span>{b.assignedNurseName}</span>
-                                {phoneNum && (
+                                {phoneNum && b.status !== 'Cancelled' && b.status !== 'Rejected' && (
                                   <a
                                     href={`tel:${phoneNum.replace(/\s+/g, '')}`}
                                     style={{ color: '#059669', display: 'inline-flex', alignItems: 'center' }}
@@ -1996,18 +2359,27 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                           <span style={{ color: '#94A3B8', fontSize: '0.75rem', fontWeight: 600, whiteSpace: 'nowrap' }}>No Rx Needed</span>
                         )}
                       </td>
-                      <td style={{ whiteSpace: 'nowrap' }}><strong style={{ color: 'var(--primary-navy-900)', fontSize: '0.88rem' }}>₹{b.estimatedFee}</strong></td>
+                      <td style={{ whiteSpace: 'nowrap' }}>
+                        {b.status === 'Cancelled' || b.status === 'Rejected' ? (
+                          <span style={{ color: '#94A3B8', fontSize: '0.84rem', fontWeight: 600 }}>
+                            ₹0 <small style={{ color: '#DC2626' }}>(Rejected)</small>
+                          </span>
+                        ) : (
+                          <strong style={{ color: 'var(--primary-navy-900)', fontSize: '0.88rem' }}>₹{b.estimatedFee}</strong>
+                        )}
+                      </td>
                       <td style={{ whiteSpace: 'nowrap' }}>
                         <span className={`status-pill ${
                           b.status === 'Completed' ? 'success' :
                           b.status === 'Assigned' ? 'info' :
-                          b.status === 'Pending' ? 'warning' : 'neutral'
+                          b.status === 'Pending' ? 'warning' :
+                          b.status === 'Rejected' || b.status === 'Cancelled' ? 'danger' : 'neutral'
                         }`} style={{ whiteSpace: 'nowrap' }}>
-                          {b.status}
+                          {b.status === 'Rejected' ? '✕ Rejected by Admin' : b.status === 'Cancelled' ? '✕ Cancelled' : b.status}
                         </span>
-                        {b.status === 'Cancelled' && b.rejectionReason && (
-                          <div style={{ fontSize: '0.72rem', color: '#DC2626', marginTop: '3px', background: '#FEF2F2', padding: '2px 6px', borderRadius: 4, whiteSpace: 'nowrap' }}>
-                            Reason: {b.rejectionReason}
+                        {(b.status === 'Cancelled' || b.status === 'Rejected') && b.rejectionReason && (
+                          <div style={{ fontSize: '0.72rem', color: '#DC2626', marginTop: '3px', background: '#FEF2F2', padding: '3px 6px', borderRadius: 4, whiteSpace: 'normal', maxWidth: 220, border: '1px solid #FECDD3' }}>
+                            <strong>Reason:</strong> {b.rejectionReason}
                           </div>
                         )}
                       </td>
@@ -2051,6 +2423,39 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                           >
                             <Edit2 size={13} />
                           </button>
+                          {b.status !== 'Cancelled' && b.status !== 'Rejected' && (
+                            <button
+                              type="button"
+                              onClick={async () => {
+                                const reason = window.prompt(`Reject order/payment for ${b.patientName}?\n\nEnter reason for rejection (e.g. Ineligible Clinical Case, Invalid Prescription, Area Out of Jurisdiction):`, 'Ineligible Clinical Case');
+                                if (reason !== null && reason.trim()) {
+                                  await onUpdateBooking?.(b.id, {
+                                    status: 'Rejected',
+                                    rejectionReason: reason.trim(),
+                                    rejectedBy: 'Admin'
+                                  });
+                                  showToast(`Order ${b.id} marked as Rejected by Admin. Nurse payout set to ₹0.`);
+                                }
+                              }}
+                              title="Reject Order (Sets nurse payout to ₹0 immediately)"
+                              style={{
+                                background: '#FEF2F2',
+                                border: '1px solid #FECDD3',
+                                color: '#DC2626',
+                                padding: '0.3rem 0.45rem',
+                                borderRadius: 6,
+                                cursor: 'pointer',
+                                display: 'inline-flex',
+                                alignItems: 'center',
+                                gap: '0.2rem',
+                                fontSize: '0.72rem',
+                                fontWeight: 700
+                              }}
+                            >
+                              <X size={13} />
+                              <span>Reject</span>
+                            </button>
+                          )}
                           <button
                             type="button"
                             onClick={() => handleDeleteBookingClick(b)}
@@ -2085,6 +2490,8 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
         const activeNursesCount = nurses.filter((n) => n.status === 'Active' || (n.activeVisits && n.activeVisits > 0)).length;
         const verifiedNursesCount = nurses.filter((n) => n.certificateVerified).length;
         const pendingNursesCount = nurses.filter((n) => !n.certificateVerified).length;
+        const referredNursesCount = nurses.filter((n) => Boolean(n.referredByNurseId)).length;
+        const directNursesCount = nurses.filter((n) => !n.referredByNurseId).length;
         const expOver10Count = nurses.filter((n) => (n.experienceYears || (parseInt(n.experience || '0', 10) || 0)) >= 10).length;
         const exp5to10Count = nurses.filter((n) => {
           const exp = n.experienceYears || (parseInt(n.experience || '0', 10) || 0);
@@ -2131,8 +2538,8 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                 <Award size={22} />
               </div>
               <div>
-                <div className="stat-val">{pendingNursesCount}</div>
-                <div className="stat-label">Pending Review (Refer Only)</div>
+                <div className="stat-val">{referredNursesCount}</div>
+                <div className="stat-label">Referred Colleagues ({directNursesCount} Direct)</div>
               </div>
             </div>
           </div>
@@ -2142,7 +2549,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
               <div>
                 <h3 className="card-title">Registered Nursing Fleet & Service Zones</h3>
                 <p style={{ fontSize: '0.82rem', color: 'var(--neutral-500)', margin: 0 }}>
-                  Total: {totalNursesCount} nurses | {verifiedNursesCount} assignable | {pendingNursesCount} unverified (referral only)
+                  Total: {totalNursesCount} nurses | {referredNursesCount} via referrals | {directNursesCount} direct registrations | {verifiedNursesCount} verified
                 </p>
               </div>
               <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center', flexWrap: 'wrap' }}>
@@ -2171,7 +2578,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
               <div style={{ position: 'relative', minWidth: 260, flex: 1 }}>
                 <input
                   type="text"
-                  placeholder="Search nurse by name, phone, email, qualification, zone..."
+                  placeholder="Search nurse by name, phone, email, qualification, referral code..."
                   value={nurseSearch}
                   onChange={(e) => setNurseSearch(e.target.value)}
                   style={{
@@ -2185,48 +2592,77 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                 <Search size={14} style={{ position: 'absolute', left: 8, top: '50%', transform: 'translateY(-50%)', color: 'var(--neutral-400)' }} />
               </div>
 
-              {/* Experience Categories */}
-              <div style={{ display: 'flex', gap: '0.4rem', alignItems: 'center', flexWrap: 'wrap' }}>
-                <span style={{ fontSize: '0.8rem', color: 'var(--neutral-600)', fontWeight: 700 }}>Experience:</span>
+              {/* Origin Filter (Referred vs Direct) */}
+              <div style={{ display: 'flex', gap: '0.35rem', alignItems: 'center', flexWrap: 'wrap' }}>
+                <span style={{ fontSize: '0.78rem', color: 'var(--neutral-600)', fontWeight: 700 }}>Origin:</span>
                 <button
                   type="button"
-                  onClick={() => setNurseExpFilter('all')}
-                  className={`btn btn-sm ${nurseExpFilter === 'all' ? 'btn-primary' : 'btn-outline'}`}
-                  style={{ padding: '0.3rem 0.65rem', fontSize: '0.78rem', borderRadius: 9999 }}
+                  onClick={() => setNurseOriginFilter('all')}
+                  className={`btn btn-sm ${nurseOriginFilter === 'all' ? 'btn-primary' : 'btn-outline'}`}
+                  style={{ padding: '0.25rem 0.55rem', fontSize: '0.74rem', borderRadius: 9999 }}
                 >
                   All ({totalNursesCount})
                 </button>
                 <button
                   type="button"
+                  onClick={() => setNurseOriginFilter('referred')}
+                  className={`btn btn-sm ${nurseOriginFilter === 'referred' ? 'btn-primary' : 'btn-outline'}`}
+                  style={{ padding: '0.25rem 0.55rem', fontSize: '0.74rem', borderRadius: 9999 }}
+                >
+                  ⚡ Referred ({referredNursesCount})
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setNurseOriginFilter('direct')}
+                  className={`btn btn-sm ${nurseOriginFilter === 'direct' ? 'btn-primary' : 'btn-outline'}`}
+                  style={{ padding: '0.25rem 0.55rem', fontSize: '0.74rem', borderRadius: 9999 }}
+                >
+                  Direct ({directNursesCount})
+                </button>
+              </div>
+
+              {/* Experience Categories */}
+              <div style={{ display: 'flex', gap: '0.35rem', alignItems: 'center', flexWrap: 'wrap' }}>
+                <span style={{ fontSize: '0.78rem', color: 'var(--neutral-600)', fontWeight: 700 }}>Exp:</span>
+                <button
+                  type="button"
+                  onClick={() => setNurseExpFilter('all')}
+                  className={`btn btn-sm ${nurseExpFilter === 'all' ? 'btn-primary' : 'btn-outline'}`}
+                  style={{ padding: '0.25rem 0.55rem', fontSize: '0.74rem', borderRadius: 9999 }}
+                >
+                  All
+                </button>
+                <button
+                  type="button"
                   onClick={() => setNurseExpFilter('>10')}
                   className={`btn btn-sm ${nurseExpFilter === '>10' ? 'btn-primary' : 'btn-outline'}`}
-                  style={{ padding: '0.3rem 0.65rem', fontSize: '0.78rem', borderRadius: 9999 }}
+                  style={{ padding: '0.25rem 0.55rem', fontSize: '0.74rem', borderRadius: 9999 }}
                 >
-                  &gt; 10 Yrs ({expOver10Count})
+                  &gt;10 Yrs ({expOver10Count})
                 </button>
                 <button
                   type="button"
                   onClick={() => setNurseExpFilter('5-10')}
                   className={`btn btn-sm ${nurseExpFilter === '5-10' ? 'btn-primary' : 'btn-outline'}`}
-                  style={{ padding: '0.3rem 0.65rem', fontSize: '0.78rem', borderRadius: 9999 }}
+                  style={{ padding: '0.25rem 0.55rem', fontSize: '0.74rem', borderRadius: 9999 }}
                 >
-                  5 – 10 Yrs ({exp5to10Count})
+                  5-10 Yrs ({exp5to10Count})
                 </button>
                 <button
                   type="button"
                   onClick={() => setNurseExpFilter('<5')}
                   className={`btn btn-sm ${nurseExpFilter === '<5' ? 'btn-primary' : 'btn-outline'}`}
-                  style={{ padding: '0.3rem 0.65rem', fontSize: '0.78rem', borderRadius: 9999 }}
+                  style={{ padding: '0.25rem 0.55rem', fontSize: '0.74rem', borderRadius: 9999 }}
                 >
-                  &lt; 5 Yrs ({expUnder5Count})
+                  &lt;5 Yrs ({expUnder5Count})
                 </button>
               </div>
             </div>
 
           {filteredNurses.length === 0 ? (
             <EmptyState
-              title="No Nurses Stationed"
-              description={nurseSearch ? 'No nurses matched your search criteria.' : 'No registered nurses are currently stationed in the fleet directory.'}
+              title="No Nurses Found"
+              description={nurseSearch || nurseOriginFilter !== 'all' ? 'No nurses matched your search criteria or origin filter.' : 'No registered nurses are currently stationed in the fleet directory.'}
             />
           ) : (
             <div className="table-responsive">
@@ -2234,6 +2670,8 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                 <thead>
                   <tr>
                     <th>Nurse</th>
+                    <th>Signup Origin</th>
+                    <th>Referral Code</th>
                     <th>Login PIN & Access</th>
                     <th>Service Area (Rule 2)</th>
                     <th>Qualification</th>
@@ -2252,6 +2690,8 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                     );
                     const userPin = userObj?.pin || '1001';
                     const isRevealed = showAllPins || revealedPinIds[n.id];
+                    const nurseCode = n.referralCode || generateNurseReferralCode(n.name, n.id, n.phone);
+                    const isCopiedCode = copiedRefCodeId === n.id;
 
                     return (
                       <tr key={n.id}>
@@ -2268,6 +2708,82 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                             </div>
                           </div>
                         </td>
+
+                        {/* Origin (Referred vs Direct) */}
+                        <td>
+                          {n.referredByNurseId ? (() => {
+                            const refNurse = nurses.find((rn) => rn.id === n.referredByNurseId);
+                            const refName = refNurse?.name || n.referredByNurseName || n.referredByNurseId;
+                            return (
+                              <div>
+                                <span style={{
+                                  display: 'inline-flex',
+                                  alignItems: 'center',
+                                  gap: '0.3rem',
+                                  background: '#EFF6FF',
+                                  color: '#1D4ED8',
+                                  border: '1px solid #BFDBFE',
+                                  borderRadius: 9999,
+                                  padding: '2px 8px',
+                                  fontSize: '0.72rem',
+                                  fontWeight: 800,
+                                  whiteSpace: 'nowrap'
+                                }}>
+                                  ⚡ Referred by {refName}
+                                </span>
+                                <div style={{ fontSize: '0.7rem', color: n.certificateVerified ? '#059669' : '#D97706', fontWeight: 700, marginTop: '2px' }}>
+                                  Bonus: ₹500 {n.certificateVerified ? '✓ Credited' : '⏳ Pending'}
+                                </div>
+                              </div>
+                            );
+                          })() : (
+                            <span style={{
+                              display: 'inline-flex',
+                              alignItems: 'center',
+                              background: '#F1F5F9',
+                              color: '#475569',
+                              border: '1px solid #E2E8F0',
+                              borderRadius: 9999,
+                              padding: '2px 8px',
+                              fontSize: '0.72rem',
+                              fontWeight: 700,
+                              whiteSpace: 'nowrap'
+                            }}>
+                              Individual / Direct
+                            </span>
+                          )}
+                        </td>
+
+                        {/* Referral Code */}
+                        <td>
+                          <div style={{ display: 'inline-flex', alignItems: 'center', gap: '0.35rem' }}>
+                            <span style={{
+                              fontFamily: 'monospace',
+                              fontWeight: 800,
+                              fontSize: '0.76rem',
+                              background: '#F0F9FF',
+                              color: '#0369A1',
+                              border: '1px solid #BAE6FD',
+                              borderRadius: 5,
+                              padding: '2px 6px'
+                            }}>
+                              {nurseCode}
+                            </span>
+                            <button
+                              type="button"
+                              onClick={() => {
+                                navigator.clipboard.writeText(nurseCode);
+                                setCopiedRefCodeId(n.id);
+                                setTimeout(() => setCopiedRefCodeId(null), 2000);
+                              }}
+                              title="Copy Referral Code"
+                              style={{ background: 'transparent', border: 'none', cursor: 'pointer', padding: 2, color: isCopiedCode ? '#059669' : '#64748B' }}
+                            >
+                              {isCopiedCode ? <Check size={12} /> : <Copy size={12} />}
+                            </button>
+                          </div>
+                        </td>
+
                         <td>
                           <div>
                             <div style={{ display: 'inline-flex', alignItems: 'center', gap: '0.35rem' }}>
@@ -2311,33 +2827,95 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                         <td>{n.experienceYears} Years</td>
                         <td>
                           <div>Leads: {n.totalLeads}</div>
-                          <div style={{ fontSize: '0.78rem', color: 'var(--neutral-500)' }}>Converted: {n.convertedLeads}</div>
+                          <div style={{ fontSize: '0.78rem', color: 'var(--neutral-500)' }}>Ref: {n.totalReferrals || 0}</div>
                         </td>
                         <td><strong>{n.pointsEarned} pts</strong></td>
                         <td><strong style={{ color: '#059669' }}>₹{n.referralEarningsRupees}</strong></td>
                         <td>
-                          {n.certificateVerified ? (
-                            <span className="status-pill success">Verified Certificate</span>
-                          ) : (
-                            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.4rem', alignItems: 'flex-start' }}>
-                              <span className="status-pill warning">Pending Review</span>
-                              {n.certificateUrl && (
-                                <a href={n.certificateUrl} target="_blank" rel="noopener noreferrer" className="btn btn-sm" style={{ fontSize: '0.7rem', padding: '0.2rem 0.5rem', background: '#F1F5F9', border: '1px solid #CBD5E1', color: 'var(--primary-navy-900)', textDecoration: 'none', borderRadius: 4, display: 'flex', alignItems: 'center', gap: '0.25rem' }}>
-                                  <FileText size={12} />
-                                  View Certificate
-                                </a>
-                              )}
+                          <div style={{ display: 'flex', flexDirection: 'column', gap: '0.35rem', alignItems: 'flex-start' }}>
+                            {n.certificateVerified ? (
+                              <span className="status-pill success" style={{ fontSize: '0.72rem', padding: '2px 8px' }}>
+                                ✓ Verified Certificate
+                              </span>
+                            ) : (
+                              <span className="status-pill warning" style={{ fontSize: '0.72rem', padding: '2px 8px' }}>
+                                ⏳ Pending Review
+                              </span>
+                            )}
+
+                            {/* View Certificate Button - works for any nurse with a certificateUrl */}
+                            {n.certificateUrl ? (
                               <button 
+                                type="button"
                                 onClick={() => {
-                                  if(window.confirm(`Verify and approve ${n.name}? This confirms you have reviewed their signup details and certificate.`)) {
-                                    onUpdateNurseRecord?.(n.id, { certificateVerified: true, status: 'Active' });
+                                  setAdminCertModalNurse(n);
+                                  setAdminCertModalOpen(true);
+                                }} 
+                                className="btn btn-sm" 
+                                style={{ 
+                                  fontSize: '0.72rem', 
+                                  padding: '0.22rem 0.55rem', 
+                                  background: '#EFF6FF', 
+                                  border: '1px solid #BFDBFE', 
+                                  color: '#1D4ED8', 
+                                  borderRadius: 5, 
+                                  display: 'inline-flex', 
+                                  alignItems: 'center', 
+                                  gap: '0.3rem',
+                                  fontWeight: 700,
+                                  cursor: 'pointer'
+                                }}
+                              >
+                                <Eye size={12} />
+                                <span>View Certificate</span>
+                              </button>
+                            ) : (
+                              <span style={{ fontSize: '0.7rem', color: '#94A3B8' }}>No doc uploaded</span>
+                            )}
+
+                            {!n.certificateVerified && (
+                              <button 
+                                type="button"
+                                onClick={async () => {
+                                  if(window.confirm(`Verify and approve ${n.name}? This confirms you have reviewed their signup details and certificate, and credits any referral rewards.`)) {
+                                    await onUpdateNurseRecord?.(n.id, { certificateVerified: true, status: 'Active' });
+
+                                    // If nurse was referred by an existing nurse, credit ₹500 referral reward to the referrer
+                                    if (n.referredByNurseId && onUpdateNurseRecord) {
+                                      const referrer = nurses.find((rn) => rn.id === n.referredByNurseId);
+                                      if (referrer) {
+                                        const newPaid = (referrer.earningsPaid || 0) + 500;
+                                        const newPending = Math.max(0, (referrer.earningsPending || 0) - 500);
+                                        const newRefEarnings = (referrer.referralEarningsRupees || 0) + 500;
+                                        const newPoints = (referrer.pointsEarned || 0) + 50;
+                                        await onUpdateNurseRecord(referrer.id, {
+                                          earningsPaid: newPaid,
+                                          earningsPending: newPending,
+                                          referralEarningsRupees: newRefEarnings,
+                                          pointsEarned: newPoints,
+                                          convertedLeads: (referrer.convertedLeads || 0) + 1
+                                        });
+
+                                        // Also approve lead if exists
+                                        const matchLead = leads.find((l) => l.nurseId === referrer.id && (l.referredNursePhone === n.phone || l.patientPhone === n.phone || l.referredNurseName === n.name));
+                                        if (matchLead && onApproveLead) {
+                                          await onApproveLead(matchLead.id, 50, 500, `Referred nurse ${n.name} certificate verified by Admin`);
+                                        }
+
+                                        showToast(`Nurse ${n.name} approved! ₹500 referral bonus credited to ${referrer.name}.`);
+                                        return;
+                                      }
+                                    }
+                                    showToast(`Nurse ${n.name} approved and activated.`);
                                   }
                                 }}
-                                className="btn btn-sm btn-primary" style={{ fontSize: '0.7rem', padding: '0.2rem 0.5rem', background: '#0284C7', color: 'white', border: 'none', borderRadius: 4, cursor: 'pointer' }}>
+                                className="btn btn-sm btn-primary" 
+                                style={{ fontSize: '0.7rem', padding: '0.2rem 0.55rem', background: '#0284C7', color: 'white', border: 'none', borderRadius: 4, cursor: 'pointer', fontWeight: 700 }}
+                              >
                                 Approve Nurse
                               </button>
-                            </div>
-                          )}
+                            )}
+                          </div>
                         </td>
                         <td style={{ textAlign: 'right' }}>
                           <div style={{ display: 'inline-flex', alignItems: 'center', gap: '0.35rem' }}>
@@ -2777,7 +3355,13 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                         <td>
                           <div style={{ fontWeight: 600 }}>{l.patientName}</div>
                         </td>
-                        <td>{l.patientPhone}</td>
+                        <td>
+                          {isRejected ? (
+                            <span style={{ color: '#94A3B8', fontSize: '0.74rem' }}>✕ Contact Hidden (Rejected)</span>
+                          ) : (
+                            l.patientPhone
+                          )}
+                        </td>
                         <td>
                           <div style={{ fontWeight: 500 }}>{l.serviceId}</div>
                           <div style={{ fontSize: '0.72rem', color: 'var(--neutral-500)' }}>Value: ₹{l.leadValueRupees || 800}</div>
@@ -2843,9 +3427,14 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                             isRejected ? 'danger' :
                             l.status === 'Submitted' ? 'info' : 'neutral'
                           }`}>
-                            {isPending ? '⏳ Pending Approval' : isApproved ? '✓ Approved' : isRejected ? '✕ Rejected' : l.status}
+                            {isPending ? '⏳ Pending Approval' : isApproved ? '✓ Approved' : isRejected ? '✕ Rejected by Admin' : l.status}
                           </span>
-                          {l.adminNotes && (
+                          {isRejected && (l.rejectionReason || l.adminNotes) && (
+                            <div style={{ fontSize: '0.72rem', color: '#B91C1C', background: '#FEF2F2', border: '1px solid #FECACA', padding: '3px 6px', borderRadius: 4, marginTop: '0.35rem', maxWidth: 220 }}>
+                              <strong>Reason:</strong> {l.rejectionReason || l.adminNotes}
+                            </div>
+                          )}
+                          {!isRejected && l.adminNotes && (
                             <div style={{ fontSize: '0.7rem', color: 'var(--neutral-500)', marginTop: '0.2rem', maxWidth: 160 }} title={l.adminNotes}>
                               Note: {l.adminNotes.length > 28 ? l.adminNotes.slice(0, 25) + '...' : l.adminNotes}
                             </div>
@@ -4827,7 +5416,8 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                     <option value="Assigned">Assigned</option>
                     <option value="In-Progress">In-Progress</option>
                     <option value="Completed">Completed</option>
-                    <option value="Cancelled">Cancelled</option>
+                    <option value="Cancelled">Cancelled by Patient / Coordinator</option>
+                    <option value="Rejected">Rejected by Admin</option>
                   </select>
                 </div>
                 <div>
@@ -4847,14 +5437,14 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                 </div>
               </div>
 
-              {bookingForm.status === 'Cancelled' && (
+              {(bookingForm.status === 'Cancelled' || bookingForm.status === 'Rejected') && (
                 <div style={{ marginBottom: '0.85rem' }}>
                   <label className="form-label" style={{ fontSize: '0.78rem', fontWeight: 700, color: '#DC2626' }}>
-                    CANCELLATION / REJECTION REASON *
+                    REJECTION / CANCELLATION REASON *
                   </label>
                   <textarea
                     rows={2}
-                    placeholder="Specify why this booking was cancelled/rejected (shown to patient and nurse)..."
+                    placeholder="Specify why this booking was cancelled/rejected by Admin..."
                     value={bookingForm.rejectionReason}
                     onChange={(e) => setBookingForm({ ...bookingForm, rejectionReason: e.target.value })}
                     className="form-control"
@@ -6755,6 +7345,123 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* ADMIN IN-APP CERTIFICATE VIEWER MODAL */}
+      {adminCertModalOpen && adminCertModalNurse && (
+        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.7)', zIndex: 99999, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '1rem' }}>
+          <div style={{ background: '#FFFFFF', borderRadius: 16, width: '100%', maxWidth: 780, maxHeight: '92vh', overflowY: 'auto', display: 'flex', flexDirection: 'column', boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.25)' }}>
+            <div style={{ padding: '1.25rem 1.5rem', borderBottom: '1px solid #E2E8F0', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '0.65rem' }}>
+                <div style={{ width: 36, height: 36, borderRadius: 10, background: '#EFF6FF', color: '#0284C7', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                  <Shield size={18} />
+                </div>
+                <div>
+                  <h3 style={{ fontSize: '1.15rem', fontWeight: 800, color: '#0F172A', margin: 0 }}>
+                    Clinical Registration Certificate — {adminCertModalNurse.name}
+                  </h3>
+                  <div style={{ fontSize: '0.78rem', color: '#64748B' }}>
+                    {adminCertModalNurse.qualification} • Station: {adminCertModalNurse.serviceArea} • Phone: {adminCertModalNurse.phone}
+                  </div>
+                </div>
+              </div>
+              <button 
+                type="button"
+                onClick={() => setAdminCertModalOpen(false)} 
+                style={{ background: '#F1F5F9', border: 'none', borderRadius: '50%', width: 32, height: 32, display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer' }}
+              >
+                <X size={16} />
+              </button>
+            </div>
+
+            <div style={{ padding: '1.5rem', background: '#0F172A', display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: 400 }}>
+              {adminCertModalNurse.certificateUrl ? (
+                adminCertModalNurse.certificateUrl.startsWith('data:application/pdf') || adminCertModalNurse.certificateUrl.toLowerCase().endsWith('.pdf') ? (
+                  <iframe 
+                    src={getSafeBlobUrl(adminCertModalNurse.certificateUrl)} 
+                    style={{ width: '100%', height: '65vh', border: 'none', borderRadius: 8, background: '#FFFFFF' }} 
+                    title="Nurse PDF Certificate"
+                  />
+                ) : (
+                  <img 
+                    src={adminCertModalNurse.certificateUrl} 
+                    alt="Nurse Certificate" 
+                    style={{ maxWidth: '100%', maxHeight: '68vh', objectFit: 'contain', borderRadius: 8, boxShadow: '0 10px 25px rgba(0,0,0,0.5)' }} 
+                  />
+                )
+              ) : (
+                <div style={{ color: '#FFFFFF', textAlign: 'center', padding: '2rem' }}>
+                  No certificate document available.
+                </div>
+              )}
+            </div>
+
+            <div style={{ padding: '1rem 1.5rem', borderTop: '1px solid #E2E8F0', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '0.75rem', background: '#F8FAFC' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                {adminCertModalNurse.certificateVerified ? (
+                  <span className="status-pill success" style={{ fontSize: '0.75rem', padding: '3px 9px' }}>✓ Verified Registered RN</span>
+                ) : (
+                  <span className="status-pill warning" style={{ fontSize: '0.75rem', padding: '3px 9px' }}>Pending Admin Review</span>
+                )}
+              </div>
+
+              <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
+                {adminCertModalNurse.certificateUrl && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const safeUrl = getSafeBlobUrl(adminCertModalNurse.certificateUrl!);
+                      window.open(safeUrl, '_blank');
+                    }}
+                    className="btn btn-outline btn-sm"
+                    style={{ display: 'inline-flex', alignItems: 'center', gap: '0.35rem', fontWeight: 700 }}
+                  >
+                    <ExternalLink size={14} />
+                    <span>Open in New Tab</span>
+                  </button>
+                )}
+
+                {!adminCertModalNurse.certificateVerified && (
+                  <button
+                    type="button"
+                    onClick={async () => {
+                      if (window.confirm(`Verify and approve ${adminCertModalNurse.name}'s certificate? This activates the nurse and credits ₹500 referral reward if referred.`)) {
+                        await onUpdateNurseRecord?.(adminCertModalNurse.id, { certificateVerified: true, status: 'Active' });
+                        if (adminCertModalNurse.referredByNurseId && onUpdateNurseRecord) {
+                          const referrer = nurses.find((rn) => rn.id === adminCertModalNurse.referredByNurseId);
+                          if (referrer) {
+                            await onUpdateNurseRecord(referrer.id, {
+                              earningsPaid: (referrer.earningsPaid || 0) + 500,
+                              earningsPending: Math.max(0, (referrer.earningsPending || 0) - 500),
+                              referralEarningsRupees: (referrer.referralEarningsRupees || 0) + 500,
+                              pointsEarned: (referrer.pointsEarned || 0) + 50,
+                              convertedLeads: (referrer.convertedLeads || 0) + 1
+                            });
+                          }
+                        }
+                        showToast(`Nurse ${adminCertModalNurse.name} certificate verified and approved!`);
+                        setAdminCertModalOpen(false);
+                      }
+                    }}
+                    className="btn btn-primary btn-sm"
+                    style={{ background: '#16A34A', borderColor: '#16A34A', fontWeight: 700 }}
+                  >
+                    ✓ Verify & Approve Nurse
+                  </button>
+                )}
+
+                <button
+                  type="button"
+                  onClick={() => setAdminCertModalOpen(false)}
+                  className="btn btn-outline btn-sm"
+                  style={{ fontWeight: 700 }}
+                >
+                  Close
+                </button>
+              </div>
+            </div>
           </div>
         </div>
       )}

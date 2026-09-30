@@ -51,6 +51,7 @@ export interface Booking {
   hasPrescription: boolean;
   prescriptionFileName?: string;
   prescriptionUrl?: string;
+  prescriptionIssued?: boolean;
   status: 'Pending' | 'Assigned' | 'In-Progress' | 'Completed' | 'Cancelled' | 'Rejected';
   assignedNurseId?: string;
   assignedNurseName?: string;
@@ -66,6 +67,7 @@ export interface Booking {
   invoiceNumber?: string;
   invoiceUrl?: string;
   rejectionReason?: string;
+  rejectedBy?: string;
 }
 
 export interface NursePayoutRecord {
@@ -110,18 +112,27 @@ export interface NurseProfile {
   certificateUrl?: string;
   createdAt?: string;
   rejectionReason?: string;
+  referredByNurseId?: string;
+  referredByNurseName?: string;
+  referralCode?: string;
 }
 
 export interface NurseLead {
   id: string;
   nurseId?: string;
+  nurseName?: string;
   referredNurseName?: string;
   referredNursePhone?: string;
   patientName?: string;
   patientPhone?: string;
+  patientAge?: number | string;
+  patientGender?: string;
+  fullAddress?: string;
+  notes?: string;
   qualification?: string;
   experienceYears?: number;
   serviceId?: ServiceId;
+  serviceTitle?: string;
   area: string;
   submittedAt: string;
   status: 'Pending Approval' | 'Approved' | 'Rejected' | 'Converted' | 'Submitted' | 'Contacted' | 'Lost';
@@ -133,6 +144,7 @@ export interface NurseLead {
   approvedBy?: string;
   adminNotes?: string;
   rejectionReason?: string;
+  rejectedBy?: string;
 }
 
 export interface DoctorConsultation {
