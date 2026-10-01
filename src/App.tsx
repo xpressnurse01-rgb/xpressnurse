@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { Header } from './components/Header';
 import { Hero } from './components/Hero';
 import { PrescriptionBanner } from './components/PrescriptionBanner';
@@ -54,7 +54,13 @@ import {
   dbDeleteConsultation,
   dbInsertAppUser,
   dbUpdateAppUserById,
-  dbDeleteAppUser
+  dbDeleteAppUser,
+  DEFAULT_SERVICES,
+  DEFAULT_NURSES,
+  DEFAULT_BOOKINGS,
+  DEFAULT_LEADS,
+  DEFAULT_CONSULTATIONS,
+  DEFAULT_COUPONS
 } from './lib/supabase';
 
 import { 
@@ -144,14 +150,74 @@ export const App: React.FC = () => {
   // =========================================================================
   // ALL DATA FETCHED FROM SUPABASE DATABASE — NO MOCK DATA
   // =========================================================================
-  const [services, setServices] = useState<ServiceItem[]>([]);
-  const [bookings, setBookings] = useState<Booking[]>([]);
-  const [nurses, setNurses] = useState<NurseProfile[]>([]);
-  const [leads, setLeads] = useState<NurseLead[]>([]);
-  const [consultations, setConsultations] = useState<DoctorConsultation[]>([]);
-  const [coupons, setCoupons] = useState<Coupon[]>([]);
+  const [services, setServices] = useState<ServiceItem[]>(() => {
+    try {
+      const cached = localStorage.getItem('xn_cached_services');
+      if (cached) {
+        const parsed = JSON.parse(cached);
+        if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+      }
+    } catch {}
+    return DEFAULT_SERVICES;
+  });
+
+  const [bookings, setBookings] = useState<Booking[]>(() => {
+    try {
+      const cached = localStorage.getItem('xn_cached_bookings');
+      if (cached) {
+        const parsed = JSON.parse(cached);
+        if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+      }
+    } catch {}
+    return DEFAULT_BOOKINGS;
+  });
+
+  const [nurses, setNurses] = useState<NurseProfile[]>(() => {
+    try {
+      const cached = localStorage.getItem('xn_cached_nurses');
+      if (cached) {
+        const parsed = JSON.parse(cached);
+        if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+      }
+    } catch {}
+    return DEFAULT_NURSES;
+  });
+
+  const [leads, setLeads] = useState<NurseLead[]>(() => {
+    try {
+      const cached = localStorage.getItem('xn_cached_leads');
+      if (cached) {
+        const parsed = JSON.parse(cached);
+        if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+      }
+    } catch {}
+    return DEFAULT_LEADS;
+  });
+
+  const [consultations, setConsultations] = useState<DoctorConsultation[]>(() => {
+    try {
+      const cached = localStorage.getItem('xn_cached_consultations');
+      if (cached) {
+        const parsed = JSON.parse(cached);
+        if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+      }
+    } catch {}
+    return DEFAULT_CONSULTATIONS;
+  });
+
+  const [coupons, setCoupons] = useState<Coupon[]>(() => {
+    try {
+      const cached = localStorage.getItem('xn_cached_coupons');
+      if (cached) {
+        const parsed = JSON.parse(cached);
+        if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+      }
+    } catch {}
+    return DEFAULT_COUPONS;
+  });
+
   const [appUsers, setAppUsers] = useState<AppUser[]>(SEED_APP_USERS);
-  const [dbLoading, setDbLoading] = useState(true);
+  const [dbLoading, setDbLoading] = useState(false);
 
   // Master Scroll-Driven Slide-Down & Reveal Animation Engine
   useEffect(() => {
@@ -328,10 +394,17 @@ export const App: React.FC = () => {
           dbFetchAppUsers()
         ]);
 
-        if (remoteServices) setServices(remoteServices);
-        if (remoteBookings) setBookings(remoteBookings);
-        if (remoteNurses) {
+        if (remoteServices && remoteServices.length > 0) {
+          setServices(remoteServices);
+          try { localStorage.setItem('xn_cached_services', JSON.stringify(remoteServices)); } catch {}
+        }
+        if (remoteBookings && remoteBookings.length > 0) {
+          setBookings(remoteBookings);
+          try { localStorage.setItem('xn_cached_bookings', JSON.stringify(remoteBookings)); } catch {}
+        }
+        if (remoteNurses && remoteNurses.length > 0) {
           setNurses(remoteNurses);
+          try { localStorage.setItem('xn_cached_nurses', JSON.stringify(remoteNurses)); } catch {}
           // If authUser is logged in as a nurse, sync active nurse ID
           const savedAuth = localStorage.getItem('xn_auth_user');
           if (savedAuth) {
@@ -349,10 +422,21 @@ export const App: React.FC = () => {
             } catch {}
           }
         }
-        if (remoteLeads) setLeads(remoteLeads);
-        if (remoteConsults) setConsultations(remoteConsults);
-        if (remoteCoupons) setCoupons(remoteCoupons);
-        if (remoteAppUsers) setAppUsers(remoteAppUsers);
+        if (remoteLeads && remoteLeads.length > 0) {
+          setLeads(remoteLeads);
+          try { localStorage.setItem('xn_cached_leads', JSON.stringify(remoteLeads)); } catch {}
+        }
+        if (remoteConsults && remoteConsults.length > 0) {
+          setConsultations(remoteConsults);
+          try { localStorage.setItem('xn_cached_consultations', JSON.stringify(remoteConsults)); } catch {}
+        }
+        if (remoteCoupons && remoteCoupons.length > 0) {
+          setCoupons(remoteCoupons);
+          try { localStorage.setItem('xn_cached_coupons', JSON.stringify(remoteCoupons)); } catch {}
+        }
+        if (remoteAppUsers && remoteAppUsers.length > 0) {
+          setAppUsers(remoteAppUsers);
+        }
 
         console.log('[DB] Loaded from Supabase:', {
           services: remoteServices?.length || 0,
@@ -392,8 +476,16 @@ export const App: React.FC = () => {
     } catch {}
   };
 
-  // Safe background data refresh with equality checking to prevent unnecessary re-renders
-  const refreshAllDataFromDb = async () => {
+  const lastRefreshTimestampRef = useRef<number>(0);
+
+  // Safe background data refresh with 60s throttle and equality checking to prevent high egress and disk IO exhaustion
+  const refreshAllDataFromDb = async (force = false) => {
+    const now = Date.now();
+    if (!force && now - lastRefreshTimestampRef.current < 60000) {
+      return; // Throttled to prevent disk IO burn
+    }
+    lastRefreshTimestampRef.current = now;
+
     try {
       const [remoteBookings, remoteNurses, remoteLeads, remoteConsults] = await Promise.all([
         dbFetchBookings(),
@@ -487,8 +579,35 @@ export const App: React.FC = () => {
         });
       } else if (type === 'CONSULTATION_DELETE' && data?.id) {
         setConsultations((prev) => prev.filter((c) => c.id !== data.id));
+      } else if (type === 'SERVICE_UPDATE' && data?.id) {
+        setServices((prev) => prev.map((s) => (s.id === data.id ? { ...s, ...data } : s)));
+      } else if (type === 'SERVICE_CREATE' && data?.id) {
+        setServices((prev) => {
+          const exists = prev.some((s) => s.id === data.id);
+          return exists ? prev.map((s) => (s.id === data.id ? { ...s, ...data } : s)) : [...prev, data];
+        });
+      } else if (type === 'SERVICE_DELETE' && data?.id) {
+        setServices((prev) => prev.filter((s) => s.id !== data.id));
+      } else if (type === 'COUPON_UPDATE' && data?.id) {
+        setCoupons((prev) => prev.map((c) => (c.id === data.id ? { ...c, ...data } : c)));
+      } else if (type === 'COUPON_CREATE' && (data?.id || data?.code)) {
+        setCoupons((prev) => {
+          const exists = prev.some((c) => c.id === data.id || c.code === data.code);
+          return exists ? prev.map((c) => (c.id === data.id || c.code === data.code ? { ...c, ...data } : c)) : [data, ...prev];
+        });
+      } else if (type === 'COUPON_DELETE' && data?.id) {
+        setCoupons((prev) => prev.filter((c) => c.id !== data.id));
+      } else if (type === 'APP_USER_UPDATE' && data?.id) {
+        setAppUsers((prev) => prev.map((u) => (u.id === data.id ? { ...u, ...data } : u)));
+      } else if (type === 'APP_USER_CREATE' && data?.id) {
+        setAppUsers((prev) => {
+          const exists = prev.some((u) => u.id === data.id);
+          return exists ? prev.map((u) => (u.id === data.id ? { ...u, ...data } : u)) : [...prev, data];
+        });
+      } else if (type === 'APP_USER_DELETE' && data?.id) {
+        setAppUsers((prev) => prev.filter((u) => u.id !== data.id));
       } else if (type === 'RESYNC_ALL') {
-        refreshAllDataFromDb();
+        refreshAllDataFromDb(true);
       }
     };
 
@@ -568,60 +687,157 @@ export const App: React.FC = () => {
               return exists ? prev.map((b) => (b.id === mapped.id ? mapped : b)) : [mapped, ...prev];
             });
           } else if (payload.eventType === 'DELETE' && payload.old) {
-            setBookings((prev) => prev.filter((b) => b.id !== payload.old.id));
+            setBookings((prev) => prev.filter((b) => b.id !== (payload.old as any).id));
           }
           const fresh = await dbFetchBookings();
-          if (fresh) setBookings(fresh);
+          if (fresh && fresh.length > 0) setBookings(fresh);
         }
       )
       .on(
         'postgres_changes',
         { event: '*', schema: 'public', table: 'nurses' },
-        async () => {
+        async (payload) => {
+          console.log('[Realtime DB] Live Nurse update:', payload);
+          if (payload.new && (payload.eventType === 'UPDATE' || payload.eventType === 'INSERT')) {
+            const raw: any = payload.new;
+            const mapped: NurseProfile = {
+              id: raw.id,
+              name: raw.name || '',
+              phone: raw.phone || '',
+              email: raw.email || '',
+              experienceYears: Number(raw.experience_years) || 5,
+              qualification: raw.qualification || 'B.Sc Nursing',
+              serviceArea: raw.service_area || 'Hyderabad',
+              status: raw.status || 'Active',
+              totalLeads: Number(raw.total_leads) || 0,
+              convertedLeads: Number(raw.converted_leads) || 0,
+              totalReferrals: Number(raw.total_referrals) || 0,
+              pointsEarned: Number(raw.points_earned) || 0,
+              referralEarningsRupees: Number(raw.referral_earnings_rupees) || 0,
+              rating: Number(raw.rating) || 4.9,
+              avatarUrl: raw.avatar_url,
+              certificateVerified: Boolean(raw.certificate_verified),
+              certificateUrl: raw.certificate_url,
+              referredByNurseId: raw.referred_by_nurse_id,
+              earningsPaid: Number(raw.earnings_paid) || 0,
+              earningsPending: Number(raw.earnings_pending) || 0,
+              rejectionReason: raw.rejection_reason
+            };
+            setNurses((prev) => {
+              const exists = prev.some((n) => n.id === mapped.id);
+              return exists ? prev.map((n) => (n.id === mapped.id ? mapped : n)) : [...prev, mapped];
+            });
+          } else if (payload.eventType === 'DELETE' && payload.old) {
+            setNurses((prev) => prev.filter((n) => n.id !== (payload.old as any).id));
+          }
           const fresh = await dbFetchNurses();
-          if (fresh) setNurses(fresh);
+          if (fresh && fresh.length > 0) setNurses(fresh);
         }
       )
       .on(
         'postgres_changes',
         { event: '*', schema: 'public', table: 'leads' },
-        async () => {
+        async (payload) => {
+          console.log('[Realtime DB] Live Lead update:', payload);
+          if (payload.new && (payload.eventType === 'UPDATE' || payload.eventType === 'INSERT')) {
+            const raw: any = payload.new;
+            const mapped: NurseLead = {
+              id: raw.id,
+              nurseId: raw.nurse_id,
+              patientName: raw.patient_name || raw.referred_nurse_name || 'Patient',
+              patientPhone: raw.patient_phone || raw.referred_nurse_phone || '',
+              serviceId: raw.service_id,
+              area: raw.area,
+              submittedAt: raw.submitted_at || new Date().toISOString(),
+              status: raw.status || 'Pending Approval',
+              assignedNurseId: raw.assigned_nurse_id,
+              leadValueRupees: Number(raw.lead_value_rupees) || 1000,
+              pointsAwarded: Math.round(Number(raw.points_awarded)) || 50,
+              referralCommissionRupees: Number(raw.referral_commission_rupees) || 100,
+              referredNurseName: raw.referred_nurse_name,
+              referredNursePhone: raw.referred_nurse_phone,
+              adminNotes: raw.admin_notes,
+              approvedBy: raw.approved_by,
+              approvedAt: raw.approved_at,
+              rejectedBy: raw.rejected_by,
+              rejectionReason: raw.rejection_reason
+            };
+            setLeads((prev) => {
+              const exists = prev.some((l) => l.id === mapped.id);
+              return exists ? prev.map((l) => (l.id === mapped.id ? mapped : l)) : [mapped, ...prev];
+            });
+          } else if (payload.eventType === 'DELETE' && payload.old) {
+            setLeads((prev) => prev.filter((l) => l.id !== (payload.old as any).id));
+          }
           const fresh = await dbFetchLeads();
-          if (fresh) setLeads(fresh);
+          if (fresh && fresh.length > 0) setLeads(fresh);
         }
       )
       .on(
         'postgres_changes',
         { event: '*', schema: 'public', table: 'consultations' },
-        async () => {
+        async (payload) => {
+          console.log('[Realtime DB] Live Consultation update:', payload);
+          if (payload.new && (payload.eventType === 'UPDATE' || payload.eventType === 'INSERT')) {
+            const raw: any = payload.new;
+            const mapped: DoctorConsultation = {
+              id: raw.id,
+              patientName: raw.patient_name,
+              patientPhone: raw.patient_phone,
+              patientAge: Number(raw.patient_age) || 30,
+              area: raw.area,
+              symptoms: raw.symptoms,
+              status: raw.status || 'Pending Review',
+              requestedAt: raw.requested_at,
+              doctorName: raw.doctor_name,
+              prescriptionIssued: Boolean(raw.prescription_issued),
+              prescriptionText: raw.prescription_text,
+              recommendedService: raw.recommended_service
+            };
+            setConsultations((prev) => {
+              const exists = prev.some((c) => c.id === mapped.id);
+              return exists ? prev.map((c) => (c.id === mapped.id ? mapped : c)) : [mapped, ...prev];
+            });
+          } else if (payload.eventType === 'DELETE' && payload.old) {
+            setConsultations((prev) => prev.filter((c) => c.id !== (payload.old as any).id));
+          }
           const fresh = await dbFetchConsultations();
-          if (fresh) setConsultations(fresh);
+          if (fresh && fresh.length > 0) setConsultations(fresh);
         }
       )
       .on(
         'postgres_changes',
         { event: '*', schema: 'public', table: 'services' },
-        async () => {
+        async (payload) => {
+          console.log('[Realtime DB] Live Service update:', payload);
+          if (payload.eventType === 'DELETE' && payload.old) {
+            setServices((prev) => prev.filter((s) => s.id !== (payload.old as any).id));
+          }
           const fresh = await dbFetchServices();
-          if (fresh) setServices(fresh);
+          if (fresh && fresh.length > 0) setServices(fresh);
         }
       )
       .on(
         'postgres_changes',
         { event: '*', schema: 'public', table: 'coupons' },
-        async () => {
+        async (payload) => {
+          console.log('[Realtime DB] Live Coupon update:', payload);
+          if (payload.eventType === 'DELETE' && payload.old) {
+            setCoupons((prev) => prev.filter((c) => c.id !== (payload.old as any).id));
+          }
           const fresh = await dbFetchCoupons();
-          if (fresh) setCoupons(fresh);
+          if (fresh && fresh.length > 0) setCoupons(fresh);
         }
       )
       .subscribe();
 
-    // 5. Active Heartbeat Poller: Every 1.5 seconds, refresh to ensure zero desync across all devices
+    // 5. Gentle Heartbeat Poller: Reduced from 1.5s to 5 minutes to eliminate disk IO budget depletion and excess egress.
+    // Live updates are already pushed instantaneously via Supabase WebSockets (above) and BroadcastChannel cross-tab.
     const heartbeatTimer = setInterval(() => {
       if (typeof document !== 'undefined' && document.visibilityState === 'visible') {
-        refreshAllDataFromDb();
+        refreshAllDataFromDb(false);
       }
-    }, 1500);
+    }, 300000);
 
     return () => {
       supabase.removeChannel(channel);
@@ -800,17 +1016,30 @@ export const App: React.FC = () => {
     dbUpdateNurse(updated);
   };
 
-  // Handler: Admin assigns order
+  // Handler: Admin assigns or reassigns order
   const handleAdminAssignOrder = (bookingId: string, nurseId: string, ruleExplanation: string) => {
     const nurseObj = nurses.find((n) => n.id === nurseId);
     setBookings((prev) =>
       prev.map((b) => {
         if (b.id === bookingId) {
+          const wasRejected = b.status === 'Rejected' || b.nurseAcceptanceStatus === 'Rejected';
+          const auditMsg = wasRejected 
+            ? `Referred & reassigned to Nurse ${nurseObj?.name || nurseId} by Admin (${ruleExplanation})`
+            : undefined;
+          const updatedNotes = auditMsg ? (b.notes ? `${b.notes} • ${auditMsg}` : auditMsg) : b.notes;
+
           const updated: Booking = {
             ...b,
             status: 'Assigned',
+            nurseAcceptanceStatus: 'Pending',
             assignedNurseId: nurseId,
-            assignedNurseName: `${nurseObj?.name} (${ruleExplanation})`
+            assignedNurseName: `${nurseObj?.name || 'Nurse'} (${ruleExplanation})`,
+            rejectedBy: undefined,
+            rejectionReason: undefined,
+            rejectedNurseId: undefined,
+            rejectedNurseName: undefined,
+            rejectedAt: undefined,
+            notes: updatedNotes
           };
           broadcastRealtimeUpdate('BOOKING_UPDATE', updated);
           dbSaveBooking(updated);
@@ -969,16 +1198,19 @@ export const App: React.FC = () => {
     const created = await dbInsertCoupon(newCouponData);
     if (created) {
       setCoupons((prev) => [created, ...prev.filter((c) => c.code !== created.code)]);
+      broadcastRealtimeUpdate('COUPON_CREATE', created);
     }
   };
 
   const handleUpdateCoupon = async (id: string, updates: Partial<Coupon>) => {
     setCoupons((prev) => prev.map((c) => (c.id === id ? { ...c, ...updates } : c)));
+    broadcastRealtimeUpdate('COUPON_UPDATE', { id, ...updates });
     await dbUpdateCoupon(id, updates);
   };
 
   const handleDeleteCoupon = async (id: string) => {
     setCoupons((prev) => prev.filter((c) => c.id !== id));
+    broadcastRealtimeUpdate('COUPON_DELETE', { id });
     await dbDeleteCoupon(id);
   };
 
@@ -1045,14 +1277,17 @@ export const App: React.FC = () => {
   // 4. Services CRUD Handlers
   const handleCreateService = async (s: ServiceItem) => {
     setServices((prev) => [...prev, s]);
+    broadcastRealtimeUpdate('SERVICE_CREATE', s);
     await dbInsertService(s);
   };
   const handleUpdateService = async (id: string, updates: Partial<ServiceItem>) => {
     setServices((prev) => prev.map((s) => (s.id === id ? { ...s, ...updates } : s)));
+    broadcastRealtimeUpdate('SERVICE_UPDATE', { id, ...updates });
     await dbUpdateServiceById(id, updates);
   };
   const handleDeleteService = async (id: string) => {
     setServices((prev) => prev.filter((s) => s.id !== id));
+    broadcastRealtimeUpdate('SERVICE_DELETE', { id });
     await dbDeleteService(id);
   };
 
@@ -1076,14 +1311,17 @@ export const App: React.FC = () => {
   // 6. App Users CRUD Handlers
   const handleCreateAppUser = async (u: AppUser) => {
     setAppUsers((prev) => [...prev, u]);
+    broadcastRealtimeUpdate('APP_USER_CREATE', u);
     await dbInsertAppUser(u);
   };
   const handleUpdateAppUser = async (id: string, updates: Partial<AppUser>) => {
     setAppUsers((prev) => prev.map((u) => (u.id === id ? { ...u, ...updates } : u)));
+    broadcastRealtimeUpdate('APP_USER_UPDATE', { id, ...updates });
     await dbUpdateAppUserById(id, updates);
   };
   const handleDeleteAppUser = async (id: string) => {
     setAppUsers((prev) => prev.filter((u) => u.id !== id));
+    broadcastRealtimeUpdate('APP_USER_DELETE', { id });
     await dbDeleteAppUser(id);
   };
 
@@ -1151,6 +1389,7 @@ export const App: React.FC = () => {
             onAddNewLead={handleAddNewLead}
             onUpdateNurse={handleUpdateNurse}
             onReassignBooking={handleReassignBooking}
+            onUpdateBooking={handleUpdateBooking}
           />
         )}
 

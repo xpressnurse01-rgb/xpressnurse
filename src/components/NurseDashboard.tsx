@@ -38,7 +38,8 @@ import {
   Sparkles,
   UserCheck,
   ExternalLink,
-  UploadCloud
+  UploadCloud,
+  MessageCircle
 } from 'lucide-react';
 import confetti from 'canvas-confetti';
 import { EmptyState } from './EmptyState';
@@ -103,6 +104,7 @@ interface NurseDashboardProps {
   onAddNewLead: (lead: NurseLead) => void;
   onUpdateNurse: (nurse: NurseProfile) => void;
   onReassignBooking?: (bookingId: string, targetNurseId: string) => void;
+  onUpdateBooking?: (bookingId: string, updates: Partial<Booking>) => Promise<boolean | void> | void;
 }
 
 export const NurseDashboard: React.FC<NurseDashboardProps> = ({
@@ -114,7 +116,8 @@ export const NurseDashboard: React.FC<NurseDashboardProps> = ({
   services = [],
   onAddNewLead,
   onUpdateNurse,
-  onReassignBooking
+  onReassignBooking,
+  onUpdateBooking
 }) => {
   const serviceList = services.length > 0 ? services : DEFAULT_SERVICES;
   const nurse: NurseProfile = (currentNurse as NurseProfile) || (allNurses && allNurses.length > 0 ? (allNurses[0] as NurseProfile) : null) || {
@@ -188,6 +191,73 @@ export const NurseDashboard: React.FC<NurseDashboardProps> = ({
   const [leadRxFileName, setLeadRxFileName] = useState('');
   const [leadRxDataUrl, setLeadRxDataUrl] = useState('');
 
+  // Nurse Approval / Rejection states
+  const [rejectingBooking, setRejectingBooking] = useState<Booking | null>(null);
+  const [rejectReasonCategory, setRejectReasonCategory] = useState<string>('Currently attending another urgent patient');
+  const [rejectCustomReason, setRejectCustomReason] = useState<string>('');
+  const [nurseActionFeedback, setNurseActionFeedback] = useState<string>('');
+  const [visitStatusFilter, setVisitStatusFilter] = useState<'all' | 'pending' | 'accepted' | 'declined'>('all');
+
+  // Handle Nurse Accepting an assigned visit
+  const handleAcceptVisit = async (booking: Booking) => {
+    try {
+      const nowStr = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+      const auditMsg = `[${nowStr}] Approved & accepted by Nurse ${nurse.name}`;
+      const updatedNotes = booking.notes ? `${booking.notes} • ${auditMsg}` : auditMsg;
+
+      if (onUpdateBooking) {
+        await onUpdateBooking(booking.id, {
+          status: 'In-Progress',
+          nurseAcceptanceStatus: 'Accepted',
+          notes: updatedNotes
+        });
+      }
+      setNurseActionFeedback(`✓ Visit #${booking.id} accepted! You are now assigned to attend ${booking.patientName}.`);
+      confetti({ particleCount: 60, spread: 55, origin: { y: 0.7 } });
+      setTimeout(() => setNurseActionFeedback(''), 5000);
+    } catch {
+      setNurseActionFeedback('Error updating visit status. Please retry.');
+      setTimeout(() => setNurseActionFeedback(''), 4000);
+    }
+  };
+
+  // Open Decline / Rejection Modal
+  const handleOpenRejectModal = (booking: Booking) => {
+    setRejectingBooking(booking);
+    setRejectReasonCategory('Currently attending another urgent patient');
+    setRejectCustomReason('');
+  };
+
+  // Submit Nurse Decline to Admin
+  const handleConfirmRejectVisit = async () => {
+    if (!rejectingBooking) return;
+    const finalReason = rejectReasonCategory === 'Other' && rejectCustomReason.trim()
+      ? rejectCustomReason.trim()
+      : rejectReasonCategory;
+
+    const nowStr = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+    const auditMsg = `[${nowStr}] Declined by Nurse ${nurse.name}: "${finalReason}". Admin alert: Referral/reassignment needed.`;
+    const updatedNotes = rejectingBooking.notes ? `${rejectingBooking.notes} • ${auditMsg}` : auditMsg;
+
+    if (onUpdateBooking) {
+      await onUpdateBooking(rejectingBooking.id, {
+        status: 'Rejected',
+        nurseAcceptanceStatus: 'Rejected',
+        rejectedBy: 'Nurse',
+        rejectedNurseId: nurse.id,
+        rejectedNurseName: nurse.name,
+        rejectionReason: `Nurse ${nurse.name} Declined: ${finalReason}`,
+        rejectedAt: new Date().toISOString(),
+        notes: updatedNotes
+      });
+    }
+
+    const bId = rejectingBooking.id;
+    setRejectingBooking(null);
+    setNurseActionFeedback(`Visit #${bId} declined. Operations Admin has been flagged to refer this order to another nurse.`);
+    setTimeout(() => setNurseActionFeedback(''), 6000);
+  };
+
   const handleCertFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files && e.target.files[0]) {
       const file = e.target.files[0];
@@ -241,6 +311,20 @@ export const NurseDashboard: React.FC<NurseDashboardProps> = ({
 
   // Bookings assigned to THIS nurse to execute
   const assignedVisits = bookings.filter((b) => b.assignedNurseId === nurse.id);
+
+  const pendingApprovalVisits = assignedVisits.filter((b) => {
+    const isDeclined = b.nurseAcceptanceStatus === 'Rejected' || (b.status === 'Rejected' && (b.rejectedBy === 'Nurse' || b.rejectionReason?.toLowerCase().includes('nurse')));
+    const isAccepted = b.nurseAcceptanceStatus === 'Accepted' || b.status === 'In-Progress' || b.status === 'Completed';
+    return !isDeclined && !isAccepted;
+  });
+
+  const acceptedVisits = assignedVisits.filter((b) => {
+    return b.nurseAcceptanceStatus === 'Accepted' || (b.status === 'In-Progress' && b.nurseAcceptanceStatus !== 'Rejected') || b.status === 'Completed';
+  });
+
+  const declinedVisits = assignedVisits.filter((b) => {
+    return b.nurseAcceptanceStatus === 'Rejected' || (b.status === 'Rejected' && (b.rejectedBy === 'Nurse' || b.rejectionReason?.toLowerCase().includes('nurse')));
+  });
 
   // Leads referred by THIS nurse
   const myLeads = leads.filter((l) => l.nurseId === nurse.id);
@@ -437,6 +521,30 @@ export const NurseDashboard: React.FC<NurseDashboardProps> = ({
             <UserPlus size={15} />
             <span>Refer Patient Lead</span>
           </button>
+
+          <a
+            href={`https://wa.me/917569657371?text=${encodeURIComponent(`Hello Operations Admin, I am Nurse ${nurse.name} (ID: ${nurse.id}, Base: ${nurse.serviceArea}). I need assistance regarding my visits/portal.`)}`}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="btn btn-sm"
+            style={{
+              background: '#25D366',
+              color: '#FFFFFF',
+              border: 'none',
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: '0.45rem',
+              fontWeight: 700,
+              padding: '0.42rem 0.85rem',
+              borderRadius: 8,
+              boxShadow: '0 2px 6px rgba(37, 211, 102, 0.25)',
+              textDecoration: 'none'
+            }}
+            title="Chat directly with Operations Admin on WhatsApp"
+          >
+            <MessageCircle size={15} />
+            <span>Admin Helpline</span>
+          </a>
         </div>
       </div>
 
@@ -577,7 +685,7 @@ export const NurseDashboard: React.FC<NurseDashboardProps> = ({
             </div>
           )}
 
-          {/* Key Metric Stats Cards */}
+          {/* Key Metric Stats Cards - 4 Important Cards */}
           <div className="stats-grid">
             <div className="stat-card">
               <div className="stat-icon" style={{ background: '#EEF5FF', color: 'var(--primary-navy-700)' }}>
@@ -616,34 +724,14 @@ export const NurseDashboard: React.FC<NurseDashboardProps> = ({
             </div>
 
             <div className="stat-card">
-              <div className="stat-icon" style={{ background: '#FFFBEB', color: '#D97706' }}>
-                <Coins size={24} />
-              </div>
-              <div>
-                <div className="stat-val" style={{ color: '#D97706' }}>{totalBonusPoints}</div>
-                <div className="stat-label">Total Points (1 Pt = ₹1)</div>
-              </div>
-            </div>
-
-            <div className="stat-card">
               <div className="stat-icon" style={{ background: '#ECFDF5', color: '#059669' }}>
                 <TrendingUp size={24} />
               </div>
               <div>
                 <div className="stat-val" style={{ color: '#059669' }}>₹{totalBonusRupees}</div>
                 <div className="stat-label">Total Referral Earnings</div>
-              </div>
-            </div>
-
-            <div className="stat-card">
-              <div className="stat-icon" style={{ background: '#FFF1F2', color: '#E11D48' }}>
-                <AlertCircle size={24} />
-              </div>
-              <div>
-                <div className="stat-val" style={{ color: '#E11D48' }}>{rejectedPatientLeads.length + rejectedNurseReferrals.length}</div>
-                <div className="stat-label">Rejected by Admin</div>
-                <div style={{ fontSize: '0.72rem', color: '#991B1B', fontWeight: 700, marginTop: 2 }}>
-                  ₹0 (Void Payout)
+                <div style={{ fontSize: '0.72rem', color: '#047857', fontWeight: 700, marginTop: 2 }}>
+                  {totalBonusPoints} Pts (1 Pt = ₹1)
                 </div>
               </div>
             </div>
@@ -721,21 +809,29 @@ export const NurseDashboard: React.FC<NurseDashboardProps> = ({
                       <th>Procedure</th>
                       <th>Area & Address</th>
                       <th>Fee</th>
-                      <th>Status</th>
-                      <th>Invoice</th>
+                      <th>Status & Approval</th>
+                      <th>Actions</th>
                     </tr>
                   </thead>
                   <tbody>
                     {assignedVisits.slice(0, 5).map((booking) => {
-                      const isCancelledOrRejected = booking.status === 'Cancelled' || (booking as any).status === 'Rejected';
+                      const isDeclinedByNurse = booking.nurseAcceptanceStatus === 'Rejected' || (booking.status === 'Rejected' && (booking.rejectedBy === 'Nurse' || booking.rejectionReason?.toLowerCase().includes('nurse')));
+                      const isRejectedByAdmin = booking.status === 'Rejected' && !isDeclinedByNurse;
+                      const isCancelledOrRejected = booking.status === 'Cancelled' || isDeclinedByNurse || isRejectedByAdmin;
+                      const isAccepted = booking.nurseAcceptanceStatus === 'Accepted' || (booking.status === 'In-Progress' && !isCancelledOrRejected);
+                      const isPendingApproval = !isAccepted && !isCancelledOrRejected && booking.status !== 'Completed';
+
                       return (
-                        <tr key={booking.id} style={{ background: isCancelledOrRejected ? '#FEF2F2' : undefined }}>
+                        <tr key={booking.id} style={{ 
+                          background: isDeclinedByNurse ? '#FFF1F2' : isRejectedByAdmin ? '#FEF2F2' : isPendingApproval ? '#FFFBEB' : undefined,
+                          borderLeft: isPendingApproval ? '3px solid #F59E0B' : undefined
+                        }}>
                           <td><strong>{booking.id}</strong></td>
                           <td>
                             <div style={{ fontWeight: 600 }}>{booking.patientName}</div>
                             {/* Strictly hide phone number on rejection */}
                             {isCancelledOrRejected ? (
-                              <span style={{ fontSize: '0.74rem', color: '#94A3B8', fontWeight: 600 }}>✕ Contact Hidden (Rejected)</span>
+                              <span style={{ fontSize: '0.74rem', color: '#94A3B8', fontWeight: 600 }}>✕ Contact Hidden (Declined)</span>
                             ) : (
                               <div style={{ fontSize: '0.8rem', color: 'var(--neutral-500)' }}>{booking.patientPhone}</div>
                             )}
@@ -783,40 +879,106 @@ export const NurseDashboard: React.FC<NurseDashboardProps> = ({
                           <td>
                             {isCancelledOrRejected ? (
                               <span style={{ color: '#94A3B8', fontSize: '0.84rem', fontWeight: 600 }}>
-                                ₹0 <small style={{ color: '#DC2626' }}>(Rejected)</small>
+                                ₹0 <small style={{ color: '#DC2626' }}>(Void)</small>
                               </span>
                             ) : (
                               <strong>₹{booking.finalFee !== undefined ? booking.finalFee : booking.estimatedFee}</strong>
                             )}
                           </td>
                           <td>
-                            {isCancelledOrRejected ? (
+                            {isPendingApproval ? (
+                              <span className="status-pill warning" style={{ display: 'inline-flex', alignItems: 'center', gap: '0.25rem', fontWeight: 750, fontSize: '0.75rem' }}>
+                                <Clock size={11} /> Awaiting Approval
+                              </span>
+                            ) : isAccepted ? (
+                              <span className="status-pill success" style={{ display: 'inline-flex', alignItems: 'center', gap: '0.25rem', fontWeight: 750, fontSize: '0.75rem' }}>
+                                <CheckCircle2 size={11} /> Accepted
+                              </span>
+                            ) : isDeclinedByNurse ? (
+                              <div>
+                                <span className="status-pill danger" style={{ display: 'inline-flex', alignItems: 'center', gap: '0.25rem', fontWeight: 750, fontSize: '0.74rem' }}>
+                                  ✕ Declined by You
+                                </span>
+                                <div style={{ fontSize: '0.68rem', color: '#991B1B', marginTop: 2 }}>Sent to Admin</div>
+                              </div>
+                            ) : isRejectedByAdmin ? (
                               <span className="status-pill danger">❌ Rejected by Admin</span>
                             ) : (
                               <span className="status-pill success">{booking.status}</span>
                             )}
                           </td>
                           <td>
-                            <button
-                              type="button"
-                              onClick={() => handleOpenBookingInvoice(booking)}
-                              className="btn btn-outline btn-sm"
-                              style={{
-                                fontSize: '0.72rem',
-                                padding: '0.25rem 0.5rem',
-                                display: 'inline-flex',
-                                alignItems: 'center',
-                                gap: '0.25rem',
-                                color: '#0284C7',
-                                borderColor: '#BAE6FD',
-                                background: '#F0F9FF',
-                                borderRadius: 6
-                              }}
-                              title="Generate Official Invoice"
-                            >
-                              <Receipt size={12} />
-                              <span>Invoice</span>
-                            </button>
+                            {isPendingApproval ? (
+                              <div style={{ display: 'flex', gap: '0.3rem', alignItems: 'center' }}>
+                                <button
+                                  type="button"
+                                  onClick={() => handleAcceptVisit(booking)}
+                                  className="btn btn-sm"
+                                  style={{
+                                    background: '#16A34A',
+                                    color: '#FFF',
+                                    fontWeight: 750,
+                                    fontSize: '0.72rem',
+                                    padding: '0.25rem 0.5rem',
+                                    borderRadius: 6,
+                                    border: 'none',
+                                    cursor: 'pointer',
+                                    display: 'inline-flex',
+                                    alignItems: 'center',
+                                    gap: '0.2rem'
+                                  }}
+                                  title="Accept this assigned visit"
+                                >
+                                  <Check size={12} />
+                                  <span>Accept</span>
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => handleOpenRejectModal(booking)}
+                                  className="btn btn-sm"
+                                  style={{
+                                    background: '#FFF1F2',
+                                    border: '1px solid #FECDD3',
+                                    color: '#E11D48',
+                                    fontWeight: 700,
+                                    fontSize: '0.72rem',
+                                    padding: '0.25rem 0.45rem',
+                                    borderRadius: 6,
+                                    cursor: 'pointer',
+                                    display: 'inline-flex',
+                                    alignItems: 'center',
+                                    gap: '0.2rem'
+                                  }}
+                                  title="Decline visit so Admin can reassign"
+                                >
+                                  <X size={12} />
+                                  <span>Decline</span>
+                                </button>
+                              </div>
+                            ) : (
+                              <div style={{ display: 'flex', gap: '0.3rem', alignItems: 'center' }}>
+                                <button
+                                  type="button"
+                                  onClick={() => handleOpenBookingInvoice(booking)}
+                                  className="btn btn-outline btn-sm"
+                                  style={{
+                                    fontSize: '0.72rem',
+                                    padding: '0.25rem 0.5rem',
+                                    display: 'inline-flex',
+                                    alignItems: 'center',
+                                    gap: '0.25rem',
+                                    color: '#0284C7',
+                                    borderColor: '#BAE6FD',
+                                    background: '#F0F9FF',
+                                    borderRadius: 6
+                                  }}
+                                  title="Generate Official Invoice"
+                                >
+                                  <Receipt size={12} />
+                                  <span>Invoice</span>
+                                </button>
+                              </div>
+                            )}
                           </td>
                         </tr>
                       );
@@ -834,53 +996,122 @@ export const NurseDashboard: React.FC<NurseDashboardProps> = ({
       {/* ========================================================================= */}
       {activeTab === 'visits' && (
         <div>
+          {/* Action Feedback Toast / Alert Banner */}
+          {nurseActionFeedback && (
+            <div style={{
+              background: '#ECFDF5',
+              border: '1px solid #10B981',
+              color: '#065F46',
+              padding: '0.85rem 1.25rem',
+              borderRadius: 10,
+              marginBottom: '1.25rem',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '0.65rem',
+              fontWeight: 700,
+              fontSize: '0.9rem',
+              boxShadow: '0 2px 6px rgba(16, 185, 129, 0.15)'
+            }}>
+              <CheckCircle2 size={18} style={{ color: '#059669', flexShrink: 0 }} />
+              <span>{nurseActionFeedback}</span>
+            </div>
+          )}
+
+          {/* Pending Approval Urgent Alert Banner */}
+          {pendingApprovalVisits.length > 0 && (
+            <div style={{
+              background: 'linear-gradient(135deg, #FFFBEB 0%, #FEF3C7 100%)',
+              border: '1px solid #F59E0B',
+              borderRadius: 10,
+              padding: '0.9rem 1.25rem',
+              marginBottom: '1.25rem',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              flexWrap: 'wrap',
+              gap: '0.75rem',
+              boxShadow: '0 2px 8px rgba(245, 158, 11, 0.12)'
+            }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '0.65rem' }}>
+                <div style={{ width: 34, height: 34, borderRadius: '50%', background: '#F59E0B', color: '#FFF', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                  <Clock size={18} />
+                </div>
+                <div>
+                  <div style={{ fontWeight: 800, color: '#92400E', fontSize: '0.92rem' }}>
+                    Action Required: {pendingApprovalVisits.length} Visit(s) Awaiting Your Acceptance
+                  </div>
+                  <div style={{ fontSize: '0.8rem', color: '#B45309' }}>
+                    Please review patient procedures below and choose to Accept or Decline so Admin can reassign if needed.
+                  </div>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setVisitStatusFilter('pending')}
+                className="btn btn-sm"
+                style={{ background: '#D97706', color: '#FFF', border: 'none', fontWeight: 700, fontSize: '0.78rem', padding: '0.35rem 0.8rem', borderRadius: 6, cursor: 'pointer' }}
+              >
+                Review Pending ({pendingApprovalVisits.length})
+              </button>
+            </div>
+          )}
+
           {/* Top Contextual Metric Cards for Assigned Visits */}
           {(() => {
-            const activeVisitsCount = assignedVisits.filter(b => b.status !== 'Completed' && b.status !== 'Cancelled' && (b as any).status !== 'Rejected').length;
             const completedVisitsCount = assignedVisits.filter(b => b.status === 'Completed').length;
-            const rejectedVisitsCount = assignedVisits.filter(b => b.status === 'Cancelled' || (b as any).status === 'Rejected').length;
 
             return (
               <div className="stats-grid" style={{ marginBottom: '1.5rem' }}>
-                <div className="stat-card">
+                <div className="stat-card" style={{ cursor: 'pointer' }} onClick={() => setVisitStatusFilter('all')}>
                   <div className="stat-icon" style={{ background: '#EFF6FF', color: '#0284C7' }}>
                     <Calendar size={22} />
                   </div>
                   <div>
                     <div className="stat-val">{assignedVisits.length}</div>
-                    <div className="stat-label">Total Assigned Visits</div>
+                    <div className="stat-label">Total Assigned</div>
                   </div>
                 </div>
 
-                <div className="stat-card">
-                  <div className="stat-icon" style={{ background: '#DBEAFE', color: '#1D4ED8' }}>
+                <div 
+                  className="stat-card" 
+                  style={{ 
+                    cursor: 'pointer',
+                    border: pendingApprovalVisits.length > 0 ? '2px solid #F59E0B' : undefined,
+                    background: pendingApprovalVisits.length > 0 ? '#FFFDF5' : undefined 
+                  }} 
+                  onClick={() => setVisitStatusFilter('pending')}
+                >
+                  <div className="stat-icon" style={{ background: '#FEF3C7', color: '#D97706' }}>
                     <Clock size={22} />
                   </div>
                   <div>
-                    <div className="stat-val" style={{ color: '#1D4ED8' }}>{activeVisitsCount}</div>
-                    <div className="stat-label">Active / Scheduled</div>
+                    <div className="stat-val" style={{ color: '#D97706' }}>{pendingApprovalVisits.length}</div>
+                    <div className="stat-label">Awaiting Approval</div>
+                    {pendingApprovalVisits.length > 0 && (
+                      <div style={{ fontSize: '0.7rem', color: '#B45309', fontWeight: 800 }}>⚡ Action Needed</div>
+                    )}
                   </div>
                 </div>
 
-                <div className="stat-card">
+                <div className="stat-card" style={{ cursor: 'pointer' }} onClick={() => setVisitStatusFilter('accepted')}>
                   <div className="stat-icon" style={{ background: '#DCFCE7', color: '#16A34A' }}>
                     <CheckCircle2 size={22} />
                   </div>
                   <div>
-                    <div className="stat-val" style={{ color: '#16A34A' }}>{completedVisitsCount}</div>
-                    <div className="stat-label">Completed Care</div>
+                    <div className="stat-val" style={{ color: '#16A34A' }}>{acceptedVisits.length}</div>
+                    <div className="stat-label">Accepted & Active</div>
                   </div>
                 </div>
 
-                <div className="stat-card">
+                <div className="stat-card" style={{ cursor: 'pointer' }} onClick={() => setVisitStatusFilter('declined')}>
                   <div className="stat-icon" style={{ background: '#FEE2E2', color: '#DC2626' }}>
-                    <AlertCircle size={22} />
+                    <X size={22} />
                   </div>
                   <div>
-                    <div className="stat-val" style={{ color: '#DC2626' }}>{rejectedVisitsCount}</div>
-                    <div className="stat-label">Rejected by Admin</div>
+                    <div className="stat-val" style={{ color: '#DC2626' }}>{declinedVisits.length}</div>
+                    <div className="stat-label">Declined (To Admin)</div>
                     <div style={{ fontSize: '0.72rem', color: '#991B1B', fontWeight: 700, marginTop: 2 }}>
-                      ₹0 (Void Payout)
+                      Referred to Admin
                     </div>
                   </div>
                 </div>
@@ -889,203 +1120,359 @@ export const NurseDashboard: React.FC<NurseDashboardProps> = ({
           })()}
 
           <div className="card">
-            <div className="card-header">
+            <div className="card-header" style={{ flexWrap: 'wrap', gap: '0.75rem', justifyContent: 'space-between', alignItems: 'center' }}>
               <div>
                 <h3 className="card-title">Patient Visits Dispatched to You ({nurse.serviceArea})</h3>
                 <span style={{ fontSize: '0.82rem', color: 'var(--neutral-500)' }}>
-                  Direct location-matched and colleague-referred orders assigned for home execution
+                  Approve visits to accept attending, or decline with a reason so Admin can refer to another colleague
                 </span>
               </div>
-              <span className="status-pill success">Total: {assignedVisits.length} Visits</span>
+
+              {/* Status Filter Tabs */}
+              <div style={{ display: 'flex', gap: '0.35rem', flexWrap: 'wrap' }}>
+                <button
+                  type="button"
+                  onClick={() => setVisitStatusFilter('all')}
+                  className={`btn btn-sm ${visitStatusFilter === 'all' ? 'btn-primary' : 'btn-outline'}`}
+                  style={{ fontSize: '0.75rem', padding: '0.25rem 0.55rem' }}
+                >
+                  All ({assignedVisits.length})
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setVisitStatusFilter('pending')}
+                  className={`btn btn-sm ${visitStatusFilter === 'pending' ? 'btn-primary' : 'btn-outline'}`}
+                  style={{ 
+                    fontSize: '0.75rem', 
+                    padding: '0.25rem 0.55rem',
+                    background: visitStatusFilter === 'pending' ? '#D97706' : undefined,
+                    borderColor: '#D97706',
+                    color: visitStatusFilter === 'pending' ? '#FFF' : '#B45309',
+                    fontWeight: 750
+                  }}
+                >
+                  Awaiting Acceptance ({pendingApprovalVisits.length})
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setVisitStatusFilter('accepted')}
+                  className={`btn btn-sm ${visitStatusFilter === 'accepted' ? 'btn-primary' : 'btn-outline'}`}
+                  style={{ fontSize: '0.75rem', padding: '0.25rem 0.55rem' }}
+                >
+                  Accepted ({acceptedVisits.length})
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setVisitStatusFilter('declined')}
+                  className={`btn btn-sm ${visitStatusFilter === 'declined' ? 'btn-primary' : 'btn-outline'}`}
+                  style={{ fontSize: '0.75rem', padding: '0.25rem 0.55rem', color: visitStatusFilter === 'declined' ? '#FFF' : '#DC2626' }}
+                >
+                  Declined ({declinedVisits.length})
+                </button>
+              </div>
             </div>
 
-            {assignedVisits.length === 0 ? (
-              <EmptyState
-                title="No Patient Visits Stationed"
-                description={`There are currently no home visits assigned to you in ${nurse.serviceArea}.`}
-              />
-            ) : (
-              <div className="table-responsive">
-                <table className="data-table">
-                  <thead>
-                    <tr>
-                      <th>Booking ID</th>
-                      <th>Patient Name & Contact</th>
-                      <th>Clinical Procedure</th>
-                      <th>Locality & Address</th>
-                      <th>Fee</th>
-                      <th>Status</th>
-                      <th>Actions</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {assignedVisits.map((booking) => {
-                      const isCancelledOrRejected = booking.status === 'Cancelled' || (booking as any).status === 'Rejected';
-                      return (
-                        <tr key={booking.id} style={{ background: isCancelledOrRejected ? '#FEF2F2' : undefined }}>
-                          <td><strong>{booking.id}</strong></td>
+            {(() => {
+              const displayedVisits = assignedVisits.filter((b) => {
+                if (visitStatusFilter === 'pending') {
+                  const isDeclined = b.nurseAcceptanceStatus === 'Rejected' || (b.status === 'Rejected' && (b.rejectedBy === 'Nurse' || b.rejectionReason?.toLowerCase().includes('nurse')));
+                  const isAcc = b.nurseAcceptanceStatus === 'Accepted' || (b.status === 'In-Progress' && b.nurseAcceptanceStatus !== 'Rejected');
+                  return !isDeclined && !isAcc && b.status !== 'Completed' && b.status !== 'Cancelled';
+                }
+                if (visitStatusFilter === 'accepted') {
+                  return b.nurseAcceptanceStatus === 'Accepted' || (b.status === 'In-Progress' && b.nurseAcceptanceStatus !== 'Rejected');
+                }
+                if (visitStatusFilter === 'declined') {
+                  return b.nurseAcceptanceStatus === 'Rejected' || (b.status === 'Rejected' && (b.rejectedBy === 'Nurse' || b.rejectionReason?.toLowerCase().includes('nurse')));
+                }
+                return true;
+              });
 
-                          {/* Patient & Call Button (Strictly hidden on rejection) */}
-                          <td>
-                            <div style={{ fontWeight: 600 }}>{booking.patientName}</div>
-                            {isCancelledOrRejected ? (
-                              <span style={{
-                                display: 'inline-flex',
-                                alignItems: 'center',
-                                gap: '0.25rem',
-                                color: '#94A3B8',
-                                fontSize: '0.74rem',
-                                background: '#F1F5F9',
-                                padding: '0.2rem 0.5rem',
-                                borderRadius: 4,
-                                fontWeight: 600,
-                                marginTop: '0.2rem'
-                              }}>
-                                ✕ Contact Terminated (Rejected)
-                              </span>
-                            ) : (
-                              <a
-                                href={`tel:${booking.patientPhone}`}
-                                style={{
-                                  display: 'inline-flex',
-                                  alignItems: 'center',
-                                  gap: '0.3rem',
-                                  background: '#16A34A',
-                                  color: '#FFFFFF',
-                                  padding: '0.25rem 0.6rem',
-                                  borderRadius: 6,
-                                  fontSize: '0.75rem',
-                                  fontWeight: 700,
-                                  textDecoration: 'none',
-                                  marginTop: '0.25rem',
-                                  boxShadow: '0 2px 4px rgba(22, 163, 74, 0.2)'
-                                }}
-                                title={`Call patient directly: ${booking.patientPhone}`}
-                              >
-                                <Phone size={12} />
-                                <span>Call {booking.patientPhone}</span>
-                              </a>
-                            )}
-                          </td>
+              if (displayedVisits.length === 0) {
+                return (
+                  <EmptyState
+                    title={
+                      visitStatusFilter === 'pending' 
+                        ? 'No Visits Awaiting Approval'
+                        : visitStatusFilter === 'accepted'
+                        ? 'No Accepted Active Visits'
+                        : visitStatusFilter === 'declined'
+                        ? 'No Declined Visits'
+                        : 'No Patient Visits Stationed'
+                    }
+                    description={`There are currently no matching visits in this category for ${nurse.name}.`}
+                  />
+                );
+              }
 
-                          {/* Clinical Procedure & In-App Rx Viewer (Fixes 505) */}
-                          <td>
-                            <div style={{ fontWeight: 600 }}>{booking.serviceTitle}</div>
-                            {booking.hasPrescription || booking.prescriptionFileName || booking.prescriptionUrl ? (
-                              <button
-                                type="button"
-                                onClick={() => {
-                                  setPreviewRxBooking(booking);
-                                  setIsRxModalOpen(true);
-                                }}
-                                style={{
+              return (
+                <div className="table-responsive">
+                  <table className="data-table">
+                    <thead>
+                      <tr>
+                        <th>Booking ID</th>
+                        <th>Patient Name & Contact</th>
+                        <th>Clinical Procedure</th>
+                        <th>Locality & Address</th>
+                        <th>Fee</th>
+                        <th>Status & Acceptance</th>
+                        <th>Actions</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {displayedVisits.map((booking) => {
+                        const isDeclinedByNurse = booking.nurseAcceptanceStatus === 'Rejected' || (booking.status === 'Rejected' && (booking.rejectedBy === 'Nurse' || booking.rejectionReason?.toLowerCase().includes('nurse')));
+                        const isRejectedByAdmin = booking.status === 'Rejected' && !isDeclinedByNurse;
+                        const isCancelledOrRejected = booking.status === 'Cancelled' || isDeclinedByNurse || isRejectedByAdmin;
+                        const isAccepted = booking.nurseAcceptanceStatus === 'Accepted' || (booking.status === 'In-Progress' && !isCancelledOrRejected);
+                        const isPendingApproval = !isAccepted && !isCancelledOrRejected && booking.status !== 'Completed';
+
+                        return (
+                          <tr key={booking.id} style={{ 
+                            background: isDeclinedByNurse ? '#FFF1F2' : isRejectedByAdmin ? '#FEF2F2' : isPendingApproval ? '#FFFBEB' : undefined,
+                            borderLeft: isPendingApproval ? '3px solid #F59E0B' : undefined
+                          }}>
+                            <td><strong>{booking.id}</strong></td>
+
+                            {/* Patient & Call Button */}
+                            <td>
+                              <div style={{ fontWeight: 600 }}>{booking.patientName}</div>
+                              {isCancelledOrRejected ? (
+                                <span style={{
                                   display: 'inline-flex',
                                   alignItems: 'center',
                                   gap: '0.25rem',
-                                  fontSize: '0.72rem',
-                                  color: '#0284C7',
-                                  fontWeight: 700,
-                                  background: '#F0F9FF',
-                                  border: '1px solid #BAE6FD',
+                                  color: '#94A3B8',
+                                  fontSize: '0.74rem',
+                                  background: '#F1F5F9',
+                                  padding: '0.2rem 0.5rem',
                                   borderRadius: 4,
-                                  padding: '2px 6px',
-                                  cursor: 'pointer',
-                                  marginTop: '0.25rem'
-                                }}
-                                title="View verified doctor prescription in-app"
-                              >
-                                <FileText size={11} />
-                                <span>View Mandatory Rx</span>
-                              </button>
-                            ) : (
-                              <span style={{ fontSize: '0.7rem', color: '#059669', fontWeight: 600 }}>✓ Verified Protocol</span>
-                            )}
-                          </td>
+                                  fontWeight: 600,
+                                  marginTop: '0.2rem'
+                                }}>
+                                  ✕ Contact Hidden (Declined)
+                                </span>
+                              ) : (
+                                <a
+                                  href={`tel:${booking.patientPhone}`}
+                                  style={{
+                                    display: 'inline-flex',
+                                    alignItems: 'center',
+                                    gap: '0.3rem',
+                                    background: '#16A34A',
+                                    color: '#FFFFFF',
+                                    padding: '0.25rem 0.6rem',
+                                    borderRadius: 6,
+                                    fontSize: '0.75rem',
+                                    fontWeight: 700,
+                                    textDecoration: 'none',
+                                    marginTop: '0.25rem',
+                                    boxShadow: '0 2px 4px rgba(22, 163, 74, 0.2)'
+                                  }}
+                                  title={`Call patient directly: ${booking.patientPhone}`}
+                                >
+                                  <Phone size={12} />
+                                  <span>Call {booking.patientPhone}</span>
+                                </a>
+                              )}
+                            </td>
 
-                          <td>
-                            <div style={{ display: 'flex', alignItems: 'center', gap: '0.3rem', fontWeight: 600 }}>
-                              <MapPin size={14} style={{ color: 'var(--neutral-500)' }} />
-                              <span>{booking.area}</span>
-                            </div>
-                            <div style={{ fontSize: '0.78rem', color: 'var(--neutral-500)' }}>{booking.fullAddress}</div>
-                          </td>
-
-                          {/* Fee (Strictly ₹0 on rejection) */}
-                          <td>
-                            {isCancelledOrRejected ? (
-                              <span style={{ color: '#94A3B8', fontSize: '0.84rem', fontWeight: 600 }}>
-                                ₹0 <small style={{ color: '#DC2626' }}>(Rejected)</small>
-                              </span>
-                            ) : (
-                              <div style={{ fontWeight: 700, color: 'var(--primary-navy-900)' }}>
-                                ₹{booking.finalFee !== undefined ? booking.finalFee : booking.estimatedFee}
-                              </div>
-                            )}
-                          </td>
-
-                          {/* Status */}
-                          <td>
-                            {isCancelledOrRejected ? (
-                              <div>
-                                <span className="status-pill danger">❌ Rejected by Admin</span>
-                                {booking.rejectionReason && (
-                                  <div style={{ fontSize: '0.72rem', color: '#B91C1C', background: '#FEF2F2', border: '1px solid #FECACA', borderRadius: 4, padding: '3px 6px', marginTop: '0.3rem', fontWeight: 600, maxWidth: 200 }}>
-                                    <strong>Reason:</strong> {booking.rejectionReason}
-                                  </div>
-                                )}
-                              </div>
-                            ) : (
-                              <span className="status-pill success">{booking.status}</span>
-                            )}
-                          </td>
-
-                          {/* Actions */}
-                          <td>
-                            <div style={{ display: 'flex', gap: '0.4rem', alignItems: 'center' }}>
-                              <button
-                                type="button"
-                                onClick={() => handleOpenBookingInvoice(booking)}
-                                className="btn btn-outline btn-sm"
-                                style={{
-                                  fontSize: '0.75rem',
-                                  padding: '0.3rem 0.55rem',
-                                  display: 'inline-flex',
-                                  alignItems: 'center',
-                                  gap: '0.25rem',
-                                  color: '#0284C7',
-                                  borderColor: '#BAE6FD',
-                                  background: '#F0F9FF',
-                                  fontWeight: 700
-                                }}
-                                title="Generate Official Invoice"
-                              >
-                                <Receipt size={13} />
-                                <span>Invoice</span>
-                              </button>
-                              {!isCancelledOrRejected && (
+                            {/* Clinical Procedure & In-App Rx Viewer */}
+                            <td>
+                              <div style={{ fontWeight: 600 }}>{booking.serviceTitle}</div>
+                              {booking.hasPrescription || booking.prescriptionFileName || booking.prescriptionUrl ? (
                                 <button
                                   type="button"
                                   onClick={() => {
-                                    setReassignModalBooking(booking);
-                                    setTargetReassignNurseId(allNurses.find((n) => n.id !== nurse.id)?.id || 'nurse-102');
+                                    setPreviewRxBooking(booking);
+                                    setIsRxModalOpen(true);
                                   }}
-                                  className="btn btn-outline btn-sm"
-                                  style={{ fontSize: '0.75rem', padding: '0.3rem 0.55rem' }}
-                                  title="Transfer this order to another colleague nurse"
+                                  style={{
+                                    display: 'inline-flex',
+                                    alignItems: 'center',
+                                    gap: '0.25rem',
+                                    fontSize: '0.72rem',
+                                    color: '#0284C7',
+                                    fontWeight: 700,
+                                    background: '#F0F9FF',
+                                    border: '1px solid #BAE6FD',
+                                    borderRadius: 4,
+                                    padding: '2px 6px',
+                                    cursor: 'pointer',
+                                    marginTop: '0.25rem'
+                                  }}
+                                  title="View verified doctor prescription in-app"
                                 >
-                                  <RefreshCw size={12} />
-                                  <span>Transfer</span>
+                                  <FileText size={11} />
+                                  <span>View Mandatory Rx</span>
                                 </button>
+                              ) : (
+                                <span style={{ fontSize: '0.7rem', color: '#059669', fontWeight: 600 }}>✓ Verified Protocol</span>
                               )}
-                            </div>
-                          </td>
-                        </tr>
-                      );
-                    })}
-                  </tbody>
-                </table>
-              </div>
-            )}
+                            </td>
+
+                            <td>
+                              <div style={{ display: 'flex', alignItems: 'center', gap: '0.3rem', fontWeight: 600 }}>
+                                <MapPin size={14} style={{ color: 'var(--neutral-500)' }} />
+                                <span>{booking.area}</span>
+                              </div>
+                              <div style={{ fontSize: '0.78rem', color: 'var(--neutral-500)' }}>{booking.fullAddress}</div>
+                            </td>
+
+                            {/* Fee (Strictly ₹0 on rejection) */}
+                            <td>
+                              {isCancelledOrRejected ? (
+                                <span style={{ color: '#94A3B8', fontSize: '0.84rem', fontWeight: 600 }}>
+                                  ₹0 <small style={{ color: '#DC2626' }}>(Void)</small>
+                                </span>
+                              ) : (
+                                <div style={{ fontWeight: 700, color: 'var(--primary-navy-900)' }}>
+                                  ₹{booking.finalFee !== undefined ? booking.finalFee : booking.estimatedFee}
+                                </div>
+                              )}
+                            </td>
+
+                            {/* Status & Acceptance */}
+                            <td>
+                              {isPendingApproval ? (
+                                <div>
+                                  <span className="status-pill warning" style={{ display: 'inline-flex', alignItems: 'center', gap: '0.3rem', fontWeight: 800 }}>
+                                    <Clock size={12} /> Awaiting Your Approval
+                                  </span>
+                                  <div style={{ fontSize: '0.72rem', color: '#B45309', marginTop: '3px', fontWeight: 600 }}>
+                                    Action Required: Accept or Decline
+                                  </div>
+                                </div>
+                              ) : isAccepted ? (
+                                <span className="status-pill success" style={{ display: 'inline-flex', alignItems: 'center', gap: '0.3rem', fontWeight: 800 }}>
+                                  <CheckCircle2 size={12} /> Accepted & Active
+                                </span>
+                              ) : isDeclinedByNurse ? (
+                                <div>
+                                  <span className="status-pill danger" style={{ display: 'inline-flex', alignItems: 'center', gap: '0.25rem', fontWeight: 800 }}>
+                                    ✕ Declined by You
+                                  </span>
+                                  <div style={{ fontSize: '0.7rem', color: '#991B1B', marginTop: '2px', fontWeight: 600 }}>
+                                    Sent to Admin for Reassignment
+                                  </div>
+                                  {booking.rejectionReason && (
+                                    <div style={{ fontSize: '0.7rem', color: '#B91C1C', background: '#FEF2F2', border: '1px solid #FECACA', borderRadius: 4, padding: '3px 6px', marginTop: '0.25rem', fontWeight: 600, maxWidth: 210 }}>
+                                      {booking.rejectionReason}
+                                    </div>
+                                  )}
+                                </div>
+                              ) : isRejectedByAdmin ? (
+                                <div>
+                                  <span className="status-pill danger">❌ Rejected by Admin</span>
+                                  {booking.rejectionReason && (
+                                    <div style={{ fontSize: '0.72rem', color: '#B91C1C', background: '#FEF2F2', border: '1px solid #FECACA', borderRadius: 4, padding: '3px 6px', marginTop: '0.3rem', fontWeight: 600, maxWidth: 200 }}>
+                                      <strong>Reason:</strong> {booking.rejectionReason}
+                                    </div>
+                                  )}
+                                </div>
+                              ) : (
+                                <span className="status-pill success">{booking.status}</span>
+                              )}
+                            </td>
+
+                            {/* Actions */}
+                            <td>
+                              {isPendingApproval ? (
+                                <div style={{ display: 'flex', gap: '0.4rem', alignItems: 'center' }}>
+                                  <button
+                                    type="button"
+                                    onClick={() => handleAcceptVisit(booking)}
+                                    className="btn btn-sm"
+                                    style={{
+                                      background: '#16A34A',
+                                      color: '#FFFFFF',
+                                      fontWeight: 750,
+                                      fontSize: '0.78rem',
+                                      padding: '0.35rem 0.75rem',
+                                      borderRadius: 6,
+                                      display: 'inline-flex',
+                                      alignItems: 'center',
+                                      gap: '0.3rem',
+                                      border: 'none',
+                                      cursor: 'pointer',
+                                      boxShadow: '0 2px 4px rgba(22,163,74,0.3)'
+                                    }}
+                                    title="Accept this assigned visit and attend the patient"
+                                  >
+                                    <CheckCircle2 size={13} />
+                                    <span>Accept Visit</span>
+                                  </button>
+                                  <button
+                                    type="button"
+                                    onClick={() => handleOpenRejectModal(booking)}
+                                    className="btn btn-sm"
+                                    style={{
+                                      background: '#FFF1F2',
+                                      border: '1px solid #FECDD3',
+                                      color: '#E11D48',
+                                      fontWeight: 700,
+                                      fontSize: '0.75rem',
+                                      padding: '0.35rem 0.65rem',
+                                      borderRadius: 6,
+                                      display: 'inline-flex',
+                                      alignItems: 'center',
+                                      gap: '0.25rem',
+                                      cursor: 'pointer'
+                                    }}
+                                    title="Decline visit so Admin can refer to another nurse"
+                                  >
+                                    <X size={13} />
+                                    <span>Decline</span>
+                                  </button>
+                                </div>
+                              ) : (
+                                <div style={{ display: 'flex', gap: '0.4rem', alignItems: 'center' }}>
+                                  <button
+                                    type="button"
+                                    onClick={() => handleOpenBookingInvoice(booking)}
+                                    className="btn btn-outline btn-sm"
+                                    style={{
+                                      fontSize: '0.75rem',
+                                      padding: '0.3rem 0.55rem',
+                                      display: 'inline-flex',
+                                      alignItems: 'center',
+                                      gap: '0.25rem',
+                                      color: '#0284C7',
+                                      borderColor: '#BAE6FD',
+                                      background: '#F0F9FF',
+                                      fontWeight: 700
+                                    }}
+                                    title="Generate Official Invoice"
+                                  >
+                                    <Receipt size={13} />
+                                    <span>Invoice</span>
+                                  </button>
+                                  {!isCancelledOrRejected && (
+                                    <button
+                                      type="button"
+                                      onClick={() => {
+                                        setReassignModalBooking(booking);
+                                        setTargetReassignNurseId(allNurses.find((n) => n.id !== nurse.id)?.id || 'nurse-102');
+                                      }}
+                                      className="btn btn-outline btn-sm"
+                                      style={{ fontSize: '0.75rem', padding: '0.3rem 0.55rem' }}
+                                      title="Transfer this order to another colleague nurse"
+                                    >
+                                      <RefreshCw size={12} />
+                                      <span>Transfer</span>
+                                    </button>
+                                  )}
+                                </div>
+                              )}
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              );
+            })()}
           </div>
         </div>
       )}
@@ -1759,6 +2146,137 @@ export const NurseDashboard: React.FC<NurseDashboardProps> = ({
       {/* ========================================================================= */}
       {/* MODALS */}
       {/* ========================================================================= */}
+
+      {/* 0. Nurse Decline / Rejection Modal */}
+      {rejectingBooking && (
+        <div 
+          className="modal-backdrop" 
+          onClick={() => setRejectingBooking(null)} 
+          style={{
+            position: 'fixed',
+            inset: 0,
+            background: 'rgba(15, 23, 42, 0.75)',
+            backdropFilter: 'blur(4px)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            zIndex: 9999,
+            padding: '1rem'
+          }}
+        >
+          <div 
+            className="modal-card" 
+            style={{ maxWidth: 500, width: '100%', background: '#FFFFFF', borderRadius: 14, boxShadow: '0 20px 50px rgba(0,0,0,0.3)', overflow: 'hidden' }} 
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div style={{ padding: '1.25rem 1.5rem', background: '#FEF2F2', borderBottom: '1px solid #FECACA', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '0.65rem' }}>
+                <div style={{ width: 34, height: 34, borderRadius: 8, background: '#DC2626', color: '#FFF', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                  <X size={18} />
+                </div>
+                <div>
+                  <h3 style={{ margin: 0, fontSize: '1.05rem', fontWeight: 800, color: '#991B1B' }}>
+                    Decline Assigned Visit
+                  </h3>
+                  <div style={{ fontSize: '0.75rem', color: '#B91C1C' }}>
+                    Booking Ref: #{rejectingBooking.id} • {rejectingBooking.serviceTitle}
+                  </div>
+                </div>
+              </div>
+              <button 
+                type="button" 
+                onClick={() => setRejectingBooking(null)}
+                style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#991B1B', display: 'flex', padding: 4 }}
+              >
+                <X size={20} />
+              </button>
+            </div>
+
+            <div style={{ padding: '1.25rem 1.5rem' }}>
+              <div style={{ background: '#FFFBEB', border: '1px solid #FDE68A', borderRadius: 8, padding: '0.75rem 1rem', marginBottom: '1.25rem' }}>
+                <div style={{ fontWeight: 700, color: '#92400E', fontSize: '0.84rem' }}>
+                  Patient: {rejectingBooking.patientName} ({rejectingBooking.area})
+                </div>
+                <div style={{ fontSize: '0.78rem', color: '#B45309', marginTop: '0.2rem' }}>
+                  Declining this visit notifies the Operations Admin immediately with your reason, so they can refer and dispatch another available nurse in Hyderabad.
+                </div>
+              </div>
+
+              <div className="form-group" style={{ marginBottom: '1.25rem' }}>
+                <label style={{ display: 'block', fontWeight: 700, fontSize: '0.85rem', color: '#334155', marginBottom: '0.5rem' }}>
+                  Please select clinical / operational reason:
+                </label>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+                  {[
+                    'Currently attending another urgent patient',
+                    'Outside my immediate operational radius / travel distance',
+                    'Scheduled time slot conflicts with current shift duty',
+                    'Personal emergency / clinical leave',
+                    'Other reason (Specify below)'
+                  ].map((r) => (
+                    <label key={r} style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '0.5rem',
+                      padding: '0.5rem 0.75rem',
+                      borderRadius: 8,
+                      border: rejectReasonCategory === r ? '2px solid #DC2626' : '1px solid #E2E8F0',
+                      background: rejectReasonCategory === r ? '#FFF1F2' : '#F8FAFC',
+                      cursor: 'pointer',
+                      fontSize: '0.82rem',
+                      fontWeight: rejectReasonCategory === r ? 700 : 500,
+                      color: rejectReasonCategory === r ? '#991B1B' : '#334155'
+                    }}>
+                      <input
+                        type="radio"
+                        name="rejectReason"
+                        value={r}
+                        checked={rejectReasonCategory === r}
+                        onChange={() => setRejectReasonCategory(r)}
+                      />
+                      <span>{r}</span>
+                    </label>
+                  ))}
+                </div>
+              </div>
+
+              {rejectReasonCategory.includes('Other') && (
+                <div className="form-group" style={{ marginBottom: '1.25rem' }}>
+                  <label style={{ display: 'block', fontWeight: 700, fontSize: '0.82rem', color: '#334155', marginBottom: '0.35rem' }}>
+                    Describe Clinical / Schedule Reason:
+                  </label>
+                  <textarea
+                    rows={2}
+                    value={rejectCustomReason}
+                    onChange={(e) => setRejectCustomReason(e.target.value)}
+                    placeholder="Provide brief details for Admin dispatch..."
+                    style={{ width: '100%', padding: '0.5rem', borderRadius: 6, border: '1px solid #CBD5E1', fontSize: '0.82rem' }}
+                  />
+                </div>
+              )}
+
+              <div style={{ display: 'flex', gap: '0.75rem', marginTop: '1.5rem' }}>
+                <button
+                  type="button"
+                  onClick={() => setRejectingBooking(null)}
+                  className="btn btn-outline"
+                  style={{ flex: 1 }}
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  onClick={handleConfirmRejectVisit}
+                  className="btn"
+                  style={{ flex: 1.4, background: '#DC2626', color: '#FFFFFF', fontWeight: 750, border: 'none', padding: '0.55rem 1rem', borderRadius: 8, cursor: 'pointer' }}
+                >
+                  Confirm Decline & Alert Admin
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* 1. Transfer / Reassign Modal */}
       {reassignModalBooking && (

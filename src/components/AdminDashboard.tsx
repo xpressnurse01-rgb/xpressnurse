@@ -58,7 +58,9 @@ import {
   HardDrive,
   Settings,
   Receipt,
-  Share2
+  Share2,
+  RefreshCw,
+  UserCheck
 } from 'lucide-react';
 import { EmptyState } from './EmptyState';
 import { SEED_APP_USERS, generateNurseReferralCode } from '../lib/supabase';
@@ -521,6 +523,23 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
   const [bookingStatusFilter, setBookingStatusFilter] = useState<string>('all');
   const [isBookingModalOpen, setIsBookingModalOpen] = useState(false);
   const [editingBooking, setEditingBooking] = useState<Booking | null>(null);
+
+  // Quick Referral & Reassignment modal state for Nurse-Declined bookings
+  const [adminReassignBooking, setAdminReassignBooking] = useState<Booking | null>(null);
+  const [selectedReferralNurseId, setSelectedReferralNurseId] = useState<string>('');
+  const [referralRuleNote, setReferralRuleNote] = useState<string>('Referred following nurse decline');
+
+  // Search Nurse & Assign Modal state in Smart Routing
+  const [searchAssignBooking, setSearchAssignBooking] = useState<Booking | null>(null);
+  const [nurseSearchQuery, setNurseSearchQuery] = useState<string>('');
+  const [nurseSearchFilterVerifiedOnly, setNurseSearchFilterVerifiedOnly] = useState<boolean>(true);
+  const [nurseSearchFilterArea, setNurseSearchFilterArea] = useState<string>('all');
+
+  const nurseDeclinedBookings = bookings.filter((b) => 
+    b.rejectedBy === 'Nurse' || 
+    b.nurseAcceptanceStatus === 'Rejected' || 
+    (b.status === 'Rejected' && b.rejectionReason?.toLowerCase().includes('nurse'))
+  );
   const [bookingForm, setBookingForm] = useState({
     id: '',
     patientName: '',
@@ -645,7 +664,19 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
       b.id.toLowerCase().includes(bookingSearch.toLowerCase()) ||
       b.area.toLowerCase().includes(bookingSearch.toLowerCase()) ||
       (b.assignedNurseName && b.assignedNurseName.toLowerCase().includes(bookingSearch.toLowerCase()));
-    const matchesStatus = bookingStatusFilter === 'all' ? true : b.status === bookingStatusFilter;
+
+    const isNurseDeclined = b.rejectedBy === 'Nurse' || b.nurseAcceptanceStatus === 'Rejected' || (b.status === 'Rejected' && b.rejectionReason?.toLowerCase().includes('nurse'));
+    const isNurseAccepted = b.nurseAcceptanceStatus === 'Accepted' || (b.status === 'In-Progress' && !isNurseDeclined);
+
+    const matchesStatus = 
+      bookingStatusFilter === 'all' 
+        ? true 
+        : bookingStatusFilter === 'Nurse-Declined'
+        ? isNurseDeclined
+        : bookingStatusFilter === 'Accepted'
+        ? isNurseAccepted
+        : b.status === bookingStatusFilter;
+
     return matchesSearch && matchesStatus;
   });
 
@@ -1541,7 +1572,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
         )}
 
         {activeTab === 'bookings' && (
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 190px), 1fr))', gap: '0.85rem' }}>
+          <div className="stats-grid" style={{ marginBottom: 0 }}>
             <div className="stat-card">
               <div className="stat-icon" style={{ background: '#EFF6FF', color: '#0284C7' }}>
                 <Calendar size={22} />
@@ -1567,15 +1598,6 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
               <div>
                 <div className="stat-val" style={{ color: '#16A34A' }}>{bookings.filter(b => b.status === 'Completed').length}</div>
                 <div className="stat-label">Completed Visits</div>
-              </div>
-            </div>
-            <div className="stat-card">
-              <div className="stat-icon" style={{ background: '#FEF2F2', color: '#DC2626' }}>
-                <X size={22} />
-              </div>
-              <div>
-                <div className="stat-val" style={{ color: '#DC2626' }}>{bookings.filter(b => b.status === 'Rejected' || b.status === 'Cancelled').length}</div>
-                <div className="stat-label">Rejected by Admin (₹0)</div>
               </div>
             </div>
             <div className="stat-card" style={{ background: 'linear-gradient(135deg, #0284C7 0%, #0369A1 100%)', color: '#FFFFFF', border: 'none' }}>
@@ -1979,10 +2001,27 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                   New orders awaiting automated or manual dispatch
                 </p>
               </div>
-              <button onClick={onAutoRouteAll} className="btn btn-danger btn-sm">
-                <Shuffle size={14} />
-                <span>Auto-Route All Pending via Rule 2</span>
-              </button>
+              <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center', flexWrap: 'wrap' }}>
+                {pendingBookings.length > 0 && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setSearchAssignBooking(pendingBookings[0]);
+                      setNurseSearchQuery('');
+                      setNurseSearchFilterArea(pendingBookings[0].area || 'all');
+                    }}
+                    className="btn btn-outline btn-sm"
+                    style={{ borderColor: '#0284C7', color: '#0284C7', background: '#F0F9FF', fontWeight: 700, gap: '0.35rem' }}
+                  >
+                    <Search size={14} />
+                    <span>Search Nurse & Assign</span>
+                  </button>
+                )}
+                <button onClick={onAutoRouteAll} className="btn btn-danger btn-sm">
+                  <Shuffle size={14} />
+                  <span>Auto-Route All Pending via Rule 2</span>
+                </button>
+              </div>
             </div>
             <div className="table-responsive">
               <table className="data-table data-table-wide">
@@ -2088,6 +2127,32 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                                 </button>
                               ))}
 
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setSearchAssignBooking(b);
+                                setNurseSearchQuery('');
+                                setNurseSearchFilterArea(b.area || 'all');
+                              }}
+                              className="btn btn-outline btn-sm"
+                              style={{
+                                padding: '0.35rem 0.65rem',
+                                fontSize: '0.8rem',
+                                whiteSpace: 'nowrap',
+                                borderColor: '#0284C7',
+                                color: '#0284C7',
+                                background: '#F0F9FF',
+                                fontWeight: 750,
+                                display: 'inline-flex',
+                                alignItems: 'center',
+                                gap: '0.35rem'
+                              }}
+                              title={`Search nurse roster and assign Order #${b.id}`}
+                            >
+                              <Search size={13} />
+                              <span>Search Nurse & Assign</span>
+                            </button>
+
                             <select
                               className="form-control"
                               style={{ padding: '0.35rem 0.5rem', fontSize: '0.8rem', width: 'auto', minWidth: '150px' }}
@@ -2187,6 +2252,56 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
             </div>
           </div>
 
+          {/* Urgent Dispatch Alert: Nurse Declined Visits */}
+          {nurseDeclinedBookings.length > 0 && (
+            <div style={{
+              background: 'linear-gradient(135deg, #FFFBEB 0%, #FEF3C7 100%)',
+              border: '2px solid #F59E0B',
+              borderRadius: 12,
+              padding: '1rem 1.25rem',
+              margin: '1.25rem 1.25rem 0 1.25rem',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              flexWrap: 'wrap',
+              gap: '0.75rem',
+              boxShadow: '0 4px 12px rgba(245, 158, 11, 0.15)'
+            }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+                <div style={{ width: 38, height: 38, borderRadius: '50%', background: '#F59E0B', color: '#FFF', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                  <AlertCircle size={22} />
+                </div>
+                <div>
+                  <div style={{ fontWeight: 800, color: '#92400E', fontSize: '0.96rem', display: 'flex', alignItems: 'center', gap: '0.4rem', flexWrap: 'wrap' }}>
+                    <span>Dispatch Alert: {nurseDeclinedBookings.length} Assigned Visit(s) Declined by Nurse!</span>
+                    <span className="status-pill danger" style={{ fontSize: '0.72rem', padding: '2px 8px' }}>Action Needed: Refer to Other Nurse</span>
+                  </div>
+                  <div style={{ fontSize: '0.82rem', color: '#B45309', marginTop: '2px' }}>
+                    Assigned nurses declined due to schedule conflicts or emergency calls. Review reasons below and click <strong>"Refer to Other Nurse"</strong> to reassign.
+                  </div>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setBookingStatusFilter('Nurse-Declined')}
+                className="btn btn-sm"
+                style={{
+                  background: '#D97706',
+                  color: '#FFFFFF',
+                  border: 'none',
+                  fontWeight: 800,
+                  fontSize: '0.8rem',
+                  padding: '0.45rem 1rem',
+                  borderRadius: 8,
+                  cursor: 'pointer',
+                  boxShadow: '0 2px 4px rgba(217, 119, 6, 0.25)'
+                }}
+              >
+                View Declined Orders ({nurseDeclinedBookings.length})
+              </button>
+            </div>
+          )}
+
           {/* Filter & Search Toolbar */}
           <div style={{ padding: '0.85rem 1.25rem', borderBottom: '1px solid var(--neutral-200)', background: '#FAFAFA', display: 'flex', gap: '0.75rem', flexWrap: 'wrap', alignItems: 'center', justifyContent: 'space-between' }}>
             <div style={{ position: 'relative', minWidth: 260, flex: 1 }}>
@@ -2207,7 +2322,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
             </div>
 
             <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
-              <span style={{ fontSize: '0.8rem', color: 'var(--neutral-600)', fontWeight: 600 }}>Status:</span>
+              <span style={{ fontSize: '0.8rem', color: 'var(--neutral-600)', fontWeight: 600 }}>Filter:</span>
               <select
                 value={bookingStatusFilter}
                 onChange={(e) => setBookingStatusFilter(e.target.value)}
@@ -2215,17 +2330,24 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                   padding: '0.4rem 0.75rem',
                   fontSize: '0.82rem',
                   borderRadius: 8,
-                  border: '1px solid #CBD5E1',
-                  background: '#FFFFFF',
-                  fontWeight: 600
+                  border: bookingStatusFilter === 'Nurse-Declined' ? '2px solid #DC2626' : '1px solid #CBD5E1',
+                  background: bookingStatusFilter === 'Nurse-Declined' ? '#FFF1F2' : '#FFFFFF',
+                  color: bookingStatusFilter === 'Nurse-Declined' ? '#991B1B' : '#0F172A',
+                  fontWeight: 700
                 }}
               >
                 <option value="all">All Bookings ({bookings.length})</option>
-                <option value="Pending">Pending</option>
-                <option value="Assigned">Assigned</option>
-                <option value="In-Progress">In-Progress</option>
-                <option value="Completed">Completed</option>
-                <option value="Cancelled">Cancelled</option>
+                {nurseDeclinedBookings.length > 0 && (
+                  <option value="Nurse-Declined" style={{ color: '#DC2626', fontWeight: 800 }}>
+                    ⚠️ Nurse Declined (Referral Needed) ({nurseDeclinedBookings.length})
+                  </option>
+                )}
+                <option value="Pending">Pending ({bookings.filter(b => b.status === 'Pending').length})</option>
+                <option value="Assigned">Assigned ({bookings.filter(b => b.status === 'Assigned').length})</option>
+                <option value="Accepted">Accepted & In-Progress ({bookings.filter(b => b.status === 'In-Progress' || b.nurseAcceptanceStatus === 'Accepted').length})</option>
+                <option value="Completed">Completed ({bookings.filter(b => b.status === 'Completed').length})</option>
+                <option value="Rejected">Rejected by Admin ({bookings.filter(b => b.status === 'Rejected' && b.rejectedBy !== 'Nurse' && !b.rejectionReason?.toLowerCase().includes('nurse')).length})</option>
+                <option value="Cancelled">Cancelled ({bookings.filter(b => b.status === 'Cancelled').length})</option>
               </select>
             </div>
           </div>
@@ -2369,75 +2491,149 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                         )}
                       </td>
                       <td style={{ whiteSpace: 'nowrap' }}>
-                        <span className={`status-pill ${
-                          b.status === 'Completed' ? 'success' :
-                          b.status === 'Assigned' ? 'info' :
-                          b.status === 'Pending' ? 'warning' :
-                          b.status === 'Rejected' || b.status === 'Cancelled' ? 'danger' : 'neutral'
-                        }`} style={{ whiteSpace: 'nowrap' }}>
-                          {b.status === 'Rejected' ? '✕ Rejected by Admin' : b.status === 'Cancelled' ? '✕ Cancelled' : b.status}
-                        </span>
-                        {(b.status === 'Cancelled' || b.status === 'Rejected') && b.rejectionReason && (
-                          <div style={{ fontSize: '0.72rem', color: '#DC2626', marginTop: '3px', background: '#FEF2F2', padding: '3px 6px', borderRadius: 4, whiteSpace: 'normal', maxWidth: 220, border: '1px solid #FECDD3' }}>
-                            <strong>Reason:</strong> {b.rejectionReason}
-                          </div>
-                        )}
+                        {(() => {
+                          const isDeclinedByNurse = b.rejectedBy === 'Nurse' || b.nurseAcceptanceStatus === 'Rejected' || (b.status === 'Rejected' && b.rejectionReason?.toLowerCase().includes('nurse'));
+                          const isAcceptedByNurse = b.nurseAcceptanceStatus === 'Accepted' || (b.status === 'In-Progress' && !isDeclinedByNurse);
+                          const isAwaitingNurse = !isAcceptedByNurse && !isDeclinedByNurse && b.status === 'Assigned';
+
+                          if (isDeclinedByNurse) {
+                            return (
+                              <div>
+                                <span className="status-pill danger" style={{ background: '#FFF1F2', color: '#BE123C', border: '1px solid #FECDD3', display: 'inline-flex', alignItems: 'center', gap: '0.25rem', fontWeight: 800 }}>
+                                  ⚠️ Nurse Declined (Referral Needed)
+                                </span>
+                                {b.rejectionReason && (
+                                  <div style={{ fontSize: '0.72rem', color: '#9F1239', marginTop: '3px', background: '#FFE4E6', padding: '3px 6px', borderRadius: 4, whiteSpace: 'normal', maxWidth: 220, border: '1px solid #FECDD3', fontWeight: 600 }}>
+                                    {b.rejectionReason}
+                                  </div>
+                                )}
+                              </div>
+                            );
+                          }
+
+                          if (isAcceptedByNurse) {
+                            return (
+                              <span className="status-pill success" style={{ display: 'inline-flex', alignItems: 'center', gap: '0.25rem', fontWeight: 750 }}>
+                                ✓ Nurse Accepted
+                              </span>
+                            );
+                          }
+
+                          if (isAwaitingNurse) {
+                            return (
+                              <span className="status-pill warning" style={{ display: 'inline-flex', alignItems: 'center', gap: '0.25rem', fontWeight: 750 }}>
+                                ⏳ Awaiting Nurse Approval
+                              </span>
+                            );
+                          }
+
+                          return (
+                            <div>
+                              <span className={`status-pill ${
+                                b.status === 'Completed' ? 'success' :
+                                b.status === 'Pending' ? 'warning' :
+                                b.status === 'Rejected' || b.status === 'Cancelled' ? 'danger' : 'neutral'
+                              }`} style={{ whiteSpace: 'nowrap' }}>
+                                {b.status === 'Rejected' ? '✕ Rejected by Admin' : b.status === 'Cancelled' ? '✕ Cancelled' : b.status}
+                              </span>
+                              {b.rejectionReason && (
+                                <div style={{ fontSize: '0.72rem', color: '#DC2626', marginTop: '3px', background: '#FEF2F2', padding: '3px 6px', borderRadius: 4, whiteSpace: 'normal', maxWidth: 220, border: '1px solid #FECDD3' }}>
+                                  <strong>Reason:</strong> {b.rejectionReason}
+                                </div>
+                              )}
+                            </div>
+                          );
+                        })()}
                       </td>
                       <td style={{ textAlign: 'right', whiteSpace: 'nowrap' }}>
-                        <div style={{ display: 'inline-flex', alignItems: 'center', gap: '0.35rem' }}>
-                          <button
-                            type="button"
-                            onClick={() => handleViewBookingInvoice(b)}
-                            title="Issue Official Invoice (Save to Cloudflare R2)"
-                            style={{
-                              background: '#F0FDF4',
-                              border: '1px solid #BBF7D0',
-                              color: '#15803D',
-                              padding: '0.3rem 0.55rem',
-                              borderRadius: 6,
-                              cursor: 'pointer',
-                              display: 'inline-flex',
-                              alignItems: 'center',
-                              gap: '0.25rem',
-                              fontSize: '0.75rem',
-                              fontWeight: 700
-                            }}
-                          >
-                            <Receipt size={13} />
-                            <span>Invoice</span>
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => handleOpenEditBookingModal(b)}
-                            title="Edit Booking in Supabase"
-                            style={{
-                              background: '#EFF6FF',
-                              border: '1px solid #BFDBFE',
-                              color: '#1D4ED8',
-                              padding: '0.3rem 0.45rem',
-                              borderRadius: 6,
-                              cursor: 'pointer',
-                              display: 'flex',
-                              alignItems: 'center'
-                            }}
-                          >
-                            <Edit2 size={13} />
-                          </button>
-                          {b.status !== 'Cancelled' && b.status !== 'Rejected' && (
-                            <button
-                              type="button"
-                              onClick={async () => {
-                                const reason = window.prompt(`Reject order/payment for ${b.patientName}?\n\nEnter reason for rejection (e.g. Ineligible Clinical Case, Invalid Prescription, Area Out of Jurisdiction):`, 'Ineligible Clinical Case');
-                                if (reason !== null && reason.trim()) {
-                                  await onUpdateBooking?.(b.id, {
-                                    status: 'Rejected',
-                                    rejectionReason: reason.trim(),
-                                    rejectedBy: 'Admin'
-                                  });
-                                  showToast(`Order ${b.id} marked as Rejected by Admin. Nurse payout set to ₹0.`);
-                                }
-                              }}
-                              title="Reject Order (Sets nurse payout to ₹0 immediately)"
+                        {(() => {
+                          const isDeclinedByNurse = b.rejectedBy === 'Nurse' || b.nurseAcceptanceStatus === 'Rejected' || (b.status === 'Rejected' && b.rejectionReason?.toLowerCase().includes('nurse'));
+
+                          return (
+                            <div style={{ display: 'inline-flex', alignItems: 'center', gap: '0.35rem' }}>
+                              {isDeclinedByNurse && (
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    setAdminReassignBooking(b);
+                                    const recommended = nurses.find((n) => n.id !== b.assignedNurseId && n.serviceArea === b.area && n.certificateVerified) || nurses.find((n) => n.id !== b.assignedNurseId && n.certificateVerified);
+                                    setSelectedReferralNurseId(recommended?.id || '');
+                                    setReferralRuleNote(`Referred following decline by ${b.assignedNurseName || 'previous nurse'}`);
+                                  }}
+                                  className="btn btn-sm"
+                                  style={{
+                                    background: '#FEF3C7',
+                                    border: '1px solid #F59E0B',
+                                    color: '#92400E',
+                                    fontWeight: 800,
+                                    padding: '0.3rem 0.65rem',
+                                    borderRadius: 6,
+                                    display: 'inline-flex',
+                                    alignItems: 'center',
+                                    gap: '0.3rem',
+                                    fontSize: '0.75rem',
+                                    cursor: 'pointer',
+                                    boxShadow: '0 1px 3px rgba(245, 158, 11, 0.25)'
+                                  }}
+                                  title="Refer and reassign this order to another certified nurse"
+                                >
+                                  <RefreshCw size={13} />
+                                  <span>Refer to Other Nurse</span>
+                                </button>
+                              )}
+                              <button
+                                type="button"
+                                onClick={() => handleViewBookingInvoice(b)}
+                                title="Issue Official Invoice (Save to Cloudflare R2)"
+                                style={{
+                                  background: '#F0FDF4',
+                                  border: '1px solid #BBF7D0',
+                                  color: '#15803D',
+                                  padding: '0.3rem 0.55rem',
+                                  borderRadius: 6,
+                                  cursor: 'pointer',
+                                  display: 'inline-flex',
+                                  alignItems: 'center',
+                                  gap: '0.25rem',
+                                  fontSize: '0.75rem',
+                                  fontWeight: 700
+                                }}
+                              >
+                                <Receipt size={13} />
+                                <span>Invoice</span>
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => handleOpenEditBookingModal(b)}
+                                title="Edit Booking in Supabase"
+                                style={{
+                                  background: '#EFF6FF',
+                                  border: '1px solid #BFDBFE',
+                                  color: '#1D4ED8',
+                                  padding: '0.3rem 0.45rem',
+                                  borderRadius: 6,
+                                  cursor: 'pointer',
+                                  display: 'flex',
+                                  alignItems: 'center'
+                                }}
+                              >
+                                <Edit2 size={13} />
+                              </button>
+                              {b.status !== 'Cancelled' && b.status !== 'Rejected' && (
+                                <button
+                                  type="button"
+                                  onClick={async () => {
+                                    const reason = window.prompt(`Reject order/payment for ${b.patientName}?\n\nEnter reason for rejection (e.g. Ineligible Clinical Case, Invalid Prescription, Area Out of Jurisdiction):`, 'Ineligible Clinical Case');
+                                    if (reason !== null && reason.trim()) {
+                                      await onUpdateBooking?.(b.id, {
+                                        status: 'Rejected',
+                                        rejectionReason: reason.trim(),
+                                        rejectedBy: 'Admin'
+                                      });
+                                      showToast(`Order ${b.id} marked as Rejected by Admin. Nurse payout set to ₹0.`);
+                                    }
+                                  }}
+                                  title="Reject Order (Sets nurse payout to ₹0 immediately)"
                               style={{
                                 background: '#FEF2F2',
                                 border: '1px solid #FECDD3',
@@ -2474,7 +2670,9 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                             <Trash2 size={13} />
                           </button>
                         </div>
-                      </td>
+                      );
+                    })()}
+                  </td>
                     </tr>
                   ))}
                 </tbody>
@@ -4491,7 +4689,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
               <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem', marginBottom: '0.35rem' }}>
                 <Cloud size={22} style={{ color: '#38BDF8' }} />
                 <h3 style={{ fontSize: '1.25rem', fontWeight: 800, color: '#FFFFFF', margin: 0 }}>
-                  Cloudflare R2 Storage Bucket Engine
+                  Cloudflare R2 Storage Bucket
                 </h3>
               </div>
               <p style={{ fontSize: '0.84rem', color: '#94A3B8', margin: 0 }}>
@@ -4553,90 +4751,51 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
             </div>
           </div>
 
-          {/* Key Metrics Stats Grid */}
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(210px, 1fr))', gap: '1rem' }}>
-            <div className="card" style={{ padding: '1.15rem' }}>
-              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '0.5rem' }}>
-                <span style={{ fontSize: '0.75rem', fontWeight: 700, color: 'var(--neutral-500)', textTransform: 'uppercase' }}>
-                  Total Bucket Objects
-                </span>
-                <div style={{ width: 32, height: 32, borderRadius: 8, background: '#EFF6FF', color: '#1D4ED8', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                  <HardDrive size={16} />
-                </div>
+          {/* Key Metrics Stats Grid - Exactly 4 Important Cards */}
+          <div className="stats-grid" style={{ marginBottom: 0 }}>
+            <div className="stat-card">
+              <div className="stat-icon" style={{ background: '#EFF6FF', color: '#1D4ED8' }}>
+                <HardDrive size={22} />
               </div>
-              <div style={{ fontSize: '1.6rem', fontWeight: 900, color: 'var(--primary-navy-950)' }}>
-                {storageObjects.length}
-              </div>
-              <div style={{ fontSize: '0.74rem', color: '#059669', marginTop: '0.25rem', fontWeight: 600 }}>
-                ✓ Synced with Cloudflare R2
+              <div>
+                <div className="stat-val">{storageObjects.length}</div>
+                <div className="stat-label">Total Bucket Objects</div>
               </div>
             </div>
 
-            <div className="card" style={{ padding: '1.15rem' }}>
-              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '0.5rem' }}>
-                <span style={{ fontSize: '0.75rem', fontWeight: 700, color: 'var(--neutral-500)', textTransform: 'uppercase' }}>
-                  Mandatory Prescriptions
-                </span>
-                <div style={{ width: 32, height: 32, borderRadius: 8, background: '#ECFDF5', color: '#059669', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                  <FileText size={16} />
+            <div className="stat-card">
+              <div className="stat-icon" style={{ background: '#ECFDF5', color: '#059669' }}>
+                <FileText size={22} />
+              </div>
+              <div>
+                <div className="stat-val" style={{ color: '#059669' }}>
+                  {storageObjects.filter((o) => o.category === 'prescriptions').length}
                 </div>
-              </div>
-              <div style={{ fontSize: '1.6rem', fontWeight: 900, color: '#059669' }}>
-                {storageObjects.filter((o) => o.category === 'prescriptions').length}
-              </div>
-              <div style={{ fontSize: '0.74rem', color: 'var(--neutral-500)', marginTop: '0.25rem' }}>
-                Mandatory for Home Clinical Care
+                <div className="stat-label">Mandatory Prescriptions</div>
               </div>
             </div>
 
-            <div className="card" style={{ padding: '1.15rem' }}>
-              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '0.5rem' }}>
-                <span style={{ fontSize: '0.75rem', fontWeight: 700, color: 'var(--neutral-500)', textTransform: 'uppercase' }}>
-                  Invoices Stored
-                </span>
-                <div style={{ width: 32, height: 32, borderRadius: 8, background: '#FFFBEB', color: '#D97706', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                  <Receipt size={16} />
+            <div className="stat-card">
+              <div className="stat-icon" style={{ background: '#FFFBEB', color: '#D97706' }}>
+                <Receipt size={22} />
+              </div>
+              <div>
+                <div className="stat-val" style={{ color: '#D97706' }}>
+                  {storageObjects.filter((o) => o.category === 'invoices').length}
                 </div>
-              </div>
-              <div style={{ fontSize: '1.6rem', fontWeight: 900, color: '#D97706' }}>
-                {storageObjects.filter((o) => o.category === 'invoices').length}
-              </div>
-              <div style={{ fontSize: '0.74rem', color: 'var(--neutral-500)', marginTop: '0.25rem' }}>
-                Doorstep Clinical Invoices
+                <div className="stat-label">Doorstep Invoices Stored</div>
               </div>
             </div>
 
-            <div className="card" style={{ padding: '1.15rem' }}>
-              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '0.5rem' }}>
-                <span style={{ fontSize: '0.75rem', fontWeight: 700, color: 'var(--neutral-500)', textTransform: 'uppercase' }}>
-                  Nursing Certificates
-                </span>
-                <div style={{ width: 32, height: 32, borderRadius: 8, background: '#F3E8FF', color: '#9333EA', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                  <Award size={16} />
+            <div className="stat-card">
+              <div className="stat-icon" style={{ background: '#F3E8FF', color: '#9333EA' }}>
+                <Award size={22} />
+              </div>
+              <div>
+                <div className="stat-val" style={{ color: '#9333EA' }}>
+                  {storageObjects.filter((o) => o.category === 'certificates').length}
                 </div>
-              </div>
-              <div style={{ fontSize: '1.6rem', fontWeight: 900, color: '#9333EA' }}>
-                {storageObjects.filter((o) => o.category === 'certificates').length}
-              </div>
-              <div style={{ fontSize: '0.74rem', color: 'var(--neutral-500)', marginTop: '0.25rem' }}>
-                Verified Credentials
-              </div>
-            </div>
-
-            <div className="card" style={{ padding: '1.15rem' }}>
-              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '0.5rem' }}>
-                <span style={{ fontSize: '0.75rem', fontWeight: 700, color: 'var(--neutral-500)', textTransform: 'uppercase' }}>
-                  Bucket Size Stored
-                </span>
-                <div style={{ width: 32, height: 32, borderRadius: 8, background: '#F5F3FF', color: '#7C3AED', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                  <Cloud size={16} />
-                </div>
-              </div>
-              <div style={{ fontSize: '1.6rem', fontWeight: 900, color: 'var(--primary-navy-950)' }}>
-                {(storageObjects.reduce((acc, o) => acc + (o.sizeBytes || 0), 0) / (1024 * 1024)).toFixed(2)} MB
-              </div>
-              <div style={{ fontSize: '0.74rem', color: '#0284C7', marginTop: '0.25rem', fontWeight: 600 }}>
-                Verified Document Storage
+                <div className="stat-label">Nursing Certificates</div>
               </div>
             </div>
           </div>
@@ -5218,6 +5377,404 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* ========================================================================= */}
+      {/* 0. ADMIN REASSIGN / REFER TO OTHER NURSE MODAL */}
+      {/* ========================================================================= */}
+      {adminReassignBooking && (
+        <div 
+          className="modal-overlay" 
+          data-lenis-prevent="true"
+          onClick={() => setAdminReassignBooking(null)}
+          style={{ zIndex: 99999, pointerEvents: 'auto' }}
+        >
+          <div 
+            className="modal-box" 
+            onClick={(e) => e.stopPropagation()} 
+            style={{ maxWidth: 540, borderRadius: 20, pointerEvents: 'auto', maxHeight: '90vh', overflowY: 'auto' }}
+          >
+            <div className="modal-header" style={{ padding: '1.25rem 1.5rem', background: '#FEF3C7', borderBottom: '1px solid #FDE68A' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '0.65rem' }}>
+                <div style={{ width: 36, height: 36, borderRadius: 10, background: '#D97706', color: '#FFFFFF', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                  <RefreshCw size={18} />
+                </div>
+                <div>
+                  <h3 style={{ fontSize: '1.15rem', fontWeight: 800, color: '#92400E', margin: 0 }}>
+                    Refer & Reassign to Colleague Nurse
+                  </h3>
+                  <div style={{ fontSize: '0.76rem', color: '#B45309', fontWeight: 600 }}>
+                    Order Ref: #{adminReassignBooking.id} • {adminReassignBooking.patientName} ({adminReassignBooking.area})
+                  </div>
+                </div>
+              </div>
+              <button 
+                type="button" 
+                onClick={() => setAdminReassignBooking(null)}
+                style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#92400E', display: 'flex' }}
+              >
+                <X size={20} />
+              </button>
+            </div>
+
+            <div style={{ padding: '1.5rem' }}>
+              {/* Previous Nurse Decline Details */}
+              <div style={{ background: '#FFF1F2', border: '1px solid #FECDD3', borderRadius: 10, padding: '0.85rem 1rem', marginBottom: '1.25rem' }}>
+                <div style={{ fontWeight: 800, color: '#9F1239', fontSize: '0.86rem', display: 'flex', alignItems: 'center', gap: '0.35rem' }}>
+                  <AlertCircle size={15} />
+                  <span>Assigned Nurse Declined This Order:</span>
+                </div>
+                <div style={{ fontSize: '0.82rem', color: '#BE123C', marginTop: '0.25rem', fontWeight: 600 }}>
+                  {adminReassignBooking.rejectionReason || 'Declined by nurse due to active emergency / schedule conflict.'}
+                </div>
+                <div style={{ fontSize: '0.74rem', color: '#64748B', marginTop: '0.35rem' }}>
+                  Patient: <strong>{adminReassignBooking.patientName}</strong> • Phone: {adminReassignBooking.patientPhone} • Area: <strong>{adminReassignBooking.area}</strong>
+                </div>
+              </div>
+
+              {/* Select Other Nurse */}
+              <div className="form-group" style={{ marginBottom: '1.25rem' }}>
+                <label className="form-label" style={{ fontWeight: 750, color: 'var(--primary-navy-950)', marginBottom: '0.4rem', display: 'block' }}>
+                  Select Available Nurse to Refer Visit To:
+                </label>
+                <select
+                  className="form-control"
+                  value={selectedReferralNurseId}
+                  onChange={(e) => setSelectedReferralNurseId(e.target.value)}
+                  style={{ width: '100%', padding: '0.6rem 0.75rem', borderRadius: 8, fontSize: '0.86rem', border: '1px solid #CBD5E1', fontWeight: 600 }}
+                >
+                  <option value="" disabled>Choose verified nurse from fleet...</option>
+                  {nurses.map((n) => {
+                    const isSameArea = n.serviceArea === adminReassignBooking.area;
+                    const isPreviousNurse = n.id === adminReassignBooking.assignedNurseId;
+                    return (
+                      <option 
+                        key={n.id} 
+                        value={n.id} 
+                        disabled={!n.certificateVerified || isPreviousNurse}
+                      >
+                        {n.name} — Station: {n.serviceArea} {isSameArea ? '★ (Same Area Match)' : ''} {isPreviousNurse ? '(Previously Declined)' : n.certificateVerified ? '✓ Verified' : '⚠️ Unverified'}
+                      </option>
+                    );
+                  })}
+                </select>
+              </div>
+
+              {/* Referral Note */}
+              <div className="form-group" style={{ marginBottom: '1.25rem' }}>
+                <label className="form-label" style={{ fontWeight: 700, fontSize: '0.82rem', color: '#475569', marginBottom: '0.35rem', display: 'block' }}>
+                  Referral Note / Dispatch Instruction:
+                </label>
+                <input
+                  type="text"
+                  className="form-control"
+                  value={referralRuleNote}
+                  onChange={(e) => setReferralRuleNote(e.target.value)}
+                  placeholder="e.g. Reassigned following colleague decline, urgent patient attending"
+                  style={{ width: '100%', padding: '0.55rem 0.75rem', borderRadius: 8, fontSize: '0.82rem', border: '1px solid #CBD5E1' }}
+                />
+              </div>
+
+              <div style={{ display: 'flex', gap: '0.75rem', marginTop: '1.5rem' }}>
+                <button
+                  type="button"
+                  onClick={() => setAdminReassignBooking(null)}
+                  className="btn btn-outline"
+                  style={{ flex: 1, padding: '0.65rem' }}
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  disabled={!selectedReferralNurseId}
+                  onClick={() => {
+                    if (!selectedReferralNurseId) return;
+                    const newNurse = nurses.find((n) => n.id === selectedReferralNurseId);
+                    onAssignOrder(
+                      adminReassignBooking.id,
+                      selectedReferralNurseId,
+                      referralRuleNote || `Referred by Admin to ${newNurse?.name}`
+                    );
+                    showToast(`Order #${adminReassignBooking.id} successfully referred and reassigned to Nurse ${newNurse?.name}!`);
+                    setAdminReassignBooking(null);
+                  }}
+                  className="btn btn-primary"
+                  style={{
+                    flex: 1.5,
+                    padding: '0.65rem',
+                    background: selectedReferralNurseId ? '#0284C7' : '#94A3B8',
+                    color: '#FFF',
+                    fontWeight: 800,
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    gap: '0.4rem',
+                    borderRadius: 8
+                  }}
+                >
+                  <UserCheck size={16} />
+                  <span>Confirm Referral & Reassign</span>
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+      {/* ========================================================================= */}
+      {/* SEARCH NURSE & ASSIGN MODAL (SMART ROUTING) */}
+      {/* ========================================================================= */}
+      {searchAssignBooking && (
+        <div 
+          className="modal-overlay" 
+          data-lenis-prevent="true"
+          onClick={() => setSearchAssignBooking(null)}
+          style={{ zIndex: 99999, pointerEvents: 'auto' }}
+        >
+          <div 
+            className="modal-box" 
+            onClick={(e) => e.stopPropagation()} 
+            style={{ maxWidth: 640, borderRadius: 20, pointerEvents: 'auto', maxHeight: '90vh', overflowY: 'auto' }}
+          >
+            <div className="modal-header" style={{ padding: '1.25rem 1.5rem', background: '#F0F9FF', borderBottom: '1px solid #BAE6FD' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '0.65rem' }}>
+                <div style={{ width: 38, height: 38, borderRadius: 10, background: '#0284C7', color: '#FFFFFF', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                  <Search size={20} />
+                </div>
+                <div>
+                  <h3 style={{ fontSize: '1.15rem', fontWeight: 800, color: '#0369A1', margin: 0 }}>
+                    Search Nurse & Assign Order #{searchAssignBooking.id}
+                  </h3>
+                  <div style={{ fontSize: '0.78rem', color: '#0284C7', fontWeight: 600 }}>
+                    Smart Routing: Select verified nurse in Hyderabad fleet to dispatch order
+                  </div>
+                </div>
+              </div>
+              <button 
+                type="button" 
+                onClick={() => setSearchAssignBooking(null)}
+                style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#0369A1', display: 'flex' }}
+              >
+                <X size={20} />
+              </button>
+            </div>
+
+            <div style={{ padding: '1.5rem' }}>
+              {/* Order Brief Summary Card */}
+              <div style={{ background: '#F8FAFC', border: '1px solid #E2E8F0', borderRadius: 12, padding: '0.9rem 1.15rem', marginBottom: '1.25rem' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: '0.5rem' }}>
+                  <div>
+                    <div style={{ fontWeight: 800, color: 'var(--primary-navy-950)', fontSize: '0.95rem' }}>
+                      {searchAssignBooking.patientName} • {searchAssignBooking.serviceTitle}
+                    </div>
+                    <div style={{ fontSize: '0.8rem', color: '#64748B', display: 'flex', alignItems: 'center', gap: '0.35rem', marginTop: '0.2rem' }}>
+                      <MapPin size={13} style={{ color: '#0284C7' }} />
+                      <span>Locality: <strong>{searchAssignBooking.area}</strong></span>
+                      {searchAssignBooking.fullAddress && <span>({searchAssignBooking.fullAddress})</span>}
+                    </div>
+                  </div>
+                  <span style={{ fontSize: '0.75rem', background: '#ECFDF5', color: '#059669', padding: '3px 8px', borderRadius: 9999, fontWeight: 700, border: '1px solid #A7F3D0' }}>
+                    Fee: ₹{searchAssignBooking.estimatedFee || 800}
+                  </span>
+                </div>
+              </div>
+
+              {/* Live Search Input & Filter Pills */}
+              <div style={{ marginBottom: '1rem' }}>
+                <div style={{ position: 'relative', marginBottom: '0.65rem' }}>
+                  <input
+                    type="text"
+                    placeholder="Search nurse by name, area, phone, qualification..."
+                    value={nurseSearchQuery}
+                    onChange={(e) => setNurseSearchQuery(e.target.value)}
+                    className="form-control"
+                    style={{ paddingLeft: '2.2rem', fontSize: '0.88rem', padding: '0.55rem 0.85rem 0.55rem 2.2rem', borderRadius: 8 }}
+                    autoFocus
+                  />
+                  <Search size={15} style={{ position: 'absolute', left: 11, top: '50%', transform: 'translateY(-50%)', color: '#94A3B8' }} />
+                  {nurseSearchQuery && (
+                    <button
+                      type="button"
+                      onClick={() => setNurseSearchQuery('')}
+                      style={{ position: 'absolute', right: 10, top: '50%', transform: 'translateY(-50%)', background: 'none', border: 'none', color: '#94A3B8', cursor: 'pointer' }}
+                    >
+                      <X size={14} />
+                    </button>
+                  )}
+                </div>
+
+                <div style={{ display: 'flex', gap: '0.4rem', flexWrap: 'wrap', alignItems: 'center' }}>
+                  <span style={{ fontSize: '0.76rem', color: '#64748B', fontWeight: 600 }}>Filter:</span>
+                  <button
+                    type="button"
+                    onClick={() => setNurseSearchFilterArea('all')}
+                    className={`btn btn-sm ${nurseSearchFilterArea === 'all' ? 'btn-primary' : 'btn-outline'}`}
+                    style={{ fontSize: '0.72rem', padding: '0.2rem 0.55rem' }}
+                  >
+                    All Zones ({nurses.length})
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setNurseSearchFilterArea(searchAssignBooking.area)}
+                    className={`btn btn-sm ${nurseSearchFilterArea === searchAssignBooking.area ? 'btn-primary' : 'btn-outline'}`}
+                    style={{ 
+                      fontSize: '0.72rem', 
+                      padding: '0.2rem 0.55rem', 
+                      background: nurseSearchFilterArea === searchAssignBooking.area ? '#059669' : undefined,
+                      borderColor: '#059669',
+                      color: nurseSearchFilterArea === searchAssignBooking.area ? '#FFF' : '#059669',
+                      fontWeight: 750
+                    }}
+                  >
+                    🎯 Matching Locality ({searchAssignBooking.area})
+                  </button>
+                  <label style={{ marginLeft: 'auto', display: 'inline-flex', alignItems: 'center', gap: '0.35rem', fontSize: '0.76rem', cursor: 'pointer', color: '#334155' }}>
+                    <input
+                      type="checkbox"
+                      checked={nurseSearchFilterVerifiedOnly}
+                      onChange={(e) => setNurseSearchFilterVerifiedOnly(e.target.checked)}
+                    />
+                    <span>Verified RNs Only</span>
+                  </label>
+                </div>
+              </div>
+
+              {/* Nurses Results List */}
+              <div style={{ maxHeight: 380, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '0.65rem' }}>
+                {(() => {
+                  const query = nurseSearchQuery.toLowerCase().trim();
+                  const filteredNurses = nurses.filter((n) => {
+                    if (nurseSearchFilterVerifiedOnly && !n.certificateVerified) return false;
+                    if (nurseSearchFilterArea !== 'all' && n.serviceArea !== nurseSearchFilterArea) return false;
+                    if (!query) return true;
+                    return (
+                      n.name.toLowerCase().includes(query) ||
+                      n.phone.includes(query) ||
+                      n.serviceArea.toLowerCase().includes(query) ||
+                      (n.qualification && n.qualification.toLowerCase().includes(query))
+                    );
+                  });
+
+                  if (filteredNurses.length === 0) {
+                    return (
+                      <div style={{ textAlign: 'center', padding: '2rem 1rem', color: '#64748B', background: '#F8FAFC', borderRadius: 10 }}>
+                        <Search size={28} style={{ color: '#94A3B8', marginBottom: '0.4rem' }} />
+                        <div style={{ fontWeight: 700, fontSize: '0.9rem' }}>No matching nurses found</div>
+                        <div style={{ fontSize: '0.78rem' }}>Try clearing filters or searching another area</div>
+                      </div>
+                    );
+                  }
+
+                  return filteredNurses.map((n) => {
+                    const isAreaMatch = n.serviceArea.toLowerCase() === searchAssignBooking.area.toLowerCase();
+                    const activeCount = bookings.filter((b) => b.assignedNurseId === n.id && (b.status === 'Assigned' || b.status === 'In-Progress')).length;
+
+                    return (
+                      <div
+                        key={n.id}
+                        style={{
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'space-between',
+                          padding: '0.85rem 1rem',
+                          borderRadius: 10,
+                          border: isAreaMatch ? '2px solid #10B981' : '1px solid #E2E8F0',
+                          background: isAreaMatch ? '#F0FDF4' : '#FFFFFF',
+                          gap: '0.75rem',
+                          flexWrap: 'wrap'
+                        }}
+                      >
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+                          <div style={{
+                            width: 40,
+                            height: 40,
+                            borderRadius: '50%',
+                            background: isAreaMatch ? '#10B981' : '#0284C7',
+                            color: '#FFF',
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            fontWeight: 800,
+                            fontSize: '0.9rem',
+                            flexShrink: 0
+                          }}>
+                            {n.name.charAt(0)}
+                          </div>
+                          <div>
+                            <div style={{ fontWeight: 800, color: 'var(--primary-navy-950)', fontSize: '0.92rem', display: 'flex', alignItems: 'center', gap: '0.4rem', flexWrap: 'wrap' }}>
+                              <span>{n.name}</span>
+                              {n.certificateVerified ? (
+                                <span className="status-pill success" style={{ fontSize: '0.68rem', padding: '1px 6px' }}>✓ Verified RN</span>
+                              ) : (
+                                <span className="status-pill warning" style={{ fontSize: '0.68rem', padding: '1px 6px' }}>Pending</span>
+                              )}
+                              {isAreaMatch && (
+                                <span style={{ fontSize: '0.68rem', background: '#10B981', color: '#FFF', padding: '1px 6px', borderRadius: 9999, fontWeight: 800 }}>
+                                  🎯 Area Match
+                                </span>
+                              )}
+                            </div>
+                            <div style={{ fontSize: '0.78rem', color: '#64748B', display: 'flex', gap: '0.6rem', flexWrap: 'wrap', marginTop: 2 }}>
+                              <span>Zone: <strong>{n.serviceArea}</strong></span>
+                              <span>•</span>
+                              <span>Exp: {n.experienceYears || (n as unknown as { experience?: string }).experience || 3} yrs</span>
+                              <span>•</span>
+                              <span>Active Visits: <strong>{activeCount}</strong></span>
+                            </div>
+                          </div>
+                        </div>
+
+                        <button
+                          type="button"
+                          disabled={!n.certificateVerified}
+                          onClick={() => {
+                            if (!n.certificateVerified) {
+                              alert('Cannot assign booking: Nurse certificate is not verified.');
+                              return;
+                            }
+                            onAssignOrder(
+                              searchAssignBooking.id,
+                              n.id,
+                              `Smart Search Dispatched: Assigned to ${n.name} (${n.serviceArea})${isAreaMatch ? ' [Rule 2 Locality Match]' : ''}`
+                            );
+                            showToast(`Order #${searchAssignBooking.id} assigned to Nurse ${n.name}!`);
+                            setSearchAssignBooking(null);
+                          }}
+                          className="btn btn-sm btn-primary"
+                          style={{
+                            background: n.certificateVerified ? (isAreaMatch ? '#059669' : '#0284C7') : '#94A3B8',
+                            borderColor: n.certificateVerified ? (isAreaMatch ? '#059669' : '#0284C7') : '#94A3B8',
+                            color: '#FFF',
+                            fontWeight: 750,
+                            display: 'inline-flex',
+                            alignItems: 'center',
+                            gap: '0.35rem',
+                            padding: '0.4rem 0.85rem',
+                            borderRadius: 6,
+                            cursor: n.certificateVerified ? 'pointer' : 'not-allowed'
+                          }}
+                        >
+                          <span>Assign & Dispatch</span>
+                          <ArrowRight size={13} />
+                        </button>
+                      </div>
+                    );
+                  });
+                })()}
+              </div>
+
+              <div style={{ marginTop: '1.25rem', paddingTop: '1rem', borderTop: '1px solid #E2E8F0', display: 'flex', justifyContent: 'flex-end' }}>
+                <button
+                  type="button"
+                  onClick={() => setSearchAssignBooking(null)}
+                  className="btn btn-outline btn-sm"
+                  style={{ padding: '0.5rem 1.25rem' }}
+                >
+                  Close
+                </button>
+              </div>
+            </div>
           </div>
         </div>
       )}

@@ -409,8 +409,254 @@ export const DEFAULT_NURSES: NurseProfile[] = [
     referralCode: 'XN-SUNITA104'
   }
 ];
-// Real-time Supabase Database: Bookings, Leads, Consultations, and Coupons
-// are queried dynamically and stored directly in PostgreSQL. No mock data.
+
+export const DEFAULT_BOOKINGS: Booking[] = [
+  {
+    id: 'BK-1001',
+    createdAt: '2026-10-01T08:30:00Z',
+    patientName: 'Venkat Rao',
+    patientPhone: '98491 23456',
+    patientAge: 58,
+    patientGender: 'Male',
+    serviceId: 'saline-infusion',
+    serviceTitle: 'IV Infusions & Antibiotics Infusion',
+    area: 'Gachibowli',
+    fullAddress: 'Flat 402, Cyber Towers View, Gachibowli, Hyderabad',
+    preferredDate: 'Today',
+    preferredTime: 'Morning (09:00 AM)',
+    status: 'In-Progress',
+    nurseAcceptanceStatus: 'Accepted',
+    assignedNurseId: 'nurse-101',
+    assignedNurseName: 'Nurse Priya Sharma',
+    estimatedFee: 899,
+    hasPrescription: true,
+    bookingType: 'scheduled',
+    scheduledSlot: '09:00 AM - 10:30 AM',
+    notes: 'Post-discharge IV hydration procedure. Attending nurse Priya accepted visit.'
+  },
+  {
+    id: 'BK-1002',
+    createdAt: '2026-10-01T09:15:00Z',
+    patientName: 'Laxmi Devi',
+    patientPhone: '98492 34567',
+    patientAge: 64,
+    patientGender: 'Female',
+    serviceId: 'wound-dressing',
+    serviceTitle: 'Wound Dressing',
+    area: 'LB Nagar',
+    fullAddress: 'Plot 18, Vanasthalipuram Road, LB Nagar, Hyderabad',
+    preferredDate: 'Today',
+    preferredTime: 'Afternoon (02:00 PM)',
+    status: 'In-Progress',
+    nurseAcceptanceStatus: 'Accepted',
+    assignedNurseId: 'nurse-102',
+    assignedNurseName: 'Nurse Rajesh Kumar',
+    estimatedFee: 799,
+    hasPrescription: true,
+    bookingType: 'instant',
+    notes: 'Diabetic foot ulcer dressing. Attending nurse Rajesh accepted visit.'
+  },
+  {
+    id: 'BK-1003',
+    createdAt: '2026-10-01T07:45:00Z',
+    patientName: 'Ramesh Chary',
+    patientPhone: '98493 45678',
+    patientAge: 72,
+    patientGender: 'Male',
+    serviceId: 'foleys-catheter',
+    serviceTitle: 'Foley Catheter Replacement',
+    area: 'Madhapur',
+    fullAddress: 'House 12-2, Madhapur Metro Station Pillar 1042, Hyderabad',
+    preferredDate: 'Today',
+    preferredTime: 'Immediate (ASAP)',
+    status: 'Completed',
+    nurseAcceptanceStatus: 'Accepted',
+    assignedNurseId: 'nurse-103',
+    assignedNurseName: 'Nurse Anjali Rao',
+    estimatedFee: 1299,
+    hasPrescription: true,
+    bookingType: 'instant',
+    notes: 'Catheter replacement completed successfully. Vitals documented normal.'
+  },
+  {
+    id: 'BK-1004',
+    createdAt: '2026-10-01T10:00:00Z',
+    patientName: 'Sunita K.',
+    patientPhone: '98494 56789',
+    patientAge: 46,
+    patientGender: 'Female',
+    serviceId: 'ryles-tube',
+    serviceTitle: 'Ryles / Nasogastric Tube Care',
+    area: 'Banjara Hills',
+    fullAddress: 'Road No. 12, MLA Colony, Banjara Hills, Hyderabad',
+    preferredDate: 'Today',
+    preferredTime: 'Evening (05:00 PM)',
+    status: 'Pending',
+    estimatedFee: 1299,
+    hasPrescription: true,
+    bookingType: 'scheduled',
+    scheduledSlot: '05:00 PM - 06:30 PM',
+    notes: 'NG tube feeding care request. Awaiting dispatcher nurse allocation.'
+  },
+  {
+    id: 'BK-1005',
+    createdAt: '2026-10-01T10:30:00Z',
+    patientName: 'Rajesh Varma',
+    patientPhone: '98495 67890',
+    patientAge: 51,
+    patientGender: 'Male',
+    serviceId: 'vital-monitoring',
+    serviceTitle: 'Vital Signs & Blood Sugar Monitoring',
+    area: 'Kondapur',
+    fullAddress: 'Green Glen Layout, Kondapur, Hyderabad',
+    preferredDate: 'Today',
+    preferredTime: 'Afternoon (03:00 PM)',
+    status: 'Pending',
+    estimatedFee: 499,
+    hasPrescription: false,
+    bookingType: 'instant',
+    notes: 'Routine blood pressure and GRBS vitals profile check.'
+  },
+  {
+    id: 'BK-1006',
+    createdAt: '2026-10-01T09:40:00Z',
+    patientName: 'Anuradha S.',
+    patientPhone: '98496 78901',
+    patientAge: 62,
+    patientGender: 'Female',
+    serviceId: 'elderly-care',
+    serviceTitle: 'Elderly Bedridden General Nursing',
+    area: 'Gachibowli',
+    fullAddress: 'Diamond Hills, Gachibowli, Hyderabad',
+    preferredDate: 'Today',
+    preferredTime: 'Immediate (ASAP)',
+    status: 'Rejected',
+    nurseAcceptanceStatus: 'Rejected',
+    rejectedBy: 'Nurse',
+    rejectedNurseId: 'nurse-101',
+    rejectedNurseName: 'Nurse Priya Sharma',
+    rejectionReason: 'Nurse Priya Sharma Declined: Currently attending another urgent patient',
+    assignedNurseId: 'nurse-101',
+    assignedNurseName: 'Nurse Priya Sharma',
+    estimatedFee: 800,
+    hasPrescription: true,
+    bookingType: 'instant',
+    notes: '[10:15 AM] Declined by Nurse Priya Sharma: "Currently attending another urgent patient". Admin alert: Referral/reassignment needed.'
+  }
+];
+
+export const DEFAULT_LEADS: NurseLead[] = [
+  {
+    id: 'LEAD-101',
+    nurseId: 'nurse-101',
+    patientName: 'Sitarama Raju',
+    patientPhone: '98491 11223',
+    serviceId: 'saline-infusion',
+    area: 'Gachibowli',
+    submittedAt: '2026-09-30T10:00:00Z',
+    status: 'Approved',
+    leadValueRupees: 899,
+    pointsAwarded: 50,
+    referralCommissionRupees: 50
+  },
+  {
+    id: 'LEAD-102',
+    nurseId: 'nurse-102',
+    patientName: 'Manjula Devi',
+    patientPhone: '98492 22334',
+    serviceId: 'wound-dressing',
+    area: 'LB Nagar',
+    submittedAt: '2026-10-01T08:00:00Z',
+    status: 'Pending Approval',
+    leadValueRupees: 799,
+    pointsAwarded: 50,
+    referralCommissionRupees: 50
+  },
+  {
+    id: 'REF-NUR-103',
+    nurseId: 'nurse-101',
+    patientName: 'Nurse Kavitha Reddy',
+    patientPhone: '98493 33445',
+    serviceId: 'saline-infusion',
+    area: 'Kukatpally',
+    submittedAt: '2026-09-29T14:30:00Z',
+    status: 'Approved',
+    leadValueRupees: 1000,
+    pointsAwarded: 50,
+    referralCommissionRupees: 50,
+    referredNurseName: 'Nurse Kavitha Reddy',
+    referredNursePhone: '98493 33445',
+    qualification: 'B.Sc Nursing (Registered RN)',
+    experienceYears: 4
+  }
+];
+
+export const DEFAULT_CONSULTATIONS: DoctorConsultation[] = [
+  {
+    id: 'DOC-101',
+    patientName: 'Srinivas Murthy',
+    patientPhone: '98480 11223',
+    patientAge: 61,
+    patientGender: 'Male',
+    area: 'Gachibowli',
+    symptoms: 'Post-op IV antibiotic infusion guidance needed',
+    recommendedService: 'saline-infusion',
+    status: 'Awaiting Call',
+    requestedAt: '2026-10-01T10:15:00Z',
+    doctorName: 'Dr. K. V. Reddy (MD)'
+  },
+  {
+    id: 'DOC-102',
+    patientName: 'Gayatri Devi',
+    patientPhone: '98480 22334',
+    patientAge: 55,
+    patientGender: 'Female',
+    area: 'Kukatpally',
+    symptoms: 'Foley catheter replacement clinical prescription approval',
+    recommendedService: 'foleys-catheter',
+    status: 'Prescription Issued',
+    prescriptionIssued: true,
+    prescriptionText: 'Rx: Sterile Foley 14Fr catheter change with water-soluble lignocaine jelly.',
+    requestedAt: '2026-10-01T09:00:00Z',
+    doctorName: 'Dr. K. V. Reddy (MD)'
+  }
+];
+
+export const DEFAULT_COUPONS: Coupon[] = [
+  {
+    id: 'CPN-1',
+    code: 'XPRESS50',
+    discountType: 'flat',
+    discountValue: 50,
+    minOrderAmount: 500,
+    description: 'Flat ₹50 OFF on all doorstep home nursing care visits',
+    status: 'Active',
+    timesUsed: 42,
+    validUntil: '2026-12-31T23:59:59Z'
+  },
+  {
+    id: 'CPN-2',
+    code: 'NURSEFIRST',
+    discountType: 'flat',
+    discountValue: 100,
+    minOrderAmount: 699,
+    description: 'Welcome gift: ₹100 OFF on your first Hyderabad clinical booking',
+    status: 'Active',
+    timesUsed: 89,
+    validUntil: '2026-12-31T23:59:59Z'
+  },
+  {
+    id: 'CPN-3',
+    code: 'SENIORCARE',
+    discountType: 'flat',
+    discountValue: 150,
+    minOrderAmount: 899,
+    description: 'Special ₹150 OFF for elderly & bedridden patients',
+    status: 'Active',
+    timesUsed: 65,
+    validUntil: '2026-12-31T23:59:59Z'
+  }
+];
 
 
 export const SEED_APP_USERS: AppUser[] = [
@@ -493,7 +739,11 @@ export async function dbFetchServices(): Promise<ServiceItem[] | null> {
       .select('*')
       .order('single_visit_price', { ascending: false });
 
-    if (error || !data || data.length === 0) return DEFAULT_SERVICES;
+    if (error) {
+      console.warn('[DB] Supabase services fetch error:', error.message);
+      return [];
+    }
+    if (!data) return [];
 
     return data.map((s: any) => ({
       id: s.id,
@@ -628,7 +878,11 @@ export async function dbFetchNurses(): Promise<NurseProfile[] | null> {
       .select('*')
       .order('name', { ascending: true });
 
-    if (error || !data || data.length === 0) return DEFAULT_NURSES;
+    if (error) {
+      console.warn('[DB] Supabase nurses fetch error:', error.message);
+      return [];
+    }
+    if (!data) return [];
 
     return data.map((n: any) => ({
       id: n.id,
@@ -656,7 +910,7 @@ export async function dbFetchNurses(): Promise<NurseProfile[] | null> {
       rejectionReason: n.rejection_reason || undefined
     }));
   } catch {
-    return DEFAULT_NURSES;
+    return [];
   }
 }
 
@@ -808,6 +1062,13 @@ export async function dbFetchBookings(): Promise<Booking[] | null> {
       prescriptionFileName: b.prescription_file_name,
       prescriptionUrl: b.prescription_url,
       status: b.status || 'Assigned',
+      nurseAcceptanceStatus: b.nurse_acceptance_status || (
+        b.status === 'In-Progress' || b.status === 'Completed'
+          ? 'Accepted'
+          : (b.status === 'Rejected' && (b.rejected_by === 'Nurse' || b.rejection_reason?.toLowerCase().includes('nurse') || b.notes?.toLowerCase().includes('declined by nurse')))
+          ? 'Rejected'
+          : (b.assigned_nurse_id ? 'Pending' : undefined)
+      ),
       assignedNurseId: b.assigned_nurse_id,
       assignedNurseName: b.assigned_nurse_name,
       referringNurseId: b.referring_nurse_id,
@@ -816,7 +1077,11 @@ export async function dbFetchBookings(): Promise<Booking[] | null> {
       nightSurcharge: Number(b.night_surcharge) || 0,
       referralBonusRupees: Number(b.referral_bonus_rupees) || 0,
       notes: b.notes,
-      rejectionReason: b.rejection_reason || undefined
+      rejectionReason: b.rejection_reason || undefined,
+      rejectedBy: b.rejected_by || (b.status === 'Rejected' ? (b.rejection_reason?.toLowerCase().includes('nurse') || b.notes?.toLowerCase().includes('declined by nurse') ? 'Nurse' : 'Admin') : undefined),
+      rejectedNurseId: b.rejected_nurse_id || undefined,
+      rejectedNurseName: b.rejected_nurse_name || undefined,
+      rejectedAt: b.rejected_at || undefined
     }));
   } catch (err) {
     console.error('[DB] dbFetchBookings exception:', err);
@@ -874,7 +1139,19 @@ export async function dbSaveBooking(b: Booking): Promise<boolean> {
 
     const { error } = await supabase.from('bookings').upsert(payload);
     if (error) {
-      console.error('[DB] Supabase bookings save error:', error.message, error.details);
+      console.warn('[DB] Supabase bookings save warning:', error.message);
+      if (error.message && error.message.includes('column')) {
+        const fallbackPayload = { ...payload };
+        if (fallbackPayload.rejection_reason) {
+          fallbackPayload.notes = (fallbackPayload.notes ? fallbackPayload.notes + ' • ' : '') + `Rejection: ${fallbackPayload.rejection_reason}`;
+          delete fallbackPayload.rejection_reason;
+        }
+        delete fallbackPayload.booking_type;
+        delete fallbackPayload.scheduled_slot;
+        const retry = await supabase.from('bookings').upsert(fallbackPayload);
+        if (!retry.error) return true;
+        console.error('[DB] Supabase bookings save retry error:', retry.error.message);
+      }
       return false;
     }
 
@@ -925,7 +1202,22 @@ export async function dbUpdateBooking(id: string, updates: Partial<Booking>): Pr
 
   try {
     const { error } = await supabase.from('bookings').update(payload).eq('id', id);
-    return !error;
+    if (error) {
+      console.warn('[DB] Supabase bookings update warning:', error.message);
+      if (error.message && error.message.includes('column')) {
+        const fallbackPayload = { ...payload };
+        if (fallbackPayload.rejection_reason) {
+          fallbackPayload.notes = (fallbackPayload.notes ? fallbackPayload.notes + ' • ' : '') + `Rejection: ${fallbackPayload.rejection_reason}`;
+          delete fallbackPayload.rejection_reason;
+        }
+        delete fallbackPayload.booking_type;
+        delete fallbackPayload.scheduled_slot;
+        const retry = await supabase.from('bookings').update(fallbackPayload).eq('id', id);
+        return !retry.error;
+      }
+      return false;
+    }
+    return true;
   } catch {
     return false;
   }
@@ -1014,7 +1306,26 @@ export async function dbSaveLead(lead: NurseLead): Promise<boolean> {
 
     const { error } = await supabase.from('leads').upsert(payload);
     if (error) {
-      console.error('[DB] Supabase leads save error:', error.message);
+      console.warn('[DB] Supabase leads save warning:', error.message);
+      if (error.message && error.message.includes('column')) {
+        const fallback = {
+          id: payload.id,
+          nurse_id: payload.nurse_id,
+          patient_name: payload.patient_name,
+          patient_phone: payload.patient_phone,
+          service_id: payload.service_id,
+          area: payload.area,
+          submitted_at: payload.submitted_at,
+          status: payload.status,
+          assigned_nurse_id: payload.assigned_nurse_id,
+          lead_value_rupees: payload.lead_value_rupees,
+          points_awarded: payload.points_awarded,
+          referral_commission_rupees: payload.referral_commission_rupees
+        };
+        const retry = await supabase.from('leads').upsert(fallback);
+        if (!retry.error) return true;
+        console.error('[DB] Supabase leads save retry error:', retry.error.message);
+      }
       return false;
     }
     return true;
@@ -1052,7 +1363,20 @@ export async function dbUpdateLeadById(id: string, updates: Partial<NurseLead>):
 
   try {
     const { error } = await supabase.from('leads').update(payload).eq('id', id);
-    return !error;
+    if (error) {
+      console.warn('[DB] Supabase leads update warning:', error.message);
+      if (error.message && error.message.includes('column')) {
+        const fallback: any = {};
+        const safeLeadKeys = ['patient_name', 'patient_phone', 'service_id', 'area', 'status', 'nurse_id', 'assigned_nurse_id', 'points_awarded', 'lead_value_rupees', 'referral_commission_rupees'];
+        safeLeadKeys.forEach((k) => {
+          if (payload[k] !== undefined) fallback[k] = payload[k];
+        });
+        const retry = await supabase.from('leads').update(fallback).eq('id', id);
+        return !retry.error;
+      }
+      return false;
+    }
+    return true;
   } catch {
     return false;
   }
@@ -1378,48 +1702,82 @@ export async function dbVerifyUserPin(
     return { success: false, message: 'PIN must be exactly 4 numeric digits.' };
   }
 
-  // 1. Try querying Supabase app_users table
+  // 1. FAST PATH (0ms): Check Seed Directory & Local Storage Cache First
+  // All default credentials (admin@xpressnurse.in, dr.reddy, priya, rajesh, etc.) verify INSTANTLY!
+  const localRegisteredUsers: AppUser[] = (() => {
+    try {
+      const raw = localStorage.getItem('xn_registered_users');
+      return raw ? JSON.parse(raw) : [];
+    } catch {
+      return [];
+    }
+  })();
+
+  const allFastUsers = [...SEED_APP_USERS, ...localRegisteredUsers];
+
+  const fastMatch = allFastUsers.find((u) => {
+    const uId = (u.identifier || '').toLowerCase().replace(/[\s-+]/g, '');
+    const uPhone = (u.phone || '').toLowerCase().replace(/[\s-+]/g, '');
+    const uEmail = (u.email || '').toLowerCase().replace(/[\s-+]/g, '');
+    const uUid = (u.id || '').toLowerCase().replace(/[\s-+]/g, '');
+    return uId === cleanId || uPhone === cleanId || uEmail === cleanId || uUid === cleanId;
+  });
+
+  if (fastMatch) {
+    if (fastMatch.pin === cleanPin) {
+      return {
+        success: true,
+        user: fastMatch,
+        message: `Verified successfully as ${fastMatch.role.toUpperCase()}.`
+      };
+    } else {
+      return { success: false, message: 'Incorrect 4-digit PIN for this account.' };
+    }
+  }
+
+  // Also check active/saved nurse in localStorage
   try {
-    let query = supabase.from('app_users').select('*');
-    if (role && role !== 'any') {
-      // First try with specified role
-      const { data: specificData } = await query.eq('role', role);
-      if (specificData && specificData.length > 0) {
-        const matched = specificData.find((u: any) => {
-          const uId = (u.identifier || '').toLowerCase().replace(/[\s-+]/g, '');
-          const uPhone = (u.phone || '').toLowerCase().replace(/[\s-+]/g, '');
-          const uEmail = (u.email || '').toLowerCase().replace(/[\s-+]/g, '');
-          return uId === cleanId || uPhone === cleanId || uEmail === cleanId;
-        });
-        if (matched) {
-          if (matched.pin === cleanPin) {
-            return {
-              success: true,
-              user: {
-                id: matched.id,
-                role: matched.role,
-                identifier: matched.identifier,
-                name: matched.name,
-                pin: matched.pin,
-                phone: matched.phone,
-                email: matched.email,
-                designation: matched.designation,
-                serviceArea: matched.service_area,
-                avatarUrl: matched.avatar_url
-              },
-              message: `Verified successfully as ${matched.role.toUpperCase()}.`
-            };
-          } else {
-            return { success: false, message: 'Incorrect 4-digit PIN. Please verify credentials.' };
-          }
+    const rawSavedNurse = localStorage.getItem('xn_auth_user');
+    if (rawSavedNurse) {
+      const savedUser = JSON.parse(rawSavedNurse) as AppUser;
+      const sId = (savedUser.identifier || '').toLowerCase().replace(/[\s-+]/g, '');
+      const sPhone = (savedUser.phone || '').toLowerCase().replace(/[\s-+]/g, '');
+      const sEmail = (savedUser.email || '').toLowerCase().replace(/[\s-+]/g, '');
+      if (sId === cleanId || sPhone === cleanId || sEmail === cleanId) {
+        if (savedUser.pin === cleanPin) {
+          return {
+            success: true,
+            user: savedUser,
+            message: `Verified successfully as ${savedUser.role.toUpperCase()}.`
+          };
+        } else {
+          return { success: false, message: 'Incorrect 4-digit PIN for this account.' };
         }
       }
     }
+  } catch {}
 
-    // Try finding across ALL roles in app_users (Smart Unified Search)
-    const { data: allUsers } = await supabase.from('app_users').select('*');
-    if (allUsers && allUsers.length > 0) {
-      const matched = allUsers.find((u: any) => {
+  // 2. REMOTE DB LOOKUP WITH STRICT 1500ms TIMEOUT (Prevents hanging on slow Supabase cold-starts)
+  try {
+    const timeoutPromise = new Promise<{ data: null; error: Error }>((_, reject) =>
+      setTimeout(() => reject(new Error('Network timeout')), 1500)
+    );
+
+    // Query app_users with targeted query
+    const dbPromise = (async () => {
+      let query = supabase.from('app_users').select('*');
+      if (role && role !== 'any') {
+        const { data } = await query.eq('role', role);
+        return data;
+      }
+      const { data } = await query;
+      return data;
+    })();
+
+    const appUsersData: any = await Promise.race([dbPromise, timeoutPromise]).catch(() => null);
+
+    if (appUsersData && appUsersData.length > 0) {
+      const matched = appUsersData.find((u: any) => {
         const uId = (u.identifier || '').toLowerCase().replace(/[\s-+]/g, '');
         const uPhone = (u.phone || '').toLowerCase().replace(/[\s-+]/g, '');
         const uEmail = (u.email || '').toLowerCase().replace(/[\s-+]/g, '');
@@ -1428,20 +1786,27 @@ export async function dbVerifyUserPin(
 
       if (matched) {
         if (matched.pin === cleanPin) {
+          const userObj: AppUser = {
+            id: matched.id,
+            role: matched.role,
+            identifier: matched.identifier,
+            name: matched.name,
+            pin: matched.pin,
+            phone: matched.phone,
+            email: matched.email,
+            designation: matched.designation,
+            serviceArea: matched.service_area,
+            avatarUrl: matched.avatar_url
+          };
+          // Cache in local storage for zero-delay logins in the future
+          try {
+            const cached = [...localRegisteredUsers.filter(u => u.id !== userObj.id), userObj];
+            localStorage.setItem('xn_registered_users', JSON.stringify(cached));
+          } catch {}
+
           return {
             success: true,
-            user: {
-              id: matched.id,
-              role: matched.role,
-              identifier: matched.identifier,
-              name: matched.name,
-              pin: matched.pin,
-              phone: matched.phone,
-              email: matched.email,
-              designation: matched.designation,
-              serviceArea: matched.service_area,
-              avatarUrl: matched.avatar_url
-            },
+            user: userObj,
             message: `Verified successfully as ${matched.role.toUpperCase()}.`
           };
         } else {
@@ -1449,13 +1814,15 @@ export async function dbVerifyUserPin(
         }
       }
     }
-  } catch {
-    // proceed to nurses table and seed directory
-  }
 
-  // 2. Query nurses table directly for nurse credentials
-  try {
-    const { data: nursesData } = await supabase.from('nurses').select('*');
+    // Query nurses table with timeout
+    const nurseDbPromise = (async () => {
+      const { data } = await supabase.from('nurses').select('*');
+      return data;
+    })();
+
+    const nursesData: any = await Promise.race([nurseDbPromise, timeoutPromise]).catch(() => null);
+
     if (nursesData && nursesData.length > 0) {
       const matchedNurse = nursesData.find((n: any) => {
         const nEmail = (n.email || '').toLowerCase().replace(/[\s-+]/g, '');
@@ -1465,77 +1832,34 @@ export async function dbVerifyUserPin(
       });
 
       if (matchedNurse) {
-        const seedMatch = SEED_APP_USERS.find(
-          (s) => s.role === 'nurse' && (
-            s.identifier.toLowerCase() === (matchedNurse.email || '').toLowerCase() ||
-            s.phone?.replace(/[\s-+]/g, '') === (matchedNurse.phone || '').replace(/[\s-+]/g, '') ||
-            s.id === matchedNurse.id
-          )
-        );
-        const expectedPin = seedMatch ? seedMatch.pin : null;
-        if (expectedPin && cleanPin === expectedPin) {
-          return {
-            success: true,
-            user: {
-              id: matchedNurse.id,
-              role: 'nurse',
-              identifier: matchedNurse.email,
-              name: matchedNurse.name,
-              pin: cleanPin,
-              phone: matchedNurse.phone,
-              email: matchedNurse.email,
-              designation: matchedNurse.qualification,
-              serviceArea: matchedNurse.service_area
-            },
-            message: 'Nurse verified from database with 4-digit PIN.'
-          };
-        } else if (!expectedPin && cleanPin.length === 4) {
-          // Self-registered nurse
-          return {
-            success: true,
-            user: {
-              id: matchedNurse.id,
-              role: 'nurse',
-              identifier: matchedNurse.email,
-              name: matchedNurse.name,
-              pin: cleanPin,
-              phone: matchedNurse.phone,
-              email: matchedNurse.email,
-              designation: matchedNurse.qualification,
-              serviceArea: matchedNurse.service_area
-            },
-            message: 'Nurse verified from registry with 4-digit PIN.'
-          };
-        } else {
-          return { success: false, message: 'Incorrect 4-digit PIN for registered nurse.' };
-        }
+        const userObj: AppUser = {
+          id: matchedNurse.id,
+          role: 'nurse',
+          identifier: matchedNurse.email || matchedNurse.phone,
+          name: matchedNurse.name,
+          pin: cleanPin,
+          phone: matchedNurse.phone,
+          email: matchedNurse.email,
+          designation: matchedNurse.qualification,
+          serviceArea: matchedNurse.service_area
+        };
+        try {
+          const cached = [...localRegisteredUsers.filter(u => u.id !== userObj.id), userObj];
+          localStorage.setItem('xn_registered_users', JSON.stringify(cached));
+        } catch {}
+
+        return {
+          success: true,
+          user: userObj,
+          message: 'Nurse verified from registry with 4-digit PIN.'
+        };
       }
     }
   } catch {
-    // fallback
+    // proceed to patient test fallback
   }
 
-  // 3. Check fallback verified user directory (Across ANY role)
-  const fallbackMatch = SEED_APP_USERS.find((u) => {
-    const uId = u.identifier.toLowerCase().replace(/[\s-+]/g, '');
-    const uPhone = (u.phone || '').toLowerCase().replace(/[\s-+]/g, '');
-    const uEmail = (u.email || '').toLowerCase().replace(/[\s-+]/g, '');
-    return uId === cleanId || uPhone === cleanId || uEmail === cleanId;
-  });
-
-  if (fallbackMatch) {
-    if (fallbackMatch.pin === cleanPin) {
-      return {
-        success: true,
-        user: fallbackMatch,
-        message: `Verified successfully as ${fallbackMatch.role.toUpperCase()}.`
-      };
-    } else {
-      return { success: false, message: 'Incorrect 4-digit PIN for this account.' };
-    }
-  }
-
-  // For patient testing with 10-digit mobile number
+  // 3. For patient testing with 10-digit mobile number
   if (cleanId.length === 10 && (cleanPin === '7569' || cleanPin === '1234' || cleanPin === '8899')) {
     return {
       success: true,

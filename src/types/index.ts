@@ -6,9 +6,12 @@ export type ServiceId =
   | 'suture-removal'
   | 'injection-administration'
   | 'vitals-monitoring'
+  | 'vital-monitoring'
+  | 'elderly-care'
   | 'lab-diagnostics'
   | 'doctor-consult'
-  | 'personalized-nursing';
+  | 'personalized-nursing'
+  | (string & {});
 
 export interface ServiceItem {
   id: ServiceId;
@@ -53,6 +56,7 @@ export interface Booking {
   prescriptionUrl?: string;
   prescriptionIssued?: boolean;
   status: 'Pending' | 'Assigned' | 'In-Progress' | 'Completed' | 'Cancelled' | 'Rejected';
+  nurseAcceptanceStatus?: 'Pending' | 'Accepted' | 'Rejected';
   assignedNurseId?: string;
   assignedNurseName?: string;
   referringNurseId?: string;
@@ -68,6 +72,9 @@ export interface Booking {
   invoiceUrl?: string;
   rejectionReason?: string;
   rejectedBy?: string;
+  rejectedNurseId?: string;
+  rejectedNurseName?: string;
+  rejectedAt?: string;
 }
 
 export interface NursePayoutRecord {
@@ -151,6 +158,7 @@ export interface DoctorConsultation {
   id: string;
   patientName: string;
   patientAge?: number;
+  patientGender?: string;
   patientPhone: string;
   symptoms: string;
   area: string;
@@ -159,6 +167,7 @@ export interface DoctorConsultation {
   prescriptionIssued?: boolean;
   prescriptionText?: string;
   recommendedService?: ServiceId;
+  doctorName?: string;
   doctorNotes?: string;
   rejectionReason?: string;
 }

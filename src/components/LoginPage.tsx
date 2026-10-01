@@ -280,7 +280,7 @@ export const LoginPage: React.FC<LoginPageProps> = ({
         } else {
           onNavigate('/admin');
         }
-      }, 500);
+      }, 100);
     } catch (err: any) {
       setIsLoading(false);
       setErrorMsg(err.message || 'Authentication error. Please try again.');
