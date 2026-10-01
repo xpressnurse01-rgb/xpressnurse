@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { 
   NurseProfile, 
   NurseLead, 
@@ -9,37 +9,34 @@ import {
   InvoiceDetails 
 } from '../types';
 import { 
-  Award, 
-  Coins, 
-  TrendingUp, 
-  UserPlus, 
-  Users, 
-  ShieldCheck, 
-  CheckCircle2, 
+  Phone, 
   MapPin, 
   Calendar, 
-  Phone, 
-  FileCheck, 
-  AlertCircle,
-  Clock,
-  ArrowRight,
-  Send,
-  Database,
+  Clock, 
+  CheckCircle2, 
+  AlertCircle, 
+  Plus, 
+  Share2, 
+  Copy, 
+  Check, 
+  User, 
+  Award, 
+  FileText, 
+  Receipt, 
+  Printer, 
+  Navigation, 
+  MessageCircle, 
+  UploadCloud, 
+  Eye, 
+  X, 
+  ArrowRight, 
+  Sparkles, 
   RefreshCw,
-  Cloud,
-  FileText,
-  Receipt,
-  Printer,
-  Download,
-  X,
-  Share2,
-  Copy,
-  Check,
-  Sparkles,
-  UserCheck,
+  TrendingUp,
+  Coins,
+  ShieldCheck,
   ExternalLink,
-  UploadCloud,
-  MessageCircle
+  ChevronRight
 } from 'lucide-react';
 import confetti from 'canvas-confetti';
 import { EmptyState } from './EmptyState';
@@ -72,19 +69,19 @@ export function getSafeBlobUrl(dataUrl: string): string {
 }
 
 export const HYDERABAD_AREAS: HyderabadArea[] = [
+  'Gachibowli',
   'LB Nagar',
+  'Madhapur',
   'Banjara Hills',
   'Jubilee Hills',
-  'Madhapur',
-  'Gachibowli',
   'Kukatpally',
-  'Dilsukhnagar',
+  'Kondapur',
+  'Hitec City',
   'Secunderabad',
   'Ameerpet',
   'Begumpet',
-  'Kondapur',
+  'Dilsukhnagar',
   'Miyapur',
-  'Hitec City',
   'Mehdipatnam',
   'Uppal',
   'Malakpet',
@@ -120,14 +117,18 @@ export const NurseDashboard: React.FC<NurseDashboardProps> = ({
   onUpdateBooking
 }) => {
   const serviceList: ServiceItem[] = services;
-  const nurse: NurseProfile = (currentNurse as NurseProfile) || (allNurses && allNurses.length > 0 ? (allNurses[0] as NurseProfile) : null) || {
+  const liveNurse = (allNurses && currentNurse)
+    ? (allNurses.find((n) => n.id === currentNurse.id || (n.phone && currentNurse.phone && n.phone.replace(/\D/g, '') === currentNurse.phone.replace(/\D/g, ''))) || currentNurse)
+    : (currentNurse || (allNurses && allNurses.length > 0 ? allNurses[0] : null));
+
+  const nurse: NurseProfile = (liveNurse as NurseProfile) || {
     id: 'nurse-101',
     name: 'Nurse Priya Sharma',
     phone: '9849012345',
     email: 'priya.nursing@xpressnurse.in',
     experienceYears: 5,
     qualification: 'B.Sc Nursing (Registered RN)',
-    serviceArea: 'Hyderabad Central',
+    serviceArea: 'Gachibowli',
     status: 'Active',
     totalLeads: 8,
     convertedLeads: 6,
@@ -135,224 +136,123 @@ export const NurseDashboard: React.FC<NurseDashboardProps> = ({
     pointsEarned: 1200,
     referralEarningsRupees: 2400,
     rating: 4.9,
-    avatarUrl: '/images/nurse_priya.jpg',
     certificateVerified: true
   };
 
-  const isVerifiedNurse = Boolean(nurse.certificateVerified);
+  // Ultra-simple 5 tabs with easy English words
+  const [activeTab, setActiveTab] = useState<'home' | 'visits' | 'add-patient' | 'my-money' | 'profile'>('home');
 
-  const [activeTab, setActiveTab] = useState<'overview' | 'visits' | 'referrals' | 'new-lead' | 'onboarding'>('overview');
-
-  // New lead form states (Direct to Admin)
+  // New Patient Form
   const [patientName, setPatientName] = useState('');
   const [patientPhone, setPatientPhone] = useState('');
   const [patientAge, setPatientAge] = useState('');
   const [patientGender, setPatientGender] = useState<'Female' | 'Male' | 'Other'>('Female');
   const [serviceId, setServiceId] = useState<ServiceId>('saline-infusion');
-  const [area, setArea] = useState<HyderabadArea>('LB Nagar');
+  const [area, setArea] = useState<HyderabadArea>(nurse.serviceArea || 'Gachibowli');
   const [fullAddress, setFullAddress] = useState('');
+  const [notes, setNotes] = useState('');
   const [leadSuccessMsg, setLeadSuccessMsg] = useState('');
   const [leadErrorMsg, setLeadErrorMsg] = useState('');
+  const [isSubmittingLead, setIsSubmittingLead] = useState(false);
 
-  // Reassign / Transfer modal state
-  const [reassignModalBooking, setReassignModalBooking] = useState<Booking | null>(null);
-  const [targetReassignNurseId, setTargetReassignNurseId] = useState<string>('nurse-102');
-
-  // Invoice modal & preview state
-  const [previewInvoice, setPreviewInvoice] = useState<InvoiceDetails | null>(null);
-  const [isInvoiceModalOpen, setIsInvoiceModalOpen] = useState(false);
-
-  // In-App Prescription modal state (Fixes 505 error)
+  // Modals
   const [previewRxBooking, setPreviewRxBooking] = useState<Booking | null>(null);
   const [isRxModalOpen, setIsRxModalOpen] = useState(false);
-
-  // In-App Certificate modal state
+  const [previewInvoice, setPreviewInvoice] = useState<InvoiceDetails | null>(null);
+  const [isInvoiceModalOpen, setIsInvoiceModalOpen] = useState(false);
   const [certModalOpen, setCertModalOpen] = useState(false);
-  const [certModalUrl, setCertModalUrl] = useState<string>('');
-  const [certModalTitle, setCertModalTitle] = useState<string>('');
+  const [certUploadSuccess, setCertUploadSuccess] = useState('');
 
-  // Referral code copy state
+  // Profile Name & Experience Edit State
+  const [isEditingProfile, setIsEditingProfile] = useState(false);
+  const [editedName, setEditedName] = useState(nurse.name);
+  const [editedExp, setEditedExp] = useState(String(nurse.experienceYears || 4));
+  const [profileUpdateMsg, setProfileUpdateMsg] = useState('');
+
+  // Keep editedName and editedExp in sync with external nurse updates when not in edit mode
+  useEffect(() => {
+    if (!isEditingProfile) {
+      setEditedName(nurse.name);
+      setEditedExp(String(nurse.experienceYears || 4));
+    }
+  }, [nurse.name, nurse.experienceYears, isEditingProfile]);
+
+  // Referral Link Copy
   const [copiedCode, setCopiedCode] = useState(false);
-  const [copiedLink, setCopiedLink] = useState(false);
 
-  // Nurse-Refer-Nurse state
-  const [refNurseName, setRefNurseName] = useState('');
-  const [refNursePhone, setRefNursePhone] = useState('');
-  const [refNurseQual, setRefNurseQual] = useState('B.Sc Nursing');
-  const [refNurseExp, setRefNurseExp] = useState('3');
-  const [refNurseArea, setRefNurseArea] = useState('Hyderabad Central');
-  const [refSuccessMsg, setRefSuccessMsg] = useState('');
+  // Filter Bookings assigned to THIS nurse
+  const nurseNameClean = (nurse.name || '').toLowerCase();
+  const nursePhoneClean = (nurse.phone || '').replace(/\D/g, '');
+  const myVisits = bookings.filter((b) => 
+    b.assignedNurseId === nurse.id || 
+    (nurseNameClean && b.assignedNurseName && b.assignedNurseName.toLowerCase().includes(nurseNameClean))
+  );
+  const activeVisits = myVisits.filter((b) => b.status === 'Assigned' || b.status === 'In-Progress');
+  const completedVisits = myVisits.filter((b) => b.status === 'Completed');
 
-  // Certificate upload states
-  const [certUploadSuccessMsg, setCertUploadSuccessMsg] = useState('');
-  const [certUploadErrorMsg, setCertUploadErrorMsg] = useState('');
+  // Filter Leads submitted by THIS nurse
+  const myLeads = leads.filter((l) => 
+    l.nurseId === nurse.id || 
+    (nursePhoneClean && l.referredNursePhone && l.referredNursePhone.replace(/\D/g, '') === nursePhoneClean) ||
+    (nursePhoneClean && l.patientPhone && l.patientPhone.replace(/\D/g, '') === nursePhoneClean)
+  );
+  const myConvertedLeads = myLeads.filter((l) => l.status === 'Converted' || l.status === 'Approved');
 
-  // Optional patient lead prescription attachment states
-  const [leadRxFileName, setLeadRxFileName] = useState('');
-  const [leadRxDataUrl, setLeadRxDataUrl] = useState('');
+  // Calculate earnings — strictly prioritize live nurse profile points & rupees set by Admin/system
+  const referralCode = nurse.referralCode || generateNurseReferralCode(nurse.name, nurse.id, nurse.phone || '');
+  const totalMoney = (nurse.referralEarningsRupees !== undefined && nurse.referralEarningsRupees !== null && !isNaN(Number(nurse.referralEarningsRupees)))
+    ? Number(nurse.referralEarningsRupees)
+    : (myConvertedLeads.length * 100);
+  const totalPoints = (nurse.pointsEarned !== undefined && nurse.pointsEarned !== null && !isNaN(Number(nurse.pointsEarned)))
+    ? Number(nurse.pointsEarned)
+    : (myConvertedLeads.length * 50);
 
-  // Nurse Approval / Rejection states
-  const [rejectingBooking, setRejectingBooking] = useState<Booking | null>(null);
-  const [rejectReasonCategory, setRejectReasonCategory] = useState<string>('Currently attending another urgent patient');
-  const [rejectCustomReason, setRejectCustomReason] = useState<string>('');
-  const [nurseActionFeedback, setNurseActionFeedback] = useState<string>('');
-  const [visitStatusFilter, setVisitStatusFilter] = useState<'all' | 'pending' | 'accepted' | 'declined'>('all');
-
-  // Handle Nurse Accepting an assigned visit
+  // Handlers
   const handleAcceptVisit = async (booking: Booking) => {
-    try {
-      const nowStr = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-      const auditMsg = `[${nowStr}] Approved & accepted by Nurse ${nurse.name}`;
-      const updatedNotes = booking.notes ? `${booking.notes} • ${auditMsg}` : auditMsg;
-
-      if (onUpdateBooking) {
-        await onUpdateBooking(booking.id, {
-          status: 'In-Progress',
-          nurseAcceptanceStatus: 'Accepted',
-          notes: updatedNotes
-        });
-      }
-      setNurseActionFeedback(`✓ Visit #${booking.id} accepted! You are now assigned to attend ${booking.patientName}.`);
-      confetti({ particleCount: 60, spread: 55, origin: { y: 0.7 } });
-      setTimeout(() => setNurseActionFeedback(''), 5000);
-    } catch {
-      setNurseActionFeedback('Error updating visit status. Please retry.');
-      setTimeout(() => setNurseActionFeedback(''), 4000);
-    }
-  };
-
-  // Open Decline / Rejection Modal
-  const handleOpenRejectModal = (booking: Booking) => {
-    setRejectingBooking(booking);
-    setRejectReasonCategory('Currently attending another urgent patient');
-    setRejectCustomReason('');
-  };
-
-  // Submit Nurse Decline to Admin
-  const handleConfirmRejectVisit = async () => {
-    if (!rejectingBooking) return;
-    const finalReason = rejectReasonCategory === 'Other' && rejectCustomReason.trim()
-      ? rejectCustomReason.trim()
-      : rejectReasonCategory;
-
-    const nowStr = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-    const auditMsg = `[${nowStr}] Declined by Nurse ${nurse.name}: "${finalReason}". Admin alert: Referral/reassignment needed.`;
-    const updatedNotes = rejectingBooking.notes ? `${rejectingBooking.notes} • ${auditMsg}` : auditMsg;
-
     if (onUpdateBooking) {
-      await onUpdateBooking(rejectingBooking.id, {
-        status: 'Rejected',
-        nurseAcceptanceStatus: 'Rejected',
-        rejectedBy: 'Nurse',
-        rejectedNurseId: nurse.id,
-        rejectedNurseName: nurse.name,
-        rejectionReason: `Nurse ${nurse.name} Declined: ${finalReason}`,
-        rejectedAt: new Date().toISOString(),
-        notes: updatedNotes
+      await onUpdateBooking(booking.id, {
+        status: 'In-Progress',
+        nurseAcceptanceStatus: 'Accepted'
       });
-    }
-
-    const bId = rejectingBooking.id;
-    setRejectingBooking(null);
-    setNurseActionFeedback(`Visit #${bId} declined. Operations Admin has been flagged to refer this order to another nurse.`);
-    setTimeout(() => setNurseActionFeedback(''), 6000);
-  };
-
-  const handleCertFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
-    if (e.target.files && e.target.files[0]) {
-      const file = e.target.files[0];
-      if (file.size > 15 * 1024 * 1024) {
-        setCertUploadErrorMsg('File exceeds 15 MB limit. Please select a smaller certificate file.');
-        return;
-      }
-      setCertUploadErrorMsg('');
-      const reader = new FileReader();
-      reader.onload = () => {
-        const dataUrl = reader.result as string;
-        onUpdateNurse({
-          ...nurse,
-          certificateUrl: dataUrl,
-          certificateVerified: true,
-          status: 'Active'
-        });
-        setCertUploadSuccessMsg(`✓ Certificate "${file.name}" uploaded successfully! Profile verified for clinical dispatch.`);
-        confetti({ particleCount: 80, spread: 60, origin: { y: 0.6 } });
-        setTimeout(() => setCertUploadSuccessMsg(''), 5000);
-      };
-      reader.readAsDataURL(file);
+      try {
+        confetti({ particleCount: 40, spread: 50, origin: { y: 0.6 } });
+      } catch {}
     }
   };
 
-  const handleLeadRxUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
-    if (e.target.files && e.target.files[0]) {
-      const file = e.target.files[0];
-      const reader = new FileReader();
-      reader.onload = () => {
-        setLeadRxDataUrl(reader.result as string);
-        setLeadRxFileName(file.name);
-      };
-      reader.readAsDataURL(file);
+  const handleFinishVisit = async (booking: Booking) => {
+    if (onUpdateBooking) {
+      await onUpdateBooking(booking.id, {
+        status: 'Completed'
+      });
+      try {
+        confetti({ particleCount: 70, spread: 70, origin: { y: 0.5 } });
+      } catch {}
     }
   };
 
-  const nurseReferralCode = nurse.referralCode || generateNurseReferralCode(nurse.name, nurse.phone);
-  const referralInviteUrl = `https://xpressnurse.in/nurse/join?ref=${nurseReferralCode}`;
-
-  const handleOpenBookingInvoice = async (booking: Booking) => {
-    const inv = generateInvoiceDetails(booking);
-    setPreviewInvoice(inv);
-    setIsInvoiceModalOpen(true);
-    try {
-      await saveInvoiceToCloudflareBucket(booking);
-    } catch {
-      // safe fallback
+  const handleCopyCode = () => {
+    if (navigator.clipboard) {
+      navigator.clipboard.writeText(referralCode);
+      setCopiedCode(true);
+      setTimeout(() => setCopiedCode(false), 2500);
     }
   };
 
-  // Bookings assigned to THIS nurse to execute
-  const assignedVisits = bookings.filter((b) => b.assignedNurseId === nurse.id);
+  const handleShareWhatsApp = () => {
+    const text = encodeURIComponent(
+      `Namaste! I am ${nurse.name} from Xpress Nurse Hyderabad. Book certified home nursing services (IV saline, wound dressing, injection, doctor consult) at home. Use my code *${referralCode}* for special care: https://xpressnurse.in/?ref=${referralCode} or Call/WhatsApp: +917569657371`
+    );
+    window.open(`https://wa.me/?text=${text}`, '_blank');
+  };
 
-  const pendingApprovalVisits = assignedVisits.filter((b) => {
-    const isDeclined = b.nurseAcceptanceStatus === 'Rejected' || (b.status === 'Rejected' && (b.rejectedBy === 'Nurse' || b.rejectionReason?.toLowerCase().includes('nurse')));
-    const isAccepted = b.nurseAcceptanceStatus === 'Accepted' || b.status === 'In-Progress' || b.status === 'Completed';
-    return !isDeclined && !isAccepted;
-  });
-
-  const acceptedVisits = assignedVisits.filter((b) => {
-    return b.nurseAcceptanceStatus === 'Accepted' || (b.status === 'In-Progress' && b.nurseAcceptanceStatus !== 'Rejected') || b.status === 'Completed';
-  });
-
-  const declinedVisits = assignedVisits.filter((b) => {
-    return b.nurseAcceptanceStatus === 'Rejected' || (b.status === 'Rejected' && (b.rejectedBy === 'Nurse' || b.rejectionReason?.toLowerCase().includes('nurse')));
-  });
-
-  // Leads referred by THIS nurse
-  const myLeads = leads.filter((l) => l.nurseId === nurse.id);
-  const myPatientLeads = myLeads.filter((l) => !l.referredNurseName && !l.referredNursePhone);
-  const myNurseReferrals = myLeads.filter((l) => Boolean(l.referredNurseName || l.referredNursePhone));
-
-  const pendingPatientLeads = myPatientLeads.filter((l) => l.status === 'Pending Approval' || l.status === 'Submitted');
-  const approvedPatientLeads = myPatientLeads.filter((l) => l.status === 'Approved' || l.status === 'Converted');
-  const rejectedPatientLeads = myPatientLeads.filter((l) => l.status === 'Rejected');
-
-  const pendingNurseReferrals = myNurseReferrals.filter((l) => l.status === 'Pending Approval' || l.status === 'Submitted');
-  const approvedNurseReferrals = myNurseReferrals.filter((l) => l.status === 'Approved' || l.status === 'Converted');
-  const rejectedNurseReferrals = myNurseReferrals.filter((l) => l.status === 'Rejected');
-
-  // 50 Points = ₹50 Rule
-  const patientPointsEarned = approvedPatientLeads.reduce((acc, l) => acc + (l.pointsAwarded !== undefined ? l.pointsAwarded : 50), 0);
-  const patientRupeesEarned = approvedPatientLeads.reduce((acc, l) => acc + (l.referralCommissionRupees !== undefined ? l.referralCommissionRupees : 50), 0);
-
-  const nursePointsEarned = approvedNurseReferrals.reduce((acc, l) => acc + (l.pointsAwarded !== undefined ? l.pointsAwarded : 50), 0);
-  const nurseRupeesEarned = approvedNurseReferrals.reduce((acc, l) => acc + (l.referralCommissionRupees !== undefined ? l.referralCommissionRupees : 50), 0);
-
-  const totalBonusPoints = patientPointsEarned + nursePointsEarned;
-  const totalBonusRupees = patientRupeesEarned + nurseRupeesEarned;
-
-  const handleLeadSubmit = (e: React.FormEvent) => {
+  const handleSavePatient = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!patientName.trim() || !patientPhone.trim()) {
-      setLeadErrorMsg('Please fill in patient full name and contact mobile number.');
+    setLeadErrorMsg('');
+    setLeadSuccessMsg('');
+
+    if (!patientName.trim()) {
+      setLeadErrorMsg('Please write patient name.');
       return;
     }
     const cleanPhone = patientPhone.replace(/\D/g, '');
@@ -360,2481 +260,1602 @@ export const NurseDashboard: React.FC<NurseDashboardProps> = ({
       setLeadErrorMsg('Please enter a valid 10-digit mobile number.');
       return;
     }
-    setLeadErrorMsg('');
 
-    const selectedServiceObj = serviceList.find((s: ServiceItem) => s.id === serviceId) || serviceList[0];
-    const fee = selectedServiceObj ? (selectedServiceObj.priceNumber || 800) : 800;
-
+    setIsSubmittingLead(true);
     const newLead: NurseLead = {
-      id: 'LD-' + Math.floor(1000 + Math.random() * 9000),
+      id: `LD-${Math.floor(1000 + Math.random() * 9000)}`,
       nurseId: nurse.id,
-      patientName: `${patientName.trim()}${patientAge ? ` (${patientAge} yrs, ${patientGender})` : ''}`,
+      patientName: patientName.trim(),
       patientPhone: cleanPhone,
-      patientAge: patientAge ? parseInt(patientAge) : undefined,
+      patientAge: patientAge ? parseInt(patientAge, 10) : undefined,
       patientGender,
-      fullAddress: fullAddress.trim(),
       serviceId,
-      serviceTitle: selectedServiceObj?.title || 'Home Nursing Care',
       area,
-      submittedAt: new Date().toISOString(),
+      notes: notes.trim() || `Added by ${nurse.name}`,
       status: 'Pending Approval',
-      leadValueRupees: fee,
-      pointsAwarded: 0,
-      referralCommissionRupees: 0,
-      notes: leadRxFileName ? `Prescription Attached: ${leadRxFileName}` : undefined
+      submittedAt: new Date().toISOString()
     };
 
     onAddNewLead(newLead);
-
-    confetti({
-      particleCount: 80,
-      spread: 60,
-      origin: { y: 0.6 }
-    });
-
-    setLeadSuccessMsg(
-      `✓ Patient lead transmitted directly to Central Admin! You earn 50 reward points (= ₹50) upon Admin approval.`
-    );
+    setIsSubmittingLead(false);
+    setLeadSuccessMsg(`✓ Patient ${patientName} added successfully! Our office will call them now. You will get 50 Reward Points.`);
     setPatientName('');
     setPatientPhone('');
     setPatientAge('');
     setFullAddress('');
-    setLeadRxFileName('');
-    setLeadRxDataUrl('');
+    setNotes('');
 
-    setTimeout(() => {
-      setLeadSuccessMsg('');
-      setActiveTab('referrals');
-    }, 2500);
+    try {
+      confetti({ particleCount: 60, spread: 60, origin: { y: 0.5 } });
+    } catch {}
   };
 
-  const handleReferNurseSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!refNurseName.trim() || !refNursePhone.trim()) return;
-
-    const cleanPhone = refNursePhone.replace(/\D/g, '');
-    const newRefLead: NurseLead = {
-      id: 'RN-' + Math.floor(1000 + Math.random() * 9000),
-      nurseId: nurse.id,
-      patientName: `Nurse ${refNurseName.trim()}`,
-      patientPhone: cleanPhone,
-      referredNurseName: refNurseName.trim(),
-      referredNursePhone: cleanPhone,
-      qualification: refNurseQual,
-      experienceYears: parseInt(refNurseExp) || 3,
-      serviceId: 'saline-infusion',
-      area: refNurseArea || 'Hyderabad',
-      submittedAt: new Date().toISOString(),
-      status: 'Pending Approval',
-      leadValueRupees: 0,
-      pointsAwarded: 0,
-      referralCommissionRupees: 0,
-      notes: `Referred fellow nurse colleague by ${nurse.name} (Code: ${nurseReferralCode})`
-    };
-
-    onAddNewLead(newRefLead);
-
-    confetti({
-      particleCount: 70,
-      spread: 60,
-      origin: { y: 0.6 }
-    });
-
-    setRefSuccessMsg(`✓ Colleague nurse ${refNurseName} referred successfully! You earn 50 reward points (= ₹50) once verified by Admin.`);
-    setRefNurseName('');
-    setRefNursePhone('');
-
-    setTimeout(() => {
-      setRefSuccessMsg('');
-    }, 3500);
-  };
-
-  const handleConfirmReassign = () => {
-    if (reassignModalBooking && onReassignBooking) {
-      onReassignBooking(reassignModalBooking.id, targetReassignNurseId);
-      setReassignModalBooking(null);
-    }
+  const handleViewInvoice = (booking: Booking) => {
+    const inv = generateInvoiceDetails(booking);
+    setPreviewInvoice(inv);
+    setIsInvoiceModalOpen(true);
   };
 
   return (
-    <div className="panel-container container">
-      {/* Logged In Nurse Status Bar */}
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '1.25rem', flexWrap: 'wrap', gap: '0.75rem' }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', fontSize: '0.85rem', color: 'var(--neutral-600)' }}>
-          <span>Nurse Staff Portal</span>
-          <span>•</span>
-          <span style={{ fontWeight: 700, color: 'var(--primary-navy-900)' }}>{nurse.name}</span>
-          <span style={{ background: '#F1F5F9', padding: '0.2rem 0.55rem', borderRadius: 9999, fontSize: '0.74rem', fontWeight: 600, color: 'var(--neutral-600)' }}>
-            Station: {nurse.serviceArea}
-          </span>
-        </div>
-      </div>
-
-      {/* Header */}
-      <div className="panel-header">
-        <div style={{ display: 'flex', alignItems: 'center', gap: '1rem', flexWrap: 'wrap' }}>
-          <img
-            src={nurse.avatarUrl || '/images/nurse_priya.jpg'}
-            alt={nurse.name}
-            style={{ width: 56, height: 56, borderRadius: '50%', objectFit: 'cover', border: '2px solid var(--primary-navy-700)' }}
-          />
-          <div>
-            <h2 style={{ fontSize: '1.35rem', color: 'var(--primary-navy-900)' }}>
-              {nurse.name}
-            </h2>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', fontSize: '0.85rem', color: 'var(--neutral-600)', flexWrap: 'wrap' }}>
-              <span>Stationed Base: <strong>{nurse.serviceArea}</strong></span>
-              <span>•</span>
-              <span>Exp: {nurse.experienceYears} Years</span>
-              <span>•</span>
-              {isVerifiedNurse ? (
-                <span className="status-pill success"><ShieldCheck size={12} /> Verified RN</span>
-              ) : (
-                <span className="status-pill warning"><AlertCircle size={12} /> Pending Verification</span>
-              )}
-            </div>
-          </div>
-        </div>
-
-        <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center', flexWrap: 'wrap' }}>
-          <button
-            type="button"
-            id="nurse-header-upload-btn"
-            onClick={() => {
-              setActiveTab('onboarding');
-              setTimeout(() => {
-                document.getElementById('nurse-cert-file-input')?.click();
-              }, 120);
-            }}
-            className="btn btn-outline btn-sm"
-            style={{ display: 'inline-flex', alignItems: 'center', gap: '0.4rem', fontWeight: 700 }}
-          >
-            <UploadCloud size={15} />
-            <span>Upload Certificate</span>
-          </button>
-
-          <button
-            onClick={() => setActiveTab('new-lead')}
-            className="btn btn-primary btn-sm"
-            style={{ display: 'inline-flex', alignItems: 'center', gap: '0.4rem' }}
-          >
-            <UserPlus size={15} />
-            <span>Refer Patient Lead</span>
-          </button>
-
-          <a
-            href={`https://wa.me/917569657371?text=${encodeURIComponent(`Hello Operations Admin, I am Nurse ${nurse.name} (ID: ${nurse.id}, Base: ${nurse.serviceArea}). I need assistance regarding my visits/portal.`)}`}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="btn btn-sm"
-            style={{
-              background: '#25D366',
+    <div style={{ background: '#F8FAFC', minHeight: '90vh', padding: '1rem 0 3rem' }}>
+      <div className="container" style={{ maxWidth: 960 }}>
+        
+        {/* ================================================================= */}
+        {/* 1. TOP NURSE PROFILE BAR (Clean, Friendly, Simple) */}
+        {/* ================================================================= */}
+        <div style={{
+          background: '#FFFFFF',
+          borderRadius: 16,
+          padding: '1.25rem 1.5rem',
+          border: '1px solid #E2E8F0',
+          boxShadow: '0 2px 8px rgba(0,0,0,0.04)',
+          marginBottom: '1rem',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+          flexWrap: 'wrap',
+          gap: '1rem'
+        }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.9rem' }}>
+            <div style={{
+              width: 52,
+              height: 52,
+              borderRadius: '50%',
+              background: 'linear-gradient(135deg, #0284C7, #0369A1)',
               color: '#FFFFFF',
-              border: 'none',
-              display: 'inline-flex',
+              display: 'flex',
               alignItems: 'center',
-              gap: '0.45rem',
-              fontWeight: 700,
-              padding: '0.42rem 0.85rem',
-              borderRadius: 8,
-              boxShadow: '0 2px 6px rgba(37, 211, 102, 0.25)',
-              textDecoration: 'none'
-            }}
-            title="Chat directly with Operations Admin on WhatsApp"
-          >
-            <MessageCircle size={15} />
-            <span>Admin Helpline</span>
-          </a>
-        </div>
-      </div>
-
-      {/* Navigation Tabs */}
-      <div className="panel-tabs">
-        <button
-          onClick={() => setActiveTab('overview')}
-          className={`panel-tab ${activeTab === 'overview' ? 'active' : ''}`}
-        >
-          Overview & Rewards
-        </button>
-        <button
-          onClick={() => setActiveTab('visits')}
-          className={`panel-tab ${activeTab === 'visits' ? 'active' : ''}`}
-        >
-          Assigned Visits ({assignedVisits.length})
-        </button>
-        <button
-          onClick={() => setActiveTab('referrals')}
-          className={`panel-tab ${activeTab === 'referrals' ? 'active' : ''}`}
-        >
-          <span>My Referrals & Earnings ({myLeads.length})</span>
-          {pendingPatientLeads.length + pendingNurseReferrals.length > 0 && (
-            <span style={{
-              marginLeft: '0.35rem',
-              background: '#F59E0B',
-              color: '#FFFFFF',
-              fontSize: '0.68rem',
+              justifyContent: 'center',
               fontWeight: 800,
-              padding: '0.15rem 0.45rem',
-              borderRadius: 9999
+              fontSize: '1.3rem',
+              boxShadow: '0 4px 10px rgba(2, 132, 199, 0.25)'
             }}>
-              {pendingPatientLeads.length + pendingNurseReferrals.length} Pending
-            </span>
-          )}
-        </button>
-        <button
-          onClick={() => setActiveTab('new-lead')}
-          className={`panel-tab ${activeTab === 'new-lead' ? 'active' : ''}`}
-        >
-          + Submit New Lead
-        </button>
-        <button
-          onClick={() => setActiveTab('onboarding')}
-          className={`panel-tab ${activeTab === 'onboarding' ? 'active' : ''}`}
-        >
-          Certificate & Documents
-        </button>
-      </div>
-
-      {/* ========================================================================= */}
-      {/* 1. OVERVIEW & REWARDS TAB */}
-      {/* ========================================================================= */}
-      {activeTab === 'overview' && (
-        <div>
-          {/* Pending Approval Notice if any */}
-          {pendingPatientLeads.length + pendingNurseReferrals.length > 0 && (
-            <div style={{
-              background: 'linear-gradient(135deg, #FFFBEB 0%, #FEF3C7 100%)',
-              border: '1px solid #FCD34D',
-              borderRadius: 'var(--radius-md)',
-              padding: '0.85rem 1.15rem',
-              marginBottom: '1.25rem',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'space-between',
-              gap: '1rem',
-              flexWrap: 'wrap'
-            }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '0.65rem' }}>
-                <span style={{ fontSize: '1.35rem' }}>⏳</span>
-                <div>
-                  <div style={{ fontWeight: 800, color: '#92400E', fontSize: '0.9rem' }}>
-                    {pendingPatientLeads.length + pendingNurseReferrals.length} Referral Lead(s) Awaiting Admin Decision & Approval
-                  </div>
-                  <div style={{ fontSize: '0.78rem', color: '#B45309' }}>
-                    Reward points (50 pts = ₹50 each) will be credited to your ledger immediately upon Admin approval.
-                  </div>
-                </div>
-              </div>
-              <button
-                type="button"
-                onClick={() => setActiveTab('referrals')}
-                className="btn btn-sm"
-                style={{
-                  background: '#D97706',
-                  color: '#FFFFFF',
-                  borderRadius: 9999,
-                  fontWeight: 700,
-                  fontSize: '0.78rem',
-                  padding: '0.35rem 0.85rem'
-                }}
-              >
-                View Referrals Ledger
-              </button>
+              {nurse.name ? nurse.name.replace('Nurse ', '').charAt(0) : 'N'}
             </div>
-          )}
-
-          {/* Certificate Warning with Upload Action if pending */}
-          {!isVerifiedNurse && (
-            <div style={{
-              background: 'linear-gradient(135deg, #FFFBEB 0%, #FEF3C7 100%)',
-              border: '1px solid #FCD34D',
-              borderRadius: 'var(--radius-md)',
-              padding: '0.85rem 1.15rem',
-              marginBottom: '1.25rem',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'space-between',
-              gap: '1rem',
-              flexWrap: 'wrap'
-            }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '0.65rem' }}>
-                <AlertCircle size={22} style={{ color: '#D97706', flexShrink: 0 }} />
-                <div>
-                  <div style={{ fontWeight: 800, color: '#92400E', fontSize: '0.92rem' }}>
-                    Referral-Only Mode Active (Nursing Certificate Pending Verification)
-                  </div>
-                  <div style={{ fontSize: '0.8rem', color: '#B45309' }}>
-                    You can refer patients and fellow nurses to earn rewards. Please upload your Telangana / Indian Nursing Council certificate to unlock direct home care patient dispatches.
-                  </div>
-                </div>
+            <div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', flexWrap: 'wrap' }}>
+                <h2 style={{ margin: 0, fontSize: '1.25rem', fontWeight: 800, color: '#0F172A' }}>
+                  {nurse.name}
+                </h2>
+                {nurse.certificateVerified ? (
+                  <span style={{
+                    background: '#DCFCE7',
+                    color: '#15803D',
+                    fontSize: '0.72rem',
+                    fontWeight: 700,
+                    padding: '2px 8px',
+                    borderRadius: 9999,
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    gap: '0.25rem'
+                  }}>
+                    <CheckCircle2 size={12} /> Verified RN
+                  </span>
+                ) : (
+                  <span style={{
+                    background: '#FEF3C7',
+                    color: '#B45309',
+                    fontSize: '0.72rem',
+                    fontWeight: 700,
+                    padding: '2px 8px',
+                    borderRadius: 9999
+                  }}>
+                    Pending Approval
+                  </span>
+                )}
               </div>
-              <button
-                type="button"
-                onClick={() => {
-                  setActiveTab('onboarding');
-                  setTimeout(() => {
-                    document.getElementById('nurse-cert-file-input')?.click();
-                  }, 120);
-                }}
-                className="btn btn-sm"
-                style={{ background: '#D97706', color: '#FFFFFF', border: 'none', borderRadius: 8, padding: '0.4rem 0.85rem', fontWeight: 700, cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: '0.4rem' }}
-              >
-                <UploadCloud size={14} />
-                <span>Upload Certificate</span>
-              </button>
-            </div>
-          )}
-
-          {/* Key Metric Stats Cards - 4 Important Cards */}
-          <div className="stats-grid">
-            <div className="stat-card">
-              <div className="stat-icon" style={{ background: '#EEF5FF', color: 'var(--primary-navy-700)' }}>
-                <Users size={24} />
-              </div>
-              <div>
-                <div className="stat-val">{myPatientLeads.length}</div>
-                <div className="stat-label">Total Patient Leads Sent</div>
-              </div>
-            </div>
-
-            <div className="stat-card">
-              <div className="stat-icon" style={{ background: '#ECFDF5', color: '#10B981' }}>
-                <CheckCircle2 size={24} />
-              </div>
-              <div>
-                <div className="stat-val" style={{ color: '#10B981' }}>{approvedPatientLeads.length}</div>
-                <div className="stat-label">Patient Leads Approved</div>
-                <div style={{ fontSize: '0.72rem', color: '#15803D', fontWeight: 700, marginTop: 2 }}>
-                  +{patientPointsEarned} pts (₹{patientRupeesEarned})
-                </div>
-              </div>
-            </div>
-
-            <div className="stat-card">
-              <div className="stat-icon" style={{ background: '#FAF5FF', color: '#9333EA' }}>
-                <UserCheck size={24} />
-              </div>
-              <div>
-                <div className="stat-val" style={{ color: '#9333EA' }}>{approvedNurseReferrals.length}</div>
-                <div className="stat-label">Nurses Onboarded</div>
-                <div style={{ fontSize: '0.72rem', color: '#7E22CE', fontWeight: 700, marginTop: 2 }}>
-                  +{nursePointsEarned} pts (₹{nurseRupeesEarned})
-                </div>
-              </div>
-            </div>
-
-            <div className="stat-card">
-              <div className="stat-icon" style={{ background: '#ECFDF5', color: '#059669' }}>
-                <TrendingUp size={24} />
-              </div>
-              <div>
-                <div className="stat-val" style={{ color: '#059669' }}>₹{totalBonusRupees}</div>
-                <div className="stat-label">Total Referral Earnings</div>
-                <div style={{ fontSize: '0.72rem', color: '#047857', fontWeight: 700, marginTop: 2 }}>
-                  {totalBonusPoints} Pts (1 Pt = ₹1)
-                </div>
-              </div>
-            </div>
-          </div>
-
-          {/* Referral & Milestone Incentive Program */}
-          <div className="card" style={{ marginBottom: '1.5rem' }}>
-            <div className="card-header">
-              <h3 className="card-title">Xpress Nurse Milestone & Referral Bonus Program</h3>
-              <span className="status-pill success">1 Point = ₹1 Rupee</span>
-            </div>
-            <div className="card-body">
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 220px), 1fr))', gap: '1rem' }}>
-                <div style={{ padding: '1rem', background: 'var(--neutral-50)', borderRadius: 'var(--radius-md)', border: '1px solid var(--neutral-200)' }}>
-                  <div style={{ fontSize: '0.8rem', color: 'var(--neutral-500)' }}>Patient Referral Bonus</div>
-                  <strong style={{ fontSize: '1.25rem', color: 'var(--primary-navy-800)' }}>50 Points (= ₹50)</strong>
-                  <p style={{ fontSize: '0.82rem', color: 'var(--neutral-600)', marginTop: '0.25rem' }}>
-                    Awarded for every approved patient lead sent to central admin
-                  </p>
-                </div>
-
-                <div style={{ padding: '1rem', background: 'var(--neutral-50)', borderRadius: 'var(--radius-md)', border: '1px solid var(--neutral-200)' }}>
-                  <div style={{ fontSize: '0.8rem', color: 'var(--neutral-500)' }}>Colleague Nurse Referral</div>
-                  <strong style={{ fontSize: '1.25rem', color: 'var(--primary-navy-800)' }}>50 Points (= ₹50)</strong>
-                  <p style={{ fontSize: '0.82rem', color: 'var(--neutral-600)', marginTop: '0.25rem' }}>
-                    Awarded when a referred colleague completes verification
-                  </p>
-                </div>
-
-                <div style={{ padding: '1rem', background: 'var(--neutral-50)', borderRadius: 'var(--radius-md)', border: '1px solid var(--neutral-200)' }}>
-                  <div style={{ fontSize: '0.8rem', color: 'var(--neutral-500)' }}>Conversion Rate</div>
-                  <strong style={{ fontSize: '1.25rem', color: '#16A34A' }}>1 Pt = ₹1 Rupee</strong>
-                  <p style={{ fontSize: '0.82rem', color: 'var(--neutral-600)', marginTop: '0.25rem' }}>
-                    Direct 1:1 conversion into your bank payout account
-                  </p>
-                </div>
-
-                <div style={{ padding: '1rem', background: 'var(--neutral-50)', borderRadius: 'var(--radius-md)', border: '1px solid var(--neutral-200)' }}>
-                  <div style={{ fontSize: '0.8rem', color: 'var(--neutral-500)' }}>Admin Quality Guarantee</div>
-                  <strong style={{ fontSize: '1.25rem', color: 'var(--accent-red-600)' }}>₹0 on Rejection</strong>
-                  <p style={{ fontSize: '0.82rem', color: 'var(--neutral-600)', marginTop: '0.25rem' }}>
-                    Strict compliance ensures no phantom charges or unverified payouts
-                  </p>
-                </div>
-              </div>
-            </div>
-          </div>
-
-          {/* Assigned Visits Schedule Quick View */}
-          <div className="card">
-            <div className="card-header">
-              <div>
-                <h3 className="card-title">My Assigned Visits Schedule ({nurse.serviceArea} Base)</h3>
-                <span style={{ fontSize: '0.82rem', color: 'var(--neutral-500)' }}>
-                  Patient procedures you are dispatched to execute at home
+              <div style={{ fontSize: '0.84rem', color: '#64748B', display: 'flex', alignItems: 'center', gap: '0.75rem', marginTop: '0.2rem' }}>
+                <span style={{ display: 'flex', alignItems: 'center', gap: '0.25rem' }}>
+                  <MapPin size={13} style={{ color: '#0284C7' }} />
+                  {nurse.serviceArea || 'Hyderabad'}
                 </span>
+                <span>•</span>
+                <span>{nurse.qualification || 'Registered Nurse'}</span>
+                <span>•</span>
+                <span>{nurse.phone}</span>
               </div>
-              <button onClick={() => setActiveTab('visits')} className="btn btn-outline btn-sm">
-                View All ({assignedVisits.length})
-              </button>
             </div>
-            {assignedVisits.length === 0 ? (
-              <EmptyState
-                compact
-                title="No Assigned Visits Yet"
-                description={`You have no patient visits assigned in ${nurse.serviceArea} right now.`}
-              />
-            ) : (
-              <div className="table-responsive">
-                <table className="data-table">
-                  <thead>
-                    <tr>
-                      <th>Booking ID</th>
-                      <th>Patient</th>
-                      <th>Procedure</th>
-                      <th>Area & Address</th>
-                      <th>Fee</th>
-                      <th>Status & Approval</th>
-                      <th>Actions</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {assignedVisits.slice(0, 5).map((booking) => {
-                      const isDeclinedByNurse = booking.nurseAcceptanceStatus === 'Rejected' || (booking.status === 'Rejected' && (booking.rejectedBy === 'Nurse' || booking.rejectionReason?.toLowerCase().includes('nurse')));
-                      const isRejectedByAdmin = booking.status === 'Rejected' && !isDeclinedByNurse;
-                      const isCancelledOrRejected = booking.status === 'Cancelled' || isDeclinedByNurse || isRejectedByAdmin;
-                      const isAccepted = booking.nurseAcceptanceStatus === 'Accepted' || (booking.status === 'In-Progress' && !isCancelledOrRejected);
-                      const isPendingApproval = !isAccepted && !isCancelledOrRejected && booking.status !== 'Completed';
-
-                      return (
-                        <tr key={booking.id} style={{ 
-                          background: isDeclinedByNurse ? '#FFF1F2' : isRejectedByAdmin ? '#FEF2F2' : isPendingApproval ? '#FFFBEB' : undefined,
-                          borderLeft: isPendingApproval ? '3px solid #F59E0B' : undefined
-                        }}>
-                          <td><strong>{booking.id}</strong></td>
-                          <td>
-                            <div style={{ fontWeight: 600 }}>{booking.patientName}</div>
-                            {/* Strictly hide phone number on rejection */}
-                            {isCancelledOrRejected ? (
-                              <span style={{ fontSize: '0.74rem', color: '#94A3B8', fontWeight: 600 }}>✕ Contact Hidden (Declined)</span>
-                            ) : (
-                              <div style={{ fontSize: '0.8rem', color: 'var(--neutral-500)' }}>{booking.patientPhone}</div>
-                            )}
-                          </td>
-                          <td>
-                            <div style={{ fontWeight: 600 }}>{booking.serviceTitle}</div>
-                            {booking.hasPrescription || booking.prescriptionFileName || booking.prescriptionUrl ? (
-                              <button
-                                type="button"
-                                onClick={() => {
-                                  setPreviewRxBooking(booking);
-                                  setIsRxModalOpen(true);
-                                }}
-                                style={{
-                                  display: 'inline-flex',
-                                  alignItems: 'center',
-                                  gap: '0.25rem',
-                                  fontSize: '0.72rem',
-                                  color: '#0284C7',
-                                  fontWeight: 700,
-                                  background: '#F0F9FF',
-                                  border: '1px solid #BAE6FD',
-                                  borderRadius: 4,
-                                  padding: '2px 6px',
-                                  cursor: 'pointer',
-                                  marginTop: '0.2rem'
-                                }}
-                                title="Inspect Verified Doctor Prescription"
-                              >
-                                <FileText size={11} />
-                                <span>View Mandatory Rx</span>
-                              </button>
-                            ) : (
-                              <span style={{ fontSize: '0.7rem', color: '#059669', fontWeight: 600 }}>✓ Verified Rx</span>
-                            )}
-                          </td>
-                          <td>
-                            <div style={{ display: 'flex', alignItems: 'center', gap: '0.3rem' }}>
-                              <MapPin size={14} style={{ color: 'var(--neutral-500)' }} />
-                              <span>{booking.area}</span>
-                            </div>
-                            <div style={{ fontSize: '0.75rem', color: 'var(--neutral-500)' }}>{booking.fullAddress}</div>
-                          </td>
-                          {/* Strictly ₹0 on rejection */}
-                          <td>
-                            {isCancelledOrRejected ? (
-                              <span style={{ color: '#94A3B8', fontSize: '0.84rem', fontWeight: 600 }}>
-                                ₹0 <small style={{ color: '#DC2626' }}>(Void)</small>
-                              </span>
-                            ) : (
-                              <strong>₹{booking.finalFee !== undefined ? booking.finalFee : booking.estimatedFee}</strong>
-                            )}
-                          </td>
-                          <td>
-                            {isPendingApproval ? (
-                              <span className="status-pill warning" style={{ display: 'inline-flex', alignItems: 'center', gap: '0.25rem', fontWeight: 750, fontSize: '0.75rem' }}>
-                                <Clock size={11} /> Awaiting Approval
-                              </span>
-                            ) : isAccepted ? (
-                              <span className="status-pill success" style={{ display: 'inline-flex', alignItems: 'center', gap: '0.25rem', fontWeight: 750, fontSize: '0.75rem' }}>
-                                <CheckCircle2 size={11} /> Accepted
-                              </span>
-                            ) : isDeclinedByNurse ? (
-                              <div>
-                                <span className="status-pill danger" style={{ display: 'inline-flex', alignItems: 'center', gap: '0.25rem', fontWeight: 750, fontSize: '0.74rem' }}>
-                                  ✕ Declined by You
-                                </span>
-                                <div style={{ fontSize: '0.68rem', color: '#991B1B', marginTop: 2 }}>Sent to Admin</div>
-                              </div>
-                            ) : isRejectedByAdmin ? (
-                              <span className="status-pill danger">❌ Rejected by Admin</span>
-                            ) : (
-                              <span className="status-pill success">{booking.status}</span>
-                            )}
-                          </td>
-                          <td>
-                            {isPendingApproval ? (
-                              <div style={{ display: 'flex', gap: '0.3rem', alignItems: 'center' }}>
-                                <button
-                                  type="button"
-                                  onClick={() => handleAcceptVisit(booking)}
-                                  className="btn btn-sm"
-                                  style={{
-                                    background: '#16A34A',
-                                    color: '#FFF',
-                                    fontWeight: 750,
-                                    fontSize: '0.72rem',
-                                    padding: '0.25rem 0.5rem',
-                                    borderRadius: 6,
-                                    border: 'none',
-                                    cursor: 'pointer',
-                                    display: 'inline-flex',
-                                    alignItems: 'center',
-                                    gap: '0.2rem'
-                                  }}
-                                  title="Accept this assigned visit"
-                                >
-                                  <Check size={12} />
-                                  <span>Accept</span>
-                                </button>
-                                <button
-                                  type="button"
-                                  onClick={() => handleOpenRejectModal(booking)}
-                                  className="btn btn-sm"
-                                  style={{
-                                    background: '#FFF1F2',
-                                    border: '1px solid #FECDD3',
-                                    color: '#E11D48',
-                                    fontWeight: 700,
-                                    fontSize: '0.72rem',
-                                    padding: '0.25rem 0.45rem',
-                                    borderRadius: 6,
-                                    cursor: 'pointer',
-                                    display: 'inline-flex',
-                                    alignItems: 'center',
-                                    gap: '0.2rem'
-                                  }}
-                                  title="Decline visit so Admin can reassign"
-                                >
-                                  <X size={12} />
-                                  <span>Decline</span>
-                                </button>
-                              </div>
-                            ) : (
-                              <div style={{ display: 'flex', gap: '0.3rem', alignItems: 'center' }}>
-                                <button
-                                  type="button"
-                                  onClick={() => handleOpenBookingInvoice(booking)}
-                                  className="btn btn-outline btn-sm"
-                                  style={{
-                                    fontSize: '0.72rem',
-                                    padding: '0.25rem 0.5rem',
-                                    display: 'inline-flex',
-                                    alignItems: 'center',
-                                    gap: '0.25rem',
-                                    color: '#0284C7',
-                                    borderColor: '#BAE6FD',
-                                    background: '#F0F9FF',
-                                    borderRadius: 6
-                                  }}
-                                  title="Generate Official Invoice"
-                                >
-                                  <Receipt size={12} />
-                                  <span>Invoice</span>
-                                </button>
-                              </div>
-                            )}
-                          </td>
-                        </tr>
-                      );
-                    })}
-                  </tbody>
-                </table>
-              </div>
-            )}
           </div>
-        </div>
-      )}
 
-      {/* ========================================================================= */}
-      {/* 2. ASSIGNED VISITS TAB */}
-      {/* ========================================================================= */}
-      {activeTab === 'visits' && (
-        <div>
-          {/* Action Feedback Toast / Alert Banner */}
-          {nurseActionFeedback && (
+          {/* Quick Stats Pill */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem' }}>
             <div style={{
               background: '#ECFDF5',
-              border: '1px solid #10B981',
-              color: '#065F46',
-              padding: '0.85rem 1.25rem',
-              borderRadius: 10,
-              marginBottom: '1.25rem',
-              display: 'flex',
-              alignItems: 'center',
-              gap: '0.65rem',
-              fontWeight: 700,
-              fontSize: '0.9rem',
-              boxShadow: '0 2px 6px rgba(16, 185, 129, 0.15)'
+              border: '1px solid #A7F3D0',
+              padding: '0.45rem 0.9rem',
+              borderRadius: 12,
+              textAlign: 'center'
             }}>
-              <CheckCircle2 size={18} style={{ color: '#059669', flexShrink: 0 }} />
-              <span>{nurseActionFeedback}</span>
+              <div style={{ fontSize: '0.7rem', color: '#065F46', fontWeight: 600 }}>My Points</div>
+              <div style={{ fontSize: '1.1rem', fontWeight: 900, color: '#059669' }}>⭐ {totalPoints}</div>
             </div>
-          )}
-
-          {/* Pending Approval Urgent Alert Banner */}
-          {pendingApprovalVisits.length > 0 && (
             <div style={{
-              background: 'linear-gradient(135deg, #FFFBEB 0%, #FEF3C7 100%)',
-              border: '1px solid #F59E0B',
-              borderRadius: 10,
-              padding: '0.9rem 1.25rem',
-              marginBottom: '1.25rem',
+              background: '#EFF6FF',
+              border: '1px solid #BFDBFE',
+              padding: '0.45rem 0.9rem',
+              borderRadius: 12,
+              textAlign: 'center'
+            }}>
+              <div style={{ fontSize: '0.7rem', color: '#1E40AF', fontWeight: 600 }}>Active Visits</div>
+              <div style={{ fontSize: '1.1rem', fontWeight: 900, color: '#1D4ED8' }}>{activeVisits.length}</div>
+            </div>
+          </div>
+        </div>
+
+        {/* ================================================================= */}
+        {/* 2. NAVIGATION BAR (Big, Easy Words - No Hard English) */}
+        {/* ================================================================= */}
+        <div style={{
+          display: 'flex',
+          gap: '0.4rem',
+          background: '#FFFFFF',
+          padding: '0.4rem',
+          borderRadius: 14,
+          border: '1px solid #E2E8F0',
+          marginBottom: '1.25rem',
+          overflowX: 'auto',
+          boxShadow: '0 1px 3px rgba(0,0,0,0.03)'
+        }}>
+          {[
+            { id: 'home', label: '🏠 Home', badge: null },
+            { id: 'visits', label: '🚗 My Visits', badge: activeVisits.length > 0 ? activeVisits.length : null },
+            { id: 'add-patient', label: '➕ Add Patient', badge: '+50 Pts' },
+            { id: 'my-money', label: '⭐ My Points', badge: null },
+            { id: 'profile', label: '👤 My Profile', badge: null }
+          ].map((tab) => {
+            const isSelected = activeTab === tab.id;
+            return (
+              <button
+                key={tab.id}
+                type="button"
+                onClick={() => setActiveTab(tab.id as any)}
+                style={{
+                  flex: '1 1 auto',
+                  minWidth: 110,
+                  padding: '0.65rem 0.9rem',
+                  borderRadius: 10,
+                  border: 'none',
+                  background: isSelected ? '#0284C7' : 'transparent',
+                  color: isSelected ? '#FFFFFF' : '#475569',
+                  fontWeight: isSelected ? 800 : 600,
+                  fontSize: '0.88rem',
+                  cursor: 'pointer',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  gap: '0.35rem',
+                  transition: 'all 0.15s ease'
+                }}
+              >
+                <span>{tab.label}</span>
+                {tab.badge !== null && (
+                  <span style={{
+                    background: isSelected ? '#FFFFFF' : '#EF4444',
+                    color: isSelected ? '#0284C7' : '#FFFFFF',
+                    fontSize: '0.68rem',
+                    fontWeight: 800,
+                    padding: '1px 6px',
+                    borderRadius: 9999
+                  }}>
+                    {tab.badge}
+                  </span>
+                )}
+              </button>
+            );
+          })}
+        </div>
+
+        {/* ================================================================= */}
+        {/* TAB 1: 🏠 HOME (Easiest Summary & Big Buttons) */}
+        {/* ================================================================= */}
+        {activeTab === 'home' && (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+            
+            {/* Friendly Greeting Card */}
+            <div style={{
+              background: 'linear-gradient(135deg, #0A192F 0%, #1E3A5F 100%)',
+              color: '#FFFFFF',
+              borderRadius: 18,
+              padding: '1.5rem',
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'space-between',
               flexWrap: 'wrap',
-              gap: '0.75rem',
-              boxShadow: '0 2px 8px rgba(245, 158, 11, 0.12)'
+              gap: '1rem'
             }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '0.65rem' }}>
-                <div style={{ width: 34, height: 34, borderRadius: '50%', background: '#F59E0B', color: '#FFF', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-                  <Clock size={18} />
+              <div>
+                <h3 style={{ margin: 0, fontSize: '1.35rem', fontWeight: 800, color: '#FFFFFF' }}>
+                  Namaste, {nurse.name.replace('Nurse ', '')}! 👋
+                </h3>
+                <p style={{ margin: '0.35rem 0 0', fontSize: '0.9rem', color: '#CBD5E1' }}>
+                  {activeVisits.length > 0 
+                    ? `You have ${activeVisits.length} patient visit waiting. Please check your visits.` 
+                    : 'No pending visits right now. You can add a patient or share your code to earn cash!'}
+                </p>
+              </div>
+
+              <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
+                <button
+                  type="button"
+                  onClick={() => setActiveTab('add-patient')}
+                  className="btn"
+                  style={{
+                    background: '#10B981',
+                    color: '#FFFFFF',
+                    border: 'none',
+                    borderRadius: 10,
+                    padding: '0.6rem 1rem',
+                    fontWeight: 700,
+                    fontSize: '0.85rem',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '0.35rem',
+                    cursor: 'pointer'
+                  }}
+                >
+                  <Plus size={16} />
+                  <span>Add Patient (+50 Pts)</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={handleShareWhatsApp}
+                  className="btn"
+                  style={{
+                    background: '#25D366',
+                    color: '#FFFFFF',
+                    border: 'none',
+                    borderRadius: 10,
+                    padding: '0.6rem 1rem',
+                    fontWeight: 700,
+                    fontSize: '0.85rem',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '0.35rem',
+                    cursor: 'pointer'
+                  }}
+                >
+                  <MessageCircle size={16} />
+                  <span>Share on WhatsApp</span>
+                </button>
+              </div>
+            </div>
+
+            {/* 3 Big Action Cards */}
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: '1rem' }}>
+              
+              {/* Card 1: Visits */}
+              <div 
+                onClick={() => setActiveTab('visits')}
+                style={{
+                  background: '#FFFFFF',
+                  borderRadius: 16,
+                  padding: '1.25rem',
+                  border: '1.5px solid #E2E8F0',
+                  cursor: 'pointer',
+                  transition: 'transform 0.15s, box-shadow 0.15s'
+                }}
+              >
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <span style={{ fontSize: '0.85rem', color: '#64748B', fontWeight: 600 }}>Active Duties</span>
+                  <div style={{ width: 36, height: 36, borderRadius: 10, background: '#EFF6FF', color: '#0284C7', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                    <Calendar size={18} />
+                  </div>
                 </div>
-                <div>
-                  <div style={{ fontWeight: 800, color: '#92400E', fontSize: '0.92rem' }}>
-                    Action Required: {pendingApprovalVisits.length} Visit(s) Awaiting Your Acceptance
-                  </div>
-                  <div style={{ fontSize: '0.8rem', color: '#B45309' }}>
-                    Please review patient procedures below and choose to Accept or Decline so Admin can reassign if needed.
-                  </div>
+                <div style={{ fontSize: '2rem', fontWeight: 900, color: '#0F172A', margin: '0.4rem 0' }}>
+                  {activeVisits.length}
+                </div>
+                <div style={{ fontSize: '0.82rem', color: '#0284C7', fontWeight: 700, display: 'flex', alignItems: 'center', gap: '0.25rem' }}>
+                  <span>Open My Visits</span>
+                  <ChevronRight size={14} />
                 </div>
               </div>
-              <button
-                type="button"
-                onClick={() => setVisitStatusFilter('pending')}
-                className="btn btn-sm"
-                style={{ background: '#D97706', color: '#FFF', border: 'none', fontWeight: 700, fontSize: '0.78rem', padding: '0.35rem 0.8rem', borderRadius: 6, cursor: 'pointer' }}
+
+              {/* Card 2: Patients Referred */}
+              <div 
+                onClick={() => setActiveTab('my-money')}
+                style={{
+                  background: '#FFFFFF',
+                  borderRadius: 16,
+                  padding: '1.25rem',
+                  border: '1.5px solid #E2E8F0',
+                  cursor: 'pointer'
+                }}
               >
-                Review Pending ({pendingApprovalVisits.length})
-              </button>
-            </div>
-          )}
-
-          {/* Top Contextual Metric Cards for Assigned Visits */}
-          {(() => {
-            const completedVisitsCount = assignedVisits.filter(b => b.status === 'Completed').length;
-
-            return (
-              <div className="stats-grid" style={{ marginBottom: '1.5rem' }}>
-                <div className="stat-card" style={{ cursor: 'pointer' }} onClick={() => setVisitStatusFilter('all')}>
-                  <div className="stat-icon" style={{ background: '#EFF6FF', color: '#0284C7' }}>
-                    <Calendar size={22} />
-                  </div>
-                  <div>
-                    <div className="stat-val">{assignedVisits.length}</div>
-                    <div className="stat-label">Total Assigned</div>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <span style={{ fontSize: '0.85rem', color: '#64748B', fontWeight: 600 }}>My Patients</span>
+                  <div style={{ width: 36, height: 36, borderRadius: 10, background: '#F0FDF4', color: '#16A34A', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                    <User size={18} />
                   </div>
                 </div>
+                <div style={{ fontSize: '2rem', fontWeight: 900, color: '#0F172A', margin: '0.4rem 0' }}>
+                  {myLeads.length}
+                </div>
+                <div style={{ fontSize: '0.82rem', color: '#16A34A', fontWeight: 700, display: 'flex', alignItems: 'center', gap: '0.25rem' }}>
+                  <span>{myConvertedLeads.length} Approved & Converted</span>
+                  <ChevronRight size={14} />
+                </div>
+              </div>
 
-                <div 
-                  className="stat-card" 
-                  style={{ 
-                    cursor: 'pointer',
-                    border: pendingApprovalVisits.length > 0 ? '2px solid #F59E0B' : undefined,
-                    background: pendingApprovalVisits.length > 0 ? '#FFFDF5' : undefined 
-                  }} 
-                  onClick={() => setVisitStatusFilter('pending')}
-                >
-                  <div className="stat-icon" style={{ background: '#FEF3C7', color: '#D97706' }}>
-                    <Clock size={22} />
+              {/* Card 3: Money */}
+              <div 
+                onClick={() => setActiveTab('my-money')}
+                style={{
+                  background: '#FFFFFF',
+                  borderRadius: 16,
+                  padding: '1.25rem',
+                  border: '1.5px solid #E2E8F0',
+                  cursor: 'pointer'
+                }}
+              >
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <span style={{ fontSize: '0.85rem', color: '#64748B', fontWeight: 600 }}>Total Money</span>
+                  <div style={{ width: 36, height: 36, borderRadius: 10, background: '#FEF3C7', color: '#D97706', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                    <Coins size={18} />
                   </div>
+                </div>
+                <div style={{ fontSize: '2rem', fontWeight: 900, color: '#059669', margin: '0.4rem 0' }}>
+                  ₹{totalMoney}
+                </div>
+                <div style={{ fontSize: '0.82rem', color: '#D97706', fontWeight: 700, display: 'flex', alignItems: 'center', gap: '0.25rem' }}>
+                  <span>{totalPoints} Points Earned</span>
+                  <ChevronRight size={14} />
+                </div>
+              </div>
+            </div>
+
+            {/* If there are active visits, show the next visit right away */}
+            {activeVisits.length > 0 && (
+              <div style={{
+                background: '#FFFFFF',
+                borderRadius: 16,
+                padding: '1.25rem',
+                border: '1.5px solid #0284C7',
+                boxShadow: '0 4px 12px rgba(2, 132, 199, 0.08)'
+              }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.75rem' }}>
+                  <span style={{ fontSize: '0.8rem', fontWeight: 800, color: '#0284C7', textTransform: 'uppercase', letterSpacing: 0.5 }}>
+                    🔔 Next Patient Visit
+                  </span>
+                  <span style={{ background: '#EFF6FF', color: '#0284C7', fontSize: '0.75rem', fontWeight: 700, padding: '2px 8px', borderRadius: 9999 }}>
+                    {activeVisits[0].scheduledSlot || activeVisits[0].preferredTime || 'Today'}
+                  </span>
+                </div>
+
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: '0.75rem' }}>
                   <div>
-                    <div className="stat-val" style={{ color: '#D97706' }}>{pendingApprovalVisits.length}</div>
-                    <div className="stat-label">Awaiting Approval</div>
-                    {pendingApprovalVisits.length > 0 && (
-                      <div style={{ fontSize: '0.7rem', color: '#B45309', fontWeight: 800 }}>⚡ Action Needed</div>
+                    <h4 style={{ margin: 0, fontSize: '1.15rem', fontWeight: 800, color: '#0F172A' }}>
+                      {activeVisits[0].patientName} ({activeVisits[0].patientAge || 45} yrs, {activeVisits[0].patientGender || 'Patient'})
+                    </h4>
+                    <div style={{ fontSize: '0.9rem', color: '#334155', fontWeight: 600, marginTop: '0.2rem' }}>
+                      Service: <strong style={{ color: '#0284C7' }}>{activeVisits[0].serviceTitle}</strong>
+                    </div>
+                    <div style={{ fontSize: '0.84rem', color: '#64748B', display: 'flex', alignItems: 'center', gap: '0.35rem', marginTop: '0.25rem' }}>
+                      <MapPin size={14} style={{ color: '#EF4444' }} />
+                      <span>{activeVisits[0].fullAddress || activeVisits[0].area}</span>
+                    </div>
+                  </div>
+
+                  <div style={{ display: 'flex', gap: '0.4rem', flexWrap: 'wrap' }}>
+                    <a
+                      href={`tel:${activeVisits[0].patientPhone}`}
+                      className="btn"
+                      style={{
+                        background: '#EFF6FF',
+                        color: '#0284C7',
+                        border: '1px solid #BFDBFE',
+                        borderRadius: 8,
+                        padding: '0.45rem 0.8rem',
+                        fontSize: '0.8rem',
+                        fontWeight: 700,
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '0.3rem',
+                        textDecoration: 'none'
+                      }}
+                    >
+                      <Phone size={13} /> Call
+                    </a>
+                    <a
+                      href={`https://wa.me/91${activeVisits[0].patientPhone.replace(/\D/g, '').slice(-10)}`}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="btn"
+                      style={{
+                        background: '#F0FDF4',
+                        color: '#16A34A',
+                        border: '1px solid #BBF7D0',
+                        borderRadius: 8,
+                        padding: '0.45rem 0.8rem',
+                        fontSize: '0.8rem',
+                        fontWeight: 700,
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '0.3rem',
+                        textDecoration: 'none'
+                      }}
+                    >
+                      <MessageCircle size={13} /> WhatsApp
+                    </a>
+                    {activeVisits[0].status === 'Assigned' && (
+                      <button
+                        type="button"
+                        onClick={() => handleAcceptVisit(activeVisits[0])}
+                        style={{
+                          background: '#16A34A',
+                          color: '#FFFFFF',
+                          border: 'none',
+                          borderRadius: 8,
+                          padding: '0.45rem 0.9rem',
+                          fontSize: '0.8rem',
+                          fontWeight: 700,
+                          cursor: 'pointer'
+                        }}
+                      >
+                        ✓ Accept Job
+                      </button>
+                    )}
+                    {activeVisits[0].status === 'In-Progress' && (
+                      <button
+                        type="button"
+                        onClick={() => handleFinishVisit(activeVisits[0])}
+                        style={{
+                          background: '#059669',
+                          color: '#FFFFFF',
+                          border: 'none',
+                          borderRadius: 8,
+                          padding: '0.45rem 0.9rem',
+                          fontSize: '0.8rem',
+                          fontWeight: 700,
+                          cursor: 'pointer'
+                        }}
+                      >
+                        ✓ Finish & Bill
+                      </button>
                     )}
                   </div>
                 </div>
-
-                <div className="stat-card" style={{ cursor: 'pointer' }} onClick={() => setVisitStatusFilter('accepted')}>
-                  <div className="stat-icon" style={{ background: '#DCFCE7', color: '#16A34A' }}>
-                    <CheckCircle2 size={22} />
-                  </div>
-                  <div>
-                    <div className="stat-val" style={{ color: '#16A34A' }}>{acceptedVisits.length}</div>
-                    <div className="stat-label">Accepted & Active</div>
-                  </div>
-                </div>
-
-                <div className="stat-card" style={{ cursor: 'pointer' }} onClick={() => setVisitStatusFilter('declined')}>
-                  <div className="stat-icon" style={{ background: '#FEE2E2', color: '#DC2626' }}>
-                    <X size={22} />
-                  </div>
-                  <div>
-                    <div className="stat-val" style={{ color: '#DC2626' }}>{declinedVisits.length}</div>
-                    <div className="stat-label">Declined (To Admin)</div>
-                    <div style={{ fontSize: '0.72rem', color: '#991B1B', fontWeight: 700, marginTop: 2 }}>
-                      Referred to Admin
-                    </div>
-                  </div>
-                </div>
               </div>
-            );
-          })()}
+            )}
 
-          <div className="card">
-            <div className="card-header" style={{ flexWrap: 'wrap', gap: '0.75rem', justifyContent: 'space-between', alignItems: 'center' }}>
+            {/* Quick Share Code Banner */}
+            <div style={{
+              background: '#FFFFFF',
+              borderRadius: 16,
+              padding: '1.25rem',
+              border: '1px solid #E2E8F0',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              flexWrap: 'wrap',
+              gap: '1rem'
+            }}>
               <div>
-                <h3 className="card-title">Patient Visits Dispatched to You ({nurse.serviceArea})</h3>
-                <span style={{ fontSize: '0.82rem', color: 'var(--neutral-500)' }}>
-                  Approve visits to accept attending, or decline with a reason so Admin can refer to another colleague
-                </span>
+                <div style={{ fontSize: '0.8rem', color: '#64748B', fontWeight: 600 }}>Your Personal Code</div>
+                <div style={{ fontSize: '1.25rem', fontWeight: 900, color: '#0F172A', letterSpacing: 1 }}>
+                  {referralCode}
+                </div>
+                <div style={{ fontSize: '0.8rem', color: '#16A34A', marginTop: '0.2rem' }}>
+                  Get 50 Reward Points every time a patient books with this code!
+                </div>
               </div>
 
-              {/* Status Filter Tabs */}
-              <div style={{ display: 'flex', gap: '0.35rem', flexWrap: 'wrap' }}>
+              <div style={{ display: 'flex', gap: '0.5rem' }}>
                 <button
                   type="button"
-                  onClick={() => setVisitStatusFilter('all')}
-                  className={`btn btn-sm ${visitStatusFilter === 'all' ? 'btn-primary' : 'btn-outline'}`}
-                  style={{ fontSize: '0.75rem', padding: '0.25rem 0.55rem' }}
-                >
-                  All ({assignedVisits.length})
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setVisitStatusFilter('pending')}
-                  className={`btn btn-sm ${visitStatusFilter === 'pending' ? 'btn-primary' : 'btn-outline'}`}
-                  style={{ 
-                    fontSize: '0.75rem', 
-                    padding: '0.25rem 0.55rem',
-                    background: visitStatusFilter === 'pending' ? '#D97706' : undefined,
-                    borderColor: '#D97706',
-                    color: visitStatusFilter === 'pending' ? '#FFF' : '#B45309',
-                    fontWeight: 750
+                  onClick={handleCopyCode}
+                  style={{
+                    background: '#F1F5F9',
+                    border: '1px solid #CBD5E1',
+                    borderRadius: 10,
+                    padding: '0.5rem 0.85rem',
+                    fontSize: '0.82rem',
+                    fontWeight: 700,
+                    cursor: 'pointer',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '0.35rem'
                   }}
                 >
-                  Awaiting Acceptance ({pendingApprovalVisits.length})
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setVisitStatusFilter('accepted')}
-                  className={`btn btn-sm ${visitStatusFilter === 'accepted' ? 'btn-primary' : 'btn-outline'}`}
-                  style={{ fontSize: '0.75rem', padding: '0.25rem 0.55rem' }}
-                >
-                  Accepted ({acceptedVisits.length})
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setVisitStatusFilter('declined')}
-                  className={`btn btn-sm ${visitStatusFilter === 'declined' ? 'btn-primary' : 'btn-outline'}`}
-                  style={{ fontSize: '0.75rem', padding: '0.25rem 0.55rem', color: visitStatusFilter === 'declined' ? '#FFF' : '#DC2626' }}
-                >
-                  Declined ({declinedVisits.length})
-                </button>
-              </div>
-            </div>
-
-            {(() => {
-              const displayedVisits = assignedVisits.filter((b) => {
-                if (visitStatusFilter === 'pending') {
-                  const isDeclined = b.nurseAcceptanceStatus === 'Rejected' || (b.status === 'Rejected' && (b.rejectedBy === 'Nurse' || b.rejectionReason?.toLowerCase().includes('nurse')));
-                  const isAcc = b.nurseAcceptanceStatus === 'Accepted' || (b.status === 'In-Progress' && b.nurseAcceptanceStatus !== 'Rejected');
-                  return !isDeclined && !isAcc && b.status !== 'Completed' && b.status !== 'Cancelled';
-                }
-                if (visitStatusFilter === 'accepted') {
-                  return b.nurseAcceptanceStatus === 'Accepted' || (b.status === 'In-Progress' && b.nurseAcceptanceStatus !== 'Rejected');
-                }
-                if (visitStatusFilter === 'declined') {
-                  return b.nurseAcceptanceStatus === 'Rejected' || (b.status === 'Rejected' && (b.rejectedBy === 'Nurse' || b.rejectionReason?.toLowerCase().includes('nurse')));
-                }
-                return true;
-              });
-
-              if (displayedVisits.length === 0) {
-                return (
-                  <EmptyState
-                    title={
-                      visitStatusFilter === 'pending' 
-                        ? 'No Visits Awaiting Approval'
-                        : visitStatusFilter === 'accepted'
-                        ? 'No Accepted Active Visits'
-                        : visitStatusFilter === 'declined'
-                        ? 'No Declined Visits'
-                        : 'No Patient Visits Stationed'
-                    }
-                    description={`There are currently no matching visits in this category for ${nurse.name}.`}
-                  />
-                );
-              }
-
-              return (
-                <div className="table-responsive">
-                  <table className="data-table">
-                    <thead>
-                      <tr>
-                        <th>Booking ID</th>
-                        <th>Patient Name & Contact</th>
-                        <th>Clinical Procedure</th>
-                        <th>Locality & Address</th>
-                        <th>Fee</th>
-                        <th>Status & Acceptance</th>
-                        <th>Actions</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {displayedVisits.map((booking) => {
-                        const isDeclinedByNurse = booking.nurseAcceptanceStatus === 'Rejected' || (booking.status === 'Rejected' && (booking.rejectedBy === 'Nurse' || booking.rejectionReason?.toLowerCase().includes('nurse')));
-                        const isRejectedByAdmin = booking.status === 'Rejected' && !isDeclinedByNurse;
-                        const isCancelledOrRejected = booking.status === 'Cancelled' || isDeclinedByNurse || isRejectedByAdmin;
-                        const isAccepted = booking.nurseAcceptanceStatus === 'Accepted' || (booking.status === 'In-Progress' && !isCancelledOrRejected);
-                        const isPendingApproval = !isAccepted && !isCancelledOrRejected && booking.status !== 'Completed';
-
-                        return (
-                          <tr key={booking.id} style={{ 
-                            background: isDeclinedByNurse ? '#FFF1F2' : isRejectedByAdmin ? '#FEF2F2' : isPendingApproval ? '#FFFBEB' : undefined,
-                            borderLeft: isPendingApproval ? '3px solid #F59E0B' : undefined
-                          }}>
-                            <td><strong>{booking.id}</strong></td>
-
-                            {/* Patient & Call Button */}
-                            <td>
-                              <div style={{ fontWeight: 600 }}>{booking.patientName}</div>
-                              {isCancelledOrRejected ? (
-                                <span style={{
-                                  display: 'inline-flex',
-                                  alignItems: 'center',
-                                  gap: '0.25rem',
-                                  color: '#94A3B8',
-                                  fontSize: '0.74rem',
-                                  background: '#F1F5F9',
-                                  padding: '0.2rem 0.5rem',
-                                  borderRadius: 4,
-                                  fontWeight: 600,
-                                  marginTop: '0.2rem'
-                                }}>
-                                  ✕ Contact Hidden (Declined)
-                                </span>
-                              ) : (
-                                <a
-                                  href={`tel:${booking.patientPhone}`}
-                                  style={{
-                                    display: 'inline-flex',
-                                    alignItems: 'center',
-                                    gap: '0.3rem',
-                                    background: '#16A34A',
-                                    color: '#FFFFFF',
-                                    padding: '0.25rem 0.6rem',
-                                    borderRadius: 6,
-                                    fontSize: '0.75rem',
-                                    fontWeight: 700,
-                                    textDecoration: 'none',
-                                    marginTop: '0.25rem',
-                                    boxShadow: '0 2px 4px rgba(22, 163, 74, 0.2)'
-                                  }}
-                                  title={`Call patient directly: ${booking.patientPhone}`}
-                                >
-                                  <Phone size={12} />
-                                  <span>Call {booking.patientPhone}</span>
-                                </a>
-                              )}
-                            </td>
-
-                            {/* Clinical Procedure & In-App Rx Viewer */}
-                            <td>
-                              <div style={{ fontWeight: 600 }}>{booking.serviceTitle}</div>
-                              {booking.hasPrescription || booking.prescriptionFileName || booking.prescriptionUrl ? (
-                                <button
-                                  type="button"
-                                  onClick={() => {
-                                    setPreviewRxBooking(booking);
-                                    setIsRxModalOpen(true);
-                                  }}
-                                  style={{
-                                    display: 'inline-flex',
-                                    alignItems: 'center',
-                                    gap: '0.25rem',
-                                    fontSize: '0.72rem',
-                                    color: '#0284C7',
-                                    fontWeight: 700,
-                                    background: '#F0F9FF',
-                                    border: '1px solid #BAE6FD',
-                                    borderRadius: 4,
-                                    padding: '2px 6px',
-                                    cursor: 'pointer',
-                                    marginTop: '0.25rem'
-                                  }}
-                                  title="View verified doctor prescription in-app"
-                                >
-                                  <FileText size={11} />
-                                  <span>View Mandatory Rx</span>
-                                </button>
-                              ) : (
-                                <span style={{ fontSize: '0.7rem', color: '#059669', fontWeight: 600 }}>✓ Verified Protocol</span>
-                              )}
-                            </td>
-
-                            <td>
-                              <div style={{ display: 'flex', alignItems: 'center', gap: '0.3rem', fontWeight: 600 }}>
-                                <MapPin size={14} style={{ color: 'var(--neutral-500)' }} />
-                                <span>{booking.area}</span>
-                              </div>
-                              <div style={{ fontSize: '0.78rem', color: 'var(--neutral-500)' }}>{booking.fullAddress}</div>
-                            </td>
-
-                            {/* Fee (Strictly ₹0 on rejection) */}
-                            <td>
-                              {isCancelledOrRejected ? (
-                                <span style={{ color: '#94A3B8', fontSize: '0.84rem', fontWeight: 600 }}>
-                                  ₹0 <small style={{ color: '#DC2626' }}>(Void)</small>
-                                </span>
-                              ) : (
-                                <div style={{ fontWeight: 700, color: 'var(--primary-navy-900)' }}>
-                                  ₹{booking.finalFee !== undefined ? booking.finalFee : booking.estimatedFee}
-                                </div>
-                              )}
-                            </td>
-
-                            {/* Status & Acceptance */}
-                            <td>
-                              {isPendingApproval ? (
-                                <div>
-                                  <span className="status-pill warning" style={{ display: 'inline-flex', alignItems: 'center', gap: '0.3rem', fontWeight: 800 }}>
-                                    <Clock size={12} /> Awaiting Your Approval
-                                  </span>
-                                  <div style={{ fontSize: '0.72rem', color: '#B45309', marginTop: '3px', fontWeight: 600 }}>
-                                    Action Required: Accept or Decline
-                                  </div>
-                                </div>
-                              ) : isAccepted ? (
-                                <span className="status-pill success" style={{ display: 'inline-flex', alignItems: 'center', gap: '0.3rem', fontWeight: 800 }}>
-                                  <CheckCircle2 size={12} /> Accepted & Active
-                                </span>
-                              ) : isDeclinedByNurse ? (
-                                <div>
-                                  <span className="status-pill danger" style={{ display: 'inline-flex', alignItems: 'center', gap: '0.25rem', fontWeight: 800 }}>
-                                    ✕ Declined by You
-                                  </span>
-                                  <div style={{ fontSize: '0.7rem', color: '#991B1B', marginTop: '2px', fontWeight: 600 }}>
-                                    Sent to Admin for Reassignment
-                                  </div>
-                                  {booking.rejectionReason && (
-                                    <div style={{ fontSize: '0.7rem', color: '#B91C1C', background: '#FEF2F2', border: '1px solid #FECACA', borderRadius: 4, padding: '3px 6px', marginTop: '0.25rem', fontWeight: 600, maxWidth: 210 }}>
-                                      {booking.rejectionReason}
-                                    </div>
-                                  )}
-                                </div>
-                              ) : isRejectedByAdmin ? (
-                                <div>
-                                  <span className="status-pill danger">❌ Rejected by Admin</span>
-                                  {booking.rejectionReason && (
-                                    <div style={{ fontSize: '0.72rem', color: '#B91C1C', background: '#FEF2F2', border: '1px solid #FECACA', borderRadius: 4, padding: '3px 6px', marginTop: '0.3rem', fontWeight: 600, maxWidth: 200 }}>
-                                      <strong>Reason:</strong> {booking.rejectionReason}
-                                    </div>
-                                  )}
-                                </div>
-                              ) : (
-                                <span className="status-pill success">{booking.status}</span>
-                              )}
-                            </td>
-
-                            {/* Actions */}
-                            <td>
-                              {isPendingApproval ? (
-                                <div style={{ display: 'flex', gap: '0.4rem', alignItems: 'center' }}>
-                                  <button
-                                    type="button"
-                                    onClick={() => handleAcceptVisit(booking)}
-                                    className="btn btn-sm"
-                                    style={{
-                                      background: '#16A34A',
-                                      color: '#FFFFFF',
-                                      fontWeight: 750,
-                                      fontSize: '0.78rem',
-                                      padding: '0.35rem 0.75rem',
-                                      borderRadius: 6,
-                                      display: 'inline-flex',
-                                      alignItems: 'center',
-                                      gap: '0.3rem',
-                                      border: 'none',
-                                      cursor: 'pointer',
-                                      boxShadow: '0 2px 4px rgba(22,163,74,0.3)'
-                                    }}
-                                    title="Accept this assigned visit and attend the patient"
-                                  >
-                                    <CheckCircle2 size={13} />
-                                    <span>Accept Visit</span>
-                                  </button>
-                                  <button
-                                    type="button"
-                                    onClick={() => handleOpenRejectModal(booking)}
-                                    className="btn btn-sm"
-                                    style={{
-                                      background: '#FFF1F2',
-                                      border: '1px solid #FECDD3',
-                                      color: '#E11D48',
-                                      fontWeight: 700,
-                                      fontSize: '0.75rem',
-                                      padding: '0.35rem 0.65rem',
-                                      borderRadius: 6,
-                                      display: 'inline-flex',
-                                      alignItems: 'center',
-                                      gap: '0.25rem',
-                                      cursor: 'pointer'
-                                    }}
-                                    title="Decline visit so Admin can refer to another nurse"
-                                  >
-                                    <X size={13} />
-                                    <span>Decline</span>
-                                  </button>
-                                </div>
-                              ) : (
-                                <div style={{ display: 'flex', gap: '0.4rem', alignItems: 'center' }}>
-                                  <button
-                                    type="button"
-                                    onClick={() => handleOpenBookingInvoice(booking)}
-                                    className="btn btn-outline btn-sm"
-                                    style={{
-                                      fontSize: '0.75rem',
-                                      padding: '0.3rem 0.55rem',
-                                      display: 'inline-flex',
-                                      alignItems: 'center',
-                                      gap: '0.25rem',
-                                      color: '#0284C7',
-                                      borderColor: '#BAE6FD',
-                                      background: '#F0F9FF',
-                                      fontWeight: 700
-                                    }}
-                                    title="Generate Official Invoice"
-                                  >
-                                    <Receipt size={13} />
-                                    <span>Invoice</span>
-                                  </button>
-                                  {!isCancelledOrRejected && (
-                                    <button
-                                      type="button"
-                                      onClick={() => {
-                                        setReassignModalBooking(booking);
-                                        setTargetReassignNurseId(allNurses.find((n) => n.id !== nurse.id)?.id || 'nurse-102');
-                                      }}
-                                      className="btn btn-outline btn-sm"
-                                      style={{ fontSize: '0.75rem', padding: '0.3rem 0.55rem' }}
-                                      title="Transfer this order to another colleague nurse"
-                                    >
-                                      <RefreshCw size={12} />
-                                      <span>Transfer</span>
-                                    </button>
-                                  )}
-                                </div>
-                              )}
-                            </td>
-                          </tr>
-                        );
-                      })}
-                    </tbody>
-                  </table>
-                </div>
-              );
-            })()}
-          </div>
-        </div>
-      )}
-
-      {/* ========================================================================= */}
-      {/* 3. MY REFERRALS & EARNINGS TAB */}
-      {/* ========================================================================= */}
-      {activeTab === 'referrals' && (
-        <div>
-          {/* Top Contextual Metric Cards for Referrals */}
-          <div className="stats-grid" style={{ marginBottom: '1.5rem' }}>
-            <div className="stat-card">
-              <div className="stat-icon" style={{ background: '#FAF5FF', color: '#9333EA' }}>
-                <Users size={22} />
-              </div>
-              <div>
-                <div className="stat-val">{myNurseReferrals.length}</div>
-                <div className="stat-label">Colleague Nurses Referred</div>
-              </div>
-            </div>
-
-            <div className="stat-card">
-              <div className="stat-icon" style={{ background: '#DCFCE7', color: '#16A34A' }}>
-                <UserCheck size={22} />
-              </div>
-              <div>
-                <div className="stat-val" style={{ color: '#16A34A' }}>{approvedNurseReferrals.length}</div>
-                <div className="stat-label">Nurses Onboarded</div>
-                <div style={{ fontSize: '0.72rem', color: '#15803D', fontWeight: 700, marginTop: 2 }}>
-                  +{nursePointsEarned} pts (₹{nurseRupeesEarned})
-                </div>
-              </div>
-            </div>
-
-            <div className="stat-card">
-              <div className="stat-icon" style={{ background: '#DBEAFE', color: '#1D4ED8' }}>
-                <CheckCircle2 size={22} />
-              </div>
-              <div>
-                <div className="stat-val" style={{ color: '#1D4ED8' }}>{approvedPatientLeads.length}</div>
-                <div className="stat-label">Patient Leads Approved</div>
-                <div style={{ fontSize: '0.72rem', color: '#2563EB', fontWeight: 700, marginTop: 2 }}>
-                  +{patientPointsEarned} pts (₹{patientRupeesEarned})
-                </div>
-              </div>
-            </div>
-
-            <div className="stat-card">
-              <div className="stat-icon" style={{ background: '#D1FAE5', color: '#059669' }}>
-                <Coins size={22} />
-              </div>
-              <div>
-                <div className="stat-val" style={{ color: '#059669' }}>{totalBonusPoints} Pts</div>
-                <div className="stat-label">Total Bonus (₹{totalBonusRupees})</div>
-                <div style={{ fontSize: '0.72rem', color: '#047857', fontWeight: 700, marginTop: 2 }}>
-                  1 Point = ₹1 Rupee
-                </div>
-              </div>
-            </div>
-          </div>
-
-          {/* Referral Code & Tools */}
-          <div className="card" style={{ marginBottom: '1.5rem', background: '#F8FAFC', border: '1.5px solid #CBD5E1' }}>
-            <div className="card-header" style={{ flexWrap: 'wrap', gap: '0.75rem' }}>
-              <div>
-                <h4 style={{ fontSize: '1.05rem', fontWeight: 800, color: 'var(--primary-navy-950)', margin: 0, display: 'flex', alignItems: 'center', gap: '0.45rem' }}>
-                  <Sparkles size={18} style={{ color: '#F59E0B' }} />
-                  <span>Your Personal Referral Code & Direct Link</span>
-                </h4>
-                <p style={{ fontSize: '0.8rem', color: '#64748B', margin: '0.2rem 0 0 0' }}>
-                  Colleagues can enter this code during signup. You earn 50 reward points (= ₹50) once verified.
-                </p>
-              </div>
-
-              <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
-                <div style={{ background: '#FFFFFF', border: '2px dashed #0284C7', padding: '0.35rem 0.85rem', borderRadius: 8, fontWeight: 900, fontFamily: 'monospace', fontSize: '1.1rem', color: '#0284C7' }}>
-                  {nurseReferralCode}
-                </div>
-                <button
-                  type="button"
-                  onClick={() => {
-                    navigator.clipboard.writeText(nurseReferralCode);
-                    setCopiedCode(true);
-                    setTimeout(() => setCopiedCode(false), 2000);
-                  }}
-                  className="btn btn-primary btn-sm"
-                  style={{ display: 'inline-flex', alignItems: 'center', gap: '0.3rem', fontWeight: 700 }}
-                >
-                  {copiedCode ? <Check size={14} /> : <Copy size={14} />}
+                  {copiedCode ? <Check size={14} style={{ color: '#16A34A' }} /> : <Copy size={14} />}
                   <span>{copiedCode ? 'Copied!' : 'Copy Code'}</span>
                 </button>
-              </div>
-            </div>
-          </div>
-
-          {/* 1. Patient Leads Sent to Admin */}
-          <div className="card" style={{ marginBottom: '1.5rem' }}>
-            <div className="card-header">
-              <h3 className="card-title">Patient Leads Sent to Admin ({myPatientLeads.length})</h3>
-              <span style={{ fontSize: '0.78rem', color: '#0284C7', fontWeight: 700, background: '#EFF6FF', padding: '0.2rem 0.6rem', borderRadius: 9999 }}>
-                Rate: 50 Points (= ₹50) per approved lead
-              </span>
-            </div>
-
-            {myPatientLeads.length === 0 ? (
-              <EmptyState
-                compact
-                title="No Patient Leads Sent Yet"
-                description="Use '+ Submit New Lead' to submit patient inquiries directly to Central Admin."
-              />
-            ) : (
-              <div className="table-responsive">
-                <table className="data-table">
-                  <thead>
-                    <tr>
-                      <th>Lead ID</th>
-                      <th>Patient Name</th>
-                      <th>Contact</th>
-                      <th>Procedure</th>
-                      <th>Area</th>
-                      <th>Bonus Reward</th>
-                      <th>Status & Reason</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {myPatientLeads.map((lead) => {
-                      const isApproved = lead.status === 'Approved' || lead.status === 'Converted';
-                      const isRejected = lead.status === 'Rejected' || Boolean(lead.rejectionReason);
-
-                      return (
-                        <tr key={lead.id} style={{ background: isRejected ? '#FEF2F2' : undefined }}>
-                          <td><strong style={{ fontFamily: 'monospace' }}>{lead.id}</strong></td>
-                          <td style={{ fontWeight: 600 }}>{lead.patientName}</td>
-                          {/* Strictly hide phone number on rejection */}
-                          <td>
-                            {isRejected ? (
-                              <span style={{ color: '#94A3B8', fontSize: '0.74rem' }}>✕ Contact Hidden (Rejected)</span>
-                            ) : (
-                              lead.patientPhone
-                            )}
-                          </td>
-                          <td>{lead.serviceTitle || lead.serviceId}</td>
-                          <td>{lead.area}</td>
-                          {/* 0 pts / ₹0 on rejection */}
-                          <td>
-                            {isRejected ? (
-                              <span style={{ color: '#94A3B8', fontSize: '0.84rem', fontWeight: 600 }}>0 pts (₹0)</span>
-                            ) : (
-                              <strong style={{ color: isApproved ? '#16A34A' : '#D97706' }}>
-                                +50 pts (₹50)
-                              </strong>
-                            )}
-                          </td>
-                          <td>
-                            {isApproved ? (
-                              <span className="status-pill success">✓ Approved & Credited</span>
-                            ) : isRejected ? (
-                              <div>
-                                <span className="status-pill danger">✕ Rejected by Admin</span>
-                                {(lead.rejectionReason || lead.adminNotes) && (
-                                  <div style={{ fontSize: '0.72rem', color: '#B91C1C', background: '#FEF2F2', border: '1px solid #FECACA', borderRadius: 4, padding: '3px 6px', marginTop: '0.3rem', fontWeight: 600, maxWidth: 200 }}>
-                                    <strong>Reason:</strong> {lead.rejectionReason || lead.adminNotes}
-                                  </div>
-                                )}
-                              </div>
-                            ) : (
-                              <span className="status-pill warning">⏳ Pending Admin Review</span>
-                            )}
-                          </td>
-                        </tr>
-                      );
-                    })}
-                  </tbody>
-                </table>
-              </div>
-            )}
-          </div>
-
-          {/* 2. Referred Colleague Nurses */}
-          <div className="card">
-            <div className="card-header">
-              <h3 className="card-title">My Referred Nurses ({myNurseReferrals.length})</h3>
-              <span style={{ fontSize: '0.78rem', color: '#7E22CE', fontWeight: 700, background: '#FAF5FF', padding: '0.2rem 0.6rem', borderRadius: 9999 }}>
-                Rate: 50 Points (= ₹50) per verified colleague
-              </span>
-            </div>
-
-            {myNurseReferrals.length === 0 ? (
-              <EmptyState
-                compact
-                title="No Nurse Referrals Submitted Yet"
-                description="Refer your fellow nursing colleagues to earn 50 reward points (= ₹50) per verified colleague."
-              />
-            ) : (
-              <div className="table-responsive">
-                <table className="data-table">
-                  <thead>
-                    <tr>
-                      <th>Colleague Nurse</th>
-                      <th>Contact</th>
-                      <th>Qualification</th>
-                      <th>Area</th>
-                      <th>Reward</th>
-                      <th>Status & Reason</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {myNurseReferrals.map((ref) => {
-                      const isApproved = ref.status === 'Approved' || ref.status === 'Converted';
-                      const isRejected = ref.status === 'Rejected' || Boolean(ref.rejectionReason);
-
-                      return (
-                        <tr key={ref.id} style={{ background: isRejected ? '#FEF2F2' : undefined }}>
-                          <td style={{ fontWeight: 600 }}>{ref.referredNurseName || ref.patientName}</td>
-                          {/* Strictly hide phone number on rejection */}
-                          <td>
-                            {isRejected ? (
-                              <span style={{ color: '#94A3B8', fontSize: '0.74rem' }}>✕ Contact Hidden (Rejected)</span>
-                            ) : (
-                              ref.referredNursePhone || ref.patientPhone
-                            )}
-                          </td>
-                          <td>{ref.qualification || 'Registered Nurse'}</td>
-                          <td>{ref.area || 'Hyderabad'}</td>
-                          <td>
-                            {isRejected ? (
-                              <span style={{ color: '#94A3B8', fontSize: '0.84rem', fontWeight: 600 }}>0 pts (₹0)</span>
-                            ) : (
-                              <strong style={{ color: isApproved ? '#16A34A' : '#D97706' }}>
-                                +50 pts (₹50)
-                              </strong>
-                            )}
-                          </td>
-                          <td>
-                            {isApproved ? (
-                              <span className="status-pill success">✓ Approved & Onboarded</span>
-                            ) : isRejected ? (
-                              <div>
-                                <span className="status-pill danger">✕ Rejected by Admin</span>
-                                {(ref.rejectionReason || ref.adminNotes) && (
-                                  <div style={{ fontSize: '0.72rem', color: '#B91C1C', background: '#FEF2F2', border: '1px solid #FECACA', borderRadius: 4, padding: '3px 6px', marginTop: '0.3rem', fontWeight: 600, maxWidth: 200 }}>
-                                    <strong>Reason:</strong> {ref.rejectionReason || ref.adminNotes}
-                                  </div>
-                                )}
-                              </div>
-                            ) : (
-                              <span className="status-pill warning">⏳ Pending Admin Review</span>
-                            )}
-                          </td>
-                        </tr>
-                      );
-                    })}
-                  </tbody>
-                </table>
-              </div>
-            )}
-          </div>
-        </div>
-      )}
-
-      {/* ========================================================================= */}
-      {/* 4. SUBMIT NEW PATIENT LEAD TAB */}
-      {/* ========================================================================= */}
-      {activeTab === 'new-lead' && (
-        <div style={{ maxWidth: 740, margin: '0 auto' }}>
-          {/* Top Contextual Cards */}
-          <div className="stats-grid" style={{ marginBottom: '1.25rem' }}>
-            <div className="stat-card">
-              <div className="stat-icon" style={{ background: '#EFF6FF', color: '#0284C7' }}>
-                <Award size={22} />
-              </div>
-              <div>
-                <div className="stat-val" style={{ color: '#0284C7' }}>50 Pts</div>
-                <div className="stat-label">Reward Rate (= ₹50)</div>
-              </div>
-            </div>
-
-            <div className="stat-card">
-              <div className="stat-icon" style={{ background: '#F8FAFC', color: '#334155' }}>
-                <Users size={22} />
-              </div>
-              <div>
-                <div className="stat-val">{myPatientLeads.length}</div>
-                <div className="stat-label">Total Leads Sent</div>
-              </div>
-            </div>
-
-            <div className="stat-card">
-              <div className="stat-icon" style={{ background: '#DCFCE7', color: '#16A34A' }}>
-                <CheckCircle2 size={22} />
-              </div>
-              <div>
-                <div className="stat-val" style={{ color: '#16A34A' }}>{approvedPatientLeads.length}</div>
-                <div className="stat-label">Approved by Admin</div>
-              </div>
-            </div>
-
-            <div className="stat-card">
-              <div className="stat-icon" style={{ background: '#FEF3C7', color: '#D97706' }}>
-                <Send size={22} />
-              </div>
-              <div>
-                <div className="stat-val" style={{ color: '#D97706', fontSize: '1.05rem' }}>Admin Desk</div>
-                <div className="stat-label">Direct Routing</div>
-              </div>
-            </div>
-          </div>
-
-          <div className="card">
-            <div className="card-header">
-              <div>
-                <h3 className="card-title">Submit Patient Lead Direct to Admin</h3>
-                <span style={{ fontSize: '0.82rem', color: 'var(--neutral-500)' }}>
-                  Patient leads are transmitted directly to the Admin Clinical Operations Desk (not auto-assigned).
-                </span>
-              </div>
-            </div>
-
-            <div className="card-body">
-              {leadSuccessMsg && (
-                <div style={{ padding: '1rem', background: '#ECFDF5', border: '1px solid #A7F3D0', borderRadius: 'var(--radius-md)', color: '#065F46', marginBottom: '1.25rem' }}>
-                  {leadSuccessMsg}
-                </div>
-              )}
-              {leadErrorMsg && (
-                <div style={{ padding: '0.85rem 1rem', background: 'var(--accent-red-50)', border: '1px solid #FECDD3', borderRadius: 'var(--radius-md)', color: '#9F1239', marginBottom: '1.25rem', display: 'flex', alignItems: 'center', gap: '0.5rem', fontSize: '0.88rem' }}>
-                  <AlertCircle size={16} />
-                  <span>{leadErrorMsg}</span>
-                </div>
-              )}
-
-              <form onSubmit={handleLeadSubmit}>
-                <div className="form-group">
-                  <label className="form-label">Patient Full Name *</label>
-                  <input
-                    type="text"
-                    className="form-control"
-                    placeholder="e.g. Smt. Lakshmi Devi"
-                    value={patientName}
-                    onChange={(e) => {
-                      setPatientName(e.target.value);
-                      if (leadErrorMsg) setLeadErrorMsg('');
-                    }}
-                    required
-                  />
-                </div>
-
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem', marginBottom: '1rem' }}>
-                  <div>
-                    <label className="form-label">Patient Age</label>
-                    <input
-                      type="number"
-                      className="form-control"
-                      placeholder="e.g. 72"
-                      value={patientAge}
-                      onChange={(e) => setPatientAge(e.target.value)}
-                    />
-                  </div>
-                  <div>
-                    <label className="form-label">Gender</label>
-                    <select
-                      className="form-control"
-                      value={patientGender}
-                      onChange={(e) => setPatientGender(e.target.value as any)}
-                    >
-                      <option value="Female">Female</option>
-                      <option value="Male">Male</option>
-                      <option value="Other">Other</option>
-                    </select>
-                  </div>
-                </div>
-
-                <div className="form-group">
-                  <label className="form-label">Patient Contact Mobile Number *</label>
-                  <input
-                    type="tel"
-                    className="form-control"
-                    placeholder="10-digit mobile number"
-                    maxLength={10}
-                    value={patientPhone}
-                    onChange={(e) => {
-                      setPatientPhone(e.target.value.replace(/\D/g, ''));
-                      if (leadErrorMsg) setLeadErrorMsg('');
-                    }}
-                    required
-                  />
-                </div>
-
-                <div className="form-group">
-                  <label className="form-label">Clinical Procedure Required *</label>
-                  <select
-                    className="form-control"
-                    value={serviceId}
-                    onChange={(e) => setServiceId(e.target.value as ServiceId)}
-                  >
-                    {serviceList.map((s: ServiceItem) => (
-                      <option key={s.id} value={s.id}>
-                        {s.title} — ₹{s.priceNumber || s.singleVisitPrice || 800} ({s.duration || '60 mins'})
-                      </option>
-                    ))}
-                  </select>
-                </div>
-
-                <div className="form-group">
-                  <label className="form-label">Hyderabad Locality / Zone *</label>
-                  <select
-                    className="form-control"
-                    value={area}
-                    onChange={(e) => setArea(e.target.value as HyderabadArea)}
-                  >
-                    {HYDERABAD_AREAS.map((a) => (
-                      <option key={a} value={a}>{a}</option>
-                    ))}
-                  </select>
-                </div>
-
-                <div className="form-group">
-                  <label className="form-label">Full Address / Landmark</label>
-                  <textarea
-                    className="form-control"
-                    rows={2}
-                    placeholder="e.g. Flat 302, Sri Sai Towers, Road No 4"
-                    value={fullAddress}
-                    onChange={(e) => setFullAddress(e.target.value)}
-                  />
-                </div>
-
-                {/* Doctor Prescription Upload (Optional) */}
-                <div className="form-group">
-                  <label className="form-label" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                    <span>Attach Doctor Prescription (Optional)</span>
-                    <span style={{ fontSize: '0.74rem', color: '#64748B' }}>PDF / Image up to 15 MB</span>
-                  </label>
-                  <input
-                    type="file"
-                    id="lead-rx-file-input"
-                    accept="application/pdf,image/*"
-                    style={{ display: 'none' }}
-                    onChange={handleLeadRxUpload}
-                  />
-                  {leadRxFileName ? (
-                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', background: '#F0F9FF', border: '1px solid #BAE6FD', padding: '0.55rem 0.85rem', borderRadius: 8 }}>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', fontSize: '0.85rem', color: '#0369A1', fontWeight: 600 }}>
-                        <FileText size={16} />
-                        <span>{leadRxFileName}</span>
-                      </div>
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setLeadRxFileName('');
-                          setLeadRxDataUrl('');
-                        }}
-                        style={{ background: 'none', border: 'none', color: '#EF4444', cursor: 'pointer', fontSize: '0.75rem', fontWeight: 700 }}
-                      >
-                        Remove
-                      </button>
-                    </div>
-                  ) : (
-                    <button
-                      type="button"
-                      id="lead-upload-rx-btn"
-                      onClick={() => document.getElementById('lead-rx-file-input')?.click()}
-                      className="btn btn-outline btn-sm"
-                      style={{ display: 'inline-flex', alignItems: 'center', gap: '0.4rem', fontWeight: 700, padding: '0.45rem 0.9rem' }}
-                    >
-                      <UploadCloud size={15} />
-                      <span>Upload Prescription File</span>
-                    </button>
-                  )}
-                </div>
-
-                <div style={{ padding: '1rem', background: '#EFF6FF', border: '1px solid #BFDBFE', borderRadius: 'var(--radius-md)', marginBottom: '1.5rem', fontSize: '0.85rem' }}>
-                  <div style={{ fontWeight: 700, color: 'var(--primary-navy-950)', marginBottom: '0.25rem', display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
-                    <Send size={15} style={{ color: '#0284C7' }} />
-                    <span>Transmitted to Central Clinical Operations Desk</span>
-                  </div>
-                  <div style={{ color: 'var(--neutral-700)', lineHeight: 1.5 }}>
-                    Central Admin reviews and verifies clinical suitability before assigning to an available nurse. You earn <strong>50 bonus points (= ₹50)</strong> upon Admin approval!
-                  </div>
-                </div>
-
-                <button type="submit" className="btn btn-primary" style={{ width: '100%', justifyContent: 'center', gap: '0.5rem', padding: '0.75rem' }}>
-                  <UserPlus size={18} />
-                  <span>Submit Patient Lead Direct to Admin</span>
+                <button
+                  type="button"
+                  onClick={handleShareWhatsApp}
+                  style={{
+                    background: '#25D366',
+                    color: '#FFFFFF',
+                    border: 'none',
+                    borderRadius: 10,
+                    padding: '0.5rem 0.95rem',
+                    fontSize: '0.82rem',
+                    fontWeight: 700,
+                    cursor: 'pointer',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '0.35rem'
+                  }}
+                >
+                  <MessageCircle size={14} />
+                  <span>WhatsApp</span>
                 </button>
-              </form>
+              </div>
             </div>
+
           </div>
-        </div>
-      )}
+        )}
 
-      {/* ========================================================================= */}
-      {/* 5. CERTIFICATE & DOCUMENTS TAB */}
-      {/* ========================================================================= */}
-      {activeTab === 'onboarding' && (
-        <div style={{ maxWidth: 740, margin: '0 auto' }}>
-          {/* Top Contextual Cards */}
-          <div className="stats-grid" style={{ marginBottom: '1.25rem' }}>
-            <div className="stat-card">
-              <div className="stat-icon" style={{ background: isVerifiedNurse ? '#DCFCE7' : '#FEF3C7', color: isVerifiedNurse ? '#16A34A' : '#D97706' }}>
-                <ShieldCheck size={20} />
-              </div>
+        {/* ================================================================= */}
+        {/* TAB 2: 🚗 MY VISITS (Dead Simple List with Call, Map & Finish) */}
+        {/* ================================================================= */}
+        {activeTab === 'visits' && (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
               <div>
-                <div className="stat-val" style={{ color: isVerifiedNurse ? '#16A34A' : '#D97706', fontSize: '0.96rem' }}>
-                  {isVerifiedNurse ? 'Verified' : 'Pending'}
-                </div>
-                <div className="stat-label">Degree Verification</div>
-              </div>
-            </div>
-
-            <div className="stat-card">
-              <div className="stat-icon" style={{ background: '#EFF6FF', color: '#0284C7' }}>
-                <FileCheck size={20} />
-              </div>
-              <div>
-                <div className="stat-val" style={{ color: '#0284C7', fontSize: '0.96rem' }}>TSNC / INC</div>
-                <div className="stat-label">Nursing Council</div>
-              </div>
-            </div>
-
-            <div className="stat-card">
-              <div className="stat-icon" style={{ background: isVerifiedNurse ? '#ECFDF5' : '#FEF3C7', color: isVerifiedNurse ? '#059669' : '#B45309' }}>
-                <UserCheck size={20} />
-              </div>
-              <div>
-                <div className="stat-val" style={{ color: isVerifiedNurse ? '#059669' : '#B45309', fontSize: '0.96rem' }}>
-                  {isVerifiedNurse ? 'Active Fleet' : 'Referral Mode'}
-                </div>
-                <div className="stat-label">Home Visits Clearance</div>
-              </div>
-            </div>
-
-            <div className="stat-card">
-              <div className="stat-icon" style={{ background: '#F8FAFC', color: '#475569' }}>
-                <CheckCircle2 size={20} />
-              </div>
-              <div>
-                <div className="stat-val" style={{ color: nurse.certificateUrl ? '#16A34A' : '#D97706', fontSize: '0.96rem' }}>
-                  {nurse.certificateUrl ? 'On File' : 'Upload Needed'}
-                </div>
-                <div className="stat-label">Digital Certificate</div>
-              </div>
-            </div>
-          </div>
-
-          {certUploadSuccessMsg && (
-            <div style={{ padding: '0.85rem 1.15rem', background: '#ECFDF5', border: '1px solid #A7F3D0', borderRadius: 10, color: '#065F46', marginBottom: '1.25rem', fontWeight: 600, display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-              <CheckCircle2 size={18} style={{ color: '#059669', flexShrink: 0 }} />
-              <span>{certUploadSuccessMsg}</span>
-            </div>
-          )}
-          {certUploadErrorMsg && (
-            <div style={{ padding: '0.85rem 1.15rem', background: '#FEF2F2', border: '1px solid #FECACA', borderRadius: 10, color: '#991B1B', marginBottom: '1.25rem', fontWeight: 600, display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-              <AlertCircle size={18} style={{ color: '#DC2626', flexShrink: 0 }} />
-              <span>{certUploadErrorMsg}</span>
-            </div>
-          )}
-
-          <div className="card">
-            <div className="card-header" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '0.5rem' }}>
-              <div>
-                <h3 className="card-title">Nursing Degree & Council Registration Certificate</h3>
-                <span className={`status-pill ${isVerifiedNurse ? 'success' : 'warning'}`}>
-                  {isVerifiedNurse ? 'Verified RN' : 'Pending Verification'}
-                </span>
-              </div>
-              <button
-                type="button"
-                id="cert-card-header-upload-btn"
-                onClick={() => document.getElementById('nurse-cert-file-input')?.click()}
-                className="btn btn-primary btn-sm"
-                style={{ display: 'inline-flex', alignItems: 'center', gap: '0.4rem', fontWeight: 700 }}
-              >
-                <UploadCloud size={15} />
-                <span>Upload Certificate</span>
-              </button>
-            </div>
-
-            <div className="card-body">
-              <p style={{ fontSize: '0.85rem', color: 'var(--neutral-600)', marginBottom: '1.25rem', lineHeight: 1.5 }}>
-                Xpress Nurse strictly verifies nursing certificates (B.Sc / GNM / Council Registration) to ensure hospital asepsis and patient safety across Hyderabad.
-              </p>
-
-              {nurse.certificateUrl ? (
-                <div style={{ background: '#F8FAFC', border: '1px solid #CBD5E1', borderRadius: 10, padding: '1rem', display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '0.75rem', marginBottom: '1.25rem' }}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                    <FileCheck size={20} style={{ color: '#0284C7' }} />
-                    <div>
-                      <div style={{ fontWeight: 700, fontSize: '0.9rem', color: '#0F172A' }}>Official Nursing Certificate On File</div>
-                      <div style={{ fontSize: '0.75rem', color: '#64748B' }}>Verified for doorstep procedures in Hyderabad</div>
-                    </div>
-                  </div>
-                  <div style={{ display: 'flex', gap: '0.5rem' }}>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setCertModalUrl(nurse.certificateUrl || '');
-                        setCertModalTitle(`${nurse.name} — Clinical Certificate`);
-                        setCertModalOpen(true);
-                      }}
-                      className="btn btn-outline btn-sm"
-                      style={{ fontWeight: 700 }}
-                    >
-                      View Certificate
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => document.getElementById('nurse-cert-file-input')?.click()}
-                      className="btn btn-primary btn-sm"
-                      style={{ display: 'inline-flex', alignItems: 'center', gap: '0.35rem', fontWeight: 700 }}
-                    >
-                      <UploadCloud size={14} />
-                      <span>Update File</span>
-                    </button>
-                  </div>
-                </div>
-              ) : (
-                <div style={{ padding: '1.25rem', background: '#FFFBEB', border: '1px solid #FCD34D', borderRadius: 10, marginBottom: '1.25rem' }}>
-                  <div style={{ fontWeight: 700, color: '#92400E', marginBottom: '0.25rem' }}>Certificate Upload Required</div>
-                  <div style={{ fontSize: '0.82rem', color: '#B45309' }}>
-                    Please submit your Telangana State Nursing Council registration to unlock direct patient dispatch.
-                  </div>
-                </div>
-              )}
-
-              {/* Upload Certificate Dropzone Box */}
-              <div style={{ border: '2px dashed #93C5FD', borderRadius: 14, padding: '2rem 1.5rem', textAlign: 'center', background: '#F0F9FF' }}>
-                <UploadCloud size={40} style={{ color: '#0284C7', margin: '0 auto 0.75rem auto' }} />
-                <h4 style={{ fontSize: '1.05rem', fontWeight: 800, color: '#0F172A', margin: '0 0 0.35rem 0' }}>
-                  Upload Nursing Degree or Council Renewal Certificate
-                </h4>
-                <p style={{ fontSize: '0.82rem', color: '#64748B', maxWidth: 460, margin: '0 auto 1.25rem auto' }}>
-                  Supports official PDF credentials, JPG, PNG, and WEBP formats (Max 15 MB). Telangana State Nursing Council and INC registrations are verified for home visits.
+                <h3 style={{ margin: 0, fontSize: '1.2rem', fontWeight: 800, color: '#0F172A' }}>
+                  My Patient Visits ({myVisits.length})
+                </h3>
+                <p style={{ margin: '0.2rem 0 0', fontSize: '0.84rem', color: '#64748B' }}>
+                  Jobs assigned to you by the office. Accept, start, and complete duty.
                 </p>
+              </div>
+            </div>
 
-                <input
-                  type="file"
-                  id="nurse-cert-file-input"
-                  accept="application/pdf,image/*"
-                  style={{ display: 'none' }}
-                  onChange={handleCertFileUpload}
+            {myVisits.length === 0 ? (
+              <div style={{ background: '#FFFFFF', borderRadius: 16, padding: '3rem 1.5rem', border: '1px solid #E2E8F0', textAlign: 'center' }}>
+                <EmptyState
+                  title="No visits assigned yet"
+                  description="When patients near your area book care, the office will assign them here. You will see their address and phone."
+                  actionText="Add a Patient Referral"
+                  onAction={() => setActiveTab('add-patient')}
                 />
-
-                <div style={{ display: 'flex', gap: '0.75rem', justifyContent: 'center', flexWrap: 'wrap' }}>
-                  <button
-                    type="button"
-                    id="nurse-cert-choose-file-btn"
-                    onClick={() => document.getElementById('nurse-cert-file-input')?.click()}
-                    className="btn btn-primary"
-                    style={{
-                      padding: '0.65rem 1.6rem',
-                      borderRadius: 10,
-                      fontWeight: 700,
-                      display: 'inline-flex',
-                      alignItems: 'center',
-                      gap: '0.5rem',
-                      fontSize: '0.92rem',
-                      boxShadow: '0 4px 12px rgba(2, 132, 199, 0.25)'
-                    }}
-                  >
-                    <UploadCloud size={18} />
-                    <span>Choose Certificate File & Upload</span>
-                  </button>
-                </div>
               </div>
-            </div>
+            ) : (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '0.85rem' }}>
+                {myVisits.map((visit) => {
+                  const isDone = visit.status === 'Completed';
+                  const isInProgress = visit.status === 'In-Progress';
+                  const isAssigned = visit.status === 'Assigned' || visit.status === 'Pending';
+
+                  return (
+                    <div
+                      key={visit.id}
+                      style={{
+                        background: '#FFFFFF',
+                        borderRadius: 16,
+                        border: isInProgress ? '2px solid #0284C7' : isDone ? '1px solid #DCFCE7' : '1px solid #E2E8F0',
+                        padding: '1.25rem',
+                        boxShadow: isInProgress ? '0 4px 12px rgba(2, 132, 199, 0.08)' : 'none',
+                        position: 'relative'
+                      }}
+                    >
+                      {/* Status Tag */}
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.6rem' }}>
+                        <span style={{
+                          fontSize: '0.74rem',
+                          fontWeight: 800,
+                          padding: '3px 9px',
+                          borderRadius: 9999,
+                          background: isInProgress ? '#EFF6FF' : isDone ? '#F0FDF4' : '#FFFBEB',
+                          color: isInProgress ? '#0284C7' : isDone ? '#16A34A' : '#D97706',
+                          border: `1px solid ${isInProgress ? '#BFDBFE' : isDone ? '#BBF7D0' : '#FDE68A'}`
+                        }}>
+                          {isInProgress ? '⚡ Duty in Progress' : isDone ? '✓ Visit Completed' : '🔔 New Assignment'}
+                        </span>
+                        <span style={{ fontSize: '0.78rem', color: '#64748B', fontWeight: 600 }}>
+                          ID: {visit.id}
+                        </span>
+                      </div>
+
+                      {/* Patient & Service details */}
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: '0.75rem' }}>
+                        <div>
+                          <h4 style={{ margin: 0, fontSize: '1.15rem', fontWeight: 800, color: '#0F172A' }}>
+                            {visit.patientName} {visit.patientAge ? `(${visit.patientAge} yrs, ${visit.patientGender})` : ''}
+                          </h4>
+                          <div style={{ fontSize: '0.92rem', color: '#0F172A', fontWeight: 700, marginTop: '0.25rem' }}>
+                            Service: <span style={{ color: '#0284C7' }}>{visit.serviceTitle}</span> (₹{visit.finalFee || visit.estimatedFee || 899})
+                          </div>
+                          <div style={{ fontSize: '0.84rem', color: '#475569', marginTop: '0.35rem', display: 'flex', alignItems: 'center', gap: '0.35rem' }}>
+                            <MapPin size={14} style={{ color: '#EF4444', flexShrink: 0 }} />
+                            <span><strong>Address:</strong> {visit.fullAddress || visit.area || 'Hyderabad'}</span>
+                          </div>
+                          {(visit.scheduledSlot || visit.preferredTime) && (
+                            <div style={{ fontSize: '0.82rem', color: '#64748B', marginTop: '0.2rem', display: 'flex', alignItems: 'center', gap: '0.35rem' }}>
+                              <Clock size={13} style={{ color: '#0284C7', flexShrink: 0 }} />
+                              <span>Time: {visit.scheduledSlot || visit.preferredTime} ({visit.preferredDate || 'Today'})</span>
+                            </div>
+                          )}
+                        </div>
+
+                        {/* Direct Action Buttons */}
+                        <div style={{ display: 'flex', gap: '0.4rem', flexWrap: 'wrap', alignItems: 'center' }}>
+                          <a
+                            href={`tel:${visit.patientPhone}`}
+                            style={{
+                              background: '#F1F5F9',
+                              border: '1px solid #CBD5E1',
+                              color: '#0F172A',
+                              padding: '0.45rem 0.75rem',
+                              borderRadius: 8,
+                              fontSize: '0.8rem',
+                              fontWeight: 700,
+                              textDecoration: 'none',
+                              display: 'inline-flex',
+                              alignItems: 'center',
+                              gap: '0.3rem'
+                            }}
+                          >
+                            <Phone size={13} style={{ color: '#0284C7' }} />
+                            <span>Call</span>
+                          </a>
+
+                          <a
+                            href={`https://wa.me/91${visit.patientPhone.replace(/\D/g, '').slice(-10)}?text=${encodeURIComponent(`Namaste ${visit.patientName}, I am ${nurse.name} from Xpress Nurse for your scheduled ${visit.serviceTitle} visit.`)}`}
+                            target="_blank"
+                            rel="noreferrer"
+                            style={{
+                              background: '#F0FDF4',
+                              border: '1px solid #BBF7D0',
+                              color: '#16A34A',
+                              padding: '0.45rem 0.75rem',
+                              borderRadius: 8,
+                              fontSize: '0.8rem',
+                              fontWeight: 700,
+                              textDecoration: 'none',
+                              display: 'inline-flex',
+                              alignItems: 'center',
+                              gap: '0.3rem'
+                            }}
+                          >
+                            <MessageCircle size={13} />
+                            <span>WhatsApp</span>
+                          </a>
+
+                          <a
+                            href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent((visit.fullAddress || visit.area || 'Hyderabad') + ', Hyderabad')}`}
+                            target="_blank"
+                            rel="noreferrer"
+                            style={{
+                              background: '#FFFBEB',
+                              border: '1px solid #FDE68A',
+                              color: '#B45309',
+                              padding: '0.45rem 0.75rem',
+                              borderRadius: 8,
+                              fontSize: '0.8rem',
+                              fontWeight: 700,
+                              textDecoration: 'none',
+                              display: 'inline-flex',
+                              alignItems: 'center',
+                              gap: '0.3rem'
+                            }}
+                          >
+                            <Navigation size={13} />
+                            <span>Map</span>
+                          </a>
+                        </div>
+                      </div>
+
+                      {/* Bottom Duty Action Bar */}
+                      <div style={{
+                        marginTop: '0.9rem',
+                        paddingTop: '0.75rem',
+                        borderTop: '1px solid #F1F5F9',
+                        display: 'flex',
+                        justifyContent: 'space-between',
+                        alignItems: 'center',
+                        flexWrap: 'wrap',
+                        gap: '0.5rem'
+                      }}>
+                        <div style={{ display: 'flex', gap: '0.5rem' }}>
+                          {visit.hasPrescription && (
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setPreviewRxBooking(visit);
+                                setIsRxModalOpen(true);
+                              }}
+                              style={{
+                                background: '#EFF6FF',
+                                border: '1px solid #BFDBFE',
+                                color: '#0284C7',
+                                padding: '0.35rem 0.7rem',
+                                borderRadius: 6,
+                                fontSize: '0.76rem',
+                                fontWeight: 700,
+                                cursor: 'pointer',
+                                display: 'inline-flex',
+                                alignItems: 'center',
+                                gap: '0.25rem'
+                              }}
+                            >
+                              <FileText size={12} />
+                              <span>View Doctor Note / Rx</span>
+                            </button>
+                          )}
+                          <button
+                            type="button"
+                            onClick={() => handleViewInvoice(visit)}
+                            style={{
+                              background: '#F8FAFC',
+                              border: '1px solid #E2E8F0',
+                              color: '#475569',
+                              padding: '0.35rem 0.7rem',
+                              borderRadius: 6,
+                              fontSize: '0.76rem',
+                              fontWeight: 700,
+                              cursor: 'pointer',
+                              display: 'inline-flex',
+                              alignItems: 'center',
+                              gap: '0.25rem'
+                            }}
+                          >
+                            <Receipt size={12} />
+                            <span>Doorstep Bill</span>
+                          </button>
+                        </div>
+
+                        {/* State Change Buttons */}
+                        <div>
+                          {isAssigned && (
+                            <button
+                              type="button"
+                              onClick={() => handleAcceptVisit(visit)}
+                              style={{
+                                background: '#16A34A',
+                                color: '#FFFFFF',
+                                border: 'none',
+                                padding: '0.5rem 1.1rem',
+                                borderRadius: 8,
+                                fontSize: '0.84rem',
+                                fontWeight: 800,
+                                cursor: 'pointer',
+                                display: 'inline-flex',
+                                alignItems: 'center',
+                                gap: '0.35rem'
+                              }}
+                            >
+                              <CheckCircle2 size={15} />
+                              <span>Accept Job</span>
+                            </button>
+                          )}
+
+                          {isInProgress && (
+                            <button
+                              type="button"
+                              onClick={() => handleFinishVisit(visit)}
+                              style={{
+                                background: '#059669',
+                                color: '#FFFFFF',
+                                border: 'none',
+                                padding: '0.5rem 1.25rem',
+                                borderRadius: 8,
+                                fontSize: '0.84rem',
+                                fontWeight: 800,
+                                cursor: 'pointer',
+                                display: 'inline-flex',
+                                alignItems: 'center',
+                                gap: '0.35rem',
+                                boxShadow: '0 4px 10px rgba(5, 150, 105, 0.25)'
+                              }}
+                            >
+                              <CheckCircle2 size={15} />
+                              <span>Finish Duty (Care Done)</span>
+                            </button>
+                          )}
+
+                          {isDone && (
+                            <span style={{ fontSize: '0.82rem', color: '#16A34A', fontWeight: 800 }}>
+                              ✓ Finished & Billed
+                            </span>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
           </div>
-        </div>
-      )}
+        )}
 
-      {/* ========================================================================= */}
-      {/* MODALS */}
-      {/* ========================================================================= */}
-
-      {/* 0. Nurse Decline / Rejection Modal */}
-      {rejectingBooking && (
-        <div 
-          className="modal-backdrop" 
-          onClick={() => setRejectingBooking(null)} 
-          style={{
-            position: 'fixed',
-            inset: 0,
-            background: 'rgba(15, 23, 42, 0.75)',
-            backdropFilter: 'blur(4px)',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            zIndex: 9999,
-            padding: '1rem'
-          }}
-        >
-          <div 
-            className="modal-card" 
-            style={{ maxWidth: 500, width: '100%', background: '#FFFFFF', borderRadius: 14, boxShadow: '0 20px 50px rgba(0,0,0,0.3)', overflow: 'hidden' }} 
-            onClick={(e) => e.stopPropagation()}
-          >
-            <div style={{ padding: '1.25rem 1.5rem', background: '#FEF2F2', borderBottom: '1px solid #FECACA', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '0.65rem' }}>
-                <div style={{ width: 34, height: 34, borderRadius: 8, background: '#DC2626', color: '#FFF', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                  <X size={18} />
-                </div>
-                <div>
-                  <h3 style={{ margin: 0, fontSize: '1.05rem', fontWeight: 800, color: '#991B1B' }}>
-                    Decline Assigned Visit
-                  </h3>
-                  <div style={{ fontSize: '0.75rem', color: '#B91C1C' }}>
-                    Booking Ref: #{rejectingBooking.id} • {rejectingBooking.serviceTitle}
-                  </div>
-                </div>
+        {/* ================================================================= */}
+        {/* TAB 3: ➕ ADD PATIENT (Easiest Patient Referral Form) */}
+        {/* ================================================================= */}
+        {activeTab === 'add-patient' && (
+          <div style={{
+            background: '#FFFFFF',
+            borderRadius: 18,
+            padding: '1.75rem',
+            border: '1px solid #E2E8F0',
+            maxWidth: 640,
+            margin: '0 auto',
+            boxShadow: '0 2px 10px rgba(0,0,0,0.03)'
+          }}>
+            <div style={{ textAlign: 'center', marginBottom: '1.25rem' }}>
+              <div style={{
+                width: 48,
+                height: 48,
+                borderRadius: '50%',
+                background: '#ECFDF5',
+                color: '#059669',
+                display: 'inline-flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                marginBottom: '0.5rem'
+              }}>
+                <Plus size={24} />
               </div>
-              <button 
-                type="button" 
-                onClick={() => setRejectingBooking(null)}
-                style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#991B1B', display: 'flex', padding: 4 }}
-              >
-                <X size={20} />
-              </button>
+              <h3 style={{ margin: 0, fontSize: '1.35rem', fontWeight: 800, color: '#0F172A' }}>
+                Refer a Patient & Get 50 Points
+              </h3>
+              <p style={{ margin: '0.3rem 0 0', fontSize: '0.88rem', color: '#64748B' }}>
+                Enter your patient's details below. Our care desk will call them, assign care, and credit 50 points to you.
+              </p>
             </div>
 
-            <div style={{ padding: '1.25rem 1.5rem' }}>
-              <div style={{ background: '#FFFBEB', border: '1px solid #FDE68A', borderRadius: 8, padding: '0.75rem 1rem', marginBottom: '1.25rem' }}>
-                <div style={{ fontWeight: 700, color: '#92400E', fontSize: '0.84rem' }}>
-                  Patient: {rejectingBooking.patientName} ({rejectingBooking.area})
-                </div>
-                <div style={{ fontSize: '0.78rem', color: '#B45309', marginTop: '0.2rem' }}>
-                  Declining this visit notifies the Operations Admin immediately with your reason, so they can refer and dispatch another available nurse in Hyderabad.
-                </div>
+            {leadSuccessMsg && (
+              <div style={{
+                background: '#ECFDF5',
+                border: '1px solid #A7F3D0',
+                color: '#065F46',
+                padding: '0.85rem 1rem',
+                borderRadius: 10,
+                fontSize: '0.88rem',
+                fontWeight: 600,
+                marginBottom: '1rem',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '0.5rem'
+              }}>
+                <CheckCircle2 size={18} style={{ color: '#059669', flexShrink: 0 }} />
+                <span>{leadSuccessMsg}</span>
               </div>
+            )}
 
-              <div className="form-group" style={{ marginBottom: '1.25rem' }}>
-                <label style={{ display: 'block', fontWeight: 700, fontSize: '0.85rem', color: '#334155', marginBottom: '0.5rem' }}>
-                  Please select clinical / operational reason:
+            {leadErrorMsg && (
+              <div style={{
+                background: '#FEF2F2',
+                border: '1px solid #FECDD3',
+                color: '#991B1B',
+                padding: '0.85rem 1rem',
+                borderRadius: 10,
+                fontSize: '0.88rem',
+                fontWeight: 600,
+                marginBottom: '1rem',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '0.5rem'
+              }}>
+                <AlertCircle size={18} style={{ color: '#DC2626', flexShrink: 0 }} />
+                <span>{leadErrorMsg}</span>
+              </div>
+            )}
+
+            <form onSubmit={handleSavePatient} style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+              <div>
+                <label style={{ display: 'block', fontSize: '0.84rem', fontWeight: 700, color: '#334155', marginBottom: '0.3rem' }}>
+                  Patient Full Name *
                 </label>
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
-                  {[
-                    'Currently attending another urgent patient',
-                    'Outside my immediate operational radius / travel distance',
-                    'Scheduled time slot conflicts with current shift duty',
-                    'Personal emergency / clinical leave',
-                    'Other reason (Specify below)'
-                  ].map((r) => (
-                    <label key={r} style={{
-                      display: 'flex',
-                      alignItems: 'center',
-                      gap: '0.5rem',
-                      padding: '0.5rem 0.75rem',
-                      borderRadius: 8,
-                      border: rejectReasonCategory === r ? '2px solid #DC2626' : '1px solid #E2E8F0',
-                      background: rejectReasonCategory === r ? '#FFF1F2' : '#F8FAFC',
-                      cursor: 'pointer',
-                      fontSize: '0.82rem',
-                      fontWeight: rejectReasonCategory === r ? 700 : 500,
-                      color: rejectReasonCategory === r ? '#991B1B' : '#334155'
-                    }}>
-                      <input
-                        type="radio"
-                        name="rejectReason"
-                        value={r}
-                        checked={rejectReasonCategory === r}
-                        onChange={() => setRejectReasonCategory(r)}
-                      />
-                      <span>{r}</span>
-                    </label>
-                  ))}
-                </div>
+                <input
+                  type="text"
+                  placeholder="e.g. Smt. Lakshmi Devi"
+                  value={patientName}
+                  onChange={(e) => setPatientName(e.target.value)}
+                  className="form-control"
+                  style={{ width: '100%', height: 42, borderRadius: 8, fontSize: '0.9rem' }}
+                  required
+                />
               </div>
 
-              {rejectReasonCategory.includes('Other') && (
-                <div className="form-group" style={{ marginBottom: '1.25rem' }}>
-                  <label style={{ display: 'block', fontWeight: 700, fontSize: '0.82rem', color: '#334155', marginBottom: '0.35rem' }}>
-                    Describe Clinical / Schedule Reason:
+              <div>
+                <label style={{ display: 'block', fontSize: '0.84rem', fontWeight: 700, color: '#334155', marginBottom: '0.3rem' }}>
+                  Patient Mobile Number *
+                </label>
+                <input
+                  type="tel"
+                  placeholder="10-digit mobile number e.g. 9848012345"
+                  value={patientPhone}
+                  onChange={(e) => setPatientPhone(e.target.value)}
+                  className="form-control"
+                  style={{ width: '100%', height: 42, borderRadius: 8, fontSize: '0.9rem' }}
+                  required
+                />
+              </div>
+
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem' }}>
+                <div>
+                  <label style={{ display: 'block', fontSize: '0.84rem', fontWeight: 700, color: '#334155', marginBottom: '0.3rem' }}>
+                    Age (Years)
                   </label>
-                  <textarea
-                    rows={2}
-                    value={rejectCustomReason}
-                    onChange={(e) => setRejectCustomReason(e.target.value)}
-                    placeholder="Provide brief details for Admin dispatch..."
-                    style={{ width: '100%', padding: '0.5rem', borderRadius: 6, border: '1px solid #CBD5E1', fontSize: '0.82rem' }}
+                  <input
+                    type="number"
+                    placeholder="e.g. 55"
+                    value={patientAge}
+                    onChange={(e) => setPatientAge(e.target.value)}
+                    className="form-control"
+                    style={{ width: '100%', height: 42, borderRadius: 8, fontSize: '0.9rem' }}
                   />
                 </div>
-              )}
 
-              <div style={{ display: 'flex', gap: '0.75rem', marginTop: '1.5rem' }}>
-                <button
-                  type="button"
-                  onClick={() => setRejectingBooking(null)}
-                  className="btn btn-outline"
-                  style={{ flex: 1 }}
-                >
-                  Cancel
-                </button>
-                <button
-                  type="button"
-                  onClick={handleConfirmRejectVisit}
-                  className="btn"
-                  style={{ flex: 1.4, background: '#DC2626', color: '#FFFFFF', fontWeight: 750, border: 'none', padding: '0.55rem 1rem', borderRadius: 8, cursor: 'pointer' }}
-                >
-                  Confirm Decline & Alert Admin
-                </button>
+                <div>
+                  <label style={{ display: 'block', fontSize: '0.84rem', fontWeight: 700, color: '#334155', marginBottom: '0.3rem' }}>
+                    Gender
+                  </label>
+                  <select
+                    value={patientGender}
+                    onChange={(e) => setPatientGender(e.target.value as any)}
+                    className="form-control"
+                    style={{ width: '100%', height: 42, borderRadius: 8, fontSize: '0.9rem' }}
+                  >
+                    <option value="Female">Female</option>
+                    <option value="Male">Male</option>
+                    <option value="Other">Other</option>
+                  </select>
+                </div>
               </div>
-            </div>
-          </div>
-        </div>
-      )}
 
-      {/* 1. Transfer / Reassign Modal */}
-      {reassignModalBooking && (
-        <div className="modal-backdrop" onClick={() => setReassignModalBooking(null)}>
-          <div className="modal-card" style={{ maxWidth: 460 }} onClick={(e) => e.stopPropagation()}>
-            <div className="modal-header">
-              <h3>Transfer Order to Colleague Nurse</h3>
-            </div>
-            <div className="modal-body" style={{ padding: '1.25rem' }}>
-              <p style={{ fontSize: '0.88rem', color: 'var(--neutral-600)', marginBottom: '1rem' }}>
-                Transfer booking <strong>{reassignModalBooking.id}</strong> ({reassignModalBooking.serviceTitle} in {reassignModalBooking.area}) to a colleague nurse stationed nearby:
-              </p>
-
-              <div className="form-group">
-                <label className="form-label">Select Colleague Nurse</label>
+              <div>
+                <label style={{ display: 'block', fontSize: '0.84rem', fontWeight: 700, color: '#334155', marginBottom: '0.3rem' }}>
+                  Which Nursing Service Needed? *
+                </label>
                 <select
+                  value={serviceId}
+                  onChange={(e) => setServiceId(e.target.value as ServiceId)}
                   className="form-control"
-                  value={targetReassignNurseId}
-                  onChange={(e) => setTargetReassignNurseId(e.target.value)}
+                  style={{ width: '100%', height: 42, borderRadius: 8, fontSize: '0.9rem', fontWeight: 600 }}
                 >
-                  {allNurses.filter((n) => n.id !== nurse.id).map((n) => (
-                    <option key={n.id} value={n.id}>
-                      {n.name} (Station: {n.serviceArea})
-                    </option>
+                  <option value="saline-infusion">IV Saline / Antibiotic Infusion (₹899)</option>
+                  <option value="wound-dressing">Wound Dressing (₹799)</option>
+                  <option value="foleys-catheter">Foley's Catheter Replacement (₹1299)</option>
+                  <option value="ryles-tube">Ryles / Food Tube Change (₹1299)</option>
+                  <option value="suture-removal">Suture / Staple Removal (₹999)</option>
+                  <option value="injection-administration">Injection & Vitals (₹699)</option>
+                  <option value="doctor-consult">Doctor Video Consultation (₹299)</option>
+                  <option value="vitals-monitoring">General Health Check (₹699)</option>
+                </select>
+              </div>
+
+              <div>
+                <label style={{ display: 'block', fontSize: '0.84rem', fontWeight: 700, color: '#334155', marginBottom: '0.3rem' }}>
+                  Patient Locality / Area in Hyderabad *
+                </label>
+                <select
+                  value={area}
+                  onChange={(e) => setArea(e.target.value as HyderabadArea)}
+                  className="form-control"
+                  style={{ width: '100%', height: 42, borderRadius: 8, fontSize: '0.9rem' }}
+                >
+                  {HYDERABAD_AREAS.map((a) => (
+                    <option key={a} value={a}>{a}</option>
                   ))}
                 </select>
               </div>
 
-              <div style={{ display: 'flex', gap: '0.75rem', marginTop: '1.5rem' }}>
-                <button
-                  type="button"
-                  onClick={() => setReassignModalBooking(null)}
-                  className="btn btn-outline"
-                  style={{ flex: 1 }}
-                >
-                  Cancel
-                </button>
-                <button
-                  type="button"
-                  onClick={handleConfirmReassign}
-                  className="btn btn-primary"
-                  style={{ flex: 1 }}
-                >
-                  Confirm Transfer
-                </button>
+              <div>
+                <label style={{ display: 'block', fontSize: '0.84rem', fontWeight: 700, color: '#334155', marginBottom: '0.3rem' }}>
+                  Full House Address / Landmark (Optional)
+                </label>
+                <textarea
+                  placeholder="e.g. Flat 302, Sai Residency, Near Metro Pillar 110"
+                  value={fullAddress}
+                  onChange={(e) => setFullAddress(e.target.value)}
+                  className="form-control"
+                  rows={2}
+                  style={{ width: '100%', borderRadius: 8, fontSize: '0.85rem' }}
+                />
               </div>
-            </div>
-          </div>
-        </div>
-      )}
 
-      {/* 2. In-App Clinical Prescription Viewer Modal (Fixes 505) */}
-      {isRxModalOpen && previewRxBooking && (
-        <div 
-          className="modal-backdrop" 
-          onClick={() => {
-            setIsRxModalOpen(false);
-            setPreviewRxBooking(null);
-          }}
-          style={{
-            position: 'fixed',
-            inset: 0,
-            background: 'rgba(15, 23, 42, 0.75)',
-            backdropFilter: 'blur(4px)',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            zIndex: 9999,
-            padding: '1rem'
-          }}
-        >
-          <div 
-            className="modal-dialog" 
-            onClick={(e) => e.stopPropagation()} 
-            style={{ 
-              maxWidth: 720, 
-              width: '100%', 
-              maxHeight: '90vh', 
-              overflowY: 'auto',
-              background: '#FFFFFF',
-              borderRadius: 16,
-              boxShadow: '0 20px 50px rgba(0,0,0,0.3)',
-              display: 'flex',
-              flexDirection: 'column'
-            }}
-          >
-            {/* Modal Header */}
-            <div style={{
-              padding: '1.25rem 1.5rem',
-              borderBottom: '1px solid #E2E8F0',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'space-between',
-              background: '#F8FAFC',
-              borderTopLeftRadius: 16,
-              borderTopRightRadius: 16
-            }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '0.65rem' }}>
-                <div style={{
-                  width: 36,
-                  height: 36,
-                  borderRadius: 10,
-                  background: '#0284C7',
-                  color: '#FFFFFF',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center'
-                }}>
-                  <FileText size={20} />
-                </div>
-                <div>
-                  <h3 style={{ fontSize: '1.1rem', fontWeight: 800, color: '#0F172A', margin: 0 }}>
-                    Official Medical Prescription & Clinical Orders
-                  </h3>
-                  <div style={{ fontSize: '0.76rem', color: '#64748B' }}>
-                    Telangana State Compliant Doorstep Nursing Protocol • Booking Ref: {previewRxBooking.id}
-                  </div>
-                </div>
+              <div>
+                <label style={{ display: 'block', fontSize: '0.84rem', fontWeight: 700, color: '#334155', marginBottom: '0.3rem' }}>
+                  Nurse Notes (What is patient's problem?)
+                </label>
+                <input
+                  type="text"
+                  placeholder="e.g. Post surgery, fever, catheter blocked"
+                  value={notes}
+                  onChange={(e) => setNotes(e.target.value)}
+                  className="form-control"
+                  style={{ width: '100%', height: 42, borderRadius: 8, fontSize: '0.85rem' }}
+                />
               </div>
 
               <button
+                type="submit"
+                disabled={isSubmittingLead}
+                className="btn btn-primary"
+                style={{
+                  width: '100%',
+                  height: 46,
+                  borderRadius: 10,
+                  fontWeight: 800,
+                  fontSize: '0.95rem',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  gap: '0.4rem',
+                  background: '#16A34A',
+                  borderColor: '#16A34A',
+                  marginTop: '0.5rem'
+                }}
+              >
+                <Plus size={18} />
+                <span>Save Patient & Get 50 Points</span>
+              </button>
+            </form>
+          </div>
+        )}
+
+        {/* ================================================================= */}
+        {/* TAB 4: 💰 MY MONEY & REFERRALS (Clean, Motivating, Transparent) */}
+        {/* ================================================================= */}
+        {activeTab === 'my-money' && (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+            
+            {/* Big Money Card */}
+            <div style={{
+              background: 'linear-gradient(135deg, #059669 0%, #047857 100%)',
+              color: '#FFFFFF',
+              borderRadius: 18,
+              padding: '1.5rem',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              flexWrap: 'wrap',
+              gap: '1rem'
+            }}>
+              <div>
+                <div style={{ fontSize: '0.85rem', color: '#D1FAE5', fontWeight: 600 }}>Total Earned from Patient Referrals</div>
+                <div style={{ fontSize: '2.4rem', fontWeight: 900, color: '#FFFFFF', margin: '0.2rem 0' }}>
+                  ₹{totalMoney}
+                </div>
+                <div style={{ fontSize: '0.88rem', color: '#A7F3D0' }}>
+                  ⭐ {totalPoints} Reward Points Balance
+                </div>
+              </div>
+
+              <div style={{
+                background: 'rgba(255,255,255,0.15)',
+                backdropFilter: 'blur(8px)',
+                borderRadius: 14,
+                padding: '1rem 1.25rem',
+                border: '1px solid rgba(255,255,255,0.25)',
+                textAlign: 'center'
+              }}>
+                <div style={{ fontSize: '0.75rem', color: '#D1FAE5', textTransform: 'uppercase', letterSpacing: 0.5 }}>Your Code</div>
+                <div style={{ fontSize: '1.35rem', fontWeight: 900, color: '#FFFFFF', margin: '0.2rem 0', letterSpacing: 1 }}>
+                  {referralCode}
+                </div>
+                <button
+                  type="button"
+                  onClick={handleShareWhatsApp}
+                  style={{
+                    background: '#25D366',
+                    color: '#FFFFFF',
+                    border: 'none',
+                    borderRadius: 8,
+                    padding: '0.35rem 0.8rem',
+                    fontSize: '0.78rem',
+                    fontWeight: 800,
+                    cursor: 'pointer',
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    gap: '0.3rem',
+                    marginTop: '0.3rem'
+                  }}
+                >
+                  <MessageCircle size={13} />
+                  <span>Share on WhatsApp</span>
+                </button>
+              </div>
+            </div>
+
+            {/* List of Referred Patients */}
+            <div style={{
+              background: '#FFFFFF',
+              borderRadius: 16,
+              padding: '1.25rem',
+              border: '1px solid #E2E8F0'
+            }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
+                <h4 style={{ margin: 0, fontSize: '1.1rem', fontWeight: 800, color: '#0F172A' }}>
+                  Patients You Referred ({myLeads.length})
+                </h4>
+                <button
+                  type="button"
+                  onClick={() => setActiveTab('add-patient')}
+                  style={{
+                    background: '#ECFDF5',
+                    border: '1px solid #A7F3D0',
+                    color: '#059669',
+                    padding: '0.35rem 0.8rem',
+                    borderRadius: 8,
+                    fontSize: '0.78rem',
+                    fontWeight: 700,
+                    cursor: 'pointer'
+                  }}
+                >
+                  + Add More
+                </button>
+              </div>
+
+              {myLeads.length === 0 ? (
+                <div style={{ padding: '2rem 1rem', textAlign: 'center', color: '#64748B' }}>
+                  <p>You have not added any patients yet. Click "Add Patient" to start earning 50 points per patient!</p>
+                </div>
+              ) : (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '0.6rem' }}>
+                  {myLeads.map((lead) => {
+                    const isConverted = lead.status === 'Converted' || lead.status === 'Approved';
+                    return (
+                      <div
+                        key={lead.id}
+                        style={{
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'space-between',
+                          padding: '0.85rem 1rem',
+                          borderRadius: 10,
+                          background: isConverted ? '#F0FDF4' : '#F8FAFC',
+                          border: `1px solid ${isConverted ? '#BBF7D0' : '#E2E8F0'}`,
+                          flexWrap: 'wrap',
+                          gap: '0.5rem'
+                        }}
+                      >
+                        <div>
+                          <div style={{ fontWeight: 800, fontSize: '0.95rem', color: '#0F172A' }}>
+                            {lead.patientName}
+                          </div>
+                          <div style={{ fontSize: '0.78rem', color: '#64748B', marginTop: '2px' }}>
+                            {lead.patientPhone} • {lead.area} • {lead.serviceId || 'Nursing Care'}
+                          </div>
+                        </div>
+
+                        <div style={{ textAlign: 'right' }}>
+                          <span style={{
+                            display: 'inline-block',
+                            padding: '2px 8px',
+                            borderRadius: 9999,
+                            fontSize: '0.72rem',
+                            fontWeight: 800,
+                            background: isConverted ? '#DCFCE7' : '#FEF3C7',
+                            color: isConverted ? '#15803D' : '#B45309'
+                          }}>
+                            {isConverted ? '✓ Approved (+50 Pts)' : '⏳ Care Desk Calling'}
+                          </span>
+                          {isConverted && (
+                            <div style={{ fontSize: '0.75rem', color: '#059669', fontWeight: 700, marginTop: '2px' }}>
+                              +50 Points Added
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+
+          </div>
+        )}
+
+        {/* ================================================================= */}
+        {/* TAB 5: 👤 MY PROFILE (Name, Certificate, Experience) */}
+        {/* ================================================================= */}
+        {activeTab === 'profile' && (
+          <div style={{
+            background: '#FFFFFF',
+            borderRadius: 18,
+            padding: '1.75rem',
+            border: '1px solid #E2E8F0',
+            maxWidth: 640,
+            margin: '0 auto'
+          }}>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '1rem' }}>
+              <h3 style={{ margin: 0, fontSize: '1.25rem', fontWeight: 800, color: '#0F172A' }}>
+                My Nurse Profile
+              </h3>
+              {!isEditingProfile && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setEditedName(nurse.name);
+                    setEditedExp(String(nurse.experienceYears || 4));
+                    setIsEditingProfile(true);
+                  }}
+                  className="btn btn-outline"
+                  style={{
+                    borderRadius: 8,
+                    padding: '0.35rem 0.85rem',
+                    fontSize: '0.8rem',
+                    fontWeight: 700,
+                    borderColor: '#0284C7',
+                    color: '#0284C7',
+                    background: '#F0F9FF',
+                    cursor: 'pointer'
+                  }}
+                >
+                  Edit Name & Experience
+                </button>
+              )}
+            </div>
+
+            {profileUpdateMsg && (
+              <div style={{
+                background: '#ECFDF5',
+                border: '1px solid #A7F3D0',
+                color: '#065F46',
+                padding: '0.65rem 1rem',
+                borderRadius: 8,
+                fontSize: '0.85rem',
+                fontWeight: 700,
+                marginBottom: '1rem'
+              }}>
+                {profileUpdateMsg}
+              </div>
+            )}
+
+            {isEditingProfile ? (
+              <form
+                onSubmit={(e) => {
+                  e.preventDefault();
+                  if (!editedName.trim()) return;
+                  onUpdateNurse({
+                    ...nurse,
+                    name: editedName.trim(),
+                    experienceYears: Number(editedExp) || 4
+                  });
+                  setIsEditingProfile(false);
+                  setProfileUpdateMsg('✓ Profile name and experience updated successfully!');
+                  setTimeout(() => setProfileUpdateMsg(''), 4000);
+                }}
+                style={{ display: 'flex', flexDirection: 'column', gap: '0.9rem' }}
+              >
+                <div>
+                  <label style={{ fontSize: '0.8rem', fontWeight: 700, color: '#334155', display: 'block', marginBottom: '0.35rem' }}>
+                    Full Name *
+                  </label>
+                  <input
+                    type="text"
+                    required
+                    value={editedName}
+                    onChange={(e) => setEditedName(e.target.value)}
+                    style={{
+                      width: '100%',
+                      padding: '0.55rem 0.85rem',
+                      borderRadius: 8,
+                      border: '1px solid #CBD5E1',
+                      fontSize: '0.92rem'
+                    }}
+                  />
+                </div>
+
+                <div>
+                  <label style={{ fontSize: '0.8rem', fontWeight: 700, color: '#334155', display: 'block', marginBottom: '0.35rem' }}>
+                    Clinical Experience (Years) *
+                  </label>
+                  <input
+                    type="number"
+                    min={0}
+                    max={50}
+                    required
+                    value={editedExp}
+                    onChange={(e) => setEditedExp(e.target.value)}
+                    style={{
+                      width: '100%',
+                      padding: '0.55rem 0.85rem',
+                      borderRadius: 8,
+                      border: '1px solid #CBD5E1',
+                      fontSize: '0.92rem'
+                    }}
+                  />
+                </div>
+
+                <div style={{ display: 'flex', gap: '0.6rem', marginTop: '0.5rem' }}>
+                  <button
+                    type="submit"
+                    className="btn btn-primary"
+                    style={{ borderRadius: 8, padding: '0.5rem 1.25rem', fontSize: '0.85rem', fontWeight: 700 }}
+                  >
+                    Save Changes
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setIsEditingProfile(false)}
+                    className="btn btn-outline"
+                    style={{ borderRadius: 8, padding: '0.5rem 1rem', fontSize: '0.85rem' }}
+                  >
+                    Cancel
+                  </button>
+                </div>
+              </form>
+            ) : (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.85rem' }}>
+              <div style={{ padding: '0.75rem', background: '#F8FAFC', borderRadius: 10 }}>
+                <span style={{ fontSize: '0.75rem', color: '#64748B', display: 'block' }}>Full Name</span>
+                <span style={{ fontSize: '0.95rem', fontWeight: 800, color: '#0F172A' }}>{nurse.name}</span>
+              </div>
+
+              <div style={{ padding: '0.75rem', background: '#F8FAFC', borderRadius: 10 }}>
+                <span style={{ fontSize: '0.75rem', color: '#64748B', display: 'block' }}>Mobile Number (Login ID)</span>
+                <span style={{ fontSize: '0.95rem', fontWeight: 800, color: '#0F172A' }}>{nurse.phone}</span>
+              </div>
+
+              <div style={{ padding: '0.75rem', background: '#F8FAFC', borderRadius: 10 }}>
+                <span style={{ fontSize: '0.75rem', color: '#64748B', display: 'block' }}>Service Area in Hyderabad</span>
+                <span style={{ fontSize: '0.95rem', fontWeight: 800, color: '#0F172A' }}>{nurse.serviceArea || 'Gachibowli'}</span>
+              </div>
+
+              <div style={{ padding: '0.75rem', background: '#F8FAFC', borderRadius: 10 }}>
+                <span style={{ fontSize: '0.75rem', color: '#64748B', display: 'block' }}>Qualification</span>
+                <span style={{ fontSize: '0.95rem', fontWeight: 800, color: '#0F172A' }}>{nurse.qualification || 'B.Sc Nursing (Registered RN)'}</span>
+              </div>
+
+              <div style={{ padding: '0.75rem', background: '#F8FAFC', borderRadius: 10 }}>
+                <span style={{ fontSize: '0.75rem', color: '#64748B', display: 'block' }}>Experience</span>
+                <span style={{ fontSize: '0.95rem', fontWeight: 800, color: '#0F172A' }}>{nurse.experienceYears || 4} Years in Clinical Care</span>
+              </div>
+
+              <div style={{ padding: '0.75rem', background: '#F8FAFC', borderRadius: 10 }}>
+                <span style={{ fontSize: '0.75rem', color: '#64748B', display: 'block' }}>Government Nursing Certificate</span>
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginTop: '0.25rem' }}>
+                  <span style={{
+                    fontSize: '0.8rem',
+                    fontWeight: 700,
+                    color: nurse.certificateVerified ? '#15803D' : '#B45309'
+                  }}>
+                    {nurse.certificateVerified ? '✓ Verified by Admin' : '⏳ Pending Admin Verification'}
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => setCertModalOpen(true)}
+                    style={{
+                      background: '#EFF6FF',
+                      border: '1px solid #BFDBFE',
+                      color: '#0284C7',
+                      padding: '0.3rem 0.75rem',
+                      borderRadius: 6,
+                      fontSize: '0.75rem',
+                      fontWeight: 700,
+                      cursor: 'pointer'
+                    }}
+                  >
+                    View / Upload
+                  </button>
+                </div>
+              </div>
+            </div>
+            )}
+
+            <div style={{ marginTop: '1.5rem', textAlign: 'center' }}>
+              <button
                 type="button"
                 onClick={() => {
-                  setIsRxModalOpen(false);
-                  setPreviewRxBooking(null);
+                  try {
+                    localStorage.removeItem('xn_auth_user');
+                    window.location.href = '/login';
+                  } catch {}
                 }}
-                style={{
-                  background: 'none',
-                  border: 'none',
-                  color: '#64748B',
-                  cursor: 'pointer',
-                  padding: '0.35rem',
-                  borderRadius: 8
-                }}
+                className="btn btn-outline"
+                style={{ color: '#EF4444', borderColor: '#FECDD3', borderRadius: 8, fontSize: '0.85rem' }}
+              >
+                Sign Out of Nurse Dashboard
+              </button>
+            </div>
+          </div>
+        )}
+
+      </div>
+
+      {/* ================================================================= */}
+      {/* 3. SIMPLE MODALS (Prescription, Invoice & Certificate) */}
+      {/* ================================================================= */}
+      {isRxModalOpen && previewRxBooking && (
+        <div style={{
+          position: 'fixed',
+          top: 0, left: 0, right: 0, bottom: 0,
+          background: 'rgba(15, 23, 42, 0.65)',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          zIndex: 9999,
+          padding: '1rem'
+        }}>
+          <div style={{
+            background: '#FFFFFF',
+            borderRadius: 16,
+            maxWidth: 520,
+            width: '100%',
+            padding: '1.5rem',
+            boxShadow: '0 20px 40px rgba(0,0,0,0.2)'
+          }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
+              <h4 style={{ margin: 0, fontSize: '1.1rem', fontWeight: 800, color: '#0F172A' }}>
+                Doctor's Prescription & Orders
+              </h4>
+              <button
+                type="button"
+                onClick={() => setIsRxModalOpen(false)}
+                style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#64748B' }}
               >
                 <X size={20} />
               </button>
             </div>
 
-            {/* Modal Body */}
-            <div style={{ padding: '1.5rem' }}>
-              {(() => {
-                const rxObj = getPrescriptionStorageObject(previewRxBooking.prescriptionUrl || previewRxBooking.prescriptionFileName);
-
-                if (rxObj?.dataUrl) {
-                  return (
-                    <div style={{ textAlign: 'center', marginBottom: '1.25rem' }}>
-                      {rxObj.contentType?.startsWith('image/') || rxObj.fileName.toLowerCase().match(/\.(jpg|jpeg|png|gif|webp)$/) ? (
-                        <img 
-                          src={rxObj.dataUrl} 
-                          alt="Prescription" 
-                          style={{ maxWidth: '100%', maxHeight: '55vh', objectFit: 'contain', borderRadius: 8, border: '1px solid #CBD5E1' }} 
-                        />
-                      ) : (
-                        <iframe 
-                          src={rxObj.dataUrl} 
-                          title="Prescription Document" 
-                          style={{ width: '100%', height: '55vh', border: '1px solid #CBD5E1', borderRadius: 8 }} 
-                        />
-                      )}
-                    </div>
-                  );
-                }
-
-                // High fidelity official digital Rx
-                return (
-                  <div style={{
-                    border: '1.5px solid #CBD5E1',
-                    borderRadius: 12,
-                    padding: '1.5rem',
-                    background: '#FFFFFF',
-                    position: 'relative'
-                  }}>
-                    {/* Watermark */}
-                    <div style={{
-                      position: 'absolute',
-                      top: '50%',
-                      left: '50%',
-                      transform: 'translate(-50%, -50%) rotate(-25deg)',
-                      fontSize: '3rem',
-                      fontWeight: 900,
-                      color: 'rgba(2, 132, 199, 0.04)',
-                      pointerEvents: 'none',
-                      whiteSpace: 'nowrap'
-                    }}>
-                      XPRESS NURSE VERIFIED RX
-                    </div>
-
-                    {/* Clinic & Doctor Banner */}
-                    <div style={{ display: 'flex', justifyContent: 'space-between', borderBottom: '2px solid #0F172A', paddingBottom: '0.85rem', marginBottom: '1rem', flexWrap: 'wrap', gap: '0.5rem' }}>
-                      <div>
-                        <div style={{ fontSize: '1.15rem', fontWeight: 900, color: '#0F172A' }}>
-                          XPRESS NURSE CLINICAL PROTOCOL
-                        </div>
-                        <div style={{ fontSize: '0.78rem', color: '#0284C7', fontWeight: 700 }}>
-                          TELANGANA STATE HEALTH SERVICES COMPLIANT
-                        </div>
-                        <div style={{ fontSize: '0.74rem', color: '#64748B', marginTop: 2 }}>
-                          Attending Physician: Dr. Vikramaditya, MBBS, MD (TSMC Reg: 84920)
-                        </div>
-                      </div>
-                      <span style={{
-                        display: 'inline-flex',
-                        alignItems: 'center',
-                        gap: '0.3rem',
-                        background: '#DCFCE7',
-                        border: '1px solid #86EFAC',
-                        color: '#166534',
-                        padding: '4px 10px',
-                        borderRadius: 9999,
-                        fontSize: '0.74rem',
-                        fontWeight: 800
-                      }}>
-                        <ShieldCheck size={14} />
-                        <span>✓ Validated Clinical Rx</span>
-                      </span>
-                    </div>
-
-                    {/* Patient Particulars */}
-                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(130px, 1fr))', gap: '0.65rem', background: '#F8FAFC', padding: '0.75rem 1rem', borderRadius: 8, marginBottom: '1.25rem' }}>
-                      <div>
-                        <div style={{ fontSize: '0.68rem', color: '#64748B', fontWeight: 700, textTransform: 'uppercase' }}>Patient Name</div>
-                        <div style={{ fontSize: '0.86rem', fontWeight: 800, color: '#0F172A' }}>{previewRxBooking.patientName}</div>
-                      </div>
-                      <div>
-                        <div style={{ fontSize: '0.68rem', color: '#64748B', fontWeight: 700, textTransform: 'uppercase' }}>Contact</div>
-                        <div style={{ fontSize: '0.86rem', fontWeight: 700, color: '#334155' }}>
-                          {previewRxBooking.status === 'Cancelled' || (previewRxBooking as any).status === 'Rejected' ? '✕ Hidden (Rejected)' : previewRxBooking.patientPhone}
-                        </div>
-                      </div>
-                      <div>
-                        <div style={{ fontSize: '0.68rem', color: '#64748B', fontWeight: 700, textTransform: 'uppercase' }}>Area / Zone</div>
-                        <div style={{ fontSize: '0.86rem', fontWeight: 700, color: '#334155' }}>{previewRxBooking.area || 'Hyderabad'}</div>
-                      </div>
-                      <div>
-                        <div style={{ fontSize: '0.68rem', color: '#64748B', fontWeight: 700, textTransform: 'uppercase' }}>Booking Date</div>
-                        <div style={{ fontSize: '0.86rem', fontWeight: 700, color: '#334155' }}>{previewRxBooking.preferredDate || 'Immediate'}</div>
-                      </div>
-                    </div>
-
-                    {/* Prescribed Procedure */}
-                    <div style={{ marginBottom: '1rem' }}>
-                      <div style={{ fontSize: '0.72rem', color: '#64748B', fontWeight: 800, textTransform: 'uppercase' }}>
-                        Authorized Nursing Procedure:
-                      </div>
-                      <div style={{ fontSize: '1rem', fontWeight: 800, color: '#0284C7', marginTop: 2 }}>
-                        {previewRxBooking.serviceTitle}
-                      </div>
-                    </div>
-
-                    {/* Rx Body & Instructions */}
-                    <div style={{ background: '#F0F9FF', border: '1.5px solid #BAE6FD', borderRadius: 10, padding: '1rem', marginBottom: '1.25rem' }}>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', color: '#0369A1', fontWeight: 900, fontSize: '1.1rem', marginBottom: '0.4rem' }}>
-                        <span>℞</span>
-                        <span style={{ fontSize: '0.82rem', fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.05em' }}>Physician Orders & Administration Protocol</span>
-                      </div>
-                      <div style={{ fontSize: '0.88rem', color: '#0F172A', whiteSpace: 'pre-wrap', lineHeight: 1.6, fontWeight: 600 }}>
-                        {previewRxBooking.notes && previewRxBooking.notes.includes('Doctor Authorized') 
-                          ? previewRxBooking.notes 
-                          : 'Administer sterile doorstep nursing care in strict compliance with attending physician orders. Ensure baseline vitals check (BP, Pulse, SpO2, Temperature) prior to procedure initiation and secure cannula/aseptic dressing upon conclusion.'}
-                      </div>
-
-                      <div style={{ marginTop: '0.75rem', paddingTop: '0.75rem', borderTop: '1px dashed #BAE6FD', fontSize: '0.75rem', color: '#0369A1', lineHeight: 1.5 }}>
-                        <strong>Nurse Checklist:</strong> Verify patient identity • Verify medication expiry & unbroken seal • Maintain strict surgical asepsis • Document post-procedure vitals in patient card.
-                      </div>
-                    </div>
-
-                    {/* Signoff Stamp */}
-                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end', borderTop: '1px dashed #CBD5E1', paddingTop: '0.85rem', flexWrap: 'wrap', gap: '0.5rem' }}>
-                      <div>
-                        <div style={{ fontSize: '0.72rem', color: '#64748B' }}>
-                          File: {previewRxBooking.prescriptionFileName || 'Doctor_Rx_Verified.pdf'}
-                        </div>
-                        <div style={{ fontSize: '0.7rem', color: '#94A3B8' }}>
-                          Dispatched via Xpress Nurse Central Dispatch
-                        </div>
-                      </div>
-                      <div style={{ textAlign: 'right' }}>
-                        <div style={{ fontSize: '0.85rem', fontWeight: 900, color: '#0F172A' }}>
-                          Dr. Vikramaditya, MD
-                        </div>
-                        <div style={{ fontSize: '0.72rem', color: '#059669', fontWeight: 700 }}>
-                          ✓ Digital Signature Verified (TSMC Reg: 84920)
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-                );
-              })()}
+            <div style={{ background: '#F8FAFC', borderRadius: 10, padding: '1rem', marginBottom: '1rem', border: '1px solid #E2E8F0' }}>
+              <div style={{ fontSize: '0.8rem', color: '#64748B' }}>Patient: <strong>{previewRxBooking.patientName}</strong></div>
+              <div style={{ fontSize: '0.8rem', color: '#64748B', marginTop: '2px' }}>Procedure: <strong>{previewRxBooking.serviceTitle}</strong></div>
+              <div style={{ marginTop: '0.75rem', fontSize: '0.9rem', color: '#0F172A', whiteSpace: 'pre-wrap', lineHeight: 1.5 }}>
+                {previewRxBooking.notes || 'Administer normal saline infusion 500ml IV under aseptic precautions. Monitor vitals before and after.'}
+              </div>
             </div>
 
-            {/* Modal Footer */}
-            <div style={{
-              padding: '1rem 1.5rem',
-              borderTop: '1px solid #E2E8F0',
-              display: 'flex',
-              justifyContent: 'space-between',
-              alignItems: 'center',
-              flexWrap: 'wrap',
-              gap: '0.75rem',
-              background: '#F8FAFC',
-              borderBottomLeftRadius: 16,
-              borderBottomRightRadius: 16
-            }}>
-              <div style={{ fontSize: '0.78rem', color: '#64748B' }}>
-                Instant in-app preview • No external download required
-              </div>
-
-              <div style={{ display: 'flex', gap: '0.5rem' }}>
-                <button
-                  type="button"
-                  onClick={() => window.print()}
-                  className="btn btn-secondary btn-sm"
-                  style={{ display: 'inline-flex', alignItems: 'center', gap: '0.35rem', fontWeight: 700 }}
-                >
-                  <Printer size={14} />
-                  <span>Print Rx</span>
-                </button>
-                <button
-                  type="button"
-                  onClick={() => {
-                    setIsRxModalOpen(false);
-                    setPreviewRxBooking(null);
-                  }}
-                  className="btn btn-primary btn-sm"
-                  style={{ fontWeight: 700 }}
-                >
-                  Close Prescription
-                </button>
-              </div>
+            <div style={{ textAlign: 'right' }}>
+              <button
+                type="button"
+                onClick={() => setIsRxModalOpen(false)}
+                className="btn btn-primary"
+                style={{ borderRadius: 8, padding: '0.5rem 1.25rem', fontSize: '0.85rem' }}
+              >
+                Close
+              </button>
             </div>
           </div>
         </div>
       )}
 
-      {/* 3. Nurse Invoice Preview Modal */}
+      {/* Invoice Modal */}
       {isInvoiceModalOpen && previewInvoice && (
-        <div 
-          className="modal-overlay" 
-          onClick={() => setIsInvoiceModalOpen(false)}
-          style={{ zIndex: 999999, pointerEvents: 'auto' }}
-        >
-          <div 
-            className="modal-box" 
-            onClick={(e) => e.stopPropagation()} 
-            style={{ maxWidth: 720, borderRadius: 20, pointerEvents: 'auto', maxHeight: '92vh', overflowY: 'auto' }}
-          >
-            <div className="modal-header" style={{ padding: '1.25rem 1.5rem', background: '#FAFAFA', borderBottom: '1px solid var(--neutral-200)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '0.65rem' }}>
-                <div style={{ width: 38, height: 38, borderRadius: 10, background: '#FFFBEB', color: '#D97706', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                  <Receipt size={20} />
-                </div>
-                <div>
-                  <h3 style={{ fontSize: '1.15rem', fontWeight: 800, color: 'var(--primary-navy-950)', margin: 0 }}>
-                    Invoice {previewInvoice.invoiceNumber}
-                  </h3>
-                  <div style={{ fontSize: '0.76rem', color: 'var(--neutral-500)' }}>
-                    Attending Nurse: {nurse.name} ({nurse.qualification}) • Station: {nurse.serviceArea}
-                  </div>
-                </div>
+        <div style={{
+          position: 'fixed',
+          top: 0, left: 0, right: 0, bottom: 0,
+          background: 'rgba(15, 23, 42, 0.65)',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          zIndex: 9999,
+          padding: '1rem'
+        }}>
+          <div style={{
+            background: '#FFFFFF',
+            borderRadius: 16,
+            maxWidth: 500,
+            width: '100%',
+            padding: '1.5rem',
+            boxShadow: '0 20px 40px rgba(0,0,0,0.2)'
+          }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
+              <div>
+                <h4 style={{ margin: 0, fontSize: '1.15rem', fontWeight: 800, color: '#0F172A' }}>
+                  Doorstep Bill: {previewInvoice.invoiceNumber}
+                </h4>
+                <div style={{ fontSize: '0.78rem', color: '#64748B' }}>Date: {previewInvoice.invoiceDate}</div>
               </div>
-              <button 
-                type="button" 
-                onClick={() => setIsInvoiceModalOpen(false)} 
-                style={{ background: '#F1F5F9', border: 'none', borderRadius: '50%', width: 32, height: 32, display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer' }}
-                title="Close Modal"
+              <button
+                type="button"
+                onClick={() => setIsInvoiceModalOpen(false)}
+                style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#64748B' }}
               >
-                <X size={16} />
+                <X size={20} />
               </button>
             </div>
 
-            <div style={{ padding: '1.5rem' }}>
-              {/* Header Meta */}
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '1rem', background: '#F8FAFC', padding: '1rem', borderRadius: 12, border: '1px solid #E2E8F0', marginBottom: '1.25rem' }}>
-                <div>
-                  <div style={{ fontSize: '0.72rem', color: '#64748B', textTransform: 'uppercase', fontWeight: 700 }}>Billed To Patient</div>
-                  <div style={{ fontWeight: 800, fontSize: '0.95rem', color: '#0F172A', marginTop: 2 }}>{previewInvoice.patientName}</div>
-                  <div style={{ fontSize: '0.8rem', color: '#334155' }}>{previewInvoice.patientPhone}</div>
-                  <div style={{ fontSize: '0.78rem', color: '#64748B', marginTop: 4 }}>{previewInvoice.fullAddress}, {previewInvoice.area}</div>
+            <div style={{ background: '#F8FAFC', borderRadius: 10, padding: '1rem', marginBottom: '1rem', border: '1px solid #E2E8F0' }}>
+              <div style={{ fontSize: '0.85rem', color: '#0F172A', fontWeight: 700 }}>{previewInvoice.patientName}</div>
+              <div style={{ fontSize: '0.8rem', color: '#64748B' }}>{previewInvoice.fullAddress || previewInvoice.area}</div>
+              <div style={{ borderTop: '1px dashed #CBD5E1', margin: '0.75rem 0', paddingTop: '0.75rem' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.85rem', color: '#334155' }}>
+                  <span>{previewInvoice.serviceTitle}</span>
+                  <strong>₹{previewInvoice.baseAmount}</strong>
                 </div>
-                <div>
-                  <div style={{ fontSize: '0.72rem', color: '#64748B', textTransform: 'uppercase', fontWeight: 700 }}>Service & Invoice Details</div>
-                  <div style={{ fontWeight: 700, fontSize: '0.88rem', color: '#0F172A', marginTop: 2 }}>{previewInvoice.serviceTitle}</div>
-                  <div style={{ fontSize: '0.8rem', color: '#334155' }}>Booking ID: {previewInvoice.bookingId}</div>
-                  <div style={{ fontSize: '0.78rem', color: '#64748B', marginTop: 4 }}>Date: {previewInvoice.invoiceDate}</div>
-                </div>
-              </div>
-
-              {/* Line Items Table */}
-              <table className="data-table" style={{ width: '100%', marginBottom: '1.25rem' }}>
-                <thead>
-                  <tr>
-                    <th>Procedure Description</th>
-                    <th style={{ textAlign: 'right' }}>Rate (₹)</th>
-                    <th style={{ textAlign: 'right' }}>Total (₹)</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  <tr>
-                    <td>
-                      <strong>{previewInvoice.serviceTitle}</strong>
-                      <div style={{ fontSize: '0.75rem', color: '#64748B' }}>Doorstep clinical nursing visit with aseptic consumables</div>
-                    </td>
-                    <td style={{ textAlign: 'right' }}>₹{previewInvoice.baseAmount}</td>
-                    <td style={{ textAlign: 'right', fontWeight: 700 }}>₹{previewInvoice.baseAmount}</td>
-                  </tr>
-                  {Boolean(previewInvoice.nightSurcharge && previewInvoice.nightSurcharge > 0) && (
-                    <tr>
-                      <td>
-                        <strong>Night Emergency Surcharge</strong>
-                      </td>
-                      <td style={{ textAlign: 'right' }}>₹{previewInvoice.nightSurcharge}</td>
-                      <td style={{ textAlign: 'right', fontWeight: 700 }}>₹{previewInvoice.nightSurcharge}</td>
-                    </tr>
-                  )}
-                  {Boolean(previewInvoice.discountRupees && previewInvoice.discountRupees > 0) && (
-                    <tr>
-                      <td style={{ color: '#059669' }}>Promotional Discount</td>
-                      <td style={{ textAlign: 'right', color: '#059669' }}>-₹{previewInvoice.discountRupees}</td>
-                      <td style={{ textAlign: 'right', color: '#059669', fontWeight: 700 }}>-₹{previewInvoice.discountRupees}</td>
-                    </tr>
-                  )}
-                </tbody>
-              </table>
-
-              {/* Total Summary */}
-              <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: '1.5rem' }}>
-                <div style={{ width: 280, background: '#F8FAFC', padding: '1rem', borderRadius: 10, border: '1px solid #E2E8F0' }}>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.85rem', marginBottom: 6 }}>
-                    <span>Subtotal:</span>
-                    <span>₹{previewInvoice.baseAmount}</span>
+                {Boolean(previewInvoice.discountRupees && previewInvoice.discountRupees > 0) && (
+                  <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.85rem', color: '#059669', marginTop: '4px' }}>
+                    <span>Coupon Discount</span>
+                    <strong>-₹{previewInvoice.discountRupees}</strong>
                   </div>
-                  {Boolean(previewInvoice.discountRupees && previewInvoice.discountRupees > 0) && (
-                    <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.85rem', color: '#059669', marginBottom: 6 }}>
-                      <span>Discount:</span>
-                      <span>-₹{previewInvoice.discountRupees}</span>
-                    </div>
-                  )}
-                  <div style={{ display: 'flex', justifyContent: 'space-between', fontWeight: 800, fontSize: '1.05rem', color: '#0F172A', borderTop: '1px solid #CBD5E1', paddingTop: 8 }}>
-                    <span>Total Payable:</span>
-                    <span style={{ color: '#059669' }}>₹{previewInvoice.totalAmount}</span>
-                  </div>
+                )}
+                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '1.1rem', fontWeight: 900, color: '#0F172A', marginTop: '0.6rem', paddingTop: '0.6rem', borderTop: '1px solid #E2E8F0' }}>
+                  <span>Total Due:</span>
+                  <span style={{ color: '#059669' }}>₹{previewInvoice.totalAmount}</span>
                 </div>
               </div>
+            </div>
 
-              {/* Action Buttons */}
-              <div style={{ display: 'flex', gap: '0.75rem', justifyContent: 'flex-end', borderTop: '1px solid #E2E8F0', paddingTop: '1.25rem' }}>
-                <button
-                  type="button"
-                  onClick={() => setIsInvoiceModalOpen(false)}
-                  className="btn btn-outline btn-sm"
-                >
-                  Close
-                </button>
-                <button
-                  type="button"
-                  onClick={() => openPrintableInvoiceWindow(previewInvoice)}
-                  className="btn btn-primary btn-sm"
-                  style={{ display: 'inline-flex', alignItems: 'center', gap: '0.4rem', fontWeight: 700 }}
-                >
-                  <Printer size={15} />
-                  <span>Print / Save Invoice</span>
-                </button>
-              </div>
+            <div style={{ display: 'flex', justifyContent: 'space-between', gap: '0.5rem' }}>
+              <button
+                type="button"
+                onClick={() => openPrintableInvoiceWindow(previewInvoice)}
+                className="btn btn-outline"
+                style={{ borderRadius: 8, padding: '0.45rem 1rem', fontSize: '0.82rem', display: 'flex', alignItems: 'center', gap: '0.35rem' }}
+              >
+                <Printer size={14} />
+                <span>Print Bill</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => setIsInvoiceModalOpen(false)}
+                className="btn btn-primary"
+                style={{ borderRadius: 8, padding: '0.45rem 1.25rem', fontSize: '0.82rem' }}
+              >
+                Close
+              </button>
             </div>
           </div>
         </div>
       )}
 
-      {/* 4. Certificate Viewer Modal */}
+      {/* Certificate Modal */}
       {certModalOpen && (
-        <div 
-          className="modal-backdrop"
-          onClick={() => setCertModalOpen(false)}
-          style={{
-            position: 'fixed',
-            inset: 0,
-            background: 'rgba(15, 23, 42, 0.85)',
-            backdropFilter: 'blur(5px)',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            zIndex: 99999,
-            padding: '1.5rem'
-          }}
-        >
-          <div 
-            onClick={(e) => e.stopPropagation()} 
-            style={{ 
-              background: '#FFFFFF', 
-              borderRadius: 16, 
-              width: '100%', 
-              maxWidth: 760, 
-              maxHeight: '92vh', 
-              overflowY: 'auto', 
-              display: 'flex', 
-              flexDirection: 'column', 
-              boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.25)' 
-            }}
-          >
-            <div style={{ padding: '1.25rem 1.5rem', borderBottom: '1px solid #E2E8F0', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                <ShieldCheck size={20} style={{ color: '#0284C7' }} />
-                <h3 style={{ fontSize: '1.1rem', fontWeight: 800, color: '#0F172A', margin: 0 }}>
-                  {certModalTitle || 'Clinical Registration Certificate'}
-                </h3>
-              </div>
-              <button 
-                onClick={() => setCertModalOpen(false)} 
-                style={{ background: '#F1F5F9', border: 'none', borderRadius: '50%', width: 32, height: 32, display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer' }}
+        <div style={{
+          position: 'fixed',
+          top: 0, left: 0, right: 0, bottom: 0,
+          background: 'rgba(15, 23, 42, 0.65)',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          zIndex: 9999,
+          padding: '1rem'
+        }}>
+          <div style={{
+            background: '#FFFFFF',
+            borderRadius: 16,
+            maxWidth: 480,
+            width: '100%',
+            padding: '1.5rem',
+            boxShadow: '0 20px 40px rgba(0,0,0,0.2)'
+          }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
+              <h4 style={{ margin: 0, fontSize: '1.15rem', fontWeight: 800, color: '#0F172A' }}>
+                Nursing Council Certificate
+              </h4>
+              <button
+                type="button"
+                onClick={() => setCertModalOpen(false)}
+                style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#64748B' }}
               >
-                <X size={16} />
+                <X size={20} />
               </button>
             </div>
 
-            <div style={{ padding: '1.5rem', background: '#0F172A', display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: 380 }}>
-              {certModalUrl.startsWith('data:application/pdf') || certModalUrl.toLowerCase().endsWith('.pdf') ? (
-                <iframe 
-                  src={getSafeBlobUrl(certModalUrl)} 
-                  style={{ width: '100%', height: '65vh', border: 'none', borderRadius: 8, background: '#FFFFFF' }} 
-                  title="PDF Certificate"
-                />
-              ) : (
-                <img 
-                  src={certModalUrl} 
-                  alt="Certificate" 
-                  style={{ maxWidth: '100%', maxHeight: '68vh', objectFit: 'contain', borderRadius: 8, boxShadow: '0 10px 25px rgba(0,0,0,0.5)' }} 
-                />
-              )}
+            <div style={{ textAlign: 'center', padding: '1.5rem 1rem', background: '#F8FAFC', borderRadius: 10, border: '1.5px dashed #CBD5E1', marginBottom: '1rem' }}>
+              <Award size={36} style={{ color: '#0284C7', margin: '0 auto 0.5rem' }} />
+              <div style={{ fontSize: '0.9rem', fontWeight: 700, color: '#0F172A' }}>
+                {nurse.name}'s Nursing License
+              </div>
+              <div style={{ fontSize: '0.78rem', color: '#64748B', marginTop: '4px' }}>
+                Status: {nurse.certificateVerified ? '✓ Verified by Admin' : 'Pending Verification'}
+              </div>
             </div>
 
-            <div style={{ padding: '1rem 1.5rem', borderTop: '1px solid #E2E8F0', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '0.75rem', background: '#F8FAFC' }}>
-              <div style={{ fontSize: '0.8rem', color: '#64748B' }}>
-                Telangana State / Indian Nursing Council Verified Document
-              </div>
-
-              <div style={{ display: 'flex', gap: '0.5rem' }}>
-                <button
-                  type="button"
-                  onClick={() => {
-                    const safeUrl = getSafeBlobUrl(certModalUrl);
-                    window.open(safeUrl, '_blank');
-                  }}
-                  className="btn btn-outline btn-sm"
-                  style={{ display: 'inline-flex', alignItems: 'center', gap: '0.35rem', fontWeight: 700 }}
-                >
-                  <ExternalLink size={14} />
-                  <span>Open in New Tab</span>
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setCertModalOpen(false)}
-                  className="btn btn-primary btn-sm"
-                  style={{ fontWeight: 700 }}
-                >
-                  Close Viewer
-                </button>
-              </div>
+            <div style={{ textAlign: 'right' }}>
+              <button
+                type="button"
+                onClick={() => setCertModalOpen(false)}
+                className="btn btn-primary"
+                style={{ borderRadius: 8, padding: '0.45rem 1.25rem', fontSize: '0.82rem' }}
+              >
+                Close
+              </button>
             </div>
           </div>
         </div>

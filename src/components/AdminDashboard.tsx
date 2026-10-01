@@ -61,7 +61,8 @@ import {
   Share2,
   RefreshCw,
   UserCheck,
-  AlertTriangle
+  AlertTriangle,
+  LogOut
 } from 'lucide-react';
 import { EmptyState } from './EmptyState';
 import { SEED_APP_USERS, generateNurseReferralCode, dbLogAuditEvent } from '../lib/supabase';
@@ -72,6 +73,7 @@ import {
   getCloudflareObjects,
   uploadToCloudflareStorage,
   deleteFromCloudflareStorage,
+  deleteMultipleFromCloudflareStorage,
   generateInvoiceDetails,
   saveInvoiceToCloudflareBucket,
   openPrintableInvoiceWindow,
@@ -179,15 +181,13 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
   // CLOUDFLARE R2 STORAGE & INVOICE MANAGEMENT STATE
   // --------------------------------------------------------------------------
   const [storageObjects, setStorageObjects] = useState<CloudflareStorageObject[]>(() => 
-    syncDatabaseRecordsToStorage(bookings, nurses, getCloudflareObjects())
+    getCloudflareObjects()
   );
 
-  // Automatically keep storage bucket objects in sync with live DB bookings and nurses
+  // Sync storage objects cleanly without re-creating deleted files
   useEffect(() => {
-    const existing = getCloudflareObjects();
-    const synced = syncDatabaseRecordsToStorage(bookings, nurses, existing);
-    setStorageObjects(synced);
-  }, [bookings, nurses]);
+    setStorageObjects(getCloudflareObjects());
+  }, []);
 
   const [r2Config, setR2Config] = useState<CloudflareR2Config>(() => getCloudflareConfig());
   const [storageCategoryFilter, setStorageCategoryFilter] = useState<'all' | StorageCategory>('all');
@@ -382,6 +382,8 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
   const [selectedConsultIds, setSelectedConsultIds] = useState<Set<string>>(new Set());
   const [selectedCouponIds, setSelectedCouponIds] = useState<Set<string>>(new Set());
   const [selectedUserIds, setSelectedUserIds] = useState<Set<string>>(new Set());
+  const [selectedRoutingBookingIds, setSelectedRoutingBookingIds] = useState<Set<string>>(new Set());
+  const [selectedStorageIds, setSelectedStorageIds] = useState<Set<string>>(new Set());
 
   const toggleItemSelection = (id: string, setSelected: React.Dispatch<React.SetStateAction<Set<string>>>) => {
     setSelected((prev) => {
@@ -476,6 +478,12 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
         }
       }
     });
+  };
+
+  const handleDeleteMultipleStorage = async (ids: string[]) => {
+    await deleteMultipleFromCloudflareStorage(ids);
+    setStorageObjects(getCloudflareObjects());
+    showToast(`Successfully deleted ${ids.length} storage files.`);
   };
 
   const renderBulkActionBar = ({
@@ -1117,7 +1125,11 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
     status: 'Active',
     certificateVerified: true,
     rating: 4.9,
-    pin: '1001'
+    pin: '1001',
+    pointsEarned: 300,
+    referralEarningsRupees: 0,
+    earningsPaid: 0,
+    earningsPending: 0
   });
 
   const handleOpenCreateNurseModal = () => {
@@ -1128,31 +1140,50 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
       phone: '',
       email: '',
       qualification: 'Registered Nurse (B.Sc Nursing)',
-      experienceYears: 5,
+      experienceYears: 3,
       serviceArea: 'Gachibowli',
       status: 'Active',
       certificateVerified: true,
       rating: 4.9,
-      pin: '100' + Math.floor(1 + Math.random() * 9)
+      pin: '',
+      pointsEarned: 300,
+      referralEarningsRupees: 0,
+      earningsPaid: 0,
+      earningsPending: 0
     });
     setIsNurseModalOpen(true);
   };
 
   const handleOpenEditNurseModal = (n: NurseProfile) => {
     setEditingNurse(n);
-    const existingUser = appUsers.find((u) => u.id === n.id || u.phone === n.phone || u.email === n.email);
+    const nursePhoneDigits = (n.phone || '').replace(/\D/g, '');
+    const nurseLast10 = nursePhoneDigits.length >= 10 ? nursePhoneDigits.slice(-10) : nursePhoneDigits;
+    const existingUser = appUsers.find((u) => {
+      const uPhoneDigits = (u.phone || '').replace(/\D/g, '');
+      const uLast10 = uPhoneDigits.length >= 10 ? uPhoneDigits.slice(-10) : uPhoneDigits;
+      return (
+        u.id === n.id ||
+        (nurseLast10 && uLast10 && nurseLast10 === uLast10) ||
+        (u.email && n.email && u.email.toLowerCase().trim() === n.email.toLowerCase().trim()) ||
+        (u.identifier && n.email && u.identifier.toLowerCase().trim() === n.email.toLowerCase().trim())
+      );
+    });
     setNurseForm({
       id: n.id,
       name: n.name,
       phone: n.phone,
       email: n.email,
       qualification: n.qualification,
-      experienceYears: n.experienceYears,
-      serviceArea: n.serviceArea,
+      experienceYears: typeof n.experienceYears === 'number' ? n.experienceYears : 3,
+      serviceArea: n.serviceArea || 'Gachibowli',
       status: n.status || 'Active',
       certificateVerified: !!n.certificateVerified,
       rating: n.rating || 4.9,
-      pin: existingUser?.pin || '1001'
+      pin: (n.pin && n.pin.trim() !== '') ? n.pin.trim() : (existingUser?.pin ? String(existingUser.pin).trim() : ''),
+      pointsEarned: Number(n.pointsEarned) || 0,
+      referralEarningsRupees: Number(n.referralEarningsRupees) || 0,
+      earningsPaid: Number(n.earningsPaid) || 0,
+      earningsPending: Number(n.earningsPending) || 0
     });
     setIsNurseModalOpen(true);
   };
@@ -1163,20 +1194,24 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
       showToast('Name, phone, and email are required.', 'error');
       return;
     }
+    const cleanPhone = nurseForm.phone.replace(/\D/g, '') || nurseForm.phone.trim();
     const nursePayload: NurseProfile = {
       id: editingNurse ? editingNurse.id : nurseForm.id,
       name: nurseForm.name.trim(),
-      phone: nurseForm.phone.trim(),
+      phone: cleanPhone,
       email: nurseForm.email.trim(),
       qualification: nurseForm.qualification.trim(),
-      experienceYears: Number(nurseForm.experienceYears),
+      experienceYears: Number(nurseForm.experienceYears) || 1,
       serviceArea: nurseForm.serviceArea,
+      pin: nurseForm.pin.trim() || undefined,
       status: (nurseForm.status as 'Active' | 'Pending Verification' | 'On Leave') || 'Active',
       totalLeads: editingNurse ? editingNurse.totalLeads : 0,
       convertedLeads: editingNurse ? editingNurse.convertedLeads : 0,
       totalReferrals: editingNurse ? editingNurse.totalReferrals : 0,
-      pointsEarned: editingNurse ? editingNurse.pointsEarned : 300,
-      referralEarningsRupees: editingNurse ? editingNurse.referralEarningsRupees : 0,
+      pointsEarned: Number(nurseForm.pointsEarned) || 0,
+      referralEarningsRupees: Number(nurseForm.referralEarningsRupees) || 0,
+      earningsPaid: Number(nurseForm.earningsPaid) || 0,
+      earningsPending: Number(nurseForm.earningsPending) || 0,
       rating: Number(nurseForm.rating) || 4.9,
       avatarUrl: editingNurse ? editingNurse.avatarUrl : 'https://images.unsplash.com/photo-1594824813571-638f0263614f?auto=format&fit=crop&q=80&w=400',
       certificateVerified: nurseForm.certificateVerified
@@ -1184,10 +1219,17 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
 
     if (editingNurse && onUpdateNurseRecord) {
       await onUpdateNurseRecord(editingNurse.id, nursePayload);
-      // Also update app_user pin if exists
+      // Also update app_user pin and details if exists
       if (onUpdateAppUser) {
-        const u = appUsers.find((x) => x.id === editingNurse.id || x.phone === editingNurse.phone);
-        if (u) await onUpdateAppUser(u.id, { pin: nurseForm.pin, name: nursePayload.name, serviceArea: nursePayload.serviceArea });
+        const u = appUsers.find((x) => x.id === editingNurse.id || x.phone === editingNurse.phone || (x.email && x.email.toLowerCase() === editingNurse.email.toLowerCase()));
+        if (u) {
+          await onUpdateAppUser(u.id, { 
+            pin: nurseForm.pin.trim() || u.pin, 
+            name: nursePayload.name, 
+            phone: cleanPhone,
+            serviceArea: nursePayload.serviceArea 
+          });
+        }
       }
       showToast(`Nurse ${nursePayload.name} updated in Supabase!`);
     } else if (onCreateNurse) {
@@ -1198,8 +1240,8 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
           name: nursePayload.name,
           role: 'nurse',
           identifier: nursePayload.email,
-          pin: nurseForm.pin || '1001',
-          phone: nursePayload.phone,
+          pin: nurseForm.pin.trim() || '',
+          phone: cleanPhone,
           email: nursePayload.email,
           designation: nursePayload.qualification,
           serviceArea: nursePayload.serviceArea
@@ -1470,15 +1512,9 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
 
   const handleOpenApproveModal = (lead: NurseLead) => {
     setApprovalModalLead(lead);
-    const serviceObj = services.find((s) => s.id === lead.serviceId);
-    const estimatedValue = lead.leadValueRupees || serviceObj?.priceNumber || 800;
-    setApprovalPoints(lead.pointsAwarded && lead.pointsAwarded > 0 ? lead.pointsAwarded : 50);
-    setApprovalReferralRupees(
-      lead.referralCommissionRupees !== undefined && lead.referralCommissionRupees > 0
-        ? lead.referralCommissionRupees
-        : Math.round(estimatedValue * 0.1)
-    );
-    setApprovalNotes(lead.adminNotes || `Approved by Admin. Cross-area service verified.`);
+    setApprovalPoints(50);
+    setApprovalReferralRupees(0);
+    setApprovalNotes(lead.adminNotes || `Approved by Office (+50 points credited).`);
     setRejectReason('');
     setIsRejectConfirmOpen(false);
   };
@@ -1487,12 +1523,12 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
     if (!approvalModalLead || !onApproveLead) return;
     setIsProcessingApproval(true);
     try {
-      await onApproveLead(approvalModalLead.id, Number(approvalPoints), Number(approvalReferralRupees), approvalNotes);
+      await onApproveLead(approvalModalLead.id, 50, 0, approvalNotes);
       const referringNurse = nurses.find((n) => n.id === approvalModalLead.nurseId);
-      showToast(`Lead ${approvalModalLead.id} approved! Credited +${approvalPoints} pts & ₹${approvalReferralRupees} to ${referringNurse?.name || 'Nurse'}.`);
+      showToast(`Referral ${approvalModalLead.id} approved! Credited +50 points to ${referringNurse?.name || 'Nurse'}.`);
       setApprovalModalLead(null);
     } catch {
-      showToast('Error approving lead in Supabase', 'error');
+      showToast('Error approving referral in Supabase', 'error');
     } finally {
       setIsProcessingApproval(false);
     }
@@ -1643,7 +1679,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
     name: '',
     role: 'nurse' as 'admin' | 'doctor' | 'nurse' | 'patient',
     identifier: '',
-    pin: '1001',
+    pin: '',
     phone: '',
     email: '',
     designation: '',
@@ -1657,7 +1693,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
       name: '',
       role: 'nurse',
       identifier: '',
-      pin: '1001',
+      pin: '',
       phone: '',
       email: '',
       designation: 'Registered Nurse',
@@ -1757,74 +1793,70 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
       {/* Admin Panel Header */}
       <div className="panel-header">
         <div>
-          <h2 style={{ fontSize: '1.5rem', color: 'var(--primary-navy-900)' }}>
-            Admin Operations & Routing Center
+          <h2 style={{ fontSize: '1.5rem', color: 'var(--primary-navy-900)', fontWeight: 800 }}>
+            Office Care Desk
           </h2>
-          <p style={{ fontSize: '0.88rem', color: 'var(--neutral-600)' }}>
-            Dispatch, verify credentials, and manage multi-zone Hyderabad home nursing fleets
+          <p style={{ fontSize: '0.88rem', color: 'var(--neutral-600)', margin: '0.2rem 0 0' }}>
+            Simple office manager for bookings, nurses, referrals, and doctor calls
           </p>
         </div>
 
-        <div className="panel-header-buttons" style={{ display: 'flex', flexWrap: 'wrap', gap: '0.45rem' }}>
+        <div className="panel-header-buttons">
           <button
             className={`btn btn-sm ${activeTab === 'routing' ? 'btn-primary' : 'btn-outline'}`}
             onClick={() => setActiveTab('routing')}
           >
             <Shuffle size={14} />
-            <span>Smart Routing</span>
+            <span>🚗 Assign Nurses {pendingBookings.length > 0 ? `(${pendingBookings.length})` : ''}</span>
           </button>
           <button
             className={`btn btn-sm ${activeTab === 'bookings' ? 'btn-primary' : 'btn-outline'}`}
             onClick={() => setActiveTab('bookings')}
           >
             <Calendar size={14} />
-            <span>Bookings ({bookings.length})</span>
+            <span>📅 Bookings ({bookings.length})</span>
           </button>
           <button
             className={`btn btn-sm ${activeTab === 'nurses' ? 'btn-primary' : 'btn-outline'}`}
             onClick={() => setActiveTab('nurses')}
           >
             <Users size={14} />
-            <span>Nurse Roster ({nurses.length})</span>
-          </button>
-          <button
-            className={`btn btn-sm ${activeTab === 'services' ? 'btn-primary' : 'btn-outline'}`}
-            onClick={() => setActiveTab('services')}
-            style={{ display: 'inline-flex', alignItems: 'center', gap: '0.35rem' }}
-          >
-            <Layers size={14} />
-            <span>Services & Pricing ({services.length})</span>
+            <span>👩‍⚕️ Nurses ({nurses.length})</span>
           </button>
           <button
             className={`btn btn-sm ${activeTab === 'leads' ? 'btn-primary' : 'btn-outline'}`}
             onClick={() => setActiveTab('leads')}
           >
-            <Activity size={14} />
-            <span>Leads CRM ({leads.length})</span>
+            <Award size={14} />
+            <span>⭐ Referrals (50 pts) {leads.filter(l => l.status === 'Pending Approval').length > 0 ? `(${leads.filter(l => l.status === 'Pending Approval').length})` : ''}</span>
           </button>
           <button
             className={`btn btn-sm ${activeTab === 'consultations' ? 'btn-primary' : 'btn-outline'}`}
             onClick={() => setActiveTab('consultations')}
-            style={{ display: 'inline-flex', alignItems: 'center', gap: '0.35rem' }}
           >
             <Stethoscope size={14} />
-            <span>Doctor Consults ({consultations.length})</span>
+            <span>🩺 Doctor Calls ({consultations.length})</span>
+          </button>
+          <button
+            className={`btn btn-sm ${activeTab === 'services' ? 'btn-primary' : 'btn-outline'}`}
+            onClick={() => setActiveTab('services')}
+          >
+            <Layers size={14} />
+            <span>🏷️ Price List ({services.length})</span>
           </button>
           <button
             className={`btn btn-sm ${activeTab === 'coupons' ? 'btn-primary' : 'btn-outline'}`}
             onClick={() => setActiveTab('coupons')}
-            style={{ display: 'inline-flex', alignItems: 'center', gap: '0.35rem' }}
           >
             <Tag size={14} />
-            <span>Coupons ({coupons.length})</span>
+            <span>🎟️ Discounts ({coupons.length})</span>
           </button>
           <button
             className={`btn btn-sm ${activeTab === 'credentials' ? 'btn-primary' : 'btn-outline'}`}
             onClick={() => setActiveTab('credentials')}
-            style={{ display: 'inline-flex', alignItems: 'center', gap: '0.35rem' }}
           >
             <KeyRound size={14} />
-            <span>Staff & PINs ({appUsers.length})</span>
+            <span>🔐 Staff Passwords ({appUsers.length})</span>
           </button>
           <button
             className={`btn btn-sm ${activeTab === 'storage' ? 'btn-primary' : 'btn-outline'}`}
@@ -1833,10 +1865,34 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
               setStorageObjects(synced);
               setActiveTab('storage');
             }}
-            style={{ display: 'inline-flex', alignItems: 'center', gap: '0.35rem' }}
           >
             <Cloud size={14} />
-            <span>Storage Bucket ({storageObjects.length})</span>
+            <span>📁 Bills & Files ({storageObjects.length})</span>
+          </button>
+
+          <button
+            type="button"
+            className="btn btn-sm btn-outline"
+            onClick={() => {
+              try {
+                localStorage.removeItem('xn_auth_user');
+                window.location.href = '/login?portal=admin';
+              } catch {}
+            }}
+            style={{
+              color: '#EF4444',
+              borderColor: '#FECDD3',
+              background: '#FFF1F2',
+              fontWeight: 700,
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: '0.35rem',
+              marginLeft: 'auto'
+            }}
+            title="Sign out of Admin Operations"
+          >
+            <LogOut size={14} />
+            <span>Sign Out</span>
           </button>
         </div>
       </div>
@@ -1888,477 +1944,16 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
         </div>
       )}
 
-      {/* Contextual Top Stat Cards for each Tab Option */}
-      <div style={{ marginBottom: '1.5rem' }}>
-        {activeTab === 'routing' && (
-          <div className="stats-grid" style={{ marginBottom: 0 }}>
-            <div className="stat-card">
-              <div className="stat-icon" style={{ background: '#FFF1F2', color: '#E11D48' }}>
-                <Clock size={22} />
-              </div>
-              <div>
-                <div className="stat-val">{pendingBookings.length}</div>
-                <div className="stat-label">Pending Orders to Dispatch</div>
-              </div>
-            </div>
-            <div className="stat-card">
-              <div className="stat-icon" style={{ background: '#ECFDF5', color: '#10B981' }}>
-                <Users size={22} />
-              </div>
-              <div>
-                <div className="stat-val">{nurses.filter(n => n.certificateVerified).length}</div>
-                <div className="stat-label">Available Verified Nurses</div>
-              </div>
-            </div>
-            <div className="stat-card">
-              <div className="stat-icon" style={{ background: '#EFF6FF', color: '#0284C7' }}>
-                <CheckCircle size={22} />
-              </div>
-              <div>
-                <div className="stat-val">{bookings.filter(b => b.status === 'Assigned' || b.status === 'In-Progress').length}</div>
-                <div className="stat-label">Active Dispatched Visits</div>
-              </div>
-            </div>
-            <div className="stat-card">
-              <div className="stat-icon" style={{ background: '#FFFBEB', color: '#D97706' }}>
-                <Shuffle size={22} />
-              </div>
-              <div>
-                <div className="stat-val">100%</div>
-                <div className="stat-label">Locality Match Accuracy</div>
-              </div>
-            </div>
-          </div>
-        )}
-
-        {activeTab === 'bookings' && (
-          <div className="stats-grid" style={{ marginBottom: 0 }}>
-            <div className="stat-card">
-              <div className="stat-icon" style={{ background: '#EFF6FF', color: '#0284C7' }}>
-                <Calendar size={22} />
-              </div>
-              <div>
-                <div className="stat-val">{bookings.length}</div>
-                <div className="stat-label">Total Bookings</div>
-              </div>
-            </div>
-            <div className="stat-card">
-              <div className="stat-icon" style={{ background: '#ECFDF5', color: '#10B981' }}>
-                <Activity size={22} />
-              </div>
-              <div>
-                <div className="stat-val" style={{ color: '#10B981' }}>{bookings.filter(b => b.status === 'Assigned' || b.status === 'In-Progress').length}</div>
-                <div className="stat-label">In-Progress Visits</div>
-              </div>
-            </div>
-            <div className="stat-card">
-              <div className="stat-icon" style={{ background: '#F0FDF4', color: '#16A34A' }}>
-                <CheckCircle size={22} />
-              </div>
-              <div>
-                <div className="stat-val" style={{ color: '#16A34A' }}>{bookings.filter(b => b.status === 'Completed').length}</div>
-                <div className="stat-label">Completed Visits</div>
-              </div>
-            </div>
-            <div className="stat-card" style={{ background: 'linear-gradient(135deg, #0284C7 0%, #0369A1 100%)', color: '#FFFFFF', border: 'none' }}>
-              <div className="stat-icon" style={{ background: 'rgba(255,255,255,0.2)', color: '#FFFFFF' }}>
-                <DollarSign size={22} />
-              </div>
-              <div>
-                <div className="stat-val" style={{ color: '#FFFFFF' }}>₹{bookings.filter(b => b.status !== 'Rejected' && b.status !== 'Cancelled').reduce((sum, b) => sum + (b.estimatedFee || 0), 0)}</div>
-                <div className="stat-label" style={{ color: 'rgba(255,255,255,0.85)' }}>Active Platform Fee</div>
-              </div>
-            </div>
-          </div>
-        )}
-
-        {activeTab === 'nurses' && (
-          <div className="stats-grid" style={{ marginBottom: 0 }}>
-            <div className="stat-card">
-              <div className="stat-icon" style={{ background: '#EFF6FF', color: '#0284C7' }}>
-                <Users size={22} />
-              </div>
-              <div>
-                <div className="stat-val">{nurses.length}</div>
-                <div className="stat-label">Total Nurse Fleet</div>
-              </div>
-            </div>
-            <div className="stat-card">
-              <div className="stat-icon" style={{ background: '#ECFDF5', color: '#10B981' }}>
-                <ShieldCheck size={22} />
-              </div>
-              <div>
-                <div className="stat-val" style={{ color: '#10B981' }}>{nurses.filter(n => n.certificateVerified).length}</div>
-                <div className="stat-label">Verified Registered RNs</div>
-              </div>
-            </div>
-            <div className="stat-card">
-              <div className="stat-icon" style={{ background: '#FFFBEB', color: '#D97706' }}>
-                <AlertCircle size={22} />
-              </div>
-              <div>
-                <div className="stat-val" style={{ color: '#D97706' }}>{nurses.filter(n => !n.certificateVerified).length}</div>
-                <div className="stat-label">Pending Verification</div>
-              </div>
-            </div>
-            <div className="stat-card">
-              <div className="stat-icon" style={{ background: '#FAF5FF', color: '#9333EA' }}>
-                <Activity size={22} />
-              </div>
-              <div>
-                <div className="stat-val" style={{ color: '#9333EA' }}>{nurses.filter(n => n.status === 'Active').length}</div>
-                <div className="stat-label">Active On Standby</div>
-              </div>
-            </div>
-          </div>
-        )}
-
-        {activeTab === 'services' && (
-          <div className="stats-grid" style={{ marginBottom: 0 }}>
-            <div className="stat-card">
-              <div className="stat-icon" style={{ background: '#EFF6FF', color: '#0284C7' }}>
-                <Layers size={22} />
-              </div>
-              <div>
-                <div className="stat-val">{services.length}</div>
-                <div className="stat-label">Total Catalog Services</div>
-              </div>
-            </div>
-            <div className="stat-card">
-              <div className="stat-icon" style={{ background: '#ECFDF5', color: '#10B981' }}>
-                <CheckCircle size={22} />
-              </div>
-              <div>
-                <div className="stat-val" style={{ color: '#10B981' }}>{services.length}</div>
-                <div className="stat-label">Active Procedures</div>
-              </div>
-            </div>
-            <div className="stat-card">
-              <div className="stat-icon" style={{ background: '#FAF5FF', color: '#9333EA' }}>
-                <Stethoscope size={22} />
-              </div>
-              <div>
-                <div className="stat-val" style={{ color: '#9333EA' }}>{services.filter(s => s.prescriptionRequired).length}</div>
-                <div className="stat-label">Mandatory Rx Procedures</div>
-              </div>
-            </div>
-            <div className="stat-card">
-              <div className="stat-icon" style={{ background: '#FFFBEB', color: '#D97706' }}>
-                <DollarSign size={22} />
-              </div>
-              <div>
-                <div className="stat-val" style={{ color: '#D97706' }}>₹{Math.round(services.reduce((sum, s) => sum + (s.singleVisitPrice || s.priceNumber || 800), 0) / (services.length || 1))}</div>
-                <div className="stat-label">Avg Base Procedure Fee</div>
-              </div>
-            </div>
-          </div>
-        )}
-
-        {activeTab === 'leads' && (
-          <div className="stats-grid" style={{ marginBottom: 0 }}>
-            <div className="stat-card">
-              <div className="stat-icon" style={{ background: '#EFF6FF', color: '#0284C7' }}>
-                <Users size={22} />
-              </div>
-              <div>
-                <div className="stat-val">{leads.length}</div>
-                <div className="stat-label">Total Leads Received</div>
-              </div>
-            </div>
-            <div className="stat-card">
-              <div className="stat-icon" style={{ background: '#FFFBEB', color: '#D97706' }}>
-                <Clock size={22} />
-              </div>
-              <div>
-                <div className="stat-val" style={{ color: '#D97706' }}>{leads.filter(l => l.status === 'Pending Approval' || l.status === 'Submitted').length}</div>
-                <div className="stat-label">Awaiting Admin Decision</div>
-              </div>
-            </div>
-            <div className="stat-card">
-              <div className="stat-icon" style={{ background: '#ECFDF5', color: '#10B981' }}>
-                <CheckCircle size={22} />
-              </div>
-              <div>
-                <div className="stat-val" style={{ color: '#10B981' }}>{leads.filter(l => l.status === 'Approved' || l.status === 'Converted').length}</div>
-                <div className="stat-label">Approved & Credited (+50 pts)</div>
-              </div>
-            </div>
-            <div className="stat-card">
-              <div className="stat-icon" style={{ background: '#FEF2F2', color: '#DC2626' }}>
-                <X size={22} />
-              </div>
-              <div>
-                <div className="stat-val" style={{ color: '#DC2626' }}>{leads.filter(l => l.status === 'Rejected' || Boolean(l.rejectionReason)).length}</div>
-                <div className="stat-label">Rejected by Admin (₹0)</div>
-              </div>
-            </div>
-          </div>
-        )}
-
-        {activeTab === 'consultations' && (
-          <div className="stats-grid" style={{ marginBottom: 0 }}>
-            <div className="stat-card">
-              <div className="stat-icon" style={{ background: '#EFF6FF', color: '#0284C7' }}>
-                <Stethoscope size={22} />
-              </div>
-              <div>
-                <div className="stat-val">{consultations.length}</div>
-                <div className="stat-label">Total Tele-Consultations</div>
-              </div>
-            </div>
-            <div className="stat-card">
-              <div className="stat-icon" style={{ background: '#FFFBEB', color: '#D97706' }}>
-                <Clock size={22} />
-              </div>
-              <div>
-                <div className="stat-val" style={{ color: '#D97706' }}>{consultations.filter(c => c.status === 'Awaiting Call').length}</div>
-                <div className="stat-label">Awaiting Doctor Call</div>
-              </div>
-            </div>
-            <div className="stat-card">
-              <div className="stat-icon" style={{ background: '#ECFDF5', color: '#10B981' }}>
-                <FileText size={22} />
-              </div>
-              <div>
-                <div className="stat-val" style={{ color: '#10B981' }}>{consultations.filter(c => c.status === 'Prescription Issued').length}</div>
-                <div className="stat-label">Prescriptions Issued</div>
-              </div>
-            </div>
-            <div className="stat-card">
-              <div className="stat-icon" style={{ background: '#FAF5FF', color: '#9333EA' }}>
-                <CheckCircle size={22} />
-              </div>
-              <div>
-                <div className="stat-val" style={{ color: '#9333EA' }}>{consultations.filter(c => c.status === 'Completed').length}</div>
-                <div className="stat-label">Completed Consults</div>
-              </div>
-            </div>
-          </div>
-        )}
-
-        {activeTab === 'coupons' && (
-          <div className="stats-grid" style={{ marginBottom: 0 }}>
-            <div className="stat-card">
-              <div className="stat-icon" style={{ background: '#EFF6FF', color: '#0284C7' }}>
-                <Tag size={22} />
-              </div>
-              <div>
-                <div className="stat-val">{coupons.length}</div>
-                <div className="stat-label">Total Promo Coupons</div>
-              </div>
-            </div>
-            <div className="stat-card">
-              <div className="stat-icon" style={{ background: '#ECFDF5', color: '#10B981' }}>
-                <CheckCircle size={22} />
-              </div>
-              <div>
-                <div className="stat-val" style={{ color: '#10B981' }}>{coupons.filter(c => c.status === 'Active').length}</div>
-                <div className="stat-label">Active Live Coupons</div>
-              </div>
-            </div>
-            <div className="stat-card">
-              <div className="stat-icon" style={{ background: '#FAF5FF', color: '#9333EA' }}>
-                <Users size={22} />
-              </div>
-              <div>
-                <div className="stat-val" style={{ color: '#9333EA' }}>{coupons.reduce((sum, c) => sum + (c.timesUsed || 0), 0)}</div>
-                <div className="stat-label">Total Times Redeemed</div>
-              </div>
-            </div>
-            <div className="stat-card">
-              <div className="stat-icon" style={{ background: '#FFFBEB', color: '#D97706' }}>
-                <Percent size={22} />
-              </div>
-              <div>
-                <div className="stat-val" style={{ color: '#D97706' }}>Active</div>
-                <div className="stat-label">Discount Engine Status</div>
-              </div>
-            </div>
-          </div>
-        )}
-
-        {activeTab === 'credentials' && (
-          <div className="stats-grid" style={{ marginBottom: 0 }}>
-            <div className="stat-card">
-              <div className="stat-icon" style={{ background: '#EFF6FF', color: '#0284C7' }}>
-                <KeyRound size={22} />
-              </div>
-              <div>
-                <div className="stat-val">{appUsers.length}</div>
-                <div className="stat-label">Total Staff Credentials</div>
-              </div>
-            </div>
-            <div className="stat-card">
-              <div className="stat-icon" style={{ background: '#FAF5FF', color: '#9333EA' }}>
-                <ShieldCheck size={22} />
-              </div>
-              <div>
-                <div className="stat-val" style={{ color: '#9333EA' }}>{appUsers.filter(u => u.role === 'admin').length}</div>
-                <div className="stat-label">Central Admin Accounts</div>
-              </div>
-            </div>
-            <div className="stat-card">
-              <div className="stat-icon" style={{ background: '#ECFDF5', color: '#10B981' }}>
-                <Stethoscope size={22} />
-              </div>
-              <div>
-                <div className="stat-val" style={{ color: '#10B981' }}>{appUsers.filter(u => u.role === 'doctor').length}</div>
-                <div className="stat-label">Clinical Doctor Accounts</div>
-              </div>
-            </div>
-            <div className="stat-card">
-              <div className="stat-icon" style={{ background: '#FFFBEB', color: '#D97706' }}>
-                <Users size={22} />
-              </div>
-              <div>
-                <div className="stat-val" style={{ color: '#D97706' }}>{appUsers.filter(u => u.role === 'nurse').length}</div>
-                <div className="stat-label">Registered Nurse Logins</div>
-              </div>
-            </div>
-          </div>
-        )}
-
-        {activeTab === 'storage' && (
-          <div className="stats-grid" style={{ marginBottom: 0 }}>
-            <div className="stat-card">
-              <div className="stat-icon" style={{ background: '#EFF6FF', color: '#0284C7' }}>
-                <Cloud size={22} />
-              </div>
-              <div>
-                <div className="stat-val">{storageObjects.length}</div>
-                <div className="stat-label">Total Cloudflare R2 Files</div>
-              </div>
-            </div>
-            <div className="stat-card">
-              <div className="stat-icon" style={{ background: '#ECFDF5', color: '#10B981' }}>
-                <FileText size={22} />
-              </div>
-              <div>
-                <div className="stat-val" style={{ color: '#10B981' }}>{storageObjects.filter(o => o.category === 'prescriptions').length}</div>
-                <div className="stat-label">Digital Prescriptions</div>
-              </div>
-            </div>
-            <div className="stat-card">
-              <div className="stat-icon" style={{ background: '#FAF5FF', color: '#9333EA' }}>
-                <Receipt size={22} />
-              </div>
-              <div>
-                <div className="stat-val" style={{ color: '#9333EA' }}>{storageObjects.filter(o => o.category === 'invoices').length}</div>
-                <div className="stat-label">Invoices Stored</div>
-              </div>
-            </div>
-            <div className="stat-card">
-              <div className="stat-icon" style={{ background: '#FFFBEB', color: '#D97706' }}>
-                <ShieldCheck size={22} />
-              </div>
-              <div>
-                <div className="stat-val" style={{ color: '#D97706' }}>{storageObjects.filter(o => o.category === 'certificates').length}</div>
-                <div className="stat-label">Nurse Certificates</div>
-              </div>
-            </div>
-          </div>
-        )}
-      </div>
-
       {/* SMART ROUTING ENGINE (SECTION 6 BLUEPRINT) */}
       {activeTab === 'routing' && (
         <div>
-          {/* Rules Overview Callouts */}
-          <div className="admin-rules-grid">
-            <div className="rule-callout rule-1" style={{ marginBottom: 0 }}>
-              <div>
-                <strong style={{ fontSize: '1rem', display: 'block', marginBottom: '0.25rem' }}>
-                  Rule 1 — Order-to-Nurse Assignment
-                </strong>
-                <p style={{ fontSize: '0.85rem' }}>
-                  When a nurse refers a patient (brings in an order), that order must be assigned back to that same nurse and be clearly visible on their dashboard as "your order".
-                </p>
-              </div>
-            </div>
-
-            <div className="rule-callout rule-2" style={{ marginBottom: 0 }}>
-              <div>
-                <strong style={{ fontSize: '1rem', display: 'block', marginBottom: '0.25rem' }}>
-                  Rule 2 — Area-Based Routing
-                </strong>
-                <p style={{ fontSize: '0.85rem' }}>
-                  Example: A patient in Gachibowli vs. LB Nagar. The system routes/notifies the nurse whose service area matches the patient’s location — reflecting on that nurse’s dashboard in real-time.
-                </p>
-              </div>
-            </div>
-          </div>
-
-          {/* Interactive Routing Simulator */}
-          <div className="card">
-            <div className="card-header">
-              <h3 className="card-title">Live Dispatch & Area-Routing Simulator</h3>
-              <span className="status-pill info">Automated Dispatcher</span>
-            </div>
-            <div className="card-body">
-              <p style={{ fontSize: '0.9rem', color: 'var(--neutral-600)', marginBottom: '1.25rem' }}>
-                Test the algorithmic routing engine with any patient neighborhood and referral condition:
-              </p>
-
-              <div className="routing-sim-grid">
-                <div>
-                  <label className="form-label">Patient Hyderabad Location / Area</label>
-                  <input
-                    type="text"
-                    list="sim-areas-list"
-                    className="form-control"
-                    placeholder="Enter locality e.g. Kondapur, Gachibowli, Kukatpally..."
-                    value={testSimPatientArea}
-                    onChange={(e) => setTestSimPatientArea(e.target.value)}
-                  />
-                  <datalist id="sim-areas-list">
-                    <option value="Gachibowli" />
-                    <option value="LB Nagar" />
-                    <option value="Madhapur" />
-                    <option value="Banjara Hills" />
-                    <option value="Kukatpally" />
-                    <option value="Kondapur" />
-                    <option value="Jubilee Hills" />
-                    <option value="Secunderabad" />
-                  </datalist>
-                </div>
-
-                <div>
-                  <label className="form-label">Referring Source</label>
-                  <select
-                    className="form-control"
-                    value={testSimReferringNurse}
-                    onChange={(e) => setTestSimReferringNurse(e.target.value)}
-                  >
-                    <option value="none">Direct Public Patient / WhatsApp Booking (Rule 2 Area Match)</option>
-                    {nurses.map((n) => (
-                      <option key={n.id} value={n.id}>
-                        Referred by {n.name} (Rule 1 Lock)
-                      </option>
-                    ))}
-                  </select>
-                </div>
-
-                <button onClick={runRoutingSimulation} className="btn btn-primary" style={{ height: 44 }}>
-                  <Shuffle size={16} />
-                  <span>Execute Routing Check</span>
-                </button>
-              </div>
-
-              {simulationResult && (
-                <div style={{ padding: '1rem 1.25rem', background: '#F8FAFC', border: '1.5px solid #0284C7', borderRadius: 'var(--radius-md)', color: '#0F172A', fontSize: '0.92rem', lineHeight: 1.6 }}>
-                  {simulationResult}
-                </div>
-              )}
-            </div>
-          </div>
-
-          {/* Pending Dispatches Table with One-Click Routing */}
+          {/* Pending Dispatches Table with One-Click Routing & Bulk Deletion */}
           <div className="card">
             <div className="card-header">
               <div>
                 <h3 className="card-title">Pending Unassigned Bookings ({pendingBookings.length})</h3>
-                <p style={{ fontSize: '0.8rem', color: 'var(--neutral-500)' }}>
-                  New orders awaiting automated or manual dispatch
+                <p style={{ fontSize: '0.8rem', color: 'var(--neutral-500)', margin: 0 }}>
+                  New doorstep clinical orders awaiting dispatch
                 </p>
               </div>
               <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center', flexWrap: 'wrap' }}>
@@ -2379,14 +1974,32 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                 )}
                 <button onClick={onAutoRouteAll} className="btn btn-danger btn-sm">
                   <Shuffle size={14} />
-                  <span>Auto-Route All Pending via Rule 2</span>
+                  <span>⚡ Auto-Assign All Waiting Bookings</span>
                 </button>
               </div>
             </div>
+
+            {renderBulkActionBar({
+              entityName: 'Unassigned Bookings',
+              filteredIds: pendingBookings.map((b) => b.id),
+              selectedSet: selectedRoutingBookingIds,
+              setSelectedSet: setSelectedRoutingBookingIds,
+              onDeleteMultiple: onDeleteMultipleBookings
+            })}
+
             <div className="table-responsive">
               <table className="data-table data-table-wide">
                 <thead>
                   <tr>
+                    <th style={{ width: 40, textAlign: 'center' }}>
+                      <input
+                        type="checkbox"
+                        checked={pendingBookings.length > 0 && pendingBookings.every((b) => selectedRoutingBookingIds.has(b.id))}
+                        onChange={() => toggleSelectAll(pendingBookings.map((b) => b.id), selectedRoutingBookingIds, setSelectedRoutingBookingIds)}
+                        style={{ cursor: 'pointer', accentColor: '#E11D48', width: 16, height: 16 }}
+                        title="Select / Deselect All Unassigned Orders"
+                      />
+                    </th>
                     <th>Booking ID</th>
                     <th>Patient</th>
                     <th>Procedure</th>
@@ -2398,13 +2011,23 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                 <tbody>
                   {pendingBookings.length === 0 ? (
                     <tr>
-                      <td colSpan={6} style={{ textAlign: 'center', padding: '2rem', color: 'var(--neutral-500)' }}>
+                      <td colSpan={7} style={{ textAlign: 'center', padding: '2rem', color: 'var(--neutral-500)' }}>
                         ✓ All active bookings have been routed and assigned to local nurses!
                       </td>
                     </tr>
                   ) : (
-                    pendingBookings.map((b) => (
-                      <tr key={b.id}>
+                    pendingBookings.map((b) => {
+                      const isSelected = selectedRoutingBookingIds.has(b.id);
+                      return (
+                      <tr key={b.id} style={{ background: isSelected ? '#FFF1F2' : undefined }}>
+                        <td style={{ textAlign: 'center', width: 40 }}>
+                          <input
+                            type="checkbox"
+                            checked={isSelected}
+                            onChange={() => toggleItemSelection(b.id, setSelectedRoutingBookingIds)}
+                            style={{ cursor: 'pointer', accentColor: '#E11D48', width: 16, height: 16 }}
+                          />
+                        </td>
                         <td style={{ whiteSpace: 'nowrap' }}><strong style={{ fontFamily: 'monospace' }}>{b.id}</strong></td>
                         <td style={{ whiteSpace: 'nowrap' }}>
                           <div style={{ fontWeight: 750, color: 'var(--primary-navy-950)' }}>{b.patientName}</div>
@@ -2585,9 +2208,10 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                           </div>
                         </td>
                       </tr>
-                    ))
-                  )}
-                </tbody>
+                    );
+                  })
+                )}
+              </tbody>
               </table>
             </div>
           </div>
@@ -3139,49 +2763,6 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
 
         return (
         <div style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
-          {/* Nurse Roster Summary Stats Cards */}
-          <div className="stats-grid" style={{ marginBottom: 0 }}>
-            <div className="stat-card">
-              <div className="stat-icon" style={{ background: '#EEF2FF', color: '#4F46E5' }}>
-                <Users size={22} />
-              </div>
-              <div>
-                <div className="stat-val">{totalNursesCount}</div>
-                <div className="stat-label">Total Registered Fleet</div>
-              </div>
-            </div>
-
-            <div className="stat-card">
-              <div className="stat-icon" style={{ background: '#ECFDF5', color: '#059669' }}>
-                <Activity size={22} />
-              </div>
-              <div>
-                <div className="stat-val">{activeNursesCount}</div>
-                <div className="stat-label">Active on Duty</div>
-              </div>
-            </div>
-
-            <div className="stat-card">
-              <div className="stat-icon" style={{ background: '#EFF6FF', color: '#1D4ED8' }}>
-                <ShieldCheck size={22} />
-              </div>
-              <div>
-                <div className="stat-val">{verifiedNursesCount}</div>
-                <div className="stat-label">Certificate Verified RNs</div>
-              </div>
-            </div>
-
-            <div className="stat-card">
-              <div className="stat-icon" style={{ background: '#FEF3C7', color: '#B45309' }}>
-                <Award size={22} />
-              </div>
-              <div>
-                <div className="stat-val">{referredNursesCount}</div>
-                <div className="stat-label">Referred Colleagues ({directNursesCount} Direct)</div>
-              </div>
-            </div>
-          </div>
-
           <div className="card">
             <div className="card-header" style={{ flexWrap: 'wrap', gap: '0.75rem' }}>
               <div>
@@ -3327,7 +2908,27 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                       <th>Nurse</th>
                       <th>Signup Origin</th>
                       <th>Referral Code</th>
-                      <th>Login PIN & Access</th>
+                      <th>
+                        <div style={{ display: 'inline-flex', alignItems: 'center', gap: '0.35rem' }}>
+                          <span>Login PIN & Access</span>
+                          <button
+                            type="button"
+                            onClick={() => setShowAllPins(!showAllPins)}
+                            title={showAllPins ? 'Hide All PINs' : 'Reveal All PINs'}
+                            style={{
+                              background: 'transparent',
+                              border: 'none',
+                              cursor: 'pointer',
+                              padding: 2,
+                              color: showAllPins ? '#0284C7' : 'var(--neutral-400)',
+                              display: 'inline-flex',
+                              alignItems: 'center'
+                            }}
+                          >
+                            {showAllPins ? <EyeOff size={13} /> : <Eye size={13} />}
+                          </button>
+                        </div>
+                      </th>
                       <th>Service Area (Rule 2)</th>
                       <th>Qualification</th>
                       <th>Experience</th>
@@ -3340,11 +2941,29 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                   </thead>
                   <tbody>
                     {filteredNurses.map((n) => {
-                      const userObj = appUsers.find(
-                        (u) => u.id === n.id || u.phone === n.phone || u.email?.toLowerCase().includes(n.name.toLowerCase().split(' ')[1] || 'never')
-                      );
-                      const userPin = userObj?.pin || '1001';
-                      const isRevealed = showAllPins || revealedPinIds[n.id];
+                      const nursePhoneDigits = (n.phone || '').replace(/\D/g, '');
+                      const nurseLast10 = nursePhoneDigits.length >= 10 ? nursePhoneDigits.slice(-10) : nursePhoneDigits;
+                      const userObj = appUsers.find((u) => {
+                        const uPhoneDigits = (u.phone || '').replace(/\D/g, '');
+                        const uLast10 = uPhoneDigits.length >= 10 ? uPhoneDigits.slice(-10) : uPhoneDigits;
+                        const uNameDigits = (u.name || '').replace(/\D/g, '');
+                        return (
+                          u.id === n.id ||
+                          (nurseLast10 && uLast10 && nurseLast10 === uLast10) ||
+                          (nursePhoneDigits && uPhoneDigits && (nursePhoneDigits === uPhoneDigits || nursePhoneDigits.endsWith(uPhoneDigits) || uPhoneDigits.endsWith(nursePhoneDigits))) ||
+                          (nurseLast10 && uNameDigits && uNameDigits === nurseLast10) ||
+                          (u.email && n.email && u.email.toLowerCase().trim() === n.email.toLowerCase().trim()) ||
+                          (u.identifier && n.email && u.identifier.toLowerCase().trim() === n.email.toLowerCase().trim()) ||
+                          (u.identifier && nurseLast10 && u.identifier.includes(nurseLast10)) ||
+                          (u.name && n.name && u.name.toLowerCase().trim() === n.name.toLowerCase().trim())
+                        );
+                      });
+                      const userPin = (n.pin && n.pin !== '••••' && n.pin.trim() !== '')
+                        ? n.pin.trim()
+                        : ((userObj?.pin && userObj.pin !== '••••' && userObj.pin.trim() !== '')
+                          ? userObj.pin.trim()
+                          : '••••');
+                      const isRevealed = showAllPins || revealedPinIds[n.id] || (userObj && revealedPinIds[userObj.id]);
                       const nurseCode = n.referralCode || generateNurseReferralCode(n.name, n.id, n.phone);
                       const isCopiedCode = copiedRefCodeId === n.id;
                       const isSelected = selectedNurseIds.has(n.id);
@@ -3493,8 +3112,72 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                           <div>Leads: {n.totalLeads}</div>
                           <div style={{ fontSize: '0.78rem', color: 'var(--neutral-500)' }}>Ref: {n.totalReferrals || 0}</div>
                         </td>
-                        <td><strong>{n.pointsEarned} pts</strong></td>
-                        <td><strong style={{ color: '#059669' }}>₹{n.referralEarningsRupees}</strong></td>
+                        <td>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
+                            <strong>{n.pointsEarned} pts</strong>
+                            <button
+                              type="button"
+                              onClick={async (e) => {
+                                e.stopPropagation();
+                                const added = prompt(`Adjust points for ${n.name} (enter number, e.g. 50, 100, or -50):`, '50');
+                                if (added !== null) {
+                                  const num = parseInt(added, 10);
+                                  if (!isNaN(num) && num !== 0) {
+                                    const nextPoints = Math.max(0, (n.pointsEarned || 0) + num);
+                                    await onUpdateNurseRecord?.(n.id, { pointsEarned: nextPoints });
+                                    showToast(`Updated ${n.name}'s points to ${nextPoints} pts!`);
+                                  }
+                                }
+                              }}
+                              title="Quick Adjust Points"
+                              style={{
+                                background: '#FEF3C7',
+                                border: '1px solid #FDE68A',
+                                color: '#D97706',
+                                borderRadius: 4,
+                                padding: '2px 6px',
+                                fontSize: '0.68rem',
+                                fontWeight: 800,
+                                cursor: 'pointer'
+                              }}
+                            >
+                              +pts
+                            </button>
+                          </div>
+                        </td>
+                        <td>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
+                            <strong style={{ color: '#059669' }}>₹{n.referralEarningsRupees}</strong>
+                            <button
+                              type="button"
+                              onClick={async (e) => {
+                                e.stopPropagation();
+                                const added = prompt(`Adjust referral cash for ${n.name} (enter ₹ amount, e.g. 100, 500, or -100):`, '100');
+                                if (added !== null) {
+                                  const num = parseInt(added, 10);
+                                  if (!isNaN(num) && num !== 0) {
+                                    const nextCash = Math.max(0, (n.referralEarningsRupees || 0) + num);
+                                    await onUpdateNurseRecord?.(n.id, { referralEarningsRupees: nextCash });
+                                    showToast(`Updated ${n.name}'s referral cash to ₹${nextCash}!`);
+                                  }
+                                }
+                              }}
+                              title="Quick Adjust Referral Cash"
+                              style={{
+                                background: '#ECFDF5',
+                                border: '1px solid #A7F3D0',
+                                color: '#059669',
+                                borderRadius: 4,
+                                padding: '2px 6px',
+                                fontSize: '0.68rem',
+                                fontWeight: 800,
+                                cursor: 'pointer'
+                              }}
+                            >
+                              +₹
+                            </button>
+                          </div>
+                        </td>
                         <td>
                           <div style={{ display: 'flex', flexDirection: 'column', gap: '0.35rem', alignItems: 'flex-start' }}>
                             {n.certificateVerified ? (
@@ -3634,50 +3317,6 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
       {/* SERVICES & PRICING CATALOG TAB (FULL SUPABASE CRUD) */}
       {activeTab === 'services' && (
         <div style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
-          <div className="stats-grid" style={{ marginBottom: 0 }}>
-            <div className="stat-card">
-              <div className="stat-icon" style={{ background: '#EEF2FF', color: '#4F46E5' }}>
-                <Layers size={22} />
-              </div>
-              <div>
-                <div className="stat-val">{services.length}</div>
-                <div className="stat-label">Total Clinical Procedures</div>
-              </div>
-            </div>
-
-            <div className="stat-card">
-              <div className="stat-icon" style={{ background: '#FEF2F2', color: '#DC2626' }}>
-                <FileText size={22} />
-              </div>
-              <div>
-                <div className="stat-val">{services.filter((s) => s.prescriptionRequired).length}</div>
-                <div className="stat-label">Doctor Rx Required</div>
-              </div>
-            </div>
-
-            <div className="stat-card">
-              <div className="stat-icon" style={{ background: '#ECFDF5', color: '#059669' }}>
-                <DollarSign size={22} />
-              </div>
-              <div>
-                <div className="stat-val">
-                  ₹{services.length > 0 ? Math.round(services.reduce((acc, s) => acc + (s.priceNumber || 0), 0) / services.length) : 0}
-                </div>
-                <div className="stat-label">Avg Procedure Price</div>
-              </div>
-            </div>
-
-            <div className="stat-card">
-              <div className="stat-icon" style={{ background: '#FFFBEB', color: '#D97706' }}>
-                <Sparkles size={22} />
-              </div>
-              <div>
-                <div className="stat-val">{services.filter((s) => s.badge).length}</div>
-                <div className="stat-label">Highlighted Featured Badges</div>
-              </div>
-            </div>
-          </div>
-
           <div className="card">
             <div className="card-header" style={{ flexWrap: 'wrap', gap: '0.75rem' }}>
               <div>
@@ -3886,9 +3525,9 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
         <div className="card">
           <div className="card-header" style={{ flexWrap: 'wrap', gap: '0.75rem' }}>
             <div>
-              <h3 className="card-title">Nurse-Generated Leads Pipeline</h3>
-              <p style={{ fontSize: '0.82rem', color: 'var(--neutral-500)', margin: 0 }}>
-                Total: {leads.length} referral leads | Synced with Supabase <code>leads</code> table
+              <h3 className="card-title">Patient Referrals by Nurses</h3>
+              <p style={{ fontSize: '0.84rem', color: 'var(--neutral-500)', margin: 0 }}>
+                Total: {leads.length} referrals | Every approved patient gives the nurse +50 Reward Points
               </p>
             </div>
             <button
@@ -3897,7 +3536,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
               style={{ borderRadius: 9999, fontWeight: 700, gap: '0.4rem' }}
             >
               <Plus size={16} />
-              <span>Record New Lead</span>
+              <span>Add Patient Referral</span>
             </button>
           </div>
 
@@ -3906,8 +3545,8 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
             <div style={{
               margin: '0.85rem 1.25rem 0',
               padding: '0.85rem 1.15rem',
-              background: 'linear-gradient(135deg, #FFFBEB 0%, #FEF3C7 100%)',
-              border: '1px solid #FCD34D',
+              background: 'linear-gradient(135deg, #ECFDF5 0%, #D1FAE5 100%)',
+              border: '1px solid #10B981',
               borderRadius: 12,
               display: 'flex',
               alignItems: 'center',
@@ -3917,24 +3556,24 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
             }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: '0.65rem' }}>
                 <div style={{
-                  width: 34,
-                  height: 34,
+                  width: 36,
+                  height: 36,
                   borderRadius: '50%',
-                  background: '#F59E0B',
+                  background: '#059669',
                   color: '#FFFFFF',
                   display: 'flex',
                   alignItems: 'center',
                   justifyContent: 'center',
                   fontWeight: 900
                 }}>
-                  !
+                  <Award size={20} />
                 </div>
                 <div>
-                  <div style={{ fontWeight: 800, color: '#92400E', fontSize: '0.92rem' }}>
-                    {leads.filter((l) => l.status === 'Pending Approval').length} Nurse Lead(s) Awaiting Admin Decision & Approval
+                  <div style={{ fontWeight: 800, color: '#065F46', fontSize: '0.94rem' }}>
+                    {leads.filter((l) => l.status === 'Pending Approval').length} Patient Referral(s) Waiting for Office Approval
                   </div>
-                  <div style={{ fontSize: '0.78rem', color: '#B45309' }}>
-                    Nurses do not receive reward points or referral earnings until Admin reviews and decides the amounts below.
+                  <div style={{ fontSize: '0.8rem', color: '#047857' }}>
+                    Click Approve below to automatically add +50 Reward Points to the referring nurse.
                   </div>
                 </div>
               </div>
@@ -3942,17 +3581,17 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                 type="button"
                 onClick={() => setLeadStatusFilter('Pending Approval')}
                 style={{
-                  background: '#D97706',
+                  background: '#059669',
                   color: '#FFFFFF',
                   border: 'none',
                   borderRadius: 9999,
                   fontWeight: 700,
-                  fontSize: '0.78rem',
-                  padding: '0.4rem 0.95rem',
+                  fontSize: '0.8rem',
+                  padding: '0.45rem 1.1rem',
                   cursor: 'pointer'
                 }}
               >
-                Review Pending ({leads.filter((l) => l.status === 'Pending Approval').length})
+                Review Waiting ({leads.filter((l) => l.status === 'Pending Approval').length})
               </button>
             </div>
           )}
@@ -4035,10 +3674,9 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                       <th>Service</th>
                       <th>Area</th>
                       <th>Referring Nurse</th>
-                      <th>Points Decided</th>
-                      <th>Referral Earning</th>
-                      <th>Decision Status</th>
-                      <th style={{ textAlign: 'right' }}>Admin Decision & Actions</th>
+                      <th>Reward</th>
+                      <th>Status</th>
+                      <th style={{ textAlign: 'right' }}>Actions</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -4100,42 +3738,11 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                           )}
                         </td>
                         <td>
-                          {isPending ? (
-                            <span style={{ 
-                              background: '#FEF3C7', 
-                              color: '#92400E', 
-                              fontSize: '0.75rem', 
-                              fontWeight: 700, 
-                              padding: '0.2rem 0.5rem', 
-                              borderRadius: 6 
-                            }}>
-                              ⏳ Pending Admin Decision
-                            </span>
-                          ) : isRejected ? (
+                          {isRejected ? (
                             <span style={{ color: 'var(--neutral-400)', fontSize: '0.8rem' }}>0 pts</span>
                           ) : (
                             <strong style={{ color: '#059669', fontSize: '0.9rem' }}>
-                              +{l.pointsAwarded || 50} pts
-                            </strong>
-                          )}
-                        </td>
-                        <td>
-                          {isPending ? (
-                            <span style={{ 
-                              background: '#FEF3C7', 
-                              color: '#92400E', 
-                              fontSize: '0.75rem', 
-                              fontWeight: 700, 
-                              padding: '0.2rem 0.5rem', 
-                              borderRadius: 6 
-                            }}>
-                              ⏳ Est. ₹{l.referralCommissionRupees || Math.round((l.leadValueRupees || 800) * 0.1)}
-                            </span>
-                          ) : isRejected ? (
-                            <span style={{ color: 'var(--neutral-400)', fontSize: '0.8rem' }}>₹0</span>
-                          ) : (
-                            <strong style={{ color: '#059669', fontSize: '0.9rem' }}>
-                              ₹{l.referralCommissionRupees !== undefined ? l.referralCommissionRupees : Math.round((l.leadValueRupees || 800) * 0.1)}
+                              +50 pts
                             </strong>
                           )}
                         </td>
@@ -4146,7 +3753,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                             isRejected ? 'danger' :
                             l.status === 'Submitted' ? 'info' : 'neutral'
                           }`}>
-                            {isPending ? '⏳ Pending Approval' : isApproved ? '✓ Approved' : isRejected ? '✕ Rejected by Admin' : l.status}
+                            {isPending ? '⏳ Waiting Approval' : isApproved ? '✓ Approved (+50 Pts)' : isRejected ? '✕ Rejected' : l.status}
                           </span>
                           {isRejected && (l.rejectionReason || l.adminNotes) && (
                             <div style={{ fontSize: '0.72rem', color: '#B91C1C', background: '#FEF2F2', border: '1px solid #FECACA', padding: '3px 6px', borderRadius: 4, marginTop: '0.35rem', maxWidth: 220 }}>
@@ -4170,19 +3777,19 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                                   color: '#FFFFFF',
                                   border: 'none',
                                   borderRadius: 8,
-                                  padding: '0.35rem 0.7rem',
+                                  padding: '0.35rem 0.75rem',
                                   fontWeight: 700,
-                                  fontSize: '0.76rem',
+                                  fontSize: '0.78rem',
                                   cursor: 'pointer',
                                   display: 'inline-flex',
                                   alignItems: 'center',
                                   gap: '0.3rem',
                                   boxShadow: '0 2px 5px rgba(5,150,105,0.25)'
                                 }}
-                                title="Admin Decides Points and Commission to Approve"
+                                title="Approve Referral (+50 Points)"
                               >
                                 <CheckCircle size={13} />
-                                <span>Decide & Approve</span>
+                                <span>Approve (+50 Pts)</span>
                               </button>
                             )}
 
@@ -4203,10 +3810,10 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                                   alignItems: 'center',
                                   gap: '0.25rem'
                                 }}
-                                title="Adjust Points or Referral Commission Awarded"
+                                title="Edit Referral"
                               >
                                 <Award size={12} />
-                                <span>Adjust</span>
+                                <span>Edit</span>
                               </button>
                             )}
 
@@ -4260,48 +3867,6 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
       {/* DOCTOR TELECONSULTATIONS TAB (FULL SUPABASE CRUD) */}
       {activeTab === 'consultations' && (
         <div style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
-          <div className="stats-grid" style={{ marginBottom: 0 }}>
-            <div className="stat-card">
-              <div className="stat-icon" style={{ background: '#E0F2FE', color: '#0284C7' }}>
-                <Stethoscope size={22} />
-              </div>
-              <div>
-                <div className="stat-val">{consultations.length}</div>
-                <div className="stat-label">Total Tele-Consults</div>
-              </div>
-            </div>
-
-            <div className="stat-card">
-              <div className="stat-icon" style={{ background: '#FFF1F2', color: '#E11D48' }}>
-                <Clock size={22} />
-              </div>
-              <div>
-                <div className="stat-val">{consultations.filter((c) => c.status === 'Awaiting Call').length}</div>
-                <div className="stat-label">Awaiting Doctor Call</div>
-              </div>
-            </div>
-
-            <div className="stat-card">
-              <div className="stat-icon" style={{ background: '#ECFDF5', color: '#059669' }}>
-                <CheckCircle size={22} />
-              </div>
-              <div>
-                <div className="stat-val">{consultations.filter((c) => c.prescriptionIssued).length}</div>
-                <div className="stat-label">Digital Rx Issued</div>
-              </div>
-            </div>
-
-            <div className="stat-card">
-              <div className="stat-icon" style={{ background: '#F5F3FF', color: '#7C3AED' }}>
-                <ShieldCheck size={22} />
-              </div>
-              <div>
-                <div className="stat-val">100%</div>
-                <div className="stat-label">MBBS Verification Rate</div>
-              </div>
-            </div>
-          </div>
-
           <div className="card">
             <div className="card-header" style={{ flexWrap: 'wrap', gap: '0.75rem' }}>
               <div>
@@ -4570,53 +4135,6 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
               <span>{couponFeedback}</span>
             </div>
           )}
-
-          {/* Quick Metrics Bar */}
-          <div className="stats-grid" style={{ marginBottom: 0 }}>
-            <div className="stat-card">
-              <div className="stat-icon" style={{ background: '#EEF2FF', color: '#4F46E5' }}>
-                <Tag size={22} />
-              </div>
-              <div>
-                <div className="stat-val">{coupons.length}</div>
-                <div className="stat-label">Total Coupons in Supabase</div>
-              </div>
-            </div>
-
-            <div className="stat-card">
-              <div className="stat-icon" style={{ background: '#ECFDF5', color: '#059669' }}>
-                <CheckCircle size={22} />
-              </div>
-              <div>
-                <div className="stat-val">{coupons.filter((c) => c.status === 'Active').length}</div>
-                <div className="stat-label">Active & Redeemable</div>
-              </div>
-            </div>
-
-            <div className="stat-card">
-              <div className="stat-icon" style={{ background: '#EFF6FF', color: '#0284C7' }}>
-                <Users size={22} />
-              </div>
-              <div>
-                <div className="stat-val">
-                  {coupons.reduce((sum, c) => sum + (c.timesUsed || 0), 0)}
-                </div>
-                <div className="stat-label">Total Redemptions by Patients</div>
-              </div>
-            </div>
-
-            <div className="stat-card">
-              <div className="stat-icon" style={{ background: '#FEF2F2', color: '#E11D48' }}>
-                <Percent size={22} />
-              </div>
-              <div>
-                <div className="stat-val" style={{ color: '#E11D48' }}>
-                  ₹{coupons.reduce((sum, c) => sum + ((c.timesUsed || 0) * (c.discountType === 'flat' ? c.discountValue : 120)), 0).toLocaleString()}
-                </div>
-                <div className="stat-label">Total Patient Savings Generated</div>
-              </div>
-            </div>
-          </div>
 
           {/* Main Card with Toolbar & Table */}
           <div className="card">
@@ -4901,56 +4419,6 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
       {/* STAFF & PATIENT CREDENTIALS DIRECTORY TAB */}
       {activeTab === 'credentials' && (
         <div style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
-          
-          {/* Quick Metrics Bar */}
-          <div className="stats-grid" style={{ marginBottom: 0 }}>
-            <div className="stat-card">
-              <div className="stat-icon" style={{ background: '#EEF2FF', color: '#4F46E5' }}>
-                <KeyRound size={22} />
-              </div>
-              <div>
-                <div className="stat-val">{appUsers.length}</div>
-                <div className="stat-label">Total Authenticated Users</div>
-              </div>
-            </div>
-
-            <div className="stat-card">
-              <div className="stat-icon" style={{ background: '#ECFDF5', color: '#059669' }}>
-                <Users size={22} />
-              </div>
-              <div>
-                <div className="stat-val">
-                  {appUsers.filter((u) => u.role === 'nurse').length}
-                </div>
-                <div className="stat-label">Fleet Nurses with PIN</div>
-              </div>
-            </div>
-
-            <div className="stat-card">
-              <div className="stat-icon" style={{ background: '#EFF6FF', color: '#0284C7' }}>
-                <Activity size={22} />
-              </div>
-              <div>
-                <div className="stat-val">
-                  {appUsers.filter((u) => u.role === 'doctor').length}
-                </div>
-                <div className="stat-label">Tele-Consult Doctors</div>
-              </div>
-            </div>
-
-            <div className="stat-card">
-              <div className="stat-icon" style={{ background: '#FFFBEB', color: '#D97706' }}>
-                <Shield size={22} />
-              </div>
-              <div>
-                <div className="stat-val">
-                  {appUsers.filter((u) => u.role === 'patient').length}
-                </div>
-                <div className="stat-label">Active Patient Accounts</div>
-              </div>
-            </div>
-          </div>
-
           {/* Master Credentials Directory Card */}
           <div className="card">
             <div className="card-header" style={{ flexWrap: 'wrap', gap: '0.75rem' }}>
@@ -5053,6 +4521,9 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                     <tbody>
                       {filteredUsers.map((u) => {
                         const isRevealed = showAllPins || revealedPinIds[u.id];
+                        const displayPin = (u.pin && u.pin !== '••••' && u.pin.trim() !== '')
+                          ? u.pin.trim()
+                          : (u.role === 'admin' ? '2026' : u.role === 'doctor' ? '4321' : '••••');
                         const roleBadgeClass = 
                           u.role === 'admin' ? 'admin' :
                           u.role === 'doctor' ? 'doctor' :
@@ -5118,7 +4589,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                             <div style={{ display: 'inline-flex', alignItems: 'center', gap: '0.35rem' }}>
                               <span className="pin-badge" style={{ fontSize: '0.92rem' }}>
                                 <Lock size={12} style={{ color: '#0284C7' }} />
-                                <span>{isRevealed ? u.pin : '••••'}</span>
+                                <span>{isRevealed ? displayPin : '••••'}</span>
                               </span>
                               <button
                                 type="button"
@@ -5131,7 +4602,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                               <button
                                 type="button"
                                 onClick={() => {
-                                  navigator.clipboard.writeText(u.pin);
+                                  navigator.clipboard.writeText(displayPin);
                                   setCopiedPinUserId(u.id);
                                   setTimeout(() => setCopiedPinUserId(null), 2000);
                                 }}
@@ -5277,134 +4748,6 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
       {/* CLOUDFLARE R2 BUCKET STORAGE ENGINE TAB */}
       {activeTab === 'storage' && (
         <div style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
-          {/* Header Action Banner */}
-          <div style={{
-            background: 'linear-gradient(135deg, #0A192F 0%, #0F2744 100%)',
-            borderRadius: 18,
-            padding: '1.5rem 1.75rem',
-            color: '#FFFFFF',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'space-between',
-            flexWrap: 'wrap',
-            gap: '1rem',
-            boxShadow: '0 8px 30px -4px rgba(10, 25, 47, 0.25)'
-          }}>
-            <div>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem', marginBottom: '0.35rem' }}>
-                <Cloud size={22} style={{ color: '#38BDF8' }} />
-                <h3 style={{ fontSize: '1.25rem', fontWeight: 800, color: '#FFFFFF', margin: 0 }}>
-                  Cloudflare R2 Storage Bucket
-                </h3>
-              </div>
-              <p style={{ fontSize: '0.84rem', color: '#94A3B8', margin: 0 }}>
-                Bucket: <strong style={{ color: '#38BDF8' }}>{r2Config.bucketName}</strong> • Endpoint: <span style={{ color: '#CBD5E1' }}>{r2Config.publicDomain}</span> • Zero Egress Fees Verified
-              </p>
-            </div>
-
-            <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
-              <button
-                type="button"
-                onClick={() => setIsR2ConfigModalOpen(true)}
-                className="btn btn-outline"
-                style={{
-                  background: 'rgba(255,255,255,0.08)',
-                  borderColor: 'rgba(255,255,255,0.2)',
-                  color: '#FFFFFF',
-                  borderRadius: 9999,
-                  fontSize: '0.8rem',
-                  gap: '0.35rem'
-                }}
-              >
-                <Settings size={14} />
-                <span>R2 Bucket Settings</span>
-              </button>
-              <button
-                type="button"
-                onClick={handleSyncAllInvoicesToCloudflare}
-                className="btn btn-outline"
-                style={{
-                  background: 'rgba(255,255,255,0.08)',
-                  borderColor: 'rgba(255,255,255,0.2)',
-                  color: '#FFFFFF',
-                  borderRadius: 9999,
-                  fontSize: '0.8rem',
-                  gap: '0.35rem'
-                }}
-              >
-                <Receipt size={14} />
-                <span>Sync Invoices to R2</span>
-              </button>
-              <button
-                type="button"
-                onClick={() => {
-                  setUploadForm({ fileName: '', category: 'prescriptions', bookingId: '', patientName: '', description: '' });
-                  setIsUploadModalOpen(true);
-                }}
-                className="btn btn-danger"
-                style={{
-                  borderRadius: 9999,
-                  fontWeight: 700,
-                  fontSize: '0.8rem',
-                  gap: '0.35rem',
-                  padding: '0.5rem 1.15rem'
-                }}
-              >
-                <UploadCloud size={15} />
-                <span>Upload Document</span>
-              </button>
-            </div>
-          </div>
-
-          {/* Key Metrics Stats Grid - Exactly 4 Important Cards */}
-          <div className="stats-grid" style={{ marginBottom: 0 }}>
-            <div className="stat-card">
-              <div className="stat-icon" style={{ background: '#EFF6FF', color: '#1D4ED8' }}>
-                <HardDrive size={22} />
-              </div>
-              <div>
-                <div className="stat-val">{storageObjects.length}</div>
-                <div className="stat-label">Total Bucket Objects</div>
-              </div>
-            </div>
-
-            <div className="stat-card">
-              <div className="stat-icon" style={{ background: '#ECFDF5', color: '#059669' }}>
-                <FileText size={22} />
-              </div>
-              <div>
-                <div className="stat-val" style={{ color: '#059669' }}>
-                  {storageObjects.filter((o) => o.category === 'prescriptions').length}
-                </div>
-                <div className="stat-label">Mandatory Prescriptions</div>
-              </div>
-            </div>
-
-            <div className="stat-card">
-              <div className="stat-icon" style={{ background: '#FFFBEB', color: '#D97706' }}>
-                <Receipt size={22} />
-              </div>
-              <div>
-                <div className="stat-val" style={{ color: '#D97706' }}>
-                  {storageObjects.filter((o) => o.category === 'invoices').length}
-                </div>
-                <div className="stat-label">Doorstep Invoices Stored</div>
-              </div>
-            </div>
-
-            <div className="stat-card">
-              <div className="stat-icon" style={{ background: '#F3E8FF', color: '#9333EA' }}>
-                <Award size={22} />
-              </div>
-              <div>
-                <div className="stat-val" style={{ color: '#9333EA' }}>
-                  {storageObjects.filter((o) => o.category === 'certificates').length}
-                </div>
-                <div className="stat-label">Nursing Certificates</div>
-              </div>
-            </div>
-          </div>
-
           {/* Storage Filter Toolbar & Table Card */}
           <div className="card" style={{ padding: 0, overflow: 'hidden' }}>
             {/* Filter Header */}
@@ -5458,17 +4801,59 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                 })}
               </div>
 
-              {/* Search Box */}
-              <div style={{ position: 'relative', width: 260 }}>
-                <Search size={14} style={{ position: 'absolute', left: 10, top: '50%', transform: 'translateY(-50%)', color: 'var(--neutral-400)' }} />
-                <input
-                  type="text"
-                  placeholder="Search file, patient, nurse..."
-                  value={storageSearch}
-                  onChange={(e) => setStorageSearch(e.target.value)}
-                  className="form-control"
-                  style={{ paddingLeft: '2rem', paddingRight: '0.75rem', fontSize: '0.8rem', height: 34, borderRadius: 8 }}
-                />
+              {/* Action Buttons & Search Box */}
+              <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', flexWrap: 'wrap' }}>
+                <div style={{ position: 'relative', width: 220 }}>
+                  <Search size={14} style={{ position: 'absolute', left: 10, top: '50%', transform: 'translateY(-50%)', color: 'var(--neutral-400)' }} />
+                  <input
+                    type="text"
+                    placeholder="Search file, patient, nurse..."
+                    value={storageSearch}
+                    onChange={(e) => setStorageSearch(e.target.value)}
+                    className="form-control"
+                    style={{ paddingLeft: '2rem', paddingRight: '0.75rem', fontSize: '0.8rem', height: 34, borderRadius: 8 }}
+                  />
+                </div>
+
+                <button
+                  type="button"
+                  onClick={() => setIsR2ConfigModalOpen(true)}
+                  className="btn btn-outline btn-sm"
+                  style={{ borderRadius: 9999, fontSize: '0.8rem', gap: '0.35rem', height: 34 }}
+                  title="Configure Cloudflare R2 credentials"
+                >
+                  <Settings size={14} />
+                  <span>Bucket Settings</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={handleSyncAllInvoicesToCloudflare}
+                  className="btn btn-outline btn-sm"
+                  style={{ borderRadius: 9999, fontSize: '0.8rem', gap: '0.35rem', height: 34 }}
+                  title="Sync invoices with Cloudflare R2 bucket"
+                >
+                  <Receipt size={14} />
+                  <span>Sync Invoices</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setUploadForm({ fileName: '', category: 'prescriptions', bookingId: '', patientName: '', description: '' });
+                    setIsUploadModalOpen(true);
+                  }}
+                  className="btn btn-danger btn-sm"
+                  style={{
+                    borderRadius: 9999,
+                    fontWeight: 700,
+                    fontSize: '0.8rem',
+                    gap: '0.35rem',
+                    padding: '0.45rem 1rem',
+                    height: 34
+                  }}
+                >
+                  <UploadCloud size={15} />
+                  <span>Upload Document</span>
+                </button>
               </div>
             </div>
 
@@ -5482,24 +4867,50 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                 />
               </div>
             ) : (
-              <div className="table-responsive">
-                <table className="data-table">
-                  <thead>
-                    <tr>
-                      <th>Object Key & File Name</th>
-                      <th>Category</th>
-                      <th>Owner / Metadata (Patient / Nurse)</th>
-                      <th>Size</th>
-                      <th>Uploaded At</th>
-                      <th style={{ textAlign: 'right' }}>Actions</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {filteredStorageObjects.map((obj) => {
-                      const isPrescription = obj.category === 'prescriptions';
-                      const isInvoice = obj.category === 'invoices';
-                      return (
-                        <tr key={obj.id}>
+              <>
+                {renderBulkActionBar({
+                  entityName: 'Storage Files',
+                  filteredIds: filteredStorageObjects.map((o) => o.id),
+                  selectedSet: selectedStorageIds,
+                  setSelectedSet: setSelectedStorageIds,
+                  onDeleteMultiple: handleDeleteMultipleStorage
+                })}
+                <div className="table-responsive">
+                  <table className="data-table">
+                    <thead>
+                      <tr>
+                        <th style={{ width: 40, textAlign: 'center' }}>
+                          <input
+                            type="checkbox"
+                            checked={filteredStorageObjects.length > 0 && filteredStorageObjects.every((o) => selectedStorageIds.has(o.id))}
+                            onChange={() => toggleSelectAll(filteredStorageObjects.map((o) => o.id), selectedStorageIds, setSelectedStorageIds)}
+                            style={{ cursor: 'pointer', accentColor: '#E11D48', width: 16, height: 16 }}
+                            title="Select / Deselect All Files"
+                          />
+                        </th>
+                        <th>Object Key & File Name</th>
+                        <th>Category</th>
+                        <th>Owner / Metadata (Patient / Nurse)</th>
+                        <th>Size</th>
+                        <th>Uploaded At</th>
+                        <th style={{ textAlign: 'right' }}>Actions</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {filteredStorageObjects.map((obj) => {
+                        const isPrescription = obj.category === 'prescriptions';
+                        const isInvoice = obj.category === 'invoices';
+                        const isSelected = selectedStorageIds.has(obj.id);
+                        return (
+                          <tr key={obj.id} style={{ background: isSelected ? '#FFF1F2' : undefined }}>
+                            <td style={{ textAlign: 'center', width: 40 }}>
+                              <input
+                                type="checkbox"
+                                checked={isSelected}
+                                onChange={() => toggleItemSelection(obj.id, setSelectedStorageIds)}
+                                style={{ cursor: 'pointer', accentColor: '#E11D48', width: 16, height: 16 }}
+                              />
+                            </td>
                           {/* Object Key */}
                           <td>
                             <div style={{ display: 'flex', alignItems: 'center', gap: '0.55rem' }}>
@@ -5758,6 +5169,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                   </tbody>
                 </table>
               </div>
+              </>
             )}
           </div>
         </div>
@@ -5963,7 +5375,31 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
               </div>
 
               {/* Action Buttons */}
-              <div style={{ display: 'flex', gap: '0.65rem', justifyContent: 'flex-end' }}>
+              <div style={{ display: 'flex', gap: '0.65rem', justifyContent: 'flex-end', alignItems: 'center' }}>
+                {editingCoupon && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setIsCouponModalOpen(false);
+                      handleDeleteCouponClick(editingCoupon);
+                    }}
+                    className="btn btn-outline"
+                    style={{
+                      borderColor: '#FECDD3',
+                      color: '#E11D48',
+                      background: '#FFF1F2',
+                      marginRight: 'auto',
+                      borderRadius: 9999,
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      gap: '0.4rem',
+                      fontWeight: 700
+                    }}
+                  >
+                    <Trash2 size={15} />
+                    <span>Delete Promo Code</span>
+                  </button>
+                )}
                 <button
                   type="button"
                   onClick={() => setIsCouponModalOpen(false)}
@@ -6679,7 +6115,31 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                 />
               </div>
 
-              <div style={{ display: 'flex', gap: '0.65rem', justifyContent: 'flex-end' }}>
+              <div style={{ display: 'flex', gap: '0.65rem', justifyContent: 'flex-end', alignItems: 'center' }}>
+                {editingBooking && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setIsBookingModalOpen(false);
+                      handleDeleteBookingClick(editingBooking);
+                    }}
+                    className="btn btn-outline"
+                    style={{
+                      borderColor: '#FECDD3',
+                      color: '#E11D48',
+                      background: '#FFF1F2',
+                      marginRight: 'auto',
+                      borderRadius: 9999,
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      gap: '0.4rem',
+                      fontWeight: 700
+                    }}
+                  >
+                    <Trash2 size={15} />
+                    <span>Delete Booking</span>
+                  </button>
+                )}
                 <button type="button" onClick={() => setIsBookingModalOpen(false)} className="btn btn-outline" style={{ borderRadius: 9999 }}>
                   Cancel
                 </button>
@@ -6773,7 +6233,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                     type="text"
                     maxLength={4}
                     required
-                    placeholder="1001"
+                    placeholder="e.g. 1234"
                     value={nurseForm.pin}
                     onChange={(e) => setNurseForm({ ...nurseForm, pin: e.target.value.replace(/\D/g, '') })}
                     className="form-control"
@@ -6855,6 +6315,39 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                 </div>
               </div>
 
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem', marginBottom: '0.85rem' }}>
+                <div>
+                  <label className="form-label" style={{ fontSize: '0.78rem', fontWeight: 700, color: '#B45309' }}>
+                    REWARD POINTS BALANCE (⭐ PTS)
+                  </label>
+                  <input
+                    type="number"
+                    min={0}
+                    step={10}
+                    placeholder="e.g. 500"
+                    value={nurseForm.pointsEarned}
+                    onChange={(e) => setNurseForm({ ...nurseForm, pointsEarned: Number(e.target.value) })}
+                    className="form-control"
+                    style={{ fontWeight: 800, color: '#B45309', background: '#FEF3C7', borderColor: '#FDE68A' }}
+                  />
+                </div>
+                <div>
+                  <label className="form-label" style={{ fontSize: '0.78rem', fontWeight: 700, color: '#047857' }}>
+                    REFERRAL CASH EARNINGS (₹ RUPEES)
+                  </label>
+                  <input
+                    type="number"
+                    min={0}
+                    step={50}
+                    placeholder="e.g. 1000"
+                    value={nurseForm.referralEarningsRupees}
+                    onChange={(e) => setNurseForm({ ...nurseForm, referralEarningsRupees: Number(e.target.value) })}
+                    className="form-control"
+                    style={{ fontWeight: 800, color: '#047857', background: '#ECFDF5', borderColor: '#A7F3D0' }}
+                  />
+                </div>
+              </div>
+
               <div style={{ marginBottom: '1.25rem', display: 'flex', alignItems: 'center', gap: '0.6rem' }}>
                 <input
                   type="checkbox"
@@ -6868,7 +6361,31 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                 </label>
               </div>
 
-              <div style={{ display: 'flex', gap: '0.65rem', justifyContent: 'flex-end' }}>
+              <div style={{ display: 'flex', gap: '0.65rem', justifyContent: 'flex-end', alignItems: 'center' }}>
+                {editingNurse && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setIsNurseModalOpen(false);
+                      handleDeleteNurseClick(editingNurse);
+                    }}
+                    className="btn btn-outline"
+                    style={{
+                      borderColor: '#FECDD3',
+                      color: '#E11D48',
+                      background: '#FFF1F2',
+                      marginRight: 'auto',
+                      borderRadius: 9999,
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      gap: '0.4rem',
+                      fontWeight: 700
+                    }}
+                  >
+                    <Trash2 size={15} />
+                    <span>Delete Nurse</span>
+                  </button>
+                )}
                 <button type="button" onClick={() => setIsNurseModalOpen(false)} className="btn btn-outline" style={{ borderRadius: 9999 }}>
                   Cancel
                 </button>
@@ -7037,7 +6554,31 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                 </label>
               </div>
 
-              <div style={{ display: 'flex', gap: '0.65rem', justifyContent: 'flex-end' }}>
+              <div style={{ display: 'flex', gap: '0.65rem', justifyContent: 'flex-end', alignItems: 'center' }}>
+                {editingService && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setIsServiceModalOpen(false);
+                      handleDeleteServiceClick(editingService);
+                    }}
+                    className="btn btn-outline"
+                    style={{
+                      borderColor: '#FECDD3',
+                      color: '#E11D48',
+                      background: '#FFF1F2',
+                      marginRight: 'auto',
+                      borderRadius: 9999,
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      gap: '0.4rem',
+                      fontWeight: 700
+                    }}
+                  >
+                    <Trash2 size={15} />
+                    <span>Delete Service</span>
+                  </button>
+                )}
                 <button type="button" onClick={() => setIsServiceModalOpen(false)} className="btn btn-outline" style={{ borderRadius: 9999 }}>
                   Cancel
                 </button>
@@ -7193,7 +6734,31 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                 </div>
               </div>
 
-              <div style={{ display: 'flex', gap: '0.65rem', justifyContent: 'flex-end' }}>
+              <div style={{ display: 'flex', gap: '0.65rem', justifyContent: 'flex-end', alignItems: 'center' }}>
+                {editingLead && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setIsLeadModalOpen(false);
+                      handleDeleteLeadClick(editingLead);
+                    }}
+                    className="btn btn-outline"
+                    style={{
+                      borderColor: '#FECDD3',
+                      color: '#E11D48',
+                      background: '#FFF1F2',
+                      marginRight: 'auto',
+                      borderRadius: 9999,
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      gap: '0.4rem',
+                      fontWeight: 700
+                    }}
+                  >
+                    <Trash2 size={15} />
+                    <span>Delete Lead</span>
+                  </button>
+                )}
                 <button type="button" onClick={() => setIsLeadModalOpen(false)} className="btn btn-outline" style={{ borderRadius: 9999 }}>
                   Cancel
                 </button>
@@ -7316,147 +6881,51 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                       </div>
                     </div>
 
-                    {/* Admin Input 1: Points to Award */}
-                    <div style={{ marginBottom: '1.25rem' }}>
-                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.4rem' }}>
-                        <label className="form-label" style={{ fontSize: '0.8rem', fontWeight: 800, margin: 0, color: 'var(--primary-navy-900)' }}>
-                          1. REWARD POINTS TO AWARD NURSE *
-                        </label>
-                        <span style={{ fontSize: '0.75rem', color: 'var(--neutral-500)' }}>Standard: 50 pts</span>
-                      </div>
-                      
-                      <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center', marginBottom: '0.5rem' }}>
-                        <input
-                          type="number"
-                          min={0}
-                          max={5000}
-                          value={approvalPoints}
-                          onChange={(e) => setApprovalPoints(Number(e.target.value))}
-                          className="form-control"
-                          style={{ fontWeight: 800, fontSize: '1rem', color: '#047857', maxWidth: 160 }}
-                        />
-                        <span style={{ fontWeight: 700, color: 'var(--neutral-600)', fontSize: '0.9rem' }}>Points</span>
-                      </div>
-
-                      {/* Quick preset chips */}
-                      <div style={{ display: 'flex', gap: '0.35rem', flexWrap: 'wrap' }}>
-                        {[0, 25, 50, 75, 100, 150, 200].map((pts) => (
-                          <button
-                            key={pts}
-                            type="button"
-                            onClick={() => setApprovalPoints(pts)}
-                            style={{
-                              padding: '0.25rem 0.6rem',
-                              fontSize: '0.75rem',
-                              fontWeight: 700,
-                              borderRadius: 6,
-                              border: approvalPoints === pts ? '1px solid #059669' : '1px solid #CBD5E1',
-                              background: approvalPoints === pts ? '#ECFDF5' : '#FFFFFF',
-                              color: approvalPoints === pts ? '#065F46' : 'var(--neutral-700)',
-                              cursor: 'pointer'
-                            }}
-                          >
-                            {pts === 50 ? '50 pts (Standard)' : pts === 0 ? '0 pts' : `+${pts} pts`}
-                          </button>
-                        ))}
+                    {/* Referral Reward: Plain & Clear 50 Points */}
+                    <div style={{
+                      background: 'linear-gradient(135deg, #ECFDF5 0%, #D1FAE5 100%)',
+                      border: '1.5px solid #10B981',
+                      borderRadius: 12,
+                      padding: '1rem 1.25rem',
+                      marginBottom: '1.25rem'
+                    }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '0.65rem' }}>
+                        <div style={{
+                          width: 40,
+                          height: 40,
+                          borderRadius: '50%',
+                          background: '#059669',
+                          color: '#FFFFFF',
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          flexShrink: 0
+                        }}>
+                          <Award size={22} />
+                        </div>
+                        <div>
+                          <div style={{ fontWeight: 800, color: '#065F46', fontSize: '1rem' }}>
+                            Referral Reward: +50 Points
+                          </div>
+                          <div style={{ fontSize: '0.82rem', color: '#047857', marginTop: '0.15rem' }}>
+                            Credited directly to <strong>{referringNurse?.name || 'Nurse'}</strong> upon approval.
+                          </div>
+                        </div>
                       </div>
                     </div>
 
-                    {/* Admin Input 2: Referral Commission (₹) */}
+                    {/* Admin Input: Optional Note */}
                     <div style={{ marginBottom: '1.25rem' }}>
-                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.4rem' }}>
-                        <label className="form-label" style={{ fontSize: '0.8rem', fontWeight: 800, margin: 0, color: 'var(--primary-navy-900)' }}>
-                          2. REFERRAL EARNING TO CREDIT NURSE (₹) *
-                        </label>
-                        <span style={{ fontSize: '0.75rem', color: 'var(--neutral-500)' }}>
-                          10% of Fee = ₹{Math.round(procedureFee * 0.1)}
-                        </span>
-                      </div>
-
-                      <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center', marginBottom: '0.5rem' }}>
-                        <span style={{ fontWeight: 800, color: 'var(--neutral-700)', fontSize: '1.1rem' }}>₹</span>
-                        <input
-                          type="number"
-                          min={0}
-                          max={50000}
-                          value={approvalReferralRupees}
-                          onChange={(e) => setApprovalReferralRupees(Number(e.target.value))}
-                          className="form-control"
-                          style={{ fontWeight: 800, fontSize: '1rem', color: '#047857', maxWidth: 160 }}
-                        />
-                        <span style={{ fontSize: '0.8rem', color: 'var(--neutral-500)' }}>
-                          ({procedureFee > 0 ? Math.round((approvalReferralRupees / procedureFee) * 100) : 0}% of ₹{procedureFee} fee)
-                        </span>
-                      </div>
-
-                      {/* Quick percentage chips */}
-                      <div style={{ display: 'flex', gap: '0.35rem', flexWrap: 'wrap' }}>
-                        {[
-                          { label: '0%', val: 0 },
-                          { label: `5% (₹${Math.round(procedureFee * 0.05)})`, val: Math.round(procedureFee * 0.05) },
-                          { label: `10% (₹${Math.round(procedureFee * 0.10)}) - Standard`, val: Math.round(procedureFee * 0.10) },
-                          { label: `15% (₹${Math.round(procedureFee * 0.15)})`, val: Math.round(procedureFee * 0.15) },
-                          { label: `20% (₹${Math.round(procedureFee * 0.20)})`, val: Math.round(procedureFee * 0.20) },
-                          { label: 'Flat ₹100', val: 100 },
-                          { label: 'Flat ₹150', val: 150 },
-                          { label: 'Flat ₹200', val: 200 }
-                        ].map((chip) => (
-                          <button
-                            key={chip.label}
-                            type="button"
-                            onClick={() => setApprovalReferralRupees(chip.val)}
-                            style={{
-                              padding: '0.25rem 0.55rem',
-                              fontSize: '0.74rem',
-                              fontWeight: 700,
-                              borderRadius: 6,
-                              border: approvalReferralRupees === chip.val ? '1px solid #059669' : '1px solid #CBD5E1',
-                              background: approvalReferralRupees === chip.val ? '#ECFDF5' : '#FFFFFF',
-                              color: approvalReferralRupees === chip.val ? '#065F46' : 'var(--neutral-700)',
-                              cursor: 'pointer'
-                            }}
-                          >
-                            {chip.label}
-                          </button>
-                        ))}
-                      </div>
-                    </div>
-
-                    {/* Admin Input 3: Notes / Remarks */}
-                    <div style={{ marginBottom: '1.25rem' }}>
-                      <label className="form-label" style={{ fontSize: '0.8rem', fontWeight: 800, color: 'var(--primary-navy-900)' }}>
-                        3. ADMIN APPROVAL REMARKS (OPTIONAL)
+                      <label className="form-label" style={{ fontSize: '0.82rem', fontWeight: 700, color: 'var(--primary-navy-900)' }}>
+                        Office Note (Optional)
                       </label>
                       <input
                         type="text"
-                        placeholder="e.g. Cross-area referral verified. Patient completed Foley catheterization."
+                        placeholder="e.g. Patient visit verified. 50 points added to nurse account."
                         value={approvalNotes}
                         onChange={(e) => setApprovalNotes(e.target.value)}
                         className="form-control"
                       />
-                    </div>
-
-                    {/* Summary Outcome Box */}
-                    <div style={{
-                      background: 'linear-gradient(135deg, #ECFDF5 0%, #D1FAE5 100%)',
-                      border: '1px solid #A7F3D0',
-                      borderRadius: 12,
-                      padding: '0.85rem 1rem',
-                      marginBottom: '1.25rem',
-                      fontSize: '0.82rem',
-                      color: '#065F46'
-                    }}>
-                      <div style={{ fontWeight: 800, marginBottom: '0.35rem', display: 'flex', alignItems: 'center', gap: '0.35rem' }}>
-                        <CheckCircle size={15} color="#059669" />
-                        <span>Upon Clicking Approve:</span>
-                      </div>
-                      <div style={{ lineHeight: 1.5 }}>
-                        • Nurse <strong>{referringNurse?.name || 'Referring Nurse'}</strong> wallet credited <strong>+{approvalPoints} reward points</strong>.
-                        <br />
-                        • Nurse receives <strong>₹{approvalReferralRupees} referral payout</strong> directly into their account balance.
-                        <br />
-                        • Lead status changes to <strong style={{ color: '#047857' }}>Approved</strong> in Supabase.
-                      </div>
                     </div>
 
                     {/* Reject Confirmation Drawer if toggled */}
@@ -7555,7 +7024,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                           }}
                         >
                           <CheckCircle size={16} />
-                          <span>{isProcessingApproval ? 'Approving...' : `Approve & Credit (+${approvalPoints} pts, ₹${approvalReferralRupees})`}</span>
+                          <span>{isProcessingApproval ? 'Approving...' : '✓ Approve (+50 Points)'}</span>
                         </button>
                       </div>
                     </div>
@@ -7716,7 +7185,31 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                 </select>
               </div>
 
-              <div style={{ display: 'flex', gap: '0.65rem', justifyContent: 'flex-end' }}>
+              <div style={{ display: 'flex', gap: '0.65rem', justifyContent: 'flex-end', alignItems: 'center' }}>
+                {editingConsult && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setIsConsultModalOpen(false);
+                      handleDeleteConsultClick(editingConsult);
+                    }}
+                    className="btn btn-outline"
+                    style={{
+                      borderColor: '#FECDD3',
+                      color: '#E11D48',
+                      background: '#FFF1F2',
+                      marginRight: 'auto',
+                      borderRadius: 9999,
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      gap: '0.4rem',
+                      fontWeight: 700
+                    }}
+                  >
+                    <Trash2 size={15} />
+                    <span>Delete Consult</span>
+                  </button>
+                )}
                 <button type="button" onClick={() => setIsConsultModalOpen(false)} className="btn btn-outline" style={{ borderRadius: 9999 }}>
                   Cancel
                 </button>
@@ -7866,7 +7359,31 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                 </div>
               </div>
 
-              <div style={{ display: 'flex', gap: '0.65rem', justifyContent: 'flex-end' }}>
+              <div style={{ display: 'flex', gap: '0.65rem', justifyContent: 'flex-end', alignItems: 'center' }}>
+                {editingUser && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setIsUserModalOpen(false);
+                      handleDeleteUserClick(editingUser);
+                    }}
+                    className="btn btn-outline"
+                    style={{
+                      borderColor: '#FECDD3',
+                      color: '#E11D48',
+                      background: '#FFF1F2',
+                      marginRight: 'auto',
+                      borderRadius: 9999,
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      gap: '0.4rem',
+                      fontWeight: 700
+                    }}
+                  >
+                    <Trash2 size={15} />
+                    <span>Delete User</span>
+                  </button>
+                )}
                 <button type="button" onClick={() => setIsUserModalOpen(false)} className="btn btn-outline" style={{ borderRadius: 9999 }}>
                   Cancel
                 </button>

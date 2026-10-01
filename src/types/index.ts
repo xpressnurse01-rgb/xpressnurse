@@ -98,6 +98,7 @@ export interface NurseProfile {
   experience?: string;
   qualification: string;
   serviceArea: string;
+  pin?: string;
   status: 'Active' | 'Pending Verification' | 'On Leave' | 'Rejected' | string;
   totalLeads: number;
   convertedLeads: number;

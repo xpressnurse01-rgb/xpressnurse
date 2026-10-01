@@ -11,6 +11,7 @@ import {
   dbInsertBooking,
   dbUpdateBooking,
   dbDeleteBooking,
+  dbInsertNurse,
   dbInsertLead,
   dbUpdateLeadById,
   dbInsertCoupon,
@@ -43,8 +44,78 @@ describe('Comprehensive End-to-End Production QA Protocol Suite', () => {
   const envUrl = process.env.VITE_SUPABASE_URL || 'https://ncgugriphhrhvdunluiz.supabase.co';
   const envAnon = process.env.VITE_SUPABASE_ANON_KEY || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im5jZ3VncmlwaGhyaHZkdW5sdWl6Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTAwNTExNzAsImV4cCI6MjEwNTYyNzE3MH0.5MADQjkka8Of25SwPncEb6lrP3mxL713tcLBrGW6erQ';
 
-  beforeAll(() => {
+  beforeAll(async () => {
     supabase = createClient(envUrl, envAnon);
+    // Ensure test nurse exists in Supabase so foreign keys in test booking and lead succeed
+    const { data: existingNurse } = await supabase.from('nurses').select('id').eq('id', 'nurse-101').maybeSingle();
+    if (!existingNurse) {
+      await dbInsertNurse({
+        id: 'nurse-101',
+        name: 'Nurse Priya Sharma',
+        phone: '9849012345',
+        email: 'priya.nursing@xpressnurse.in',
+        experienceYears: 6,
+        qualification: 'B.Sc Nursing (Registered Nurse)',
+        serviceArea: 'Gachibowli',
+        status: 'Active',
+        totalLeads: 18,
+        convertedLeads: 15,
+        totalReferrals: 12,
+        pointsEarned: 1650,
+        referralEarningsRupees: 3800,
+        rating: 4.9,
+        certificateVerified: true,
+        createdAt: new Date().toISOString()
+      });
+    }
+    const { data: existingDoc } = await supabase.from('app_users').select('id').eq('role', 'doctor').maybeSingle();
+    if (!existingDoc) {
+      await dbInsertAppUser({
+        id: 'user-doc-1',
+        identifier: 'dr.reddy@xpressnurse.in',
+        phone: '9848011223',
+        email: 'dr.reddy@xpressnurse.in',
+        pin: '4321',
+        role: 'doctor',
+        name: 'Dr. K. V. Reddy'
+      });
+    }
+    const { data: existingNurseB } = await supabase.from('app_users').select('id').eq('pin', '1002').maybeSingle();
+    if (!existingNurseB) {
+      await dbInsertAppUser({
+        id: 'user-nurse-102',
+        identifier: 'rajesh.nursing@xpressnurse.in',
+        phone: '9849099999',
+        email: 'rajesh.nursing@xpressnurse.in',
+        pin: '1002',
+        role: 'nurse',
+        name: 'Nurse Rajesh Kumar'
+      });
+    }
+    const { data: existingNurseA } = await supabase.from('app_users').select('id').eq('pin', '1001').maybeSingle();
+    if (!existingNurseA) {
+      await dbInsertAppUser({
+        id: 'user-nurse-101',
+        identifier: 'priya.nursing@xpressnurse.in',
+        phone: '9849012345',
+        email: 'priya.nursing@xpressnurse.in',
+        pin: '1001',
+        role: 'nurse',
+        name: 'Nurse Priya Sharma'
+      });
+    }
+    const { data: existingAdmin } = await supabase.from('app_users').select('id').eq('pin', '2026').maybeSingle();
+    if (!existingAdmin) {
+      await dbInsertAppUser({
+        id: 'user-admin-1',
+        identifier: 'admin@xpressnurse.in',
+        phone: '9999999999',
+        email: 'admin@xpressnurse.in',
+        pin: '2026',
+        role: 'admin',
+        name: 'Operations Admin'
+      });
+    }
   });
 
   // ==========================================================================

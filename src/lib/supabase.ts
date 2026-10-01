@@ -30,7 +30,7 @@ export const SEED_APP_USERS: AppUser[] = [
     role: 'admin',
     identifier: 'admin@xpressnurse.in',
     name: 'Operations Dispatcher',
-    pin: '••••',
+    pin: '2026',
     phone: '7569657371',
     email: 'admin@xpressnurse.in',
     designation: 'Fleet Supervisor & Dispatch Head',
@@ -41,7 +41,7 @@ export const SEED_APP_USERS: AppUser[] = [
     role: 'doctor',
     identifier: 'dr.reddy@xpressnurse.in',
     name: 'Dr. K. V. Reddy (MD Gen Med)',
-    pin: '••••',
+    pin: '4321',
     phone: '9848011223',
     email: 'dr.reddy@xpressnurse.in',
     designation: 'Senior Physician',
@@ -52,7 +52,7 @@ export const SEED_APP_USERS: AppUser[] = [
     role: 'nurse',
     identifier: 'priya.nursing@xpressnurse.in',
     name: 'Nurse Priya Sharma',
-    pin: '••••',
+    pin: '1001',
     phone: '9849012345',
     email: 'priya.nursing@xpressnurse.in',
     designation: 'Registered Nurse (B.Sc Nursing)',
@@ -63,7 +63,7 @@ export const SEED_APP_USERS: AppUser[] = [
     role: 'nurse',
     identifier: 'rajesh.nursing@xpressnurse.in',
     name: 'Nurse Rajesh Kumar',
-    pin: '••••',
+    pin: '1002',
     phone: '9849067890',
     email: 'rajesh.nursing@xpressnurse.in',
     designation: 'General Nursing & Midwifery (GNM)',
@@ -74,7 +74,7 @@ export const SEED_APP_USERS: AppUser[] = [
     role: 'nurse',
     identifier: 'anjali.rao@xpressnurse.in',
     name: 'Nurse Anjali Rao',
-    pin: '••••',
+    pin: '1003',
     phone: '9849045678',
     email: 'anjali.rao@xpressnurse.in',
     designation: 'Critical Care Nurse',
@@ -85,7 +85,7 @@ export const SEED_APP_USERS: AppUser[] = [
     role: 'nurse',
     identifier: 'sunita.reddy@xpressnurse.in',
     name: 'Nurse Sunita Reddy',
-    pin: '••••',
+    pin: '1004',
     phone: '9849089123',
     email: 'sunita.reddy@xpressnurse.in',
     designation: 'Geriatric Care Specialist',
@@ -501,40 +501,65 @@ export function findNurseByReferralCode(code: string, nurses: NurseProfile[]): N
 }
 
 export async function dbFetchNurses(): Promise<NurseProfile[] | null> {
-  const data = await executeWithRetry(async () => {
-    return await supabase
-      .from('nurses')
-      .select('*')
-      .order('name', { ascending: true });
+  const [data, appUsersData] = await Promise.all([
+    executeWithRetry(async () => {
+      return await supabase
+        .from('nurses')
+        .select('*')
+        .order('name', { ascending: true });
+    }),
+    Promise.resolve(supabase.from('app_users').select('*')).then(r => r.data || [], () => [])
+  ]);
+
+  if (data === null && (!appUsersData || appUsersData.length === 0)) return null;
+
+  const nursesList: NurseProfile[] = (data || []).map((n: any) => {
+    // Find matching app_user for real PIN and details
+    const matchedUser = (appUsersData || []).find((u: any) => {
+      const uPhone = (u.phone || '').replace(/\D/g, '');
+      const nPhone = (n.phone || '').replace(/\D/g, '');
+      return (
+        u.id === n.id ||
+        (nPhone && uPhone && (nPhone === uPhone || nPhone.endsWith(uPhone) || uPhone.endsWith(nPhone))) ||
+        (u.email && n.email && u.email.toLowerCase().trim() === n.email.toLowerCase().trim()) ||
+        (u.identifier && n.email && u.identifier.toLowerCase().trim() === n.email.toLowerCase().trim()) ||
+        (u.name && n.name && u.name.toLowerCase().trim() === n.name.toLowerCase().trim())
+      );
+    });
+
+    const parsedExp = n.experience_years != null && !isNaN(Number(n.experience_years))
+      ? Math.max(0, Number(n.experience_years))
+      : 3;
+
+    return {
+      id: n.id,
+      name: n.name,
+      phone: n.phone,
+      email: n.email,
+      experienceYears: parsedExp,
+      qualification: n.qualification || 'Registered Nurse',
+      serviceArea: n.service_area || 'Gachibowli',
+      pin: matchedUser?.pin ? String(matchedUser.pin).trim() : (n.pin ? String(n.pin).trim() : undefined),
+      status: n.status || 'Active',
+      totalLeads: Number(n.total_leads) || 0,
+      convertedLeads: Number(n.converted_leads) || 0,
+      totalReferrals: Number(n.total_referrals) || 0,
+      pointsEarned: n.points_earned != null && !isNaN(Number(n.points_earned)) ? Math.max(0, Math.round(Number(n.points_earned))) : 0,
+      referralEarningsRupees: n.referral_earnings_rupees != null && !isNaN(Number(n.referral_earnings_rupees)) ? Math.max(0, Number(n.referral_earnings_rupees)) : 0,
+      rating: Number(n.rating) || 4.90,
+      avatarUrl: n.avatar_url || 'https://images.unsplash.com/photo-1594824813589-9a25b42d768a?w=150&auto=format&fit=crop&q=80',
+      certificateVerified: Boolean(n.certificate_verified),
+      certificateUrl: n.certificate_url || undefined,
+      createdAt: n.created_at,
+      referredByNurseId: n.referred_by_nurse_id || undefined,
+      referralCode: n.referral_code || generateNurseReferralCode(n.name, n.id, n.phone),
+      earningsPaid: Number(n.earnings_paid) || 0,
+      earningsPending: Number(n.earnings_pending) || 0,
+      rejectionReason: n.rejection_reason || undefined
+    };
   });
 
-  if (data === null) return null;
-
-  return data.map((n: any) => ({
-    id: n.id,
-    name: n.name,
-    phone: n.phone,
-    email: n.email,
-    experienceYears: Number(n.experience_years) || 5,
-    qualification: n.qualification,
-    serviceArea: n.service_area,
-    status: n.status || 'Active',
-    totalLeads: Number(n.total_leads) || 0,
-    convertedLeads: Number(n.converted_leads) || 0,
-    totalReferrals: Number(n.total_referrals) || 0,
-    pointsEarned: Number(n.points_earned) || 300,
-    referralEarningsRupees: Number(n.referral_earnings_rupees) || 0,
-    rating: Number(n.rating) || 4.90,
-    avatarUrl: n.avatar_url || 'https://images.unsplash.com/photo-1594824813589-9a25b42d768a?w=150&auto=format&fit=crop&q=80',
-    certificateVerified: Boolean(n.certificate_verified),
-    certificateUrl: n.certificate_url || undefined,
-    createdAt: n.created_at,
-    referredByNurseId: n.referred_by_nurse_id || undefined,
-    referralCode: n.referral_code || generateNurseReferralCode(n.name, n.id, n.phone),
-    earningsPaid: Number(n.earnings_paid) || 0,
-    earningsPending: Number(n.earnings_pending) || 0,
-    rejectionReason: n.rejection_reason || undefined
-  }));
+  return nursesList;
 }
 
 export async function dbSaveNurse(n: NurseProfile): Promise<boolean> {
@@ -548,15 +573,15 @@ export async function dbUpdateNurse(n: NurseProfile): Promise<boolean> {
       name: n.name,
       phone: n.phone,
       email: n.email,
-      experience_years: Math.round(Number(n.experienceYears)) || 5,
+      experience_years: !isNaN(Number(n.experienceYears)) ? Math.max(0, Math.round(Number(n.experienceYears))) : 3,
       qualification: n.qualification,
       service_area: n.serviceArea,
       status: n.status || 'Active',
       total_leads: Math.round(Number(n.totalLeads)) || 0,
       converted_leads: Math.round(Number(n.convertedLeads)) || 0,
       total_referrals: Math.round(Number(n.totalReferrals)) || 0,
-      points_earned: Math.round(Number(n.pointsEarned)) || 300,
-      referral_earnings_rupees: Number(n.referralEarningsRupees) || 0,
+      points_earned: n.pointsEarned != null && !isNaN(Number(n.pointsEarned)) ? Math.max(0, Math.round(Number(n.pointsEarned))) : 0,
+      referral_earnings_rupees: n.referralEarningsRupees != null && !isNaN(Number(n.referralEarningsRupees)) ? Math.max(0, Number(n.referralEarningsRupees)) : 0,
       rating: Number(n.rating) || 4.90,
       avatar_url: n.avatarUrl || null,
       certificate_verified: Boolean(n.certificateVerified ?? true),
@@ -581,15 +606,15 @@ export async function dbInsertNurse(n: NurseProfile): Promise<boolean> {
       name: n.name,
       phone: n.phone,
       email: n.email,
-      experience_years: Math.round(Number(n.experienceYears)) || 5,
+      experience_years: !isNaN(Number(n.experienceYears)) ? Math.max(0, Math.round(Number(n.experienceYears))) : 3,
       qualification: n.qualification,
       service_area: n.serviceArea,
       status: n.status || 'Active',
       total_leads: Math.round(Number(n.totalLeads)) || 0,
       converted_leads: Math.round(Number(n.convertedLeads)) || 0,
       total_referrals: Math.round(Number(n.totalReferrals)) || 0,
-      points_earned: Math.round(Number(n.pointsEarned)) || 300,
-      referral_earnings_rupees: Number(n.referralEarningsRupees) || 0,
+      points_earned: n.pointsEarned != null && !isNaN(Number(n.pointsEarned)) ? Math.max(0, Math.round(Number(n.pointsEarned))) : 0,
+      referral_earnings_rupees: n.referralEarningsRupees != null && !isNaN(Number(n.referralEarningsRupees)) ? Math.max(0, Number(n.referralEarningsRupees)) : 0,
       rating: Number(n.rating) || 4.90,
       avatar_url: n.avatarUrl || 'https://images.unsplash.com/photo-1594824813589-9a25b42d768a?w=150&auto=format&fit=crop&q=80',
       certificate_verified: Boolean(n.certificateVerified ?? true),
@@ -600,7 +625,7 @@ export async function dbInsertNurse(n: NurseProfile): Promise<boolean> {
       rejection_reason: n.rejectionReason || null
     };
 
-    const { error } = await supabase.from('nurses').insert(payload);
+    const { error } = await supabase.from('nurses').upsert(payload);
     return !error;
   } catch {
     return false;
@@ -612,14 +637,14 @@ export async function dbUpdateNurseById(id: string, updates: Partial<NurseProfil
   if (updates.name !== undefined) payload.name = updates.name;
   if (updates.phone !== undefined) payload.phone = updates.phone;
   if (updates.email !== undefined) payload.email = updates.email;
-  if (updates.experienceYears !== undefined) payload.experience_years = Math.round(Number(updates.experienceYears));
+  if (updates.experienceYears !== undefined) payload.experience_years = !isNaN(Number(updates.experienceYears)) ? Math.max(0, Math.round(Number(updates.experienceYears))) : 3;
   if (updates.qualification !== undefined) payload.qualification = updates.qualification;
   if (updates.serviceArea !== undefined) payload.service_area = updates.serviceArea;
   if (updates.status !== undefined) payload.status = updates.status;
   if (updates.totalLeads !== undefined) payload.total_leads = Math.round(Number(updates.totalLeads));
   if (updates.convertedLeads !== undefined) payload.converted_leads = Math.round(Number(updates.convertedLeads));
   if (updates.totalReferrals !== undefined) payload.total_referrals = Math.round(Number(updates.totalReferrals));
-  if (updates.pointsEarned !== undefined) payload.points_earned = Math.round(Number(updates.pointsEarned));
+  if (updates.pointsEarned !== undefined) payload.points_earned = !isNaN(Number(updates.pointsEarned)) ? Math.max(0, Math.round(Number(updates.pointsEarned))) : 0;
   if (updates.referralEarningsRupees !== undefined) payload.referral_earnings_rupees = Number(updates.referralEarningsRupees);
   if (updates.rating !== undefined) payload.rating = Number(updates.rating);
   if (updates.certificateVerified !== undefined) payload.certificate_verified = Boolean(updates.certificateVerified);
@@ -633,6 +658,18 @@ export async function dbUpdateNurseById(id: string, updates: Partial<NurseProfil
   try {
     const { error } = await supabase.from('nurses').update(payload).eq('id', id);
     if (error) console.error("Supabase Update Error:", error.message, error.details);
+
+    // Also sync matching user in app_users table
+    const userPayload: any = {};
+    if (updates.name !== undefined) userPayload.name = updates.name;
+    if (updates.phone !== undefined) userPayload.phone = updates.phone;
+    if (updates.email !== undefined) userPayload.email = updates.email;
+    if (updates.qualification !== undefined) userPayload.designation = updates.qualification;
+    if (updates.serviceArea !== undefined) userPayload.service_area = updates.serviceArea;
+    if (Object.keys(userPayload).length > 0) {
+      await supabase.from('app_users').update(userPayload).eq('id', id);
+    }
+
     return !error;
   } catch (err) {
     console.error("Supabase Update Catch Error:", err);
@@ -648,8 +685,10 @@ export async function dbDeleteNurse(id: string): Promise<boolean> {
     // 2. Unassign from leads
     await supabase.from('leads').update({ assigned_nurse_id: null }).eq('assigned_nurse_id', id);
     await supabase.from('leads').update({ nurse_id: null }).eq('nurse_id', id);
-    // 3. Delete nurse
+    // 3. Delete nurse from nurses table
     const { error } = await supabase.from('nurses').delete().eq('id', id);
+    // 4. Delete nurse from app_users table
+    await supabase.from('app_users').delete().eq('id', id);
     if (error) {
       console.error('[Supabase dbDeleteNurse error]:', error);
       return false;
@@ -669,6 +708,7 @@ export async function dbDeleteMultipleNurses(ids: string[]): Promise<boolean> {
     await supabase.from('leads').update({ assigned_nurse_id: null }).in('assigned_nurse_id', ids);
     await supabase.from('leads').update({ nurse_id: null }).in('nurse_id', ids);
     const { error } = await supabase.from('nurses').delete().in('id', ids);
+    await supabase.from('app_users').delete().in('id', ids);
     if (error) {
       console.error('[Supabase dbDeleteMultipleNurses error]:', error);
       return false;
@@ -926,7 +966,7 @@ export async function dbFetchLeads(): Promise<NurseLead[] | null> {
     status: l.status || 'Converted',
     assignedNurseId: l.assigned_nurse_id,
     leadValueRupees: Number(l.lead_value_rupees) || 1000.00,
-    pointsAwarded: Math.round(Number(l.points_awarded)) || 50,
+    pointsAwarded: l.points_awarded != null && !isNaN(Number(l.points_awarded)) ? Math.round(Number(l.points_awarded)) : 50,
     referralCommissionRupees: Number(l.referral_commission_rupees) || 100.00,
     referralRupees: Number(l.referral_commission_rupees) || 100.00,
     referredNurseName: l.referred_nurse_name || l.patient_name || undefined,
@@ -955,32 +995,42 @@ export async function dbSaveLead(lead: NurseLead): Promise<boolean> {
       service_id: lead.serviceId || null,
       area: lead.area || (lead as any).serviceArea || 'Hyderabad Central',
       submitted_at: isoSubmittedAt,
-      status: lead.status || 'Converted',
+      status: lead.status || 'Pending Approval',
       assigned_nurse_id: cleanAssignedNurseId,
       lead_value_rupees: Number(lead.leadValueRupees) || 1000.00,
-      points_awarded: Math.round(Number(lead.pointsAwarded)) || 50,
+      points_awarded: lead.pointsAwarded != null && !isNaN(Number(lead.pointsAwarded)) ? Math.round(Number(lead.pointsAwarded)) : 50,
       referral_commission_rupees: Number(lead.referralCommissionRupees) || 100.00,
       referred_nurse_name: lead.referredNurseName || lead.patientName || null,
       referred_nurse_phone: lead.referredNursePhone || lead.patientPhone || null,
       qualification: lead.qualification || null,
-      experience_years: Math.round(Number(lead.experienceYears)) || 3,
+      experience_years: !isNaN(Number(lead.experienceYears)) ? Math.max(0, Math.round(Number(lead.experienceYears))) : 3,
       rejection_reason: lead.rejectionReason || null
     };
 
     const { error } = await supabase.from('leads').upsert(payload);
     if (error) {
       console.warn('[DB] Supabase leads save warning:', error.message);
+      // If foreign key constraint failed because nurse_id is not yet in public.nurses:
+      if (error.message && (error.message.includes('foreign key') || error.message.includes('fkey') || error.message.includes('violates'))) {
+        const safePayload = {
+          ...payload,
+          nurse_id: null,
+          assigned_nurse_id: null
+        };
+        const retryFk = await supabase.from('leads').upsert(safePayload);
+        if (!retryFk.error) return true;
+      }
       if (error.message && error.message.includes('column')) {
         const fallback = {
           id: payload.id,
-          nurse_id: payload.nurse_id,
+          nurse_id: null,
           patient_name: payload.patient_name,
           patient_phone: payload.patient_phone,
           service_id: payload.service_id,
           area: payload.area || 'Hyderabad Central',
           submitted_at: payload.submitted_at,
           status: payload.status,
-          assigned_nurse_id: payload.assigned_nurse_id,
+          assigned_nurse_id: null,
           lead_value_rupees: payload.lead_value_rupees,
           points_awarded: payload.points_awarded,
           referral_commission_rupees: payload.referral_commission_rupees
@@ -1384,13 +1434,13 @@ export async function dbIncrementCouponUsage(code: string): Promise<void> {
 export async function dbFetchAppUsers(): Promise<AppUser[]> {
   try {
     const { data, error } = await supabase.from('app_users').select('*');
-    if (!error && data && data.length > 0) {
+    if (!error && data) {
       return data.map((u: any) => ({
         id: u.id,
         role: u.role,
         identifier: u.identifier,
         name: u.name,
-        pin: '••••', // Never leak credentials to frontend
+        pin: u.pin ? String(u.pin).trim() : '', // Real PIN from Supabase
         phone: u.phone,
         email: u.email,
         designation: u.designation,
@@ -1539,7 +1589,7 @@ export async function dbLogAuditEvent(
 
 export async function dbInsertAppUser(u: AppUser): Promise<boolean> {
   try {
-    const { error } = await supabase.from('app_users').insert({
+    const payload = {
       id: u.id,
       role: u.role,
       identifier: (u.identifier || u.phone || u.email || u.id).trim().toLowerCase(),
@@ -1550,8 +1600,23 @@ export async function dbInsertAppUser(u: AppUser): Promise<boolean> {
       designation: u.designation || null,
       service_area: u.serviceArea || null,
       avatar_url: u.avatarUrl || null
-    });
-    return !error;
+    };
+    const { error } = await supabase.from('app_users').upsert(payload, { onConflict: 'identifier' });
+    if (error) {
+      await supabase.from('app_users').upsert(payload, { onConflict: 'id' });
+    }
+    // Also save resilient local storage backup
+    try {
+      if (typeof window !== 'undefined' && window.localStorage) {
+        const raw = localStorage.getItem('xn_registered_users');
+        const list: AppUser[] = raw ? JSON.parse(raw) : [];
+        const idx = list.findIndex(x => x.id === u.id || x.identifier === u.identifier || (u.phone && x.phone === u.phone));
+        if (idx >= 0) list[idx] = { ...list[idx], ...u };
+        else list.push(u);
+        localStorage.setItem('xn_registered_users', JSON.stringify(list));
+      }
+    } catch {}
+    return true;
   } catch {
     return false;
   }
@@ -1570,7 +1635,23 @@ export async function dbUpdateAppUserById(id: string, updates: Partial<AppUser>)
 
   try {
     const { error } = await supabase.from('app_users').update(payload).eq('id', id);
-    return !error;
+    if (!error) {
+      try {
+        if (typeof window !== 'undefined' && typeof window.localStorage !== 'undefined') {
+          const raw = localStorage.getItem('xn_registered_users');
+          if (raw) {
+            const list: AppUser[] = JSON.parse(raw);
+            const idx = list.findIndex(u => u.id === id);
+            if (idx !== -1) {
+              list[idx] = { ...list[idx], ...updates };
+              localStorage.setItem('xn_registered_users', JSON.stringify(list));
+            }
+          }
+        }
+      } catch {}
+      return true;
+    }
+    return false;
   } catch {
     return false;
   }
@@ -1579,10 +1660,22 @@ export async function dbUpdateAppUserById(id: string, updates: Partial<AppUser>)
 export async function dbDeleteAppUser(id: string): Promise<boolean> {
   try {
     const { error } = await supabase.from('app_users').delete().eq('id', id);
+    // Also delete from nurses table if nurse account
+    await supabase.from('nurses').delete().eq('id', id);
     if (error) {
       console.error('[Supabase dbDeleteAppUser error]:', error);
       return false;
     }
+    try {
+      if (typeof window !== 'undefined' && typeof window.localStorage !== 'undefined') {
+        const raw = localStorage.getItem('xn_registered_users');
+        if (raw) {
+          const list: AppUser[] = JSON.parse(raw);
+          const filtered = list.filter(u => u.id !== id);
+          localStorage.setItem('xn_registered_users', JSON.stringify(filtered));
+        }
+      }
+    } catch {}
     return true;
   } catch (err) {
     console.error('[Supabase dbDeleteAppUser exception]:', err);
@@ -1594,6 +1687,7 @@ export async function dbDeleteMultipleAppUsers(ids: string[]): Promise<boolean> 
   if (!ids || ids.length === 0) return true;
   try {
     const { error } = await supabase.from('app_users').delete().in('id', ids);
+    await supabase.from('nurses').delete().in('id', ids);
     if (error) {
       console.error('[Supabase dbDeleteMultipleAppUsers error]:', error);
       return false;

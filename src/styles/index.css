@@ -38,8 +38,8 @@
   --neutral-50: #F8FAFC;
   --white: #FFFFFF;
 
-  --font-heading: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-  --font-family: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  --font-heading: 'Lexend Deca', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  --font-family: 'Lexend Deca', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
 
   --radius-xs: 4px;
   --radius-sm: 8px;
@@ -78,6 +78,11 @@
   box-sizing: border-box;
   margin: 0;
   padding: 0;
+  font-family: 'Lexend Deca', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+}
+
+html, body, #root, button, input, select, textarea, optgroup {
+  font-family: 'Lexend Deca', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif !important;
 }
 
 html, body {
@@ -87,7 +92,7 @@ html, body {
 }
 
 html {
-  font-family: var(--font-family);
+  font-family: 'Lexend Deca', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif !important;
   color: var(--neutral-800);
   background-color: var(--neutral-50);
   font-size: 15px;
@@ -5582,6 +5587,121 @@ select optgroup {
     padding-bottom: 5.5rem !important;
   }
 }
+
+/* ==========================================================================
+   TYPOGRAPHIC HIERARCHY SYSTEM — STRICT MAX WEIGHT 400 (NO HIGH WEIGHTS)
+   ========================================================================== */
+
+/* 1. Global font family & weight ceiling */
+html, body, #root, #root *, [class] {
+  font-family: 'Lexend Deca', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif !important;
+}
+
+/* 2. Base text, descriptions, details, subtitles, paragraphs, table cells: weight 300 */
+body,
+p,
+span,
+div,
+li,
+a,
+td,
+label,
+input,
+textarea,
+select,
+.description,
+.subtitle,
+.brand-subtitle,
+.section-subtitle,
+.card-subtitle,
+.stat-label,
+.text-muted,
+.service-desc,
+.hero-desc,
+.consult-desc,
+.booking-desc,
+.review-text {
+  font-weight: 300;
+}
+
+/* 3. Headings & Main Titles: weight 400 with strict typographic hierarchy */
+h1, .h1, .hero-title, .brand-title {
+  font-size: 2.25rem;
+  font-weight: 400 !important;
+  line-height: 1.25;
+  letter-spacing: -0.02em;
+  color: var(--primary-navy-950);
+}
+
+h2, .h2, .section-title, .panel-header h2 {
+  font-size: 1.75rem;
+  font-weight: 400 !important;
+  line-height: 1.3;
+  letter-spacing: -0.015em;
+  color: var(--primary-navy-950);
+}
+
+h3, .h3, .card-title {
+  font-size: 1.35rem;
+  font-weight: 400 !important;
+  line-height: 1.35;
+  color: var(--primary-navy-900);
+}
+
+h4, .h4 {
+  font-size: 1.15rem;
+  font-weight: 400 !important;
+  line-height: 1.4;
+  color: var(--primary-navy-900);
+}
+
+h5, .h5 {
+  font-size: 1.0rem;
+  font-weight: 400 !important;
+  line-height: 1.45;
+  color: var(--primary-navy-900);
+}
+
+h6, .h6 {
+  font-size: 0.85rem;
+  font-weight: 400 !important;
+  line-height: 1.4;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--neutral-600);
+}
+
+/* 4. Strong elements, table headers, buttons, pills, tags: weight 400 */
+strong,
+b,
+th,
+button,
+.btn,
+.status-pill,
+.badge,
+.tag,
+.section-badge,
+.stat-val,
+.price-val,
+.price-amount {
+  font-weight: 400 !important;
+}
+
+/* 5. Comprehensive override capping any high weights (500-900, bold) at 400 */
+[style*="font-weight: 500"], [style*="font-weight: 550"], [style*="font-weight: 600"],
+[style*="font-weight: 650"], [style*="font-weight: 700"], [style*="font-weight: 750"],
+[style*="font-weight: 800"], [style*="font-weight: 850"], [style*="font-weight: 900"],
+[style*="font-weight: bold"], [style*="font-weight: bolder"],
+[style*="fontWeight: 500"], [style*="fontWeight: 550"], [style*="fontWeight: 600"],
+[style*="fontWeight: 650"], [style*="fontWeight: 700"], [style*="fontWeight: 750"],
+[style*="fontWeight: 800"], [style*="fontWeight: 850"], [style*="fontWeight: 900"],
+[style*="fontWeight: bold"], [style*="fontWeight: bolder"],
+[style*="fontWeight: 'bold'"], [style*="fontWeight: 'bolder'"],
+[style*="fontWeight: \"bold\""], [style*="fontWeight: \"bolder\""],
+.font-bold, .font-semibold, .font-medium, .font-extrabold {
+  font-weight: 400 !important;
+}
+
 
 
 

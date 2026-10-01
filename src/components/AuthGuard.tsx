@@ -58,7 +58,7 @@ export const AuthGuard: React.FC<AuthGuardProps> = ({
 
           <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
             <button
-              onClick={() => onNavigate('/login')}
+              onClick={() => onNavigate(`/login?portal=${requiredRole}`)}
               style={{
                 display: 'inline-flex',
                 alignItems: 'center',
@@ -152,7 +152,12 @@ export const AuthGuard: React.FC<AuthGuardProps> = ({
 
           <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
             <button
-              onClick={() => onNavigate('/login')}
+              onClick={() => {
+                try {
+                  localStorage.removeItem('xn_auth_user');
+                } catch {}
+                onNavigate(`/login?portal=${requiredRole}`);
+              }}
               style={{
                 display: 'inline-flex',
                 alignItems: 'center',

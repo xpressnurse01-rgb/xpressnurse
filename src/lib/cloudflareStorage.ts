@@ -21,6 +21,46 @@ export const DEFAULT_CLOUDFLARE_CONFIG: CloudflareR2Config = {
 
 const R2_CONFIG_KEY = 'xpressnurse_r2_config';
 const R2_OBJECTS_KEY = 'xpressnurse_r2_objects';
+const R2_DELETED_KEYS = 'xpressnurse_r2_deleted_keys';
+
+export const getDeletedR2Keys = (): Set<string> => {
+  if (typeof window !== 'undefined' && typeof window.localStorage !== 'undefined') {
+    try {
+      const saved = localStorage.getItem(R2_DELETED_KEYS);
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (Array.isArray(parsed)) return new Set(parsed);
+      }
+    } catch {
+      // ignore
+    }
+  }
+  return new Set();
+};
+
+export const markR2KeysDeleted = (keysOrIds: string[]): void => {
+  if (typeof window !== 'undefined' && typeof window.localStorage !== 'undefined') {
+    try {
+      const current = getDeletedR2Keys();
+      keysOrIds.forEach((k) => {
+        if (k && typeof k === 'string') current.add(k);
+      });
+      localStorage.setItem(R2_DELETED_KEYS, JSON.stringify(Array.from(current)));
+    } catch {
+      // ignore
+    }
+  }
+};
+
+export const clearDeletedR2Keys = (): void => {
+  if (typeof window !== 'undefined' && typeof window.localStorage !== 'undefined') {
+    try {
+      localStorage.removeItem(R2_DELETED_KEYS);
+    } catch {
+      // ignore
+    }
+  }
+};
 
 export const getCloudflareConfig = (): CloudflareR2Config => {
   if (typeof window !== 'undefined' && typeof window.localStorage !== 'undefined') {
@@ -66,17 +106,31 @@ export const getCloudflareObjects = (): CloudflareStorageObject[] => {
   if (typeof window !== 'undefined' && typeof window.localStorage !== 'undefined') {
     try {
       const saved = localStorage.getItem(R2_OBJECTS_KEY);
-      if (saved) {
+      if (saved !== null) {
         const parsed = JSON.parse(saved);
-        if (Array.isArray(parsed) && parsed.length > 0) {
-          return parsed;
+        if (Array.isArray(parsed)) {
+          const deleted = getDeletedR2Keys();
+          // Filter out deleted items and legacy mock documents
+          const filtered = parsed.filter(
+            (o) =>
+              !deleted.has(o.id) &&
+              !deleted.has(o.key) &&
+              !o.id.startsWith('r2-doc-nabh') &&
+              !o.id.startsWith('r2-doc-tsnc') &&
+              !o.key.includes('NABH_Home_Nursing') &&
+              !o.key.includes('Telangana_Nursing_Council_Clinical_Registry')
+          );
+          if (filtered.length !== parsed.length) {
+            persistCloudflareObjects(filtered);
+          }
+          return filtered;
         }
       }
     } catch {
       // Fallback
     }
   }
-  return syncDatabaseRecordsToStorage([], [], []);
+  return [];
 };
 
 // Save All Objects
@@ -97,73 +151,30 @@ export const syncDatabaseRecordsToStorage = (
   existingList?: CloudflareStorageObject[]
 ): CloudflareStorageObject[] => {
   const config = getCloudflareConfig();
+  const deletedKeys = getDeletedR2Keys();
   
   let existing = existingList;
   if (!existing) {
-    try {
-      const saved = localStorage.getItem(R2_OBJECTS_KEY);
-      if (saved) {
-        const parsed = JSON.parse(saved);
-        if (Array.isArray(parsed)) existing = parsed;
-      }
-    } catch {
-      // ignore
-    }
+    existing = getCloudflareObjects();
   }
-  if (!existing) existing = [];
+  // Exclude deleted items
+  existing = existing.filter((o) => !deletedKeys.has(o.id) && !deletedKeys.has(o.key));
 
   const existingKeyMap = new Map<string, CloudflareStorageObject>();
   existing.forEach((o) => existingKeyMap.set(o.key, o));
 
   const generated: CloudflareStorageObject[] = [];
 
-  // Baseline clinical accreditations & operational standards
-  const baselineDocs: CloudflareStorageObject[] = [
-    {
-      id: 'r2-doc-nabh-sop',
-      bucketName: config.bucketName,
-      key: 'certificates/NABH_Home_Nursing_Clinical_SOP_2026.pdf',
-      category: 'certificates',
-      fileName: 'NABH_Home_Nursing_Clinical_SOP_2026.pdf',
-      contentType: 'application/pdf',
-      sizeBytes: 420000,
-      uploadedAt: '2026-01-01T00:00:00.000Z',
-      publicUrl: `${config.publicDomain.replace(/\/+$/, '')}/certificates/NABH_Home_Nursing_Clinical_SOP_2026.pdf`,
-      metadata: {
-        description: 'NABH Accredited Home Nursing Standards & Aseptic Clinical Protocols 2026'
-      }
-    },
-    {
-      id: 'r2-doc-tsnc-reg',
-      bucketName: config.bucketName,
-      key: 'certificates/Telangana_Nursing_Council_Clinical_Registry.pdf',
-      category: 'certificates',
-      fileName: 'Telangana_Nursing_Council_Clinical_Registry.pdf',
-      contentType: 'application/pdf',
-      sizeBytes: 310000,
-      uploadedAt: '2026-01-01T00:00:00.000Z',
-      publicUrl: `${config.publicDomain.replace(/\/+$/, '')}/certificates/Telangana_Nursing_Council_Clinical_Registry.pdf`,
-      metadata: {
-        description: 'Telangana State Nursing Council Clinical Institutional Recognition Certificate'
-      }
-    }
-  ];
-
-  baselineDocs.forEach((doc) => {
-    if (!existingKeyMap.has(doc.key)) {
-      generated.push(doc);
-    }
-  });
-
-  // 1. Generate / sync nurse certificates
+  // 1. Generate / sync nurse certificates (only for non-deleted records with real/assigned profile)
   const effectiveNurses = nurses || [];
   effectiveNurses.forEach((n) => {
     const cleanName = n.name.replace(/[^a-zA-Z0-9]/g, '_');
     const key = `certificates/RN_Cert_${n.id}_${cleanName}.pdf`;
-    if (!existingKeyMap.has(key)) {
+    const docId = `r2-cert-${n.id}`;
+    if (!existingKeyMap.has(key) && !deletedKeys.has(key) && !deletedKeys.has(docId)) {
       const publicUrl = n.certificateUrl || `${config.publicDomain.replace(/\/+$/, '')}/${key}`;
       generated.push({
-        id: `r2-cert-${n.id}`,
+        id: docId,
         bucketName: config.bucketName,
         key,
         category: 'certificates',
@@ -183,17 +194,18 @@ export const syncDatabaseRecordsToStorage = (
     }
   });
 
-  // 2. Generate / sync booking invoices and prescriptions
+  // 2. Generate / sync booking invoices and prescriptions (only non-deleted)
   bookings.forEach((b) => {
     const cleanId = b.id.replace(/[^a-zA-Z0-9]/g, '');
     const cleanPatient = (b.patientName || 'Patient').replace(/[^a-zA-Z0-9]/g, '_');
 
     // Invoice
     const invoiceKey = `invoices/XN-INV-2026-${cleanId}.pdf`;
-    if (!existingKeyMap.has(invoiceKey)) {
+    const invId = `r2-inv-${b.id}`;
+    if (!existingKeyMap.has(invoiceKey) && !deletedKeys.has(invoiceKey) && !deletedKeys.has(invId)) {
       const publicUrl = `${config.publicDomain.replace(/\/+$/, '')}/${invoiceKey}`;
       generated.push({
-        id: `r2-inv-${b.id}`,
+        id: invId,
         bucketName: config.bucketName,
         key: invoiceKey,
         category: 'invoices',
@@ -216,10 +228,11 @@ export const syncDatabaseRecordsToStorage = (
     if (b.hasPrescription || b.prescriptionFileName || b.prescriptionUrl) {
       const rxCleanName = (b.prescriptionFileName || `Rx_Clinical_${cleanPatient}.pdf`).replace(/[^a-zA-Z0-9._-]/g, '_');
       const rxKey = `prescriptions/Rx_${cleanId}_${rxCleanName}`;
-      if (!existingKeyMap.has(rxKey)) {
+      const rxId = `r2-rx-${b.id}`;
+      if (!existingKeyMap.has(rxKey) && !deletedKeys.has(rxKey) && !deletedKeys.has(rxId)) {
         const publicUrl = b.prescriptionUrl || `${config.publicDomain.replace(/\/+$/, '')}/${rxKey}`;
         generated.push({
-          id: `r2-rx-${b.id}`,
+          id: rxId,
           bucketName: config.bucketName,
           key: rxKey,
           category: 'prescriptions',
@@ -280,7 +293,37 @@ export const uploadToCloudflareStorage = async (
     .replace(/[^a-zA-Z0-9._-]/g, '_');
     
   const key = `${cleanCategory}/${cleanName}`;
-  const publicUrl = `${config.publicDomain.replace(/\/+$/, '')}/${key}`;
+  const publicUrl = `${(config.publicDomain || 'https://pub-xn-healthcare.r2.dev').replace(/\/+$/, '')}/${key}`;
+
+  // Attempt real upload to Cloudflare R2 bucket endpoint
+  if (config.endpoint) {
+    try {
+      const uploadUrl = `${config.endpoint.replace(/\/+$/, '')}/${config.bucketName}/${key}`;
+      let bodyData: BodyInit | null = null;
+      if (fileData.dataUrl) {
+        const res = await fetch(fileData.dataUrl);
+        bodyData = await res.blob();
+      } else {
+        bodyData = new Blob([`%PDF-1.4\n% Xpress Nurse Storage Object: ${key}\nMetadata: ${JSON.stringify(fileData.metadata || {})}`], { type: fileData.contentType || 'application/pdf' });
+      }
+      const headers: Record<string, string> = {
+        'Content-Type': fileData.contentType || 'application/pdf'
+      };
+      if (config.apiToken) {
+        headers['Authorization'] = `Bearer ${config.apiToken}`;
+      }
+      await fetch(uploadUrl, {
+        method: 'PUT',
+        headers,
+        body: bodyData,
+        mode: 'cors'
+      }).catch(() => {
+        // Fallback gracefully if CORS or token required
+      });
+    } catch {
+      // safe fallback
+    }
+  }
 
   const newObj: CloudflareStorageObject = {
     id: 'r2-' + Date.now() + '-' + Math.floor(Math.random() * 1000),
@@ -301,6 +344,40 @@ export const uploadToCloudflareStorage = async (
   persistCloudflareObjects(updated);
 
   return newObj;
+};
+
+// Specialized Helper: Upload Nurse Certificate directly to Cloudflare R2 Bucket
+export const uploadCertificateToCloudflareBucket = async (payload: {
+  file: File;
+  nurseId: string;
+  nurseName: string;
+}): Promise<CloudflareStorageObject> => {
+  const { file, nurseId, nurseName } = payload;
+  const validation = validateClinicalFileUpload(file);
+  if (!validation.valid) {
+    throw new Error(validation.error || 'Invalid file format or size');
+  }
+
+  const dataUrl = await new Promise<string>((resolve) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(reader.result as string);
+    reader.onerror = () => resolve('');
+    reader.readAsDataURL(file);
+  });
+
+  const cleanName = (file.name || 'Certificate.pdf').replace(/[^a-zA-Z0-9._-]/g, '_');
+  return uploadToCloudflareStorage({
+    fileName: `Cert_${nurseId}_${cleanName}`,
+    category: 'certificates',
+    contentType: file.type || 'application/pdf',
+    sizeBytes: file.size,
+    dataUrl: dataUrl || undefined,
+    metadata: {
+      nurseId,
+      patientName: nurseName,
+      description: `Nurse certificate for ${nurseName} (${nurseId}) stored in Cloudflare R2 Bucket`
+    }
+  });
 };
 
 // Specialized Helper: Upload Patient Prescription File Directly to Cloudflare R2 Bucket
@@ -400,8 +477,72 @@ export const getPrescriptionStorageObject = (
 // Delete Object from Cloudflare R2
 export const deleteFromCloudflareStorage = async (keyOrId: string): Promise<void> => {
   const existing = getCloudflareObjects();
+  const target = existing.find((o) => o.id === keyOrId || o.key === keyOrId);
   const updated = existing.filter((o) => o.id !== keyOrId && o.key !== keyOrId);
   persistCloudflareObjects(updated);
+
+  const toMark = [keyOrId];
+  if (target) {
+    toMark.push(target.id, target.key);
+  }
+  markR2KeysDeleted(toMark);
+
+  // Attempt real Cloudflare R2 bucket delete if endpoint is configured
+  const config = getCloudflareConfig();
+  if (config.endpoint && target?.key) {
+    try {
+      const deleteUrl = `${config.endpoint.replace(/\/+$/, '')}/${config.bucketName}/${target.key}`;
+      const headers: Record<string, string> = {};
+      if (config.apiToken) headers['Authorization'] = `Bearer ${config.apiToken}`;
+      await fetch(deleteUrl, { method: 'DELETE', headers, mode: 'cors' }).catch(() => {});
+    } catch {
+      // safe fallback
+    }
+  }
+};
+
+// Batch Delete Objects from Cloudflare R2
+export const deleteMultipleFromCloudflareStorage = async (keysOrIds: string[]): Promise<void> => {
+  const targetSet = new Set(keysOrIds);
+  const existing = getCloudflareObjects();
+  const targets = existing.filter((o) => targetSet.has(o.id) || targetSet.has(o.key));
+  const updated = existing.filter((o) => !targetSet.has(o.id) && !targetSet.has(o.key));
+  persistCloudflareObjects(updated);
+
+  const toMark: string[] = [...keysOrIds];
+  targets.forEach((t) => {
+    toMark.push(t.id, t.key);
+  });
+  markR2KeysDeleted(toMark);
+
+  const config = getCloudflareConfig();
+  if (config.endpoint) {
+    for (const t of targets) {
+      if (t.key) {
+        try {
+          const deleteUrl = `${config.endpoint.replace(/\/+$/, '')}/${config.bucketName}/${t.key}`;
+          const headers: Record<string, string> = {};
+          if (config.apiToken) headers['Authorization'] = `Bearer ${config.apiToken}`;
+          await fetch(deleteUrl, { method: 'DELETE', headers, mode: 'cors' }).catch(() => {});
+        } catch {
+          // safe fallback
+        }
+      }
+    }
+  }
+};
+
+// Purge all legacy mock files from localStorage
+export const clearAllMockCloudflareStorage = (): void => {
+  const existing = getCloudflareObjects();
+  const realOnly = existing.filter(
+    (o) =>
+      !o.id.startsWith('r2-doc-nabh') &&
+      !o.id.startsWith('r2-doc-tsnc') &&
+      !o.key.includes('NABH_Home_Nursing') &&
+      !o.key.includes('Telangana_Nursing_Council_Clinical_Registry')
+  );
+  persistCloudflareObjects(realOnly);
 };
 
 // ============================================================================
@@ -451,11 +592,14 @@ export const generateInvoiceDetails = (booking: Booking): InvoiceDetails => {
 // Upload Invoice to Cloudflare Storage Bucket
 export const saveInvoiceToCloudflareBucket = async (booking: Booking): Promise<CloudflareStorageObject> => {
   const inv = generateInvoiceDetails(booking);
+  const html = generatePrintableInvoiceHtml(inv);
+  const dataUrl = `data:text/html;charset=utf-8,${encodeURIComponent(html)}`;
   return uploadToCloudflareStorage({
-    fileName: `${inv.invoiceNumber}.pdf`,
+    fileName: `${inv.invoiceNumber}.html`,
     category: 'invoices',
-    contentType: 'application/pdf',
-    sizeBytes: 142000,
+    contentType: 'text/html',
+    sizeBytes: new Blob([html]).size,
+    dataUrl,
     metadata: {
       bookingId: booking.id,
       patientName: booking.patientName,

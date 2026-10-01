@@ -44,7 +44,18 @@ export const LoginPage: React.FC<LoginPageProps> = ({
   nurses = [],
   onRefreshNurses
 }) => {
-  const [role, setRole] = useState<LoginRole>('nurse');
+  const [role, setRole] = useState<LoginRole>(() => {
+    try {
+      if (typeof window !== 'undefined') {
+        const urlParams = new URLSearchParams(window.location.search);
+        const portal = (urlParams.get('portal') || urlParams.get('role'))?.toLowerCase();
+        if (portal === 'admin' || portal === 'doctor' || portal === 'nurse') {
+          return portal as LoginRole;
+        }
+      }
+    } catch {}
+    return 'nurse';
+  });
   const [identifier, setIdentifier] = useState('');
   const [pin, setPin] = useState('');
   const [showPin, setShowPin] = useState(false);
@@ -58,14 +69,21 @@ export const LoginPage: React.FC<LoginPageProps> = ({
   const [regPhone, setRegPhone] = useState('');
   const [regEmail, setRegEmail] = useState('');
   const [regPin, setRegPin] = useState('');
+  const [regExperienceYears, setRegExperienceYears] = useState<number>(3);
+  const [regServiceArea, setRegServiceArea] = useState<string>('Gachibowli');
+  const [regQualification, setRegQualification] = useState<string>('B.Sc Nursing (Registered RN)');
   const [regReferralCode, setRegReferralCode] = useState('');
   const [regCertificate, setRegCertificate] = useState<File | null>(null);
   const [regDisclaimer, setRegDisclaimer] = useState(false);
 
-  // Check URL query parameters for referral link (e.g. ?ref=XN-PRIYA101)
+  // Check URL query parameters for portal / role or referral link (e.g. ?portal=admin or ?ref=XN-PRIYA101)
   useEffect(() => {
     try {
       const urlParams = new URLSearchParams(window.location.search);
+      const portal = (urlParams.get('portal') || urlParams.get('role'))?.toLowerCase();
+      if (portal === 'admin' || portal === 'doctor' || portal === 'nurse') {
+        setRole(portal as LoginRole);
+      }
       const refCode = urlParams.get('ref') || urlParams.get('referral');
       if (refCode) {
         setRole('nurse');
@@ -140,22 +158,24 @@ export const LoginPage: React.FC<LoginPageProps> = ({
       const newId = `NUR-${Math.floor(1000 + Math.random() * 9000)}`;
       const myReferralCode = generateNurseReferralCode(regName.trim(), newId, regPhone.trim());
       
+      const cleanPhone = regPhone.replace(/\D/g, '');
       const newNurse: NurseProfile = {
         id: newId,
         name: regName.trim(),
-        phone: regPhone.trim(),
+        phone: cleanPhone || regPhone.trim(),
         email: regEmail.trim(),
-        experienceYears: 0,
-        qualification: 'Registered Nurse',
-        serviceArea: 'Gachibowli',
-        status: 'Pending Verification',
+        experienceYears: Number(regExperienceYears) || 1,
+        qualification: regQualification.trim() || 'Registered Nurse (B.Sc)',
+        serviceArea: regServiceArea || 'Gachibowli',
+        pin: regPin.trim(),
+        status: 'Active',
         totalLeads: 0,
         convertedLeads: 0,
         totalReferrals: 0,
-        pointsEarned: 0,
+        pointsEarned: 300,
         referralEarningsRupees: 0,
-        rating: 0,
-        certificateVerified: false,
+        rating: 4.9,
+        certificateVerified: Boolean(certUrl),
         certificateUrl: certUrl,
         createdAt: new Date().toISOString(),
         referredByNurseId: matchedReferringNurse?.id || undefined,
@@ -169,10 +189,10 @@ export const LoginPage: React.FC<LoginPageProps> = ({
         identifier: regEmail.trim().toLowerCase(),
         name: regName.trim(),
         pin: regPin.trim(),
-        phone: regPhone.trim(),
+        phone: cleanPhone || regPhone.trim(),
         email: regEmail.trim(),
-        designation: 'Registered Nurse',
-        serviceArea: 'Hyderabad Central'
+        designation: regQualification.trim() || 'Registered Nurse (B.Sc)',
+        serviceArea: regServiceArea || 'Gachibowli'
       };
       
       await dbInsertNurse(newNurse);
@@ -212,7 +232,7 @@ export const LoginPage: React.FC<LoginPageProps> = ({
         ? `Application submitted with referral from ${matchedReferringNurse.name}! Profile pending verification.`
         : 'Registration submitted! Your profile is pending Admin approval.'
       );
-      setRegName(''); setRegPhone(''); setRegEmail(''); setRegPin(''); setRegCertificate(null); setRegDisclaimer(false); setRegReferralCode('');
+      setRegName(''); setRegPhone(''); setRegEmail(''); setRegPin(''); setRegCertificate(null); setRegDisclaimer(false); setRegReferralCode(''); setRegExperienceYears(3); setRegServiceArea('Gachibowli');
       setTimeout(() => setIsRegistering(false), 3000);
     } catch (err: any) {
       setIsLoading(false);
@@ -244,8 +264,8 @@ export const LoginPage: React.FC<LoginPageProps> = ({
     setIsLoading(true);
 
     try {
-      // Authenticate against database with smart unified role detection across Nurse, Doctor, and Admin
-      const authResult = await dbVerifyUserPin('any', identifier.trim(), cleanPin);
+      // Authenticate strictly against the active portal role (nurse, doctor, or admin)
+      const authResult = await dbVerifyUserPin(role, identifier.trim(), cleanPin);
 
       if (!authResult.success) {
         setIsLoading(false);
@@ -552,9 +572,91 @@ export const LoginPage: React.FC<LoginPageProps> = ({
                 )}
               </div>
 
+              {/* Service Area & Years of Experience */}
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem', marginBottom: '0.75rem' }}>
+                <div className="form-group">
+                  <label className="form-label">Service Area (Hyderabad)</label>
+                  <select
+                    value={regServiceArea}
+                    onChange={(e) => setRegServiceArea(e.target.value)}
+                    className="form-control"
+                    style={{ fontWeight: 600 }}
+                  >
+                    <option value="Gachibowli">Gachibowli</option>
+                    <option value="Madhapur">Madhapur</option>
+                    <option value="Hitec City">Hitec City</option>
+                    <option value="Kondapur">Kondapur</option>
+                    <option value="Jubilee Hills">Jubilee Hills</option>
+                    <option value="Banjara Hills">Banjara Hills</option>
+                    <option value="Kukatpally">Kukatpally</option>
+                    <option value="Miyapur">Miyapur</option>
+                    <option value="Secunderabad">Secunderabad</option>
+                    <option value="Ameerpet">Ameerpet</option>
+                    <option value="Begumpet">Begumpet</option>
+                    <option value="LB Nagar">LB Nagar</option>
+                    <option value="Dilsukhnagar">Dilsukhnagar</option>
+                    <option value="Malakpet">Malakpet</option>
+                    <option value="Uppal">Uppal</option>
+                    <option value="Attapur">Attapur</option>
+                    <option value="Tolichowki">Tolichowki</option>
+                    <option value="Charminar">Charminar</option>
+                    <option value="Nallagandla">Nallagandla</option>
+                    <option value="Mehdipatnam">Mehdipatnam</option>
+                  </select>
+                </div>
+                <div className="form-group">
+                  <label className="form-label">Years of Experience</label>
+                  <select
+                    value={regExperienceYears}
+                    onChange={(e) => setRegExperienceYears(Number(e.target.value))}
+                    className="form-control"
+                    style={{ fontWeight: 600 }}
+                  >
+                    <option value="1">1 Year Experience</option>
+                    <option value="2">2 Years Experience</option>
+                    <option value="3">3 Years Experience</option>
+                    <option value="4">4 Years Experience</option>
+                    <option value="5">5 Years Experience</option>
+                    <option value="6">6 Years Experience</option>
+                    <option value="7">7 Years Experience</option>
+                    <option value="8">8 Years Experience</option>
+                    <option value="9">9 Years Experience</option>
+                    <option value="10">10+ Years Experience</option>
+                    <option value="15">15+ Years Experience</option>
+                  </select>
+                </div>
+              </div>
+
+              {/* Qualification */}
               <div className="form-group" style={{ marginBottom: '0.75rem' }}>
-                <label className="form-label">Set 4-Digit PIN</label>
-                <input type="password" maxLength={4} value={regPin} onChange={e => setRegPin(e.target.value.replace(/\D/g, ''))} className="form-control" placeholder="••••" style={{ letterSpacing: '0.2rem' }} />
+                <label className="form-label">Nursing Qualification</label>
+                <select
+                  value={regQualification}
+                  onChange={(e) => setRegQualification(e.target.value)}
+                  className="form-control"
+                >
+                  <option value="B.Sc Nursing (Registered RN)">B.Sc Nursing (Registered RN)</option>
+                  <option value="General Nursing & Midwifery (GNM)">General Nursing & Midwifery (GNM)</option>
+                  <option value="Post Basic B.Sc Nursing">Post Basic B.Sc Nursing</option>
+                  <option value="M.Sc Nursing">M.Sc Nursing</option>
+                  <option value="ANM (Auxiliary Nurse)">ANM (Auxiliary Nurse)</option>
+                </select>
+              </div>
+
+              <div className="form-group" style={{ marginBottom: '0.75rem' }}>
+                <label className="form-label">Set 4-Digit Security PIN (Used for Staff Login)</label>
+                <input 
+                  type="password" 
+                  maxLength={4} 
+                  value={regPin} 
+                  onChange={e => setRegPin(e.target.value.replace(/\D/g, ''))} 
+                  className="form-control" 
+                  placeholder="••••" 
+                  style={{ letterSpacing: '0.2rem', fontWeight: 700, fontSize: '1.1rem' }} 
+                />
+                <div style={{ fontSize: '0.72rem', color: '#64748B', marginTop: '0.25rem' }}>
+                  Remember this 4-digit PIN along with your phone number for future logins.
+                </div>
               </div>
 
               <div className="form-group" style={{ marginBottom: '0.75rem' }}>

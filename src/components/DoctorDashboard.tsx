@@ -18,7 +18,8 @@ import {
   ShieldCheck,
   Sparkles,
   Download,
-  Check
+  Check,
+  LogOut
 } from 'lucide-react';
 import confetti from 'canvas-confetti';
 import { EmptyState } from './EmptyState';
@@ -183,9 +184,34 @@ export const DoctorDashboard: React.FC<DoctorDashboardProps> = ({
           </div>
         </div>
 
-        <span className="status-pill success" style={{ fontWeight: 700, padding: '4px 10px' }}>
-          Dr. Vikramaditya, MD (TSMC/2016/9421) — Active On Duty
-        </span>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', flexWrap: 'wrap' }}>
+          <span className="status-pill success" style={{ fontWeight: 700, padding: '4px 10px' }}>
+            Dr. Vikramaditya, MD (TSMC/2016/9421) — Active On Duty
+          </span>
+          <button
+            type="button"
+            className="btn btn-sm btn-outline"
+            onClick={() => {
+              try {
+                localStorage.removeItem('xn_auth_user');
+                window.location.href = '/login?portal=doctor';
+              } catch {}
+            }}
+            style={{
+              color: '#EF4444',
+              borderColor: '#FECDD3',
+              background: '#FFF1F2',
+              fontWeight: 700,
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: '0.35rem'
+            }}
+            title="Sign out of Doctor Panel"
+          >
+            <LogOut size={14} />
+            <span>Sign Out</span>
+          </button>
+        </div>
       </div>
 
       {/* Top Clinical Contextual Stat Cards */}
