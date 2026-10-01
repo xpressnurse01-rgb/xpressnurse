@@ -23,7 +23,6 @@ import {
   dbInsertAppUser, 
   dbInsertLead, 
   dbUpdateNurseById, 
-  DEFAULT_NURSES, 
   findNurseByReferralCode, 
   generateNurseReferralCode 
 } from '../lib/supabase';
@@ -78,7 +77,7 @@ export const LoginPage: React.FC<LoginPageProps> = ({
     }
   }, []);
 
-  const activeNursesList = nurses && nurses.length > 0 ? nurses : DEFAULT_NURSES;
+  const activeNursesList = nurses || [];
   const matchedReferringNurse = regReferralCode.trim()
     ? findNurseByReferralCode(regReferralCode.trim(), activeNursesList)
     : undefined;
@@ -261,7 +260,8 @@ export const LoginPage: React.FC<LoginPageProps> = ({
       setSuccessMsg(`Welcome, ${matchedUser?.name || 'Staff Member'}! Redirecting to ${detectedRole.toUpperCase()} Dashboard...`);
 
       if (matchedUser) {
-        localStorage.setItem('xn_auth_user', JSON.stringify(matchedUser));
+        const { pin: _pin, ...safeUser } = matchedUser;
+        localStorage.setItem('xn_auth_user', JSON.stringify(safeUser));
         if (detectedRole === 'nurse') {
           localStorage.setItem('xn_active_nurse_id', matchedUser.id);
         }

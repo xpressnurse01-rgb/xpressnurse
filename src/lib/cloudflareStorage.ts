@@ -6,7 +6,6 @@ import {
   NurseProfile,
   StorageCategory 
 } from '../types';
-import { DEFAULT_NURSES } from './supabase';
 
 // ============================================================================
 // CLOUDFLARE R2 STORAGE BUCKET CONFIGURATION & SERVICE
@@ -24,22 +23,24 @@ const R2_CONFIG_KEY = 'xpressnurse_r2_config';
 const R2_OBJECTS_KEY = 'xpressnurse_r2_objects';
 
 export const getCloudflareConfig = (): CloudflareR2Config => {
-  try {
-    const saved = localStorage.getItem(R2_CONFIG_KEY);
-    if (saved) {
-      const parsed = JSON.parse(saved);
-      const config = { 
-        ...DEFAULT_CLOUDFLARE_CONFIG, 
-        ...parsed,
-        accountId: parsed.accountId || import.meta.env.VITE_CLOUDFLARE_R2_ACCOUNT_ID || '',
-        bucketName: parsed.bucketName || import.meta.env.VITE_CLOUDFLARE_R2_BUCKET_NAME || 'xpressnurse-storage',
-        endpoint: parsed.endpoint || import.meta.env.VITE_CLOUDFLARE_R2_ENDPOINT || '',
-        publicDomain: parsed.publicDomain || import.meta.env.VITE_CLOUDFLARE_R2_PUBLIC_DOMAIN || ''
-      };
-      return config;
+  if (typeof window !== 'undefined' && typeof window.localStorage !== 'undefined') {
+    try {
+      const saved = localStorage.getItem(R2_CONFIG_KEY);
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        const config = { 
+          ...DEFAULT_CLOUDFLARE_CONFIG, 
+          ...parsed,
+          accountId: parsed.accountId || import.meta.env.VITE_CLOUDFLARE_R2_ACCOUNT_ID || '',
+          bucketName: parsed.bucketName || import.meta.env.VITE_CLOUDFLARE_R2_BUCKET_NAME || 'xpressnurse-storage',
+          endpoint: parsed.endpoint || import.meta.env.VITE_CLOUDFLARE_R2_ENDPOINT || '',
+          publicDomain: parsed.publicDomain || import.meta.env.VITE_CLOUDFLARE_R2_PUBLIC_DOMAIN || ''
+        };
+        return config;
+      }
+    } catch {
+      // Fallback to default
     }
-  } catch (err) {
-    console.warn('Failed to load Cloudflare R2 config from localStorage', err);
   }
   return DEFAULT_CLOUDFLARE_CONFIG;
 };
@@ -47,10 +48,12 @@ export const getCloudflareConfig = (): CloudflareR2Config => {
 export const saveCloudflareConfig = (config: Partial<CloudflareR2Config>): CloudflareR2Config => {
   const current = getCloudflareConfig();
   const updated = { ...current, ...config };
-  try {
-    localStorage.setItem(R2_CONFIG_KEY, JSON.stringify(updated));
-  } catch (err) {
-    console.error('Failed to save Cloudflare R2 config', err);
+  if (typeof window !== 'undefined' && typeof window.localStorage !== 'undefined') {
+    try {
+      localStorage.setItem(R2_CONFIG_KEY, JSON.stringify(updated));
+    } catch {
+      // Ignored in non-browser context
+    }
   }
   return updated;
 };
@@ -60,26 +63,30 @@ export const SEED_R2_OBJECTS: CloudflareStorageObject[] = [];
 
 // Load All Objects
 export const getCloudflareObjects = (): CloudflareStorageObject[] => {
-  try {
-    const saved = localStorage.getItem(R2_OBJECTS_KEY);
-    if (saved) {
-      const parsed = JSON.parse(saved);
-      if (Array.isArray(parsed) && parsed.length > 0) {
-        return parsed;
+  if (typeof window !== 'undefined' && typeof window.localStorage !== 'undefined') {
+    try {
+      const saved = localStorage.getItem(R2_OBJECTS_KEY);
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          return parsed;
+        }
       }
+    } catch {
+      // Fallback
     }
-  } catch (err) {
-    console.warn('Failed to load R2 objects from localStorage', err);
   }
-  return syncDatabaseRecordsToStorage([], DEFAULT_NURSES, []);
+  return syncDatabaseRecordsToStorage([], [], []);
 };
 
 // Save All Objects
 export const persistCloudflareObjects = (objects: CloudflareStorageObject[]): void => {
-  try {
-    localStorage.setItem(R2_OBJECTS_KEY, JSON.stringify(objects));
-  } catch (err) {
-    console.error('Failed to persist R2 objects', err);
+  if (typeof window !== 'undefined' && typeof window.localStorage !== 'undefined') {
+    try {
+      localStorage.setItem(R2_OBJECTS_KEY, JSON.stringify(objects));
+    } catch {
+      // Ignored
+    }
   }
 };
 
@@ -149,7 +156,7 @@ export const syncDatabaseRecordsToStorage = (
   });
 
   // 1. Generate / sync nurse certificates
-  const effectiveNurses = (nurses && nurses.length > 0) ? nurses : DEFAULT_NURSES;
+  const effectiveNurses = nurses || [];
   effectiveNurses.forEach((n) => {
     const cleanName = n.name.replace(/[^a-zA-Z0-9]/g, '_');
     const key = `certificates/RN_Cert_${n.id}_${cleanName}.pdf`;
@@ -238,6 +245,21 @@ export const syncDatabaseRecordsToStorage = (
   return merged;
 };
 
+// Allowed MIME types and max size for clinical documents
+export const ALLOWED_MIME_TYPES = ['application/pdf', 'image/jpeg', 'image/png', 'image/webp'];
+export const MAX_FILE_SIZE_BYTES = 5 * 1024 * 1024; // 5 MB
+
+export const validateClinicalFileUpload = (file: { name: string; type?: string; size: number }): { valid: boolean; error?: string } => {
+  const fileType = file.type || 'application/pdf';
+  if (!ALLOWED_MIME_TYPES.includes(fileType.toLowerCase())) {
+    return { valid: false, error: 'Invalid document format. Only verified medical PDF and image formats (JPEG, PNG, WEBP) are permitted.' };
+  }
+  if (file.size > MAX_FILE_SIZE_BYTES) {
+    return { valid: false, error: 'Document size exceeds the 5MB clinical security limit.' };
+  }
+  return { valid: true };
+};
+
 // Upload / Save Object to Cloudflare R2
 export const uploadToCloudflareStorage = async (
   fileData: {
@@ -251,7 +273,12 @@ export const uploadToCloudflareStorage = async (
 ): Promise<CloudflareStorageObject> => {
   const config = getCloudflareConfig();
   const cleanCategory = fileData.category;
-  const cleanName = fileData.fileName.replace(/[^a-zA-Z0-9._-]/g, '_');
+  
+  // Sanitize filename to prevent path traversal (../) and illegal characters
+  const cleanName = fileData.fileName
+    .replace(/\.\.+/g, '')
+    .replace(/[^a-zA-Z0-9._-]/g, '_');
+    
   const key = `${cleanCategory}/${cleanName}`;
   const publicUrl = `${config.publicDomain.replace(/\/+$/, '')}/${key}`;
 
@@ -291,6 +318,17 @@ export const uploadPrescriptionToCloudflareBucket = async (
   const { file, patientName, patientPhone, serviceTitle, bookingId } = payload;
   const config = getCloudflareConfig();
 
+  // 1. Strict Security Validation: MIME type check
+  const fileType = file.type || 'application/pdf';
+  if (!ALLOWED_MIME_TYPES.includes(fileType.toLowerCase())) {
+    throw new Error('Invalid document format. Only verified medical PDF and image formats (JPEG, PNG, WEBP) are permitted.');
+  }
+
+  // 2. Strict Security Validation: Size check (max 5MB)
+  if (file.size > MAX_FILE_SIZE_BYTES) {
+    throw new Error('Document size exceeds the 5MB clinical security limit.');
+  }
+
   // Read as Data URL so the uploaded file can be previewed/inspected directly in-browser
   const dataUrl = await new Promise<string>((resolve) => {
     const reader = new FileReader();
@@ -300,11 +338,17 @@ export const uploadPrescriptionToCloudflareBucket = async (
   });
 
   const timestamp = Date.now();
-  const cleanFileName = file.name.replace(/[^a-zA-Z0-9._-]/g, '_');
+  // Strip path traversal and illegal characters
+  const cleanFileName = file.name
+    .replace(/\.\.+/g, '')
+    .replace(/[^a-zA-Z0-9._-]/g, '_');
   const cleanPrefix = cleanFileName.toLowerCase().startsWith('rx_') ? '' : 'Rx_';
   const cleanBookingId = bookingId ? bookingId.replace(/[^a-zA-Z0-9]/g, '') : `TMP${Math.floor(1000 + Math.random() * 9000)}`;
   const key = `prescriptions/${cleanPrefix}${cleanBookingId}_${cleanFileName}`;
-  const publicUrl = `${config.publicDomain.replace(/\/+$/, '')}/${key}`;
+  
+  // Use access-controlled signed token simulation for medical documents
+  const secureToken = Math.random().toString(36).slice(2, 10);
+  const secureUrl = `${config.publicDomain.replace(/\/+$/, '')}/${key}?auth_token=${secureToken}&t=${timestamp}`;
 
   const newObj: CloudflareStorageObject = {
     id: `r2-rx-${timestamp}-${Math.floor(Math.random() * 1000)}`,
@@ -312,10 +356,10 @@ export const uploadPrescriptionToCloudflareBucket = async (
     key,
     category: 'prescriptions',
     fileName: `${cleanPrefix}${cleanBookingId}_${cleanFileName}`,
-    contentType: file.type || 'application/pdf',
+    contentType: fileType,
     sizeBytes: file.size,
     uploadedAt: new Date().toISOString(),
-    publicUrl,
+    publicUrl: secureUrl,
     dataUrl: dataUrl || undefined,
     metadata: {
       bookingId: bookingId || `BK-${cleanBookingId}`,

@@ -60,10 +60,11 @@ import {
   Receipt,
   Share2,
   RefreshCw,
-  UserCheck
+  UserCheck,
+  AlertTriangle
 } from 'lucide-react';
 import { EmptyState } from './EmptyState';
-import { SEED_APP_USERS, generateNurseReferralCode } from '../lib/supabase';
+import { SEED_APP_USERS, generateNurseReferralCode, dbLogAuditEvent } from '../lib/supabase';
 import { getSafeBlobUrl } from './NurseDashboard';
 import {
   getCloudflareConfig,
@@ -118,6 +119,14 @@ interface AdminDashboardProps {
   onCreateAppUser?: (user: AppUser) => Promise<void>;
   onUpdateAppUser?: (id: string, updates: Partial<AppUser>) => Promise<void>;
   onDeleteAppUser?: (id: string) => Promise<void>;
+  // Batch Deletion CRUD
+  onDeleteMultipleBookings?: (ids: string[]) => Promise<void>;
+  onDeleteMultipleNurses?: (ids: string[]) => Promise<void>;
+  onDeleteMultipleLeads?: (ids: string[]) => Promise<void>;
+  onDeleteMultipleServices?: (ids: string[]) => Promise<void>;
+  onDeleteMultipleConsultations?: (ids: string[]) => Promise<void>;
+  onDeleteMultipleCoupons?: (ids: string[]) => Promise<void>;
+  onDeleteMultipleAppUsers?: (ids: string[]) => Promise<void>;
 }
 
 export const AdminDashboard: React.FC<AdminDashboardProps> = ({
@@ -152,7 +161,14 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
   onDeleteConsultation,
   onCreateAppUser,
   onUpdateAppUser,
-  onDeleteAppUser
+  onDeleteAppUser,
+  onDeleteMultipleBookings,
+  onDeleteMultipleNurses,
+  onDeleteMultipleLeads,
+  onDeleteMultipleServices,
+  onDeleteMultipleConsultations,
+  onDeleteMultipleCoupons,
+  onDeleteMultipleAppUsers
 }) => {
   const [activeTab, setActiveTab] = useState<'routing' | 'bookings' | 'nurses' | 'services' | 'leads' | 'consultations' | 'coupons' | 'credentials' | 'storage'>('routing');
   const [testSimPatientArea, setTestSimPatientArea] = useState<HyderabadArea>('LB Nagar');
@@ -283,12 +299,18 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
     showToast(`Uploaded "${cleanFileName}" to Cloudflare R2 bucket!`);
   };
 
-  const handleDeleteObjectClick = async (obj: CloudflareStorageObject) => {
-    if (window.confirm(`Permanently delete "${obj.key}" from Cloudflare R2 bucket?`)) {
-      await deleteFromCloudflareStorage(obj.id);
-      setStorageObjects(getCloudflareObjects());
-      showToast(`Deleted ${obj.fileName} from Storage bucket.`);
-    }
+  const handleDeleteObjectClick = (obj: CloudflareStorageObject) => {
+    setDeleteConfirmTarget({
+      itemType: 'Storage File',
+      itemId: obj.id,
+      itemTitle: obj.fileName,
+      itemDetails: `Storage Key: ${obj.key} • Category: ${obj.category} • Size: ${(obj.sizeBytes / 1024).toFixed(1)} KB`,
+      onConfirm: async () => {
+        await deleteFromCloudflareStorage(obj.id);
+        setStorageObjects(getCloudflareObjects());
+        showToast(`Deleted ${obj.fileName} from Storage bucket.`);
+      }
+    });
   };
 
   const handleCopyPublicUrl = (url: string) => {
@@ -339,6 +361,253 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
   const showToast = (message: string, type: 'success' | 'error' = 'success') => {
     setDbToast({ message, type });
     setTimeout(() => setDbToast(null), 3500);
+  };
+
+  // In-App Permanent Deletion Confirmation Modal State (Reliable across all browsers; never blocked by popups)
+  interface DeleteConfirmModalData {
+    itemType: string;
+    itemId: string;
+    itemTitle: string;
+    itemDetails?: string;
+    onConfirm: () => Promise<void>;
+  }
+  const [deleteConfirmTarget, setDeleteConfirmTarget] = useState<DeleteConfirmModalData | null>(null);
+  const [isDeletingTarget, setIsDeletingTarget] = useState<boolean>(false);
+
+  // Multi-Selection State for Bulk Deletion across all Dashboard Tables
+  const [selectedBookingIds, setSelectedBookingIds] = useState<Set<string>>(new Set());
+  const [selectedNurseIds, setSelectedNurseIds] = useState<Set<string>>(new Set());
+  const [selectedLeadIds, setSelectedLeadIds] = useState<Set<string>>(new Set());
+  const [selectedServiceIds, setSelectedServiceIds] = useState<Set<string>>(new Set());
+  const [selectedConsultIds, setSelectedConsultIds] = useState<Set<string>>(new Set());
+  const [selectedCouponIds, setSelectedCouponIds] = useState<Set<string>>(new Set());
+  const [selectedUserIds, setSelectedUserIds] = useState<Set<string>>(new Set());
+
+  const toggleItemSelection = (id: string, setSelected: React.Dispatch<React.SetStateAction<Set<string>>>) => {
+    setSelected((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) {
+        next.delete(id);
+      } else {
+        next.add(id);
+      }
+      return next;
+    });
+  };
+
+  const toggleSelectAll = (
+    allIds: string[],
+    selectedSet: Set<string>,
+    setSelected: React.Dispatch<React.SetStateAction<Set<string>>>
+  ) => {
+    const allSelected = allIds.length > 0 && allIds.every((id) => selectedSet.has(id));
+    if (allSelected) {
+      setSelected((prev) => {
+        const next = new Set(prev);
+        allIds.forEach((id) => next.delete(id));
+        return next;
+      });
+    } else {
+      setSelected((prev) => {
+        const next = new Set(prev);
+        allIds.forEach((id) => next.add(id));
+        return next;
+      });
+    }
+  };
+
+  const handleBulkDelete = ({
+    entityName,
+    idsToDelete,
+    onDeleteFn,
+    clearSelection
+  }: {
+    entityName: string;
+    idsToDelete: string[];
+    onDeleteFn?: (ids: string[]) => Promise<void>;
+    clearSelection: () => void;
+  }) => {
+    if (!idsToDelete.length) {
+      showToast(`No ${entityName} selected to delete.`, 'error');
+      return;
+    }
+
+    setDeleteConfirmTarget({
+      itemType: `${idsToDelete.length} Selected ${entityName}`,
+      itemId: `bulk-${entityName}-${Date.now()}`,
+      itemTitle: `Delete ${idsToDelete.length} Selected ${entityName}`,
+      itemDetails: `IDs: ${idsToDelete.slice(0, 5).join(', ')}${idsToDelete.length > 5 ? ` and ${idsToDelete.length - 5} more...` : ''}. This will permanently remove these records from Supabase.`,
+      onConfirm: async () => {
+        if (onDeleteFn) {
+          await onDeleteFn(idsToDelete);
+          clearSelection();
+          showToast(`Successfully deleted ${idsToDelete.length} ${entityName.toLowerCase()} from Supabase.`);
+        }
+      }
+    });
+  };
+
+  const handleDeleteAll = ({
+    entityName,
+    allIds,
+    onDeleteFn,
+    clearSelection
+  }: {
+    entityName: string;
+    allIds: string[];
+    onDeleteFn?: (ids: string[]) => Promise<void>;
+    clearSelection: () => void;
+  }) => {
+    if (!allIds.length) {
+      showToast(`No ${entityName} available to delete.`, 'error');
+      return;
+    }
+
+    setDeleteConfirmTarget({
+      itemType: `ALL ${allIds.length} ${entityName}`,
+      itemId: `all-${entityName}-${Date.now()}`,
+      itemTitle: `DANGER: Delete ALL ${allIds.length} ${entityName} in View`,
+      itemDetails: `WARNING: This will permanently delete ALL ${allIds.length} ${entityName.toLowerCase()} currently shown from Supabase. This action cannot be undone!`,
+      onConfirm: async () => {
+        if (onDeleteFn) {
+          await onDeleteFn(allIds);
+          clearSelection();
+          showToast(`Successfully deleted all ${allIds.length} ${entityName.toLowerCase()} from Supabase.`);
+        }
+      }
+    });
+  };
+
+  const renderBulkActionBar = ({
+    entityName,
+    filteredIds,
+    selectedSet,
+    setSelectedSet,
+    onDeleteMultiple
+  }: {
+    entityName: string;
+    filteredIds: string[];
+    selectedSet: Set<string>;
+    setSelectedSet: React.Dispatch<React.SetStateAction<Set<string>>>;
+    onDeleteMultiple?: (ids: string[]) => Promise<void>;
+  }) => {
+    if (filteredIds.length === 0) return null;
+    const isAllSelected = filteredIds.length > 0 && filteredIds.every((id) => selectedSet.has(id));
+    const selectedCount = filteredIds.filter((id) => selectedSet.has(id)).length;
+
+    return (
+      <div
+        style={{
+          display: 'flex',
+          flexWrap: 'wrap',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+          gap: '0.75rem',
+          padding: '0.65rem 1rem',
+          background: selectedCount > 0 ? '#FFF1F2' : '#F8FAFC',
+          border: selectedCount > 0 ? '1px solid #FECDD3' : '1px solid #E2E8F0',
+          borderRadius: '10px',
+          marginBottom: '0.85rem',
+          transition: 'all 0.2s ease'
+        }}
+      >
+        <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+          <label style={{ display: 'inline-flex', alignItems: 'center', gap: '0.5rem', cursor: 'pointer', fontSize: '0.85rem', fontWeight: 600, color: '#334155' }}>
+            <input
+              type="checkbox"
+              checked={isAllSelected}
+              onChange={() => toggleSelectAll(filteredIds, selectedSet, setSelectedSet)}
+              style={{ width: '16px', height: '16px', cursor: 'pointer', accentColor: '#E11D48' }}
+            />
+            <span>Select All ({filteredIds.length})</span>
+          </label>
+          <span style={{ fontSize: '0.82rem', color: '#64748B' }}>
+            | Selected: <strong style={{ color: selectedCount > 0 ? '#E11D48' : '#0F172A' }}>{selectedCount}</strong>
+          </span>
+          {selectedCount > 0 && (
+            <button
+              type="button"
+              onClick={() => setSelectedSet(new Set())}
+              style={{
+                background: 'transparent',
+                border: 'none',
+                color: '#64748B',
+                fontSize: '0.78rem',
+                textDecoration: 'underline',
+                cursor: 'pointer',
+                padding: 0
+              }}
+            >
+              Clear selection
+            </button>
+          )}
+        </div>
+
+        <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+          <button
+            type="button"
+            disabled={selectedCount === 0}
+            onClick={() =>
+              handleBulkDelete({
+                entityName,
+                idsToDelete: filteredIds.filter((id) => selectedSet.has(id)),
+                onDeleteFn: onDeleteMultiple,
+                clearSelection: () => setSelectedSet(new Set())
+              })
+            }
+            style={{
+              padding: '0.38rem 0.9rem',
+              fontSize: '0.82rem',
+              fontWeight: 700,
+              borderRadius: '6px',
+              border: '1px solid',
+              borderColor: selectedCount > 0 ? '#E11D48' : '#CBD5E1',
+              background: selectedCount > 0 ? '#E11D48' : '#F1F5F9',
+              color: selectedCount > 0 ? '#FFFFFF' : '#94A3B8',
+              cursor: selectedCount > 0 ? 'pointer' : 'not-allowed',
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: '0.35rem',
+              boxShadow: selectedCount > 0 ? '0 2px 6px rgba(225, 29, 72, 0.25)' : 'none',
+              transition: 'all 0.15s ease'
+            }}
+          >
+            <Trash2 size={13} />
+            <span>Delete Selected ({selectedCount})</span>
+          </button>
+
+          <button
+            type="button"
+            onClick={() =>
+              handleDeleteAll({
+                entityName,
+                allIds: filteredIds,
+                onDeleteFn: onDeleteMultiple,
+                clearSelection: () => setSelectedSet(new Set())
+              })
+            }
+            style={{
+              padding: '0.38rem 0.9rem',
+              fontSize: '0.82rem',
+              fontWeight: 700,
+              borderRadius: '6px',
+              border: '1px solid #FDA4AF',
+              background: '#FFFFFF',
+              color: '#BE123C',
+              cursor: 'pointer',
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: '0.35rem',
+              transition: 'all 0.15s ease'
+            }}
+            title={`Permanently delete all ${filteredIds.length} ${entityName.toLowerCase()} from Supabase`}
+          >
+            <AlertTriangle size={13} />
+            <span>Delete All ({filteredIds.length})</span>
+          </button>
+        </div>
+      </div>
+    );
   };
 
   // Credentials State
@@ -450,17 +719,20 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
           await onUpdateCoupon(editingCoupon.id, payload);
         }
         setCouponFeedback(`Coupon "${payload.code}" updated successfully in Supabase!`);
+        showToast(`Coupon "${payload.code}" updated successfully in Supabase!`);
       } else {
         if (onCreateCoupon) {
           await onCreateCoupon(payload);
         }
         setCouponFeedback(`Coupon "${payload.code}" created and live in Supabase!`);
+        showToast(`Coupon "${payload.code}" created and live in Supabase!`);
       }
 
       setIsCouponModalOpen(false);
       setTimeout(() => setCouponFeedback(null), 4000);
     } catch (err: any) {
       setCouponFormError(err.message || 'Failed to save coupon to Supabase.');
+      showToast(err.message || 'Failed to save coupon to Supabase.', 'error');
     } finally {
       setIsSubmittingCoupon(false);
     }
@@ -472,19 +744,27 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
     if (onUpdateCoupon) {
       await onUpdateCoupon(coupon.id, { status: newStatus });
       setCouponFeedback(`Coupon ${coupon.code} marked ${newStatus}.`);
+      showToast(`Coupon "${coupon.code}" marked ${newStatus}.`);
       setTimeout(() => setCouponFeedback(null), 3000);
     }
   };
 
   // Delete Coupon
-  const handleDeleteCouponClick = async (coupon: Coupon) => {
-    if (window.confirm(`Are you sure you want to permanently delete coupon "${coupon.code}" from Supabase?`)) {
-      if (onDeleteCoupon) {
-        await onDeleteCoupon(coupon.id);
-        setCouponFeedback(`Coupon ${coupon.code} deleted.`);
-        setTimeout(() => setCouponFeedback(null), 3000);
+  const handleDeleteCouponClick = (coupon: Coupon) => {
+    setDeleteConfirmTarget({
+      itemType: 'Discount Coupon',
+      itemId: coupon.id,
+      itemTitle: coupon.code,
+      itemDetails: `${coupon.discountType === 'percent' ? `${coupon.discountValue}% OFF` : `₹${coupon.discountValue} FLAT OFF`} • ${coupon.description}`,
+      onConfirm: async () => {
+        if (onDeleteCoupon) {
+          await onDeleteCoupon(coupon.id);
+          setCouponFeedback(`Coupon ${coupon.code} deleted.`);
+          showToast(`Coupon "${coupon.code}" deleted successfully.`);
+          setTimeout(() => setCouponFeedback(null), 3000);
+        }
       }
-    }
+    });
   };
 
   // Copy Code to Clipboard
@@ -649,13 +929,19 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
     setIsBookingModalOpen(false);
   };
 
-  const handleDeleteBookingClick = async (b: Booking) => {
-    if (window.confirm(`Delete booking "${b.id}" for ${b.patientName} from Supabase?`)) {
-      if (onDeleteBooking) {
-        await onDeleteBooking(b.id);
-        showToast(`Booking ${b.id} deleted from Supabase.`);
+  const handleDeleteBookingClick = (b: Booking) => {
+    setDeleteConfirmTarget({
+      itemType: 'Patient Booking',
+      itemId: b.id,
+      itemTitle: `#${b.id} - ${b.patientName}`,
+      itemDetails: `Procedure: ${b.serviceTitle} • Area: ${b.area} • Phone: ${b.patientPhone} • Fee: ₹${b.finalFee || b.estimatedFee}`,
+      onConfirm: async () => {
+        if (onDeleteBooking) {
+          await onDeleteBooking(b.id);
+          showToast(`Booking #${b.id} deleted successfully from Supabase.`);
+        }
       }
-    }
+    });
   };
 
   const filteredBookings = bookings.filter((b) => {
@@ -700,23 +986,33 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
       'Rejection Reason',
       'Notes'
     ];
+    // Helper to sanitize cell and neutralize CSV formula injection (=, +, -, @, \t, \r)
+    const sanitizeCsvCell = (val: any): string => {
+      if (val === null || val === undefined) return '""';
+      let str = String(val);
+      if (/^[=+\-@\t\r]/.test(str)) {
+        str = "'" + str;
+      }
+      return `"${str.replace(/"/g, '""')}"`;
+    };
+
     const rows = bookings.map((b) => [
-      `"${b.id}"`,
-      `"${b.createdAt ? new Date(b.createdAt).toLocaleDateString('en-IN') : 'N/A'}"`,
-      `"${b.bookingType === 'scheduled' ? 'Scheduled Slot' : 'Instant (ASAP)'}"`,
-      `"${b.scheduledSlot || 'Immediate'}"`,
-      `"${(b.patientName || '').replace(/"/g, '""')}"`,
-      `"${b.patientPhone || ''}"`,
-      `"${(b.area || '').replace(/"/g, '""')}"`,
-      `"${(b.fullAddress || '').replace(/"/g, '""')}"`,
-      `"${(b.serviceTitle || '').replace(/"/g, '""')}"`,
-      `"${b.status || ''}"`,
-      b.estimatedFee || 0,
-      `"${(b.assignedNurseName || 'Unassigned').replace(/"/g, '""')}"`,
+      sanitizeCsvCell(b.id),
+      sanitizeCsvCell(b.createdAt ? new Date(b.createdAt).toLocaleDateString('en-IN') : 'N/A'),
+      sanitizeCsvCell(b.bookingType === 'scheduled' ? 'Scheduled Slot' : 'Instant (ASAP)'),
+      sanitizeCsvCell(b.scheduledSlot || 'Immediate'),
+      sanitizeCsvCell(b.patientName),
+      sanitizeCsvCell(b.patientPhone),
+      sanitizeCsvCell(b.area),
+      sanitizeCsvCell(b.fullAddress),
+      sanitizeCsvCell(b.serviceTitle),
+      sanitizeCsvCell(b.status),
+      Number(b.estimatedFee) || 0,
+      sanitizeCsvCell(b.assignedNurseName || 'Unassigned'),
       b.hasPrescription ? 'Yes' : 'No',
-      `"${(b.prescriptionFileName || (b.hasPrescription ? 'Prescription Uploaded' : 'None')).replace(/"/g, '""')}"`,
-      `"${(b.rejectionReason || '').replace(/"/g, '""')}"`,
-      `"${(b.notes || '').replace(/"/g, '""')}"`
+      sanitizeCsvCell(b.prescriptionFileName || (b.hasPrescription ? 'Prescription Uploaded' : 'None')),
+      sanitizeCsvCell(b.rejectionReason),
+      sanitizeCsvCell(b.notes)
     ]);
     const csvContent = 'data:text/csv;charset=utf-8,\uFEFF' + [headers.join(','), ...rows.map((r) => r.join(','))].join('\n');
     const encodedUri = encodeURI(csvContent);
@@ -727,10 +1023,20 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
     link.click();
     document.body.removeChild(link);
     showToast('Exported all bookings to CSV/Excel report!');
+    dbLogAuditEvent('DATA_EXPORT', 'bookings', 'all', { count: bookings.length });
   };
 
   // Export Nurse Fleet to CSV / Excel
   const exportNursesToCSV = () => {
+    const sanitizeCsvCell = (val: any): string => {
+      if (val === null || val === undefined) return '""';
+      let str = String(val);
+      if (/^[=+\-@\t\r]/.test(str)) {
+        str = "'" + str;
+      }
+      return `"${str.replace(/"/g, '""')}"`;
+    };
+
     const headers = [
       'Nurse ID',
       'Full Name',
@@ -758,19 +1064,19 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
       const nurseCode = n.referralCode || generateNurseReferralCode(n.name, n.id, n.phone);
       const origin = n.referredByNurseId ? `Referred (${n.referredByNurseName || n.referredByNurseId})` : 'Individual / Direct';
       return [
-        `"${n.id}"`,
-        `"${(n.name || '').replace(/"/g, '""')}"`,
-        `"${nurseCode}"`,
-        `"${origin}"`,
-        `"${n.referredByNurseId || ''}"`,
-        `"${n.phone || ''}"`,
-        `"${n.email || ''}"`,
-        `"${(n.serviceArea || '').replace(/"/g, '""')}"`,
-        `"${(n.qualification || '').replace(/"/g, '""')}"`,
+        sanitizeCsvCell(n.id),
+        sanitizeCsvCell(n.name),
+        sanitizeCsvCell(nurseCode),
+        sanitizeCsvCell(origin),
+        sanitizeCsvCell(n.referredByNurseId),
+        sanitizeCsvCell(n.phone),
+        sanitizeCsvCell(n.email),
+        sanitizeCsvCell(n.serviceArea),
+        sanitizeCsvCell(n.qualification),
         exp,
-        `"${tier}"`,
+        sanitizeCsvCell(tier),
         n.certificateVerified ? 'Verified' : 'Pending Review',
-        `"${n.status || 'Active'}"`,
+        sanitizeCsvCell(n.status || 'Active'),
         n.completedVisits || 0,
         n.activeVisits || 0,
         n.pointsEarned || n.points || 0,
@@ -788,6 +1094,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
     link.click();
     document.body.removeChild(link);
     showToast('Exported nurse fleet roster to CSV/Excel report!');
+    dbLogAuditEvent('DATA_EXPORT', 'nurses', 'all', { count: nurses.length });
   };
 
   // --------------------------------------------------------------------------
@@ -903,17 +1210,23 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
     setIsNurseModalOpen(false);
   };
 
-  const handleDeleteNurseClick = async (n: NurseProfile) => {
-    if (window.confirm(`Permanently remove nurse "${n.name}" from Supabase fleet?`)) {
-      if (onDeleteNurse) {
-        await onDeleteNurse(n.id);
-        if (onDeleteAppUser) {
-          const u = appUsers.find((x) => x.id === n.id || x.phone === n.phone);
-          if (u) await onDeleteAppUser(u.id);
+  const handleDeleteNurseClick = (n: NurseProfile) => {
+    setDeleteConfirmTarget({
+      itemType: 'Nurse Fleet Record',
+      itemId: n.id,
+      itemTitle: n.name,
+      itemDetails: `Role: ${n.qualification} • Area: ${n.serviceArea} • Phone: ${n.phone}`,
+      onConfirm: async () => {
+        if (onDeleteNurse) {
+          await onDeleteNurse(n.id);
+          if (onDeleteAppUser) {
+            const u = appUsers.find((x) => x.id === n.id || x.phone === n.phone);
+            if (u) await onDeleteAppUser(u.id);
+          }
+          showToast(`Nurse "${n.name}" removed successfully from Supabase fleet.`);
         }
-        showToast(`Nurse ${n.name} removed from Supabase.`);
       }
-    }
+    });
   };
 
   const filteredNurses = nurses.filter((n) => {
@@ -1028,13 +1341,19 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
     setIsServiceModalOpen(false);
   };
 
-  const handleDeleteServiceClick = async (s: ServiceItem) => {
-    if (window.confirm(`Delete clinical procedure "${s.title}" from Supabase catalog?`)) {
-      if (onDeleteService) {
-        await onDeleteService(s.id);
-        showToast(`Procedure "${s.title}" deleted from Supabase.`);
+  const handleDeleteServiceClick = (s: ServiceItem) => {
+    setDeleteConfirmTarget({
+      itemType: 'Clinical Procedure',
+      itemId: s.id,
+      itemTitle: s.title,
+      itemDetails: `Single Visit: ₹${s.priceNumber} • Duration: ${s.duration || 'N/A'} • ID: ${s.id}`,
+      onConfirm: async () => {
+        if (onDeleteService) {
+          await onDeleteService(s.id);
+          showToast(`Procedure "${s.title}" deleted from Supabase catalog.`);
+        }
       }
-    }
+    });
   };
 
   const filteredServices = services.filter((s) => {
@@ -1125,13 +1444,19 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
     setIsLeadModalOpen(false);
   };
 
-  const handleDeleteLeadClick = async (l: NurseLead) => {
-    if (window.confirm(`Delete lead "${l.id}" (${l.patientName}) from Supabase?`)) {
-      if (onDeleteLead) {
-        await onDeleteLead(l.id);
-        showToast(`Lead ${l.id} deleted from Supabase.`);
+  const handleDeleteLeadClick = (l: NurseLead) => {
+    setDeleteConfirmTarget({
+      itemType: 'Nurse Lead',
+      itemId: l.id,
+      itemTitle: `${l.patientName} (${l.id})`,
+      itemDetails: `Service: ${l.serviceId} • Phone: ${l.patientPhone} • Area: ${l.area}`,
+      onConfirm: async () => {
+        if (onDeleteLead) {
+          await onDeleteLead(l.id);
+          showToast(`Lead #${l.id} deleted successfully from Supabase.`);
+        }
       }
-    }
+    });
   };
 
   // Admin Lead Rewards & Approval Decision Modal State
@@ -1283,13 +1608,19 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
     setIsConsultModalOpen(false);
   };
 
-  const handleDeleteConsultClick = async (c: DoctorConsultation) => {
-    if (window.confirm(`Delete clinical request for "${c.patientName}" from Supabase?`)) {
-      if (onDeleteConsultation) {
-        await onDeleteConsultation(c.id);
-        showToast(`Consultation ${c.id} deleted from Supabase.`);
+  const handleDeleteConsultClick = (c: DoctorConsultation) => {
+    setDeleteConfirmTarget({
+      itemType: 'Doctor Consultation Request',
+      itemId: c.id,
+      itemTitle: `${c.patientName} (${c.id})`,
+      itemDetails: `Patient Age: ${c.patientAge || 'N/A'} • Symptoms: ${c.symptoms || 'General'} • Phone: ${c.patientPhone}`,
+      onConfirm: async () => {
+        if (onDeleteConsultation) {
+          await onDeleteConsultation(c.id);
+          showToast(`Doctor request #${c.id} deleted successfully from Supabase.`);
+        }
       }
-    }
+    });
   };
 
   const filteredConsults = consultations.filter((c) => {
@@ -1383,13 +1714,19 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
     setIsUserModalOpen(false);
   };
 
-  const handleDeleteUserClick = async (u: AppUser) => {
-    if (window.confirm(`Permanently remove user credentials for "${u.name}" (${u.role}) from Supabase?`)) {
-      if (onDeleteAppUser) {
-        await onDeleteAppUser(u.id);
-        showToast(`User ${u.name} removed from Supabase.`);
+  const handleDeleteUserClick = (u: AppUser) => {
+    setDeleteConfirmTarget({
+      itemType: 'Staff User Account',
+      itemId: u.id,
+      itemTitle: `${u.name} (${u.role.toUpperCase()})`,
+      itemDetails: `Login ID: ${u.identifier} • Phone: ${u.phone || 'N/A'} • Area: ${u.serviceArea || 'N/A'}`,
+      onConfirm: async () => {
+        if (onDeleteAppUser) {
+          await onDeleteAppUser(u.id);
+          showToast(`Staff credentials for "${u.name}" deleted from Supabase.`);
+        }
       }
-    }
+    });
   };
 
   // Test Routing Simulation Engine
@@ -1506,25 +1843,48 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
 
       {/* Real-time DB Operation Toast Banner */}
       {dbToast && (
-        <div style={{
-          position: 'fixed',
-          top: 24,
-          right: 24,
-          zIndex: 999999,
-          background: dbToast.type === 'success' ? '#ECFDF5' : '#FEF2F2',
-          border: `1.5px solid ${dbToast.type === 'success' ? '#10B981' : '#EF4444'}`,
-          borderRadius: 12,
-          padding: '0.85rem 1.25rem',
-          color: dbToast.type === 'success' ? '#065F46' : '#991B1B',
-          fontWeight: 700,
-          fontSize: '0.9rem',
-          display: 'flex',
-          alignItems: 'center',
-          gap: '0.6rem',
-          boxShadow: '0 10px 25px -5px rgba(0,0,0,0.18)'
-        }}>
-          {dbToast.type === 'success' ? <CheckCircle size={18} style={{ color: '#059669' }} /> : <AlertCircle size={18} style={{ color: '#DC2626' }} />}
-          <span>{dbToast.message}</span>
+        <div 
+          role="alert"
+          aria-live="assertive"
+          style={{
+            position: 'fixed',
+            top: 28,
+            left: '50%',
+            transform: 'translateX(-50%)',
+            zIndex: 9999999,
+            background: dbToast.type === 'success' ? '#047857' : '#B91C1C',
+            border: `2px solid ${dbToast.type === 'success' ? '#6EE7B7' : '#FCA5A5'}`,
+            borderRadius: 14,
+            padding: '1rem 1.6rem',
+            color: '#FFFFFF',
+            fontWeight: 700,
+            fontSize: '1rem',
+            display: 'flex',
+            alignItems: 'center',
+            gap: '0.75rem',
+            boxShadow: '0 20px 35px -5px rgba(0,0,0,0.35), 0 10px 10px -5px rgba(0,0,0,0.2)',
+            maxWidth: '90vw'
+          }}
+        >
+          {dbToast.type === 'success' ? <CheckCircle size={22} style={{ color: '#A7F3D0', flexShrink: 0 }} /> : <AlertCircle size={22} style={{ color: '#FECACA', flexShrink: 0 }} />}
+          <span style={{ lineHeight: 1.4 }}>{dbToast.message}</span>
+          <button
+            onClick={() => setDbToast(null)}
+            style={{
+              background: 'transparent',
+              border: 'none',
+              color: '#FFFFFF',
+              cursor: 'pointer',
+              marginLeft: '0.75rem',
+              display: 'flex',
+              alignItems: 'center',
+              padding: '0.2rem',
+              borderRadius: '4px'
+            }}
+            title="Dismiss"
+          >
+            <X size={18} />
+          </button>
         </div>
       )}
 
@@ -2200,6 +2560,28 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                               <Receipt size={13} />
                               <span>Invoice</span>
                             </button>
+
+                            <button
+                              type="button"
+                              onClick={() => handleDeleteBookingClick(b)}
+                              className="btn btn-sm"
+                              style={{
+                                fontSize: '0.75rem',
+                                padding: '0.35rem 0.55rem',
+                                display: 'inline-flex',
+                                alignItems: 'center',
+                                gap: '0.25rem',
+                                color: '#E11D48',
+                                borderColor: '#FECDD3',
+                                background: '#FFF1F2',
+                                fontWeight: 700,
+                                cursor: 'pointer'
+                              }}
+                              title={`Delete pending booking #${b.id} from Supabase`}
+                            >
+                              <Trash2 size={13} />
+                              <span>Delete</span>
+                            </button>
                           </div>
                         </td>
                       </tr>
@@ -2358,29 +2740,56 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
               description={bookingSearch ? 'No bookings matched your filter criteria.' : 'No home nurse or diagnostic appointments have been created yet.'}
             />
           ) : (
-            <div className="table-responsive">
-              <table className="data-table data-table-wide">
-                <thead>
-                  <tr>
-                    <th>Booking ID</th>
-                    <th>Type & Timing</th>
-                    <th>Patient & Phone</th>
-                    <th>Procedure</th>
-                    <th>Area & Address</th>
-                    <th>Assigned Nurse</th>
-                    <th>Prescription</th>
-                    <th>Fee</th>
-                    <th>Status</th>
-                    <th style={{ textAlign: 'right' }}>Actions</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {filteredBookings.map((b) => (
-                    <tr key={b.id}>
-                      <td style={{ whiteSpace: 'nowrap' }}>
-                        <strong style={{ fontFamily: 'monospace', fontSize: '0.86rem' }}>{b.id}</strong>
-                      </td>
-                      <td style={{ whiteSpace: 'nowrap' }}>
+            <>
+              {renderBulkActionBar({
+                entityName: 'Bookings',
+                filteredIds: filteredBookings.map((b) => b.id),
+                selectedSet: selectedBookingIds,
+                setSelectedSet: setSelectedBookingIds,
+                onDeleteMultiple: onDeleteMultipleBookings
+              })}
+              <div className="table-responsive">
+                <table className="data-table data-table-wide">
+                  <thead>
+                    <tr>
+                      <th style={{ width: 40, textAlign: 'center' }}>
+                        <input
+                          type="checkbox"
+                          checked={filteredBookings.length > 0 && filteredBookings.every((b) => selectedBookingIds.has(b.id))}
+                          onChange={() => toggleSelectAll(filteredBookings.map((b) => b.id), selectedBookingIds, setSelectedBookingIds)}
+                          style={{ cursor: 'pointer', accentColor: '#E11D48', width: 16, height: 16 }}
+                          title="Select / Deselect All Bookings"
+                        />
+                      </th>
+                      <th>Booking ID</th>
+                      <th>Type & Timing</th>
+                      <th>Patient & Phone</th>
+                      <th>Procedure</th>
+                      <th>Area & Address</th>
+                      <th>Assigned Nurse</th>
+                      <th>Prescription</th>
+                      <th>Fee</th>
+                      <th>Status</th>
+                      <th style={{ textAlign: 'right' }}>Actions</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {filteredBookings.map((b) => {
+                      const isSelected = selectedBookingIds.has(b.id);
+                      return (
+                        <tr key={b.id} style={{ background: isSelected ? '#FFF1F2' : undefined }}>
+                          <td style={{ textAlign: 'center', width: 40 }}>
+                            <input
+                              type="checkbox"
+                              checked={isSelected}
+                              onChange={() => toggleItemSelection(b.id, setSelectedBookingIds)}
+                              style={{ cursor: 'pointer', accentColor: '#E11D48', width: 16, height: 16 }}
+                            />
+                          </td>
+                          <td style={{ whiteSpace: 'nowrap' }}>
+                            <strong style={{ fontFamily: 'monospace', fontSize: '0.86rem' }}>{b.id}</strong>
+                          </td>
+                          <td style={{ whiteSpace: 'nowrap' }}>
                         {b.bookingType === 'scheduled' ? (
                           <div style={{ display: 'inline-flex', alignItems: 'center', gap: '0.35rem', whiteSpace: 'nowrap' }}>
                             <span style={{ fontSize: '0.74rem', background: '#F0FDF4', color: '#166534', padding: '2px 8px', borderRadius: 9999, fontWeight: 750, border: '1px solid #BBF7D0', whiteSpace: 'nowrap' }}>
@@ -2552,34 +2961,63 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                           return (
                             <div style={{ display: 'inline-flex', alignItems: 'center', gap: '0.35rem' }}>
                               {isDeclinedByNurse && (
-                                <button
-                                  type="button"
-                                  onClick={() => {
-                                    setAdminReassignBooking(b);
-                                    const recommended = nurses.find((n) => n.id !== b.assignedNurseId && n.serviceArea === b.area && n.certificateVerified) || nurses.find((n) => n.id !== b.assignedNurseId && n.certificateVerified);
-                                    setSelectedReferralNurseId(recommended?.id || '');
-                                    setReferralRuleNote(`Referred following decline by ${b.assignedNurseName || 'previous nurse'}`);
-                                  }}
-                                  className="btn btn-sm"
-                                  style={{
-                                    background: '#FEF3C7',
-                                    border: '1px solid #F59E0B',
-                                    color: '#92400E',
-                                    fontWeight: 800,
-                                    padding: '0.3rem 0.65rem',
-                                    borderRadius: 6,
-                                    display: 'inline-flex',
-                                    alignItems: 'center',
-                                    gap: '0.3rem',
-                                    fontSize: '0.75rem',
-                                    cursor: 'pointer',
-                                    boxShadow: '0 1px 3px rgba(245, 158, 11, 0.25)'
-                                  }}
-                                  title="Refer and reassign this order to another certified nurse"
-                                >
-                                  <RefreshCw size={13} />
-                                  <span>Refer to Other Nurse</span>
-                                </button>
+                                <>
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      setSearchAssignBooking(b);
+                                      setNurseSearchQuery('');
+                                      setNurseSearchFilterArea(b.area || 'all');
+                                    }}
+                                    className="btn btn-sm"
+                                    style={{
+                                      background: '#0284C7',
+                                      border: '1px solid #0284C7',
+                                      color: '#FFFFFF',
+                                      fontWeight: 800,
+                                      padding: '0.3rem 0.65rem',
+                                      borderRadius: 6,
+                                      display: 'inline-flex',
+                                      alignItems: 'center',
+                                      gap: '0.35rem',
+                                      fontSize: '0.75rem',
+                                      cursor: 'pointer',
+                                      boxShadow: '0 1px 3px rgba(2, 132, 199, 0.3)'
+                                    }}
+                                    title="Search verified nurse roster and refer order"
+                                  >
+                                    <Search size={13} />
+                                    <span>Search Nurse to Refer</span>
+                                  </button>
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      setAdminReassignBooking(b);
+                                      const recommended = nurses.find((n) => n.id !== b.assignedNurseId && n.serviceArea === b.area && n.certificateVerified) || nurses.find((n) => n.id !== b.assignedNurseId && n.certificateVerified);
+                                      setSelectedReferralNurseId(recommended?.id || '');
+                                      setReferralRuleNote(`Referred following decline by ${b.assignedNurseName || 'previous nurse'}`);
+                                    }}
+                                    className="btn btn-sm"
+                                    style={{
+                                      background: '#FEF3C7',
+                                      border: '1px solid #F59E0B',
+                                      color: '#92400E',
+                                      fontWeight: 800,
+                                      padding: '0.3rem 0.65rem',
+                                      borderRadius: 6,
+                                      display: 'inline-flex',
+                                      alignItems: 'center',
+                                      gap: '0.3rem',
+                                      fontSize: '0.75rem',
+                                      cursor: 'pointer',
+                                      boxShadow: '0 1px 3px rgba(245, 158, 11, 0.25)'
+                                    }}
+                                    title="Refer and reassign this order to another certified nurse"
+                                  >
+                                    <RefreshCw size={13} />
+                                    <span>Refer to Other Nurse</span>
+                                  </button>
+                                </>
                               )}
                               <button
                                 type="button"
@@ -2674,10 +3112,12 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                     })()}
                   </td>
                     </tr>
-                  ))}
+                  );
+                })}
                 </tbody>
               </table>
             </div>
+            </>
           )}
         </div>
       )}
@@ -2863,37 +3303,63 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
               description={nurseSearch || nurseOriginFilter !== 'all' ? 'No nurses matched your search criteria or origin filter.' : 'No registered nurses are currently stationed in the fleet directory.'}
             />
           ) : (
-            <div className="table-responsive">
-              <table className="data-table">
-                <thead>
-                  <tr>
-                    <th>Nurse</th>
-                    <th>Signup Origin</th>
-                    <th>Referral Code</th>
-                    <th>Login PIN & Access</th>
-                    <th>Service Area (Rule 2)</th>
-                    <th>Qualification</th>
-                    <th>Experience</th>
-                    <th>Leads & Referrals</th>
-                    <th>Points</th>
-                    <th>Earnings (10%)</th>
-                    <th>Verification</th>
-                    <th style={{ textAlign: 'right' }}>Actions</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {filteredNurses.map((n) => {
-                    const userObj = appUsers.find(
-                      (u) => u.id === n.id || u.phone === n.phone || u.email?.toLowerCase().includes(n.name.toLowerCase().split(' ')[1] || 'never')
-                    );
-                    const userPin = userObj?.pin || '1001';
-                    const isRevealed = showAllPins || revealedPinIds[n.id];
-                    const nurseCode = n.referralCode || generateNurseReferralCode(n.name, n.id, n.phone);
-                    const isCopiedCode = copiedRefCodeId === n.id;
+            <>
+              {renderBulkActionBar({
+                entityName: 'Nurses',
+                filteredIds: filteredNurses.map((n) => n.id),
+                selectedSet: selectedNurseIds,
+                setSelectedSet: setSelectedNurseIds,
+                onDeleteMultiple: onDeleteMultipleNurses
+              })}
+              <div className="table-responsive">
+                <table className="data-table">
+                  <thead>
+                    <tr>
+                      <th style={{ width: 40, textAlign: 'center' }}>
+                        <input
+                          type="checkbox"
+                          checked={filteredNurses.length > 0 && filteredNurses.every((n) => selectedNurseIds.has(n.id))}
+                          onChange={() => toggleSelectAll(filteredNurses.map((n) => n.id), selectedNurseIds, setSelectedNurseIds)}
+                          style={{ cursor: 'pointer', accentColor: '#E11D48', width: 16, height: 16 }}
+                          title="Select / Deselect All Nurses"
+                        />
+                      </th>
+                      <th>Nurse</th>
+                      <th>Signup Origin</th>
+                      <th>Referral Code</th>
+                      <th>Login PIN & Access</th>
+                      <th>Service Area (Rule 2)</th>
+                      <th>Qualification</th>
+                      <th>Experience</th>
+                      <th>Leads & Referrals</th>
+                      <th>Points</th>
+                      <th>Earnings (10%)</th>
+                      <th>Verification</th>
+                      <th style={{ textAlign: 'right' }}>Actions</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {filteredNurses.map((n) => {
+                      const userObj = appUsers.find(
+                        (u) => u.id === n.id || u.phone === n.phone || u.email?.toLowerCase().includes(n.name.toLowerCase().split(' ')[1] || 'never')
+                      );
+                      const userPin = userObj?.pin || '1001';
+                      const isRevealed = showAllPins || revealedPinIds[n.id];
+                      const nurseCode = n.referralCode || generateNurseReferralCode(n.name, n.id, n.phone);
+                      const isCopiedCode = copiedRefCodeId === n.id;
+                      const isSelected = selectedNurseIds.has(n.id);
 
-                    return (
-                      <tr key={n.id}>
-                        <td>
+                      return (
+                        <tr key={n.id} style={{ background: isSelected ? '#FFF1F2' : undefined }}>
+                          <td style={{ textAlign: 'center', width: 40 }}>
+                            <input
+                              type="checkbox"
+                              checked={isSelected}
+                              onChange={() => toggleItemSelection(n.id, setSelectedNurseIds)}
+                              style={{ cursor: 'pointer', accentColor: '#E11D48', width: 16, height: 16 }}
+                            />
+                          </td>
+                          <td>
                           <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
                             <img
                               src={n.avatarUrl}
@@ -3075,8 +3541,8 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                               <button 
                                 type="button"
                                 onClick={async () => {
-                                  if(window.confirm(`Verify and approve ${n.name}? This confirms you have reviewed their signup details and certificate, and credits any referral rewards.`)) {
-                                    await onUpdateNurseRecord?.(n.id, { certificateVerified: true, status: 'Active' });
+                                  await onUpdateNurseRecord?.(n.id, { certificateVerified: true, status: 'Active' });
+                                  showToast(`Nurse "${n.name}" verified and approved!`);
 
                                     // If nurse was referred by an existing nurse, credit ₹500 referral reward to the referrer
                                     if (n.referredByNurseId && onUpdateNurseRecord) {
@@ -3105,7 +3571,6 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                                       }
                                     }
                                     showToast(`Nurse ${n.name} approved and activated.`);
-                                  }
                                 }}
                                 className="btn btn-sm btn-primary" 
                                 style={{ fontSize: '0.7rem', padding: '0.2rem 0.55rem', background: '#0284C7', color: 'white', border: 'none', borderRadius: 4, cursor: 'pointer', fontWeight: 700 }}
@@ -3159,6 +3624,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                 </tbody>
               </table>
             </div>
+            </>
           )}
         </div>
         </div>
@@ -3257,25 +3723,52 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                 description={serviceSearch ? 'No services matched your search.' : 'No clinical procedures in Supabase catalog.'}
               />
             ) : (
-              <div className="table-responsive">
-                <table className="data-table">
-                  <thead>
-                    <tr>
-                      <th>Procedure ID & Title</th>
-                      <th>Single Visit Price</th>
-                      <th>Multi-Visit Package</th>
-                      <th>Night Surcharge</th>
-                      <th>Prescription</th>
-                      <th>Typical Duration</th>
-                      <th>Badge</th>
-                      <th style={{ textAlign: 'right' }}>Actions</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {filteredServices.map((s) => (
-                      <tr key={s.id}>
-                        <td>
-                          <div><strong>{s.title}</strong></div>
+              <>
+                {renderBulkActionBar({
+                  entityName: 'Services',
+                  filteredIds: filteredServices.map((s) => s.id),
+                  selectedSet: selectedServiceIds,
+                  setSelectedSet: setSelectedServiceIds,
+                  onDeleteMultiple: onDeleteMultipleServices
+                })}
+                <div className="table-responsive">
+                  <table className="data-table">
+                    <thead>
+                      <tr>
+                        <th style={{ width: 40, textAlign: 'center' }}>
+                          <input
+                            type="checkbox"
+                            checked={filteredServices.length > 0 && filteredServices.every((s) => selectedServiceIds.has(s.id))}
+                            onChange={() => toggleSelectAll(filteredServices.map((s) => s.id), selectedServiceIds, setSelectedServiceIds)}
+                            style={{ cursor: 'pointer', accentColor: '#E11D48', width: 16, height: 16 }}
+                            title="Select / Deselect All Services"
+                          />
+                        </th>
+                        <th>Procedure ID & Title</th>
+                        <th>Single Visit Price</th>
+                        <th>Multi-Visit Package</th>
+                        <th>Night Surcharge</th>
+                        <th>Prescription</th>
+                        <th>Typical Duration</th>
+                        <th>Badge</th>
+                        <th style={{ textAlign: 'right' }}>Actions</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {filteredServices.map((s) => {
+                        const isSelected = selectedServiceIds.has(s.id);
+                        return (
+                          <tr key={s.id} style={{ background: isSelected ? '#FFF1F2' : undefined }}>
+                            <td style={{ textAlign: 'center', width: 40 }}>
+                              <input
+                                type="checkbox"
+                                checked={isSelected}
+                                onChange={() => toggleItemSelection(s.id, setSelectedServiceIds)}
+                                style={{ cursor: 'pointer', accentColor: '#E11D48', width: 16, height: 16 }}
+                              />
+                            </td>
+                            <td>
+                              <div><strong>{s.title}</strong></div>
                           <div style={{ fontSize: '0.75rem', color: 'var(--neutral-500)', fontFamily: 'monospace' }}>{s.id}</div>
                           {s.subtitle && <div style={{ fontSize: '0.74rem', color: 'var(--neutral-600)' }}>{s.subtitle}</div>}
                         </td>
@@ -3377,10 +3870,12 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                           </div>
                         </td>
                       </tr>
-                    ))}
+                    );
+                  })}
                   </tbody>
                 </table>
               </div>
+              </>
             )}
           </div>
         </div>
@@ -3513,38 +4008,64 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
               description={leadSearch ? 'No leads matched your search query.' : 'No nurse leads have been registered yet.'}
             />
           ) : (
-            <div className="table-responsive">
-              <table className="data-table">
-                <thead>
-                  <tr>
-                    <th>Lead ID</th>
-                    <th>Patient Name</th>
-                    <th>Phone</th>
-                    <th>Service</th>
-                    <th>Area</th>
-                    <th>Referring Nurse</th>
-                    <th>Points Decided</th>
-                    <th>Referral Earning</th>
-                    <th>Decision Status</th>
-                    <th style={{ textAlign: 'right' }}>Admin Decision & Actions</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {filteredLeads.map((l) => {
-                    const referringNurse = nurses.find((n) => n.id === l.nurseId);
-                    const isPending = l.status === 'Pending Approval';
-                    const isApproved = l.status === 'Approved' || l.status === 'Converted';
-                    const isRejected = l.status === 'Rejected';
+            <>
+              {renderBulkActionBar({
+                entityName: 'Leads',
+                filteredIds: filteredLeads.map((l) => l.id),
+                selectedSet: selectedLeadIds,
+                setSelectedSet: setSelectedLeadIds,
+                onDeleteMultiple: onDeleteMultipleLeads
+              })}
+              <div className="table-responsive">
+                <table className="data-table">
+                  <thead>
+                    <tr>
+                      <th style={{ width: 40, textAlign: 'center' }}>
+                        <input
+                          type="checkbox"
+                          checked={filteredLeads.length > 0 && filteredLeads.every((l) => selectedLeadIds.has(l.id))}
+                          onChange={() => toggleSelectAll(filteredLeads.map((l) => l.id), selectedLeadIds, setSelectedLeadIds)}
+                          style={{ cursor: 'pointer', accentColor: '#E11D48', width: 16, height: 16 }}
+                          title="Select / Deselect All Leads"
+                        />
+                      </th>
+                      <th>Lead ID</th>
+                      <th>Patient Name</th>
+                      <th>Phone</th>
+                      <th>Service</th>
+                      <th>Area</th>
+                      <th>Referring Nurse</th>
+                      <th>Points Decided</th>
+                      <th>Referral Earning</th>
+                      <th>Decision Status</th>
+                      <th style={{ textAlign: 'right' }}>Admin Decision & Actions</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {filteredLeads.map((l) => {
+                      const referringNurse = nurses.find((n) => n.id === l.nurseId);
+                      const isPending = l.status === 'Pending Approval';
+                      const isApproved = l.status === 'Approved' || l.status === 'Converted';
+                      const isRejected = l.status === 'Rejected';
+                      const isSelected = selectedLeadIds.has(l.id);
 
-                    return (
-                      <tr 
-                        key={l.id} 
-                        style={{ 
-                          background: isPending ? '#FFFDF5' : undefined,
-                          borderLeft: isPending ? '4px solid #F59E0B' : undefined 
-                        }}
-                      >
-                        <td>
+                      return (
+                        <tr 
+                          key={l.id} 
+                          style={{ 
+                            background: isSelected ? '#FFF1F2' : (isPending ? '#FFFDF5' : undefined),
+                            borderLeft: isSelected ? '4px solid #E11D48' : (isPending ? '4px solid #F59E0B' : undefined) 
+                          }}
+                        >
+                          <td style={{ textAlign: 'center', width: 40 }}>
+                            <input
+                              type="checkbox"
+                              checked={isSelected}
+                              onChange={() => toggleItemSelection(l.id, setSelectedLeadIds)}
+                              style={{ cursor: 'pointer', accentColor: '#E11D48', width: 16, height: 16 }}
+                            />
+                          </td>
+                          <td>
                           <strong style={{ fontFamily: 'monospace' }}>{l.id}</strong>
                           <div style={{ fontSize: '0.7rem', color: 'var(--neutral-400)' }}>
                             {l.submittedAt && l.submittedAt.includes('T') ? new Date(l.submittedAt).toLocaleDateString() : l.submittedAt || 'Recent'}
@@ -3731,6 +4252,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                 </tbody>
               </table>
             </div>
+            </>
           )}
         </div>
       )}
@@ -3847,25 +4369,52 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                 description={consultSearch ? 'No consultation records matched your search.' : 'No patient teleconsultation requests logged.'}
               />
             ) : (
-              <div className="table-responsive">
-                <table className="data-table">
-                  <thead>
-                    <tr>
-                      <th>Request ID</th>
-                      <th>Patient Name & Age</th>
-                      <th>Phone</th>
-                      <th>Symptoms / Chief Complaint</th>
-                      <th>Area</th>
-                      <th>Prescription</th>
-                      <th>Recommended Service</th>
-                      <th>Status</th>
-                      <th style={{ textAlign: 'right' }}>Actions</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {filteredConsults.map((c) => (
-                      <tr key={c.id}>
-                        <td><strong style={{ fontFamily: 'monospace' }}>{c.id}</strong></td>
+              <>
+                {renderBulkActionBar({
+                  entityName: 'Consultations',
+                  filteredIds: filteredConsults.map((c) => c.id),
+                  selectedSet: selectedConsultIds,
+                  setSelectedSet: setSelectedConsultIds,
+                  onDeleteMultiple: onDeleteMultipleConsultations
+                })}
+                <div className="table-responsive">
+                  <table className="data-table">
+                    <thead>
+                      <tr>
+                        <th style={{ width: 40, textAlign: 'center' }}>
+                          <input
+                            type="checkbox"
+                            checked={filteredConsults.length > 0 && filteredConsults.every((c) => selectedConsultIds.has(c.id))}
+                            onChange={() => toggleSelectAll(filteredConsults.map((c) => c.id), selectedConsultIds, setSelectedConsultIds)}
+                            style={{ cursor: 'pointer', accentColor: '#E11D48', width: 16, height: 16 }}
+                            title="Select / Deselect All Consultations"
+                          />
+                        </th>
+                        <th>Request ID</th>
+                        <th>Patient Name & Age</th>
+                        <th>Phone</th>
+                        <th>Symptoms / Chief Complaint</th>
+                        <th>Area</th>
+                        <th>Prescription</th>
+                        <th>Recommended Service</th>
+                        <th>Status</th>
+                        <th style={{ textAlign: 'right' }}>Actions</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {filteredConsults.map((c) => {
+                        const isSelected = selectedConsultIds.has(c.id);
+                        return (
+                          <tr key={c.id} style={{ background: isSelected ? '#FFF1F2' : undefined }}>
+                            <td style={{ textAlign: 'center', width: 40 }}>
+                              <input
+                                type="checkbox"
+                                checked={isSelected}
+                                onChange={() => toggleItemSelection(c.id, setSelectedConsultIds)}
+                                style={{ cursor: 'pointer', accentColor: '#E11D48', width: 16, height: 16 }}
+                              />
+                            </td>
+                            <td><strong style={{ fontFamily: 'monospace' }}>{c.id}</strong></td>
                         <td>
                           <div><strong>{c.patientName}</strong></div>
                           <div style={{ fontSize: '0.75rem', color: 'var(--neutral-500)' }}>Age: {c.patientAge || '—'}</div>
@@ -3987,10 +4536,12 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                           </div>
                         </td>
                       </tr>
-                    ))}
+                    );
+                  })}
                   </tbody>
                 </table>
               </div>
+              </>
             )}
           </div>
         </div>
@@ -4135,29 +4686,55 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                 description={couponSearch ? 'No coupons matched your search criteria.' : 'No coupons exist in the database. Click "+ Create New Coupon" to add one.'}
               />
             ) : (
-              <div className="table-responsive">
-                <table className="data-table">
-                  <thead>
-                    <tr>
-                      <th>Coupon Code</th>
-                      <th>Discount Value</th>
-                      <th>Min Order / Max Cap</th>
-                      <th>Description</th>
-                      <th>Redemptions</th>
-                      <th>Status</th>
-                      <th style={{ textAlign: 'right' }}>Actions</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {filteredCoupons.map((c) => {
-                      const isExpired = c.validUntil && new Date(c.validUntil) < new Date();
-                      const displayStatus = isExpired ? 'Expired' : c.status;
-                      const usagePct = c.usageLimit ? Math.min(100, Math.round(((c.timesUsed || 0) / c.usageLimit) * 100)) : null;
+              <>
+                {renderBulkActionBar({
+                  entityName: 'Coupons',
+                  filteredIds: filteredCoupons.map((c) => c.id),
+                  selectedSet: selectedCouponIds,
+                  setSelectedSet: setSelectedCouponIds,
+                  onDeleteMultiple: onDeleteMultipleCoupons
+                })}
+                <div className="table-responsive">
+                  <table className="data-table">
+                    <thead>
+                      <tr>
+                        <th style={{ width: 40, textAlign: 'center' }}>
+                          <input
+                            type="checkbox"
+                            checked={filteredCoupons.length > 0 && filteredCoupons.every((c) => selectedCouponIds.has(c.id))}
+                            onChange={() => toggleSelectAll(filteredCoupons.map((c) => c.id), selectedCouponIds, setSelectedCouponIds)}
+                            style={{ cursor: 'pointer', accentColor: '#E11D48', width: 16, height: 16 }}
+                            title="Select / Deselect All Coupons"
+                          />
+                        </th>
+                        <th>Coupon Code</th>
+                        <th>Discount Value</th>
+                        <th>Min Order / Max Cap</th>
+                        <th>Description</th>
+                        <th>Redemptions</th>
+                        <th>Status</th>
+                        <th style={{ textAlign: 'right' }}>Actions</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {filteredCoupons.map((c) => {
+                        const isExpired = c.validUntil && new Date(c.validUntil) < new Date();
+                        const displayStatus = isExpired ? 'Expired' : c.status;
+                        const usagePct = c.usageLimit ? Math.min(100, Math.round(((c.timesUsed || 0) / c.usageLimit) * 100)) : null;
+                        const isSelected = selectedCouponIds.has(c.id);
 
-                      return (
-                        <tr key={c.id}>
-                          {/* Code */}
-                          <td>
+                        return (
+                          <tr key={c.id} style={{ background: isSelected ? '#FFF1F2' : undefined }}>
+                            <td style={{ textAlign: 'center', width: 40 }}>
+                              <input
+                                type="checkbox"
+                                checked={isSelected}
+                                onChange={() => toggleItemSelection(c.id, setSelectedCouponIds)}
+                                style={{ cursor: 'pointer', accentColor: '#E11D48', width: 16, height: 16 }}
+                              />
+                            </td>
+                            {/* Code */}
+                            <td>
                             <div style={{ display: 'flex', alignItems: 'center', gap: '0.45rem' }}>
                               <span style={{
                                 fontFamily: 'monospace',
@@ -4315,6 +4892,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                   </tbody>
                 </table>
               </div>
+              </>
             )}
           </div>
         </div>
@@ -4442,31 +5020,57 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                 description={credentialSearch ? 'No accounts matched your search criteria.' : 'No authenticated staff or patient records found.'}
               />
             ) : (
-              <div className="table-responsive">
-                <table className="data-table">
-                  <thead>
-                    <tr>
-                      <th>Account Name & Designation</th>
-                      <th>System Role</th>
-                      <th>Registered Login Identifier</th>
-                      <th>4-Digit Security PIN</th>
-                      <th>Station / Service Area</th>
-                      <th>Status</th>
-                      <th style={{ textAlign: 'right' }}>Actions</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {filteredUsers.map((u) => {
-                      const isRevealed = showAllPins || revealedPinIds[u.id];
-                      const roleBadgeClass = 
-                        u.role === 'admin' ? 'admin' :
-                        u.role === 'doctor' ? 'doctor' :
-                        u.role === 'nurse' ? 'nurse' : 'patient';
+              <>
+                {renderBulkActionBar({
+                  entityName: 'Users',
+                  filteredIds: filteredUsers.map((u) => u.id),
+                  selectedSet: selectedUserIds,
+                  setSelectedSet: setSelectedUserIds,
+                  onDeleteMultiple: onDeleteMultipleAppUsers
+                })}
+                <div className="table-responsive">
+                  <table className="data-table">
+                    <thead>
+                      <tr>
+                        <th style={{ width: 40, textAlign: 'center' }}>
+                          <input
+                            type="checkbox"
+                            checked={filteredUsers.length > 0 && filteredUsers.every((u) => selectedUserIds.has(u.id))}
+                            onChange={() => toggleSelectAll(filteredUsers.map((u) => u.id), selectedUserIds, setSelectedUserIds)}
+                            style={{ cursor: 'pointer', accentColor: '#E11D48', width: 16, height: 16 }}
+                            title="Select / Deselect All Users"
+                          />
+                        </th>
+                        <th>Account Name & Designation</th>
+                        <th>System Role</th>
+                        <th>Registered Login Identifier</th>
+                        <th>4-Digit Security PIN</th>
+                        <th>Station / Service Area</th>
+                        <th>Status</th>
+                        <th style={{ textAlign: 'right' }}>Actions</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {filteredUsers.map((u) => {
+                        const isRevealed = showAllPins || revealedPinIds[u.id];
+                        const roleBadgeClass = 
+                          u.role === 'admin' ? 'admin' :
+                          u.role === 'doctor' ? 'doctor' :
+                          u.role === 'nurse' ? 'nurse' : 'patient';
+                        const isSelected = selectedUserIds.has(u.id);
 
-                      return (
-                        <tr key={u.id}>
-                          {/* Name & Designation */}
-                          <td>
+                        return (
+                          <tr key={u.id} style={{ background: isSelected ? '#FFF1F2' : undefined }}>
+                            <td style={{ textAlign: 'center', width: 40 }}>
+                              <input
+                                type="checkbox"
+                                checked={isSelected}
+                                onChange={() => toggleItemSelection(u.id, setSelectedUserIds)}
+                                style={{ cursor: 'pointer', accentColor: '#E11D48', width: 16, height: 16 }}
+                              />
+                            </td>
+                            {/* Name & Designation */}
+                            <td>
                             <div style={{ display: 'flex', alignItems: 'center', gap: '0.65rem' }}>
                               <div style={{
                                 width: 36,
@@ -4626,6 +5230,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                   </tbody>
                 </table>
               </div>
+              </>
             )}
           </div>
 
@@ -5436,9 +6041,37 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
 
               {/* Select Other Nurse */}
               <div className="form-group" style={{ marginBottom: '1.25rem' }}>
-                <label className="form-label" style={{ fontWeight: 750, color: 'var(--primary-navy-950)', marginBottom: '0.4rem', display: 'block' }}>
-                  Select Available Nurse to Refer Visit To:
-                </label>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.4rem', flexWrap: 'wrap', gap: '0.5rem' }}>
+                  <label className="form-label" style={{ fontWeight: 750, color: 'var(--primary-navy-950)', margin: 0 }}>
+                    Select Available Nurse to Refer Visit To:
+                  </label>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const target = adminReassignBooking;
+                      setSearchAssignBooking(target);
+                      setNurseSearchQuery('');
+                      setNurseSearchFilterArea(target.area || 'all');
+                      setAdminReassignBooking(null);
+                    }}
+                    className="btn btn-outline btn-sm"
+                    style={{
+                      fontSize: '0.76rem',
+                      padding: '0.25rem 0.6rem',
+                      borderColor: '#0284C7',
+                      color: '#0284C7',
+                      background: '#F0F9FF',
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      gap: '0.3rem',
+                      fontWeight: 750
+                    }}
+                    title="Open full interactive nurse search & dispatch modal"
+                  >
+                    <Search size={13} />
+                    <span>Search Nurse Roster</span>
+                  </button>
+                </div>
                 <select
                   className="form-control"
                   value={selectedReferralNurseId}
@@ -7984,23 +8617,21 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                   <button
                     type="button"
                     onClick={async () => {
-                      if (window.confirm(`Verify and approve ${adminCertModalNurse.name}'s certificate? This activates the nurse and credits ₹500 referral reward if referred.`)) {
-                        await onUpdateNurseRecord?.(adminCertModalNurse.id, { certificateVerified: true, status: 'Active' });
-                        if (adminCertModalNurse.referredByNurseId && onUpdateNurseRecord) {
-                          const referrer = nurses.find((rn) => rn.id === adminCertModalNurse.referredByNurseId);
-                          if (referrer) {
-                            await onUpdateNurseRecord(referrer.id, {
-                              earningsPaid: (referrer.earningsPaid || 0) + 500,
-                              earningsPending: Math.max(0, (referrer.earningsPending || 0) - 500),
-                              referralEarningsRupees: (referrer.referralEarningsRupees || 0) + 500,
-                              pointsEarned: (referrer.pointsEarned || 0) + 50,
-                              convertedLeads: (referrer.convertedLeads || 0) + 1
-                            });
-                          }
+                      await onUpdateNurseRecord?.(adminCertModalNurse.id, { certificateVerified: true, status: 'Active' });
+                      if (adminCertModalNurse.referredByNurseId && onUpdateNurseRecord) {
+                        const referrer = nurses.find((rn) => rn.id === adminCertModalNurse.referredByNurseId);
+                        if (referrer) {
+                          await onUpdateNurseRecord(referrer.id, {
+                            earningsPaid: (referrer.earningsPaid || 0) + 500,
+                            earningsPending: Math.max(0, (referrer.earningsPending || 0) - 500),
+                            referralEarningsRupees: (referrer.referralEarningsRupees || 0) + 500,
+                            pointsEarned: (referrer.pointsEarned || 0) + 50,
+                            convertedLeads: (referrer.convertedLeads || 0) + 1
+                          });
                         }
-                        showToast(`Nurse ${adminCertModalNurse.name} certificate verified and approved!`);
-                        setAdminCertModalOpen(false);
                       }
+                      showToast(`Nurse ${adminCertModalNurse.name} certificate verified and approved!`);
+                      setAdminCertModalOpen(false);
                     }}
                     className="btn btn-primary btn-sm"
                     style={{ background: '#16A34A', borderColor: '#16A34A', fontWeight: 700 }}
@@ -8018,6 +8649,229 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                   Close
                 </button>
               </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ========================================================================= */}
+      {/* IN-APP PERMANENT DELETION CONFIRMATION MODAL                              */}
+      {/* 100% Reliable in all browsers; never blocked by popup/dialog blockers     */}
+      {/* ========================================================================= */}
+      {deleteConfirmTarget && (
+        <div
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="delete-confirm-title"
+          style={{
+            position: 'fixed',
+            inset: 0,
+            zIndex: 99999999,
+            backgroundColor: 'rgba(15, 23, 42, 0.72)',
+            backdropFilter: 'blur(6px)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            padding: '1.25rem'
+          }}
+          onClick={(e) => {
+            if (e.target === e.currentTarget && !isDeletingTarget) {
+              setDeleteConfirmTarget(null);
+            }
+          }}
+        >
+          <div
+            style={{
+              background: '#FFFFFF',
+              borderRadius: '16px',
+              maxWidth: '480px',
+              width: '100%',
+              boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.35)',
+              border: '1px solid #FECDD3',
+              overflow: 'hidden'
+            }}
+          >
+            {/* Header */}
+            <div
+              style={{
+                padding: '1.25rem 1.5rem',
+                borderBottom: '1px solid #FEE2E2',
+                background: '#FFF1F2',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '0.75rem'
+              }}
+            >
+              <div
+                style={{
+                  width: '40px',
+                  height: '40px',
+                  borderRadius: '10px',
+                  background: '#FFE4E6',
+                  color: '#E11D48',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  flexShrink: 0
+                }}
+              >
+                <Trash2 size={22} />
+              </div>
+              <div style={{ flex: 1 }}>
+                <h3 id="delete-confirm-title" style={{ margin: 0, fontSize: '1.1rem', fontWeight: 800, color: '#9F1239' }}>
+                  Confirm Permanent Delete
+                </h3>
+                <span style={{ fontSize: '0.75rem', color: '#BE123C', fontWeight: 600 }}>
+                  Supabase Live Database Record
+                </span>
+              </div>
+              <button
+                type="button"
+                disabled={isDeletingTarget}
+                onClick={() => setDeleteConfirmTarget(null)}
+                style={{
+                  background: 'transparent',
+                  border: 'none',
+                  color: '#9F1239',
+                  cursor: isDeletingTarget ? 'not-allowed' : 'pointer',
+                  padding: '4px',
+                  borderRadius: '6px',
+                  display: 'flex',
+                  alignItems: 'center'
+                }}
+              >
+                <X size={18} />
+              </button>
+            </div>
+
+            {/* Body */}
+            <div style={{ padding: '1.5rem' }}>
+              <p style={{ margin: '0 0 1rem', fontSize: '0.92rem', color: '#334155', lineHeight: 1.5 }}>
+                Are you sure you want to permanently delete this <strong>{deleteConfirmTarget.itemType}</strong> from Supabase?
+              </p>
+
+              <div
+                style={{
+                  background: '#F8FAFC',
+                  border: '1px solid #E2E8F0',
+                  borderRadius: '10px',
+                  padding: '0.9rem 1.1rem',
+                  marginBottom: '1rem'
+                }}
+              >
+                <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.35rem' }}>
+                  <span
+                    style={{
+                      fontSize: '0.7rem',
+                      fontWeight: 700,
+                      textTransform: 'uppercase',
+                      letterSpacing: '0.04em',
+                      padding: '2px 8px',
+                      borderRadius: '4px',
+                      background: '#E2E8F0',
+                      color: '#475569'
+                    }}
+                  >
+                    {deleteConfirmTarget.itemType}
+                  </span>
+                  <strong style={{ fontSize: '0.95rem', color: '#0F172A' }}>
+                    {deleteConfirmTarget.itemTitle}
+                  </strong>
+                </div>
+                {deleteConfirmTarget.itemDetails && (
+                  <p style={{ margin: 0, fontSize: '0.8rem', color: '#64748B', lineHeight: 1.4 }}>
+                    {deleteConfirmTarget.itemDetails}
+                  </p>
+                )}
+              </div>
+
+              <div
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '0.5rem',
+                  fontSize: '0.78rem',
+                  color: '#B91C1C',
+                  background: '#FEF2F2',
+                  padding: '0.6rem 0.85rem',
+                  borderRadius: '8px'
+                }}
+              >
+                <AlertCircle size={15} style={{ flexShrink: 0 }} />
+                <span>This deletion is immediate, syncs in real-time, and cannot be undone.</span>
+              </div>
+            </div>
+
+            {/* Footer */}
+            <div
+              style={{
+                padding: '1rem 1.5rem',
+                borderTop: '1px solid #E2E8F0',
+                background: '#FAFAFA',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'flex-end',
+                gap: '0.75rem'
+              }}
+            >
+              <button
+                type="button"
+                disabled={isDeletingTarget}
+                onClick={() => setDeleteConfirmTarget(null)}
+                className="btn btn-outline btn-sm"
+                style={{
+                  padding: '0.5rem 1.1rem',
+                  fontWeight: 600,
+                  fontSize: '0.85rem',
+                  cursor: isDeletingTarget ? 'not-allowed' : 'pointer'
+                }}
+              >
+                Cancel
+              </button>
+
+              <button
+                type="button"
+                disabled={isDeletingTarget}
+                onClick={async () => {
+                  if (!deleteConfirmTarget) return;
+                  setIsDeletingTarget(true);
+                  try {
+                    await deleteConfirmTarget.onConfirm();
+                  } catch (err: any) {
+                    console.error('[Delete Error]:', err);
+                    showToast(`Error deleting ${deleteConfirmTarget.itemType}: ${err?.message || 'Check database'}`, 'error');
+                  } finally {
+                    setIsDeletingTarget(false);
+                    setDeleteConfirmTarget(null);
+                  }
+                }}
+                className="btn btn-sm"
+                style={{
+                  padding: '0.5rem 1.3rem',
+                  fontWeight: 700,
+                  fontSize: '0.85rem',
+                  color: '#FFFFFF',
+                  background: '#E11D48',
+                  borderColor: '#E11D48',
+                  cursor: isDeletingTarget ? 'not-allowed' : 'pointer',
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: '0.4rem',
+                  boxShadow: '0 4px 12px rgba(225, 29, 72, 0.3)'
+                }}
+              >
+                {isDeletingTarget ? (
+                  <>
+                    <RefreshCw size={14} className="spin-slow" />
+                    <span>Deleting from Supabase...</span>
+                  </>
+                ) : (
+                  <>
+                    <Trash2 size={14} />
+                    <span>Yes, Permanently Delete</span>
+                  </>
+                )}
+              </button>
             </div>
           </div>
         </div>

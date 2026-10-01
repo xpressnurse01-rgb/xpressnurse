@@ -20,6 +20,7 @@ import { EmptyStatePage } from './components/EmptyStatePage';
 import { NotFoundPage } from './components/NotFoundPage';
 import { LoginPage } from './components/LoginPage';
 import { PolicyModal, PolicyType } from './components/PolicyModal';
+import { AuthGuard } from './components/AuthGuard';
 import { 
   supabase,
   dbFetchBookings, 
@@ -35,32 +36,37 @@ import {
   dbInsertCoupon,
   dbUpdateCoupon,
   dbDeleteCoupon,
+  dbDeleteMultipleCoupons,
   SEED_APP_USERS,
+  BASELINE_NURSES,
+  BASELINE_BOOKINGS,
+  BASELINE_LEADS,
+  BASELINE_COUPONS,
   dbFetchAppUsers,
   dbInsertBooking,
   dbUpdateBooking,
   dbDeleteBooking,
+  dbDeleteMultipleBookings,
   dbInsertNurse,
   dbUpdateNurseById,
   dbDeleteNurse,
+  dbDeleteMultipleNurses,
   dbInsertLead,
   dbUpdateLeadById,
   dbDeleteLead,
+  dbDeleteMultipleLeads,
   dbInsertService,
   dbUpdateServiceById,
   dbDeleteService,
+  dbDeleteMultipleServices,
   dbInsertConsultation,
   dbUpdateConsultationById,
   dbDeleteConsultation,
+  dbDeleteMultipleConsultations,
   dbInsertAppUser,
   dbUpdateAppUserById,
   dbDeleteAppUser,
-  DEFAULT_SERVICES,
-  DEFAULT_NURSES,
-  DEFAULT_BOOKINGS,
-  DEFAULT_LEADS,
-  DEFAULT_CONSULTATIONS,
-  DEFAULT_COUPONS
+  dbDeleteMultipleAppUsers
 } from './lib/supabase';
 
 import { 
@@ -158,64 +164,14 @@ export const App: React.FC = () => {
         if (Array.isArray(parsed) && parsed.length > 0) return parsed;
       }
     } catch {}
-    return DEFAULT_SERVICES;
+    return [];
   });
 
-  const [bookings, setBookings] = useState<Booking[]>(() => {
-    try {
-      const cached = localStorage.getItem('xn_cached_bookings');
-      if (cached) {
-        const parsed = JSON.parse(cached);
-        if (Array.isArray(parsed) && parsed.length > 0) return parsed;
-      }
-    } catch {}
-    return DEFAULT_BOOKINGS;
-  });
-
-  const [nurses, setNurses] = useState<NurseProfile[]>(() => {
-    try {
-      const cached = localStorage.getItem('xn_cached_nurses');
-      if (cached) {
-        const parsed = JSON.parse(cached);
-        if (Array.isArray(parsed) && parsed.length > 0) return parsed;
-      }
-    } catch {}
-    return DEFAULT_NURSES;
-  });
-
-  const [leads, setLeads] = useState<NurseLead[]>(() => {
-    try {
-      const cached = localStorage.getItem('xn_cached_leads');
-      if (cached) {
-        const parsed = JSON.parse(cached);
-        if (Array.isArray(parsed) && parsed.length > 0) return parsed;
-      }
-    } catch {}
-    return DEFAULT_LEADS;
-  });
-
-  const [consultations, setConsultations] = useState<DoctorConsultation[]>(() => {
-    try {
-      const cached = localStorage.getItem('xn_cached_consultations');
-      if (cached) {
-        const parsed = JSON.parse(cached);
-        if (Array.isArray(parsed) && parsed.length > 0) return parsed;
-      }
-    } catch {}
-    return DEFAULT_CONSULTATIONS;
-  });
-
-  const [coupons, setCoupons] = useState<Coupon[]>(() => {
-    try {
-      const cached = localStorage.getItem('xn_cached_coupons');
-      if (cached) {
-        const parsed = JSON.parse(cached);
-        if (Array.isArray(parsed) && parsed.length > 0) return parsed;
-      }
-    } catch {}
-    return DEFAULT_COUPONS;
-  });
-
+  const [bookings, setBookings] = useState<Booking[]>(BASELINE_BOOKINGS);
+  const [nurses, setNurses] = useState<NurseProfile[]>(BASELINE_NURSES);
+  const [leads, setLeads] = useState<NurseLead[]>(BASELINE_LEADS);
+  const [consultations, setConsultations] = useState<DoctorConsultation[]>([]);
+  const [coupons, setCoupons] = useState<Coupon[]>(BASELINE_COUPONS);
   const [appUsers, setAppUsers] = useState<AppUser[]>(SEED_APP_USERS);
   const [dbLoading, setDbLoading] = useState(false);
 
@@ -394,17 +350,14 @@ export const App: React.FC = () => {
           dbFetchAppUsers()
         ]);
 
-        if (remoteServices && remoteServices.length > 0) {
+        if (remoteServices !== null && remoteServices.length > 0) {
           setServices(remoteServices);
-          try { localStorage.setItem('xn_cached_services', JSON.stringify(remoteServices)); } catch {}
         }
-        if (remoteBookings && remoteBookings.length > 0) {
+        if (remoteBookings !== null && remoteBookings.length > 0) {
           setBookings(remoteBookings);
-          try { localStorage.setItem('xn_cached_bookings', JSON.stringify(remoteBookings)); } catch {}
         }
-        if (remoteNurses && remoteNurses.length > 0) {
+        if (remoteNurses !== null && remoteNurses.length > 0) {
           setNurses(remoteNurses);
-          try { localStorage.setItem('xn_cached_nurses', JSON.stringify(remoteNurses)); } catch {}
           // If authUser is logged in as a nurse, sync active nurse ID
           const savedAuth = localStorage.getItem('xn_auth_user');
           if (savedAuth) {
@@ -422,19 +375,16 @@ export const App: React.FC = () => {
             } catch {}
           }
         }
-        if (remoteLeads && remoteLeads.length > 0) {
+        if (remoteLeads !== null && remoteLeads.length > 0) {
           setLeads(remoteLeads);
-          try { localStorage.setItem('xn_cached_leads', JSON.stringify(remoteLeads)); } catch {}
         }
-        if (remoteConsults && remoteConsults.length > 0) {
+        if (remoteConsults !== null && remoteConsults.length > 0) {
           setConsultations(remoteConsults);
-          try { localStorage.setItem('xn_cached_consultations', JSON.stringify(remoteConsults)); } catch {}
         }
-        if (remoteCoupons && remoteCoupons.length > 0) {
+        if (remoteCoupons !== null && remoteCoupons.length > 0) {
           setCoupons(remoteCoupons);
-          try { localStorage.setItem('xn_cached_coupons', JSON.stringify(remoteCoupons)); } catch {}
         }
-        if (remoteAppUsers && remoteAppUsers.length > 0) {
+        if (remoteAppUsers !== null && remoteAppUsers.length > 0) {
           setAppUsers(remoteAppUsers);
         }
 
@@ -494,7 +444,7 @@ export const App: React.FC = () => {
         dbFetchConsultations()
       ]);
 
-      if (remoteBookings && remoteBookings.length > 0) {
+      if (remoteBookings !== null && remoteBookings.length > 0) {
         setBookings((prev) => {
           if (prev.length === remoteBookings.length && JSON.stringify(prev) === JSON.stringify(remoteBookings)) {
             return prev;
@@ -502,7 +452,7 @@ export const App: React.FC = () => {
           return remoteBookings;
         });
       }
-      if (remoteNurses && remoteNurses.length > 0) {
+      if (remoteNurses !== null && remoteNurses.length > 0) {
         setNurses((prev) => {
           if (prev.length === remoteNurses.length && JSON.stringify(prev) === JSON.stringify(remoteNurses)) {
             return prev;
@@ -510,7 +460,7 @@ export const App: React.FC = () => {
           return remoteNurses;
         });
       }
-      if (remoteLeads && remoteLeads.length > 0) {
+      if (remoteLeads !== null && remoteLeads.length > 0) {
         setLeads((prev) => {
           if (prev.length === remoteLeads.length && JSON.stringify(prev) === JSON.stringify(remoteLeads)) {
             return prev;
@@ -518,7 +468,7 @@ export const App: React.FC = () => {
           return remoteLeads;
         });
       }
-      if (remoteConsults && remoteConsults.length > 0) {
+      if (remoteConsults !== null && remoteConsults.length > 0) {
         setConsultations((prev) => {
           if (prev.length === remoteConsults.length && JSON.stringify(prev) === JSON.stringify(remoteConsults)) {
             return prev;
@@ -686,11 +636,17 @@ export const App: React.FC = () => {
               const exists = prev.some((b) => b.id === mapped.id);
               return exists ? prev.map((b) => (b.id === mapped.id ? mapped : b)) : [mapped, ...prev];
             });
-          } else if (payload.eventType === 'DELETE' && payload.old) {
-            setBookings((prev) => prev.filter((b) => b.id !== (payload.old as any).id));
+            const fresh = await dbFetchBookings();
+            if (fresh && fresh.length > 0) setBookings(fresh);
+          } else if (payload.eventType === 'DELETE') {
+            const delId = (payload.old as any)?.id;
+            if (delId) {
+              setBookings((prev) => prev.filter((b) => b.id !== delId));
+            } else {
+              const fresh = await dbFetchBookings();
+              if (fresh) setBookings(fresh);
+            }
           }
-          const fresh = await dbFetchBookings();
-          if (fresh && fresh.length > 0) setBookings(fresh);
         }
       )
       .on(
@@ -727,11 +683,17 @@ export const App: React.FC = () => {
               const exists = prev.some((n) => n.id === mapped.id);
               return exists ? prev.map((n) => (n.id === mapped.id ? mapped : n)) : [...prev, mapped];
             });
-          } else if (payload.eventType === 'DELETE' && payload.old) {
-            setNurses((prev) => prev.filter((n) => n.id !== (payload.old as any).id));
+            const fresh = await dbFetchNurses();
+            if (fresh && fresh.length > 0) setNurses(fresh);
+          } else if (payload.eventType === 'DELETE') {
+            const delId = (payload.old as any)?.id;
+            if (delId) {
+              setNurses((prev) => prev.filter((n) => n.id !== delId));
+            } else {
+              const fresh = await dbFetchNurses();
+              if (fresh) setNurses(fresh);
+            }
           }
-          const fresh = await dbFetchNurses();
-          if (fresh && fresh.length > 0) setNurses(fresh);
         }
       )
       .on(
@@ -766,11 +728,17 @@ export const App: React.FC = () => {
               const exists = prev.some((l) => l.id === mapped.id);
               return exists ? prev.map((l) => (l.id === mapped.id ? mapped : l)) : [mapped, ...prev];
             });
-          } else if (payload.eventType === 'DELETE' && payload.old) {
-            setLeads((prev) => prev.filter((l) => l.id !== (payload.old as any).id));
+            const fresh = await dbFetchLeads();
+            if (fresh && fresh.length > 0) setLeads(fresh);
+          } else if (payload.eventType === 'DELETE') {
+            const delId = (payload.old as any)?.id;
+            if (delId) {
+              setLeads((prev) => prev.filter((l) => l.id !== delId));
+            } else {
+              const fresh = await dbFetchLeads();
+              if (fresh) setLeads(fresh);
+            }
           }
-          const fresh = await dbFetchLeads();
-          if (fresh && fresh.length > 0) setLeads(fresh);
         }
       )
       .on(
@@ -798,11 +766,17 @@ export const App: React.FC = () => {
               const exists = prev.some((c) => c.id === mapped.id);
               return exists ? prev.map((c) => (c.id === mapped.id ? mapped : c)) : [mapped, ...prev];
             });
-          } else if (payload.eventType === 'DELETE' && payload.old) {
-            setConsultations((prev) => prev.filter((c) => c.id !== (payload.old as any).id));
+            const fresh = await dbFetchConsultations();
+            if (fresh && fresh.length > 0) setConsultations(fresh);
+          } else if (payload.eventType === 'DELETE') {
+            const delId = (payload.old as any)?.id;
+            if (delId) {
+              setConsultations((prev) => prev.filter((c) => c.id !== delId));
+            } else {
+              const fresh = await dbFetchConsultations();
+              if (fresh) setConsultations(fresh);
+            }
           }
-          const fresh = await dbFetchConsultations();
-          if (fresh && fresh.length > 0) setConsultations(fresh);
         }
       )
       .on(
@@ -810,11 +784,18 @@ export const App: React.FC = () => {
         { event: '*', schema: 'public', table: 'services' },
         async (payload) => {
           console.log('[Realtime DB] Live Service update:', payload);
-          if (payload.eventType === 'DELETE' && payload.old) {
-            setServices((prev) => prev.filter((s) => s.id !== (payload.old as any).id));
+          if (payload.eventType === 'DELETE') {
+            const delId = (payload.old as any)?.id;
+            if (delId) {
+              setServices((prev) => prev.filter((s) => s.id !== delId));
+            } else {
+              const fresh = await dbFetchServices();
+              if (fresh) setServices(fresh);
+            }
+          } else {
+            const fresh = await dbFetchServices();
+            if (fresh && fresh.length > 0) setServices(fresh);
           }
-          const fresh = await dbFetchServices();
-          if (fresh && fresh.length > 0) setServices(fresh);
         }
       )
       .on(
@@ -822,11 +803,18 @@ export const App: React.FC = () => {
         { event: '*', schema: 'public', table: 'coupons' },
         async (payload) => {
           console.log('[Realtime DB] Live Coupon update:', payload);
-          if (payload.eventType === 'DELETE' && payload.old) {
-            setCoupons((prev) => prev.filter((c) => c.id !== (payload.old as any).id));
+          if (payload.eventType === 'DELETE') {
+            const delId = (payload.old as any)?.id;
+            if (delId) {
+              setCoupons((prev) => prev.filter((c) => c.id !== delId));
+            } else {
+              const fresh = await dbFetchCoupons();
+              if (fresh) setCoupons(fresh);
+            }
+          } else {
+            const fresh = await dbFetchCoupons();
+            if (fresh && fresh.length > 0) setCoupons(fresh);
           }
-          const fresh = await dbFetchCoupons();
-          if (fresh && fresh.length > 0) setCoupons(fresh);
         }
       )
       .subscribe();
@@ -1325,6 +1313,56 @@ export const App: React.FC = () => {
     await dbDeleteAppUser(id);
   };
 
+  // Batch Delete Handlers for Admin Dashboard Selected & Delete All
+  const handleDeleteMultipleBookings = async (ids: string[]) => {
+    const idSet = new Set(ids);
+    setBookings((prev) => prev.filter((b) => !idSet.has(b.id)));
+    ids.forEach((id) => broadcastRealtimeUpdate('BOOKING_DELETE', { id }));
+    await dbDeleteMultipleBookings(ids);
+  };
+
+  const handleDeleteMultipleNurses = async (ids: string[]) => {
+    const idSet = new Set(ids);
+    setNurses((prev) => prev.filter((n) => !idSet.has(n.id)));
+    ids.forEach((id) => broadcastRealtimeUpdate('NURSE_DELETE', { id }));
+    await dbDeleteMultipleNurses(ids);
+  };
+
+  const handleDeleteMultipleLeads = async (ids: string[]) => {
+    const idSet = new Set(ids);
+    setLeads((prev) => prev.filter((l) => !idSet.has(l.id)));
+    ids.forEach((id) => broadcastRealtimeUpdate('LEAD_DELETE', { id }));
+    await dbDeleteMultipleLeads(ids);
+  };
+
+  const handleDeleteMultipleServices = async (ids: string[]) => {
+    const idSet = new Set(ids);
+    setServices((prev) => prev.filter((s) => !idSet.has(s.id)));
+    ids.forEach((id) => broadcastRealtimeUpdate('SERVICE_DELETE', { id }));
+    await dbDeleteMultipleServices(ids);
+  };
+
+  const handleDeleteMultipleConsultations = async (ids: string[]) => {
+    const idSet = new Set(ids);
+    setConsultations((prev) => prev.filter((c) => !idSet.has(c.id)));
+    ids.forEach((id) => broadcastRealtimeUpdate('CONSULTATION_DELETE', { id }));
+    await dbDeleteMultipleConsultations(ids);
+  };
+
+  const handleDeleteMultipleCoupons = async (ids: string[]) => {
+    const idSet = new Set(ids);
+    setCoupons((prev) => prev.filter((c) => !idSet.has(c.id)));
+    ids.forEach((id) => broadcastRealtimeUpdate('COUPON_DELETE', { id }));
+    await dbDeleteMultipleCoupons(ids);
+  };
+
+  const handleDeleteMultipleAppUsers = async (ids: string[]) => {
+    const idSet = new Set(ids);
+    setAppUsers((prev) => prev.filter((u) => !idSet.has(u.id)));
+    ids.forEach((id) => broadcastRealtimeUpdate('APP_USER_DELETE', { id }));
+    await dbDeleteMultipleAppUsers(ids);
+  };
+
   const handleOpenBookingForService = (sId: ServiceId) => {
     setPreSelectedServiceId(sId);
     setIsBookingOpen(true);
@@ -1379,66 +1417,79 @@ export const App: React.FC = () => {
 
         {/* Route: /nurse -> Nurse Portal & Multi-Nurse Fleet */}
         {currentPath === '/nurse' && (
-          <NurseDashboard
-            currentNurse={activeNurse}
-            allNurses={nurses}
-            onSelectNurse={(n) => setActiveNurseId(n.id)}
-            bookings={bookings}
-            leads={leads}
-            services={services}
-            onAddNewLead={handleAddNewLead}
-            onUpdateNurse={handleUpdateNurse}
-            onReassignBooking={handleReassignBooking}
-            onUpdateBooking={handleUpdateBooking}
-          />
+          <AuthGuard user={authUser} requiredRole="nurse" onNavigate={navigate}>
+            <NurseDashboard
+              currentNurse={activeNurse}
+              allNurses={nurses}
+              onSelectNurse={(n) => setActiveNurseId(n.id)}
+              bookings={bookings}
+              leads={leads}
+              services={services}
+              onAddNewLead={handleAddNewLead}
+              onUpdateNurse={handleUpdateNurse}
+              onReassignBooking={handleReassignBooking}
+              onUpdateBooking={handleUpdateBooking}
+            />
+          </AuthGuard>
         )}
 
         {/* Route: /admin -> Admin Operations & Dispatch */}
         {currentPath === '/admin' && (
-          <AdminDashboard
-            bookings={bookings}
-            nurses={nurses}
-            leads={leads}
-            services={services}
-            consultations={consultations}
-            coupons={coupons}
-            appUsers={appUsers}
-            onAssignOrder={handleAdminAssignOrder}
-            onAutoRouteAll={handleAutoRouteAll}
-            onCreateCoupon={handleCreateCoupon}
-            onUpdateCoupon={handleUpdateCoupon}
-            onDeleteCoupon={handleDeleteCoupon}
-            onCreateBooking={handleCreateBooking}
-            onUpdateBooking={handleUpdateBooking}
-            onDeleteBooking={handleDeleteBooking}
-            onCreateNurse={handleCreateNurse}
-            onUpdateNurseRecord={handleUpdateNurseRecord}
-            onDeleteNurse={handleDeleteNurse}
-            onCreateLead={handleCreateLead}
-            onUpdateLead={handleUpdateLead}
-            onDeleteLead={handleDeleteLead}
-            onApproveLead={handleAdminApproveLead}
-            onRejectLead={handleAdminRejectLead}
-            onCreateService={handleCreateService}
-            onUpdateService={handleUpdateService}
-            onDeleteService={handleDeleteService}
-            onCreateConsultation={handleCreateConsultation}
-            onUpdateConsultation={handleUpdateConsultation}
-            onDeleteConsultation={handleDeleteConsultation}
-            onCreateAppUser={handleCreateAppUser}
-            onUpdateAppUser={handleUpdateAppUser}
-            onDeleteAppUser={handleDeleteAppUser}
-          />
+          <AuthGuard user={authUser} requiredRole="admin" onNavigate={navigate}>
+            <AdminDashboard
+              bookings={bookings}
+              nurses={nurses}
+              leads={leads}
+              services={services}
+              consultations={consultations}
+              coupons={coupons}
+              appUsers={appUsers}
+              onAssignOrder={handleAdminAssignOrder}
+              onAutoRouteAll={handleAutoRouteAll}
+              onCreateCoupon={handleCreateCoupon}
+              onUpdateCoupon={handleUpdateCoupon}
+              onDeleteCoupon={handleDeleteCoupon}
+              onCreateBooking={handleCreateBooking}
+              onUpdateBooking={handleUpdateBooking}
+              onDeleteBooking={handleDeleteBooking}
+              onCreateNurse={handleCreateNurse}
+              onUpdateNurseRecord={handleUpdateNurseRecord}
+              onDeleteNurse={handleDeleteNurse}
+              onCreateLead={handleCreateLead}
+              onUpdateLead={handleUpdateLead}
+              onDeleteLead={handleDeleteLead}
+              onApproveLead={handleAdminApproveLead}
+              onRejectLead={handleAdminRejectLead}
+              onCreateService={handleCreateService}
+              onUpdateService={handleUpdateService}
+              onDeleteService={handleDeleteService}
+              onCreateConsultation={handleCreateConsultation}
+              onUpdateConsultation={handleUpdateConsultation}
+              onDeleteConsultation={handleDeleteConsultation}
+              onCreateAppUser={handleCreateAppUser}
+              onUpdateAppUser={handleUpdateAppUser}
+              onDeleteAppUser={handleDeleteAppUser}
+              onDeleteMultipleBookings={handleDeleteMultipleBookings}
+              onDeleteMultipleNurses={handleDeleteMultipleNurses}
+              onDeleteMultipleLeads={handleDeleteMultipleLeads}
+              onDeleteMultipleServices={handleDeleteMultipleServices}
+              onDeleteMultipleConsultations={handleDeleteMultipleConsultations}
+              onDeleteMultipleCoupons={handleDeleteMultipleCoupons}
+              onDeleteMultipleAppUsers={handleDeleteMultipleAppUsers}
+            />
+          </AuthGuard>
         )}
 
         {/* Route: /doctor -> Doctor Consultation Panel */}
         {currentPath === '/doctor' && (
-          <DoctorDashboard
-            consultations={consultations}
-            services={services}
-            onIssuePrescription={handleDoctorIssueRx}
-            onAddNewConsultation={handleCreateConsultation}
-          />
+          <AuthGuard user={authUser} requiredRole="doctor" onNavigate={navigate}>
+            <DoctorDashboard
+              consultations={consultations}
+              services={services}
+              onIssuePrescription={handleDoctorIssueRx}
+              onAddNewConsultation={handleCreateConsultation}
+            />
+          </AuthGuard>
         )}
 
         {/* Route: /empty -> Dedicated Empty State Page */}

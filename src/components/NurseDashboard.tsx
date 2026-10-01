@@ -49,7 +49,7 @@ import {
   saveInvoiceToCloudflareBucket,
   getPrescriptionStorageObject
 } from '../lib/cloudflareStorage';
-import { DEFAULT_SERVICES, generateNurseReferralCode } from '../lib/supabase';
+import { generateNurseReferralCode } from '../lib/supabase';
 
 // Helper to convert base64 data URLs to safe Blob URLs that modern browsers won't block
 export function getSafeBlobUrl(dataUrl: string): string {
@@ -119,7 +119,7 @@ export const NurseDashboard: React.FC<NurseDashboardProps> = ({
   onReassignBooking,
   onUpdateBooking
 }) => {
-  const serviceList = services.length > 0 ? services : DEFAULT_SERVICES;
+  const serviceList: ServiceItem[] = services;
   const nurse: NurseProfile = (currentNurse as NurseProfile) || (allNurses && allNurses.length > 0 ? (allNurses[0] as NurseProfile) : null) || {
     id: 'nurse-101',
     name: 'Nurse Priya Sharma',
@@ -362,7 +362,7 @@ export const NurseDashboard: React.FC<NurseDashboardProps> = ({
     }
     setLeadErrorMsg('');
 
-    const selectedServiceObj = serviceList.find((s) => s.id === serviceId) || serviceList[0];
+    const selectedServiceObj = serviceList.find((s: ServiceItem) => s.id === serviceId) || serviceList[0];
     const fee = selectedServiceObj ? (selectedServiceObj.priceNumber || 800) : 800;
 
     const newLead: NurseLead = {
@@ -1868,7 +1868,7 @@ export const NurseDashboard: React.FC<NurseDashboardProps> = ({
                     value={serviceId}
                     onChange={(e) => setServiceId(e.target.value as ServiceId)}
                   >
-                    {serviceList.map((s) => (
+                    {serviceList.map((s: ServiceItem) => (
                       <option key={s.id} value={s.id}>
                         {s.title} — ₹{s.priceNumber || s.singleVisitPrice || 800} ({s.duration || '60 mins'})
                       </option>

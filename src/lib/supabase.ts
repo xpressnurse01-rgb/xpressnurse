@@ -8,6 +8,7 @@ import {
   AppUser,
   Coupon 
 } from '../types';
+import { authenticateUserSecure } from './auth';
 
 export const SUPABASE_URL: string = import.meta.env.VITE_SUPABASE_URL || '';
 export const SUPABASE_ANON_KEY: string = import.meta.env.VITE_SUPABASE_ANON_KEY || '';
@@ -23,313 +24,76 @@ export const supabase = createClient(clientUrl, clientKey, {
   }
 });
 
-// ============================================================================
-// DEFAULT SEED ENTITIES (OFFICIAL CLINICAL CATALOG & SEED FLEET)
-// ============================================================================
-
-export const DEFAULT_SERVICES: ServiceItem[] = [
+export const SEED_APP_USERS: AppUser[] = [
   {
-    id: 'saline-infusion',
-    title: 'IV Infusions & Antibiotics Infusion',
-    subtitle: 'Safe and hygienic infusion at home, subject to prescription',
-    description: 'Safe and hygienic infusion at home, subject to prescription and clinical suitability. We will take care of it till disconnect the fluid and secure the line.',
-    singleVisitPrice: 899,
-    multiVisitPrice: 699,
-    nightSurcharge: 399,
-    prescriptionRequired: true,
-    duration: '45 - 90 mins',
-    indicativePrice: 'Single: ₹899 / Multi: ₹699',
-    priceNumber: 899,
-    features: [
-      'Doorstep clinical service across Hyderabad',
-      'Certified & background-verified RN attending',
-      'Transport & basic PPE kit charges included',
-      'Digital vitals check & medical observation log'
-    ],
-    icon: 'Droplet',
-    badge: 'High Demand',
-    procedureSteps: [
-      'Vitals evaluation & doctor prescription verification',
-      'Aseptic preparation & equipment sterility check',
-      'Standard clinical procedure execution by RN',
-      'Patient monitoring & digital handover documentation'
-    ],
-    equipmentProvided: [
-      'Sterile gloves & disposable surgical drape',
-      'Clinical disinfectant & skin preparation swab',
-      'Digital thermometer & automated BP apparatus',
-      'Bio-medical waste disposal pouch'
-    ],
-    imageUrl: '/images/services/saline-infusion.jpg'
+    id: 'user-admin-1',
+    role: 'admin',
+    identifier: 'admin@xpressnurse.in',
+    name: 'Operations Dispatcher',
+    pin: '••••',
+    phone: '7569657371',
+    email: 'admin@xpressnurse.in',
+    designation: 'Fleet Supervisor & Dispatch Head',
+    serviceArea: 'Hyderabad HQ'
   },
   {
-    id: 'wound-dressing',
-    title: 'Wound Dressing',
-    subtitle: 'Starting from ₹799 (Pricing depends on wound type & depth)',
-    description: 'Post-operative wound care, diabetic foot ulcers, bedsores, and traumatic wounds managed with clinical precision. Starting from ₹799 (Final pricing depends on wound type, depth & complexity).',
-    singleVisitPrice: 799,
-    multiVisitPrice: 799,
-    nightSurcharge: 399,
-    prescriptionRequired: true,
-    duration: '30 - 45 mins',
-    indicativePrice: 'Starting from ₹799 (Depends on wound type)',
-    priceNumber: 799,
-    features: [
-      'Aseptic dressing change by certified RN',
-      'Inspection of wound healing & infection markers',
-      'Sterile pack & medical-grade dressings',
-      'Handover notes for treating physician'
-    ],
-    icon: 'ShieldCheck',
-    badge: 'Popular',
-    procedureSteps: [
-      'Aseptic field preparation',
-      'Gentle removal of old dressing & wound cleaning',
-      'Application of sterile dressing material',
-      'Patient comfort check & documentation'
-    ],
-    equipmentProvided: [
-      'Sterile dressing set & disposable gloves',
-      'Antiseptic solution & sterile gauze swabs',
-      'Micropore tape & bandage rolls',
-      'Bio-hazard waste bag'
-    ],
-    imageUrl: '/images/services/wound-dressing.jpg'
+    id: 'user-doc-1',
+    role: 'doctor',
+    identifier: 'dr.reddy@xpressnurse.in',
+    name: 'Dr. K. V. Reddy (MD Gen Med)',
+    pin: '••••',
+    phone: '9848011223',
+    email: 'dr.reddy@xpressnurse.in',
+    designation: 'Senior Physician',
+    serviceArea: 'Hyderabad Tele-Care'
   },
   {
-    id: 'foleys-catheter',
-    title: 'Foley Catheter Replacement',
-    subtitle: 'Insertion / replacement and related nursing care at home',
-    description: 'Expert urethral catheterization for elderly, bedridden, and post-surgery patients. Minimizes discomfort and protects against CAUTI.',
-    singleVisitPrice: 1299,
-    multiVisitPrice: 1299,
-    nightSurcharge: 399,
-    prescriptionRequired: true,
-    duration: '30 - 45 mins',
-    indicativePrice: 'Single: ₹1,299 / Multi: ₹1,299',
-    priceNumber: 1299,
-    features: [
-      'Certified RN with catheterization expertise',
-      'Sterile insertion & drainage bag setup',
-      'Catheter care instructions for family/caregiver',
-      'Observation of urine output & characteristics'
-    ],
-    icon: 'Activity',
-    procedureSteps: [
-      'Sterile drape & peri-urethral cleaning',
-      'Gentle insertion using water-soluble lubricant',
-      'Balloon inflation & secure anchoring',
-      'Urine drainage verification & collection bag setup'
-    ],
-    equipmentProvided: [
-      'Foley catheter & drainage bag (as prescribed)',
-      'Sterile lubricating jelly & syringe with sterile water',
-      'Antiseptic cleaning solution & cotton balls',
-      'Medical disposal pouch'
-    ],
-    imageUrl: '/images/services/foleys-catheter.jpg'
+    id: 'user-nurse-101',
+    role: 'nurse',
+    identifier: 'priya.nursing@xpressnurse.in',
+    name: 'Nurse Priya Sharma',
+    pin: '••••',
+    phone: '9849012345',
+    email: 'priya.nursing@xpressnurse.in',
+    designation: 'Registered Nurse (B.Sc Nursing)',
+    serviceArea: 'Gachibowli'
   },
   {
-    id: 'ryles-tube',
-    title: 'Ryles / Nasogastric Tube Care',
-    subtitle: 'Selected tube-related nursing care and feeding support',
-    description: 'Safe insertion and replacement of nasogastric tubes for patients unable to swallow orally or requiring gastric aspiration.',
-    singleVisitPrice: 1299,
-    multiVisitPrice: 1299,
-    nightSurcharge: 399,
-    prescriptionRequired: true,
-    duration: '30 - 45 mins',
-    indicativePrice: 'Single: ₹1,299 / Multi: ₹1,299',
-    priceNumber: 1299,
-    features: [
-      'Gentle nasogastric tube insertion by skilled RN',
-      'Aspiration check for proper tube positioning',
-      'Tube fixation with skin-safe hypo-allergenic tape',
-      'Feeding protocol demonstration for family caregiver'
-    ],
-    icon: 'FileText',
-    procedureSteps: [
-      'Measurement of tube length (NEX measurement)',
-      'Lubrication & gentle nasopharyngeal insertion',
-      'Position verification via air insufflation & epigastric auscultation',
-      'Secure taping & flushing with water'
-    ],
-    equipmentProvided: [
-      'NG tube of appropriate French size',
-      'Water-soluble lubricating gel',
-      '50ml catheter-tip feeding syringe',
-      'Fixation tape & stethoscope'
-    ],
-    imageUrl: '/images/services/ryles-tube.jpg'
+    id: 'user-nurse-102',
+    role: 'nurse',
+    identifier: 'rajesh.nursing@xpressnurse.in',
+    name: 'Nurse Rajesh Kumar',
+    pin: '••••',
+    phone: '9849067890',
+    email: 'rajesh.nursing@xpressnurse.in',
+    designation: 'General Nursing & Midwifery (GNM)',
+    serviceArea: 'LB Nagar'
   },
   {
-    id: 'suture-removal',
-    title: 'Suture / Staple Removal',
-    subtitle: 'Removal according to the treating clinician instructions',
-    description: 'Save elderly or recovering patients a stressful hospital visit. Certified nurses evaluate incision healing before removing non-absorbable sutures.',
-    singleVisitPrice: 1000,
-    multiVisitPrice: 1000,
-    nightSurcharge: 399,
-    prescriptionRequired: true,
-    duration: '20 - 30 mins',
-    indicativePrice: 'Single: ₹1,000 / Multi: ₹1,000',
-    priceNumber: 1000,
-    features: [
-      'Suture line examination & wound edge assessment',
-      'Sterile suture scissors / staple extractor usage',
-      'Post-removal antiseptic dressing applied',
-      'Healing photograph documented for patient records'
-    ],
-    icon: 'Scissors',
-    badge: 'Quick Service',
-    procedureSteps: [
-      'Wound evaluation for complete edge approximation',
-      'Skin disinfection with antiseptic swab',
-      'Gentle extraction without pulling external thread through tissue',
-      'Sterile adhesive closure / strip application'
-    ],
-    equipmentProvided: [
-      'Sterile stitch cutter / staple remover tool',
-      'Sterile anatomical forceps',
-      'Antiseptic cleansing pads',
-      'Waterproof protective dressing'
-    ],
-    imageUrl: '/images/services/suture-removal.jpg'
+    id: 'user-nurse-103',
+    role: 'nurse',
+    identifier: 'anjali.rao@xpressnurse.in',
+    name: 'Nurse Anjali Rao',
+    pin: '••••',
+    phone: '9849045678',
+    email: 'anjali.rao@xpressnurse.in',
+    designation: 'Critical Care Nurse',
+    serviceArea: 'Madhapur'
   },
   {
-    id: 'injection-administration',
-    title: 'Injection Administration',
-    subtitle: 'Prescribed IM, SC, or IV push injections administered by certified RN',
-    description: 'Administration of doctor-prescribed intramuscular (IM), subcutaneous (SC), or IV injections with sterile technique and post-injection observation.',
-    singleVisitPrice: 499,
-    multiVisitPrice: 499,
-    nightSurcharge: 399,
-    prescriptionRequired: true,
-    duration: '15 - 20 mins',
-    indicativePrice: 'Single: ₹499 / Multi: ₹499',
-    priceNumber: 499,
-    features: [
-      'Doctor prescription & dosage verification',
-      'Sterile single-use syringe & needle preparation',
-      'Gentle administration via prescribed route (IM/SC/IV)',
-      '15-min post-injection adverse reaction observation'
-    ],
-    icon: 'Activity',
-    procedureSteps: [
-      'Verify patient identity, prescription, and drug expiry',
-      'Check pre-administration vitals',
-      'Administer injection via prescribed route (IM/SC/IV)',
-      'Observe for adverse reactions & document'
-    ],
-    equipmentProvided: [
-      'Sterile syringes & needles',
-      'Alcohol prep swabs',
-      'Sharp container & waste pouch'
-    ],
-    imageUrl: '/images/services/injection-administration.jpg'
-  },
-  {
-    id: 'vitals-monitoring',
-    title: 'Vitals & General Health Monitoring',
-    subtitle: 'Blood pressure, blood sugar (GRBS), pulse, SPO2 & temperature',
-    description: 'Comprehensive health vitals assessment at home. BP, pulse oximetry, temperature, respiratory rate, and blood glucose check. No prescription required.',
-    singleVisitPrice: 399,
-    multiVisitPrice: 399,
-    nightSurcharge: 299,
-    prescriptionRequired: false,
-    duration: '20 - 30 mins',
-    indicativePrice: 'Single: ₹399 / Multi: ₹399',
-    priceNumber: 399,
-    features: [
-      'Comprehensive vitals evaluation (BP, Pulse, SPO2, Temp, RR)',
-      'Random Blood Sugar (GRBS) check with sterile glucometer',
-      'Digital vitals log with immediate caregiver handover',
-      'No doctor prescription required for basic monitoring'
-    ],
-    icon: 'Activity',
-    badge: 'No Rx Needed',
-    procedureSteps: [
-      'Patient resting vitals assessment (sitting/supine)',
-      'Digital blood pressure and pulse oximetry measurement',
-      'Capillary blood glucose test using sterile single-use lancet',
-      'Immediate vitals reporting and family guidance'
-    ],
-    equipmentProvided: [
-      'Digital automated BP monitor',
-      'Pulse oximeter & digital thermometer',
-      'Glucometer with sterile single-use test strips & lancets',
-      'Alcohol swabs & observation sheet'
-    ],
-    imageUrl: '/images/services/vitals-monitoring.jpg'
-  },
-  {
-    id: 'doctor-consult',
-    title: 'Online Doctor Consultation',
-    subtitle: 'Connect with verified general physicians within 15 minutes',
-    description: 'Valid digital prescription issued on WhatsApp. Direct coordination with Xpress Nurse visiting team across Hyderabad.',
-    singleVisitPrice: 299,
-    multiVisitPrice: 299,
-    nightSurcharge: 0,
-    prescriptionRequired: false,
-    duration: '15 - 20 mins',
-    indicativePrice: 'Flat ₹299 (Prescription Included)',
-    priceNumber: 299,
-    features: [
-      'Video / phone consult with MD Physician',
-      'Instant authorized digital prescription PDF',
-      'Valid for all home nursing procedures',
-      'Priority nursing visit dispatch after consultation'
-    ],
-    icon: 'Stethoscope',
-    badge: 'Instant Prescription',
-    procedureSteps: [
-      'Instant connection via WhatsApp video or phone call',
-      'Clinical symptoms and medical history evaluation',
-      'Treatment planning and advice',
-      'Issuance of digitally signed medical prescription'
-    ],
-    equipmentProvided: [
-      'Direct WhatsApp Video / Tele-consult line',
-      'Digitally signed medical prescription PDF',
-      'Direct dispatch dispatch sync to home nursing team'
-    ],
-    imageUrl: '/images/services/doctor-consult.jpg'
-  },
-  {
-    id: 'lab-diagnostics',
-    title: 'Lab Sample Collection at Home',
-    subtitle: 'Home blood & urine sample collection with NABL reports',
-    description: 'Complete blood count, lipid profile, HbA1c, liver/kidney function tests collected at home with digital WhatsApp report delivery.',
-    singleVisitPrice: 399,
-    multiVisitPrice: 399,
-    nightSurcharge: 0,
-    prescriptionRequired: false,
-    duration: '15 - 25 mins',
-    indicativePrice: 'Starts from ₹399',
-    priceNumber: 399,
-    features: [
-      'Painless venous blood collection at home',
-      'Cold-chain transport of diagnostic specimens',
-      'NABL-accredited diagnostic partner laboratories',
-      'Digital test reports sent via WhatsApp in 12-24h'
-    ],
-    icon: 'TestTube2',
-    procedureSteps: [
-      'Patient identification and fasting status confirmation',
-      'Tourniquet application and aseptic venipuncture',
-      'Collection into color-coded vacuum tubes (EDTA, Gel, etc.)',
-      'Tube barcoding, cold-chain packing, and lab dispatch'
-    ],
-    equipmentProvided: [
-      'BD Vacutainer sterile safety needles & tubes',
-      'Alcohol prep swabs & hypoallergenic adhesive bandage',
-      'Cold storage temperature-controlled sample bag'
-    ],
-    imageUrl: '/images/services/lab-diagnostics.jpg'
+    id: 'user-nurse-104',
+    role: 'nurse',
+    identifier: 'sunita.reddy@xpressnurse.in',
+    name: 'Nurse Sunita Reddy',
+    pin: '••••',
+    phone: '9849089123',
+    email: 'sunita.reddy@xpressnurse.in',
+    designation: 'Geriatric Care Specialist',
+    serviceArea: 'Banjara Hills'
   }
 ];
 
-export const DEFAULT_NURSES: NurseProfile[] = [
+export const BASELINE_NURSES: NurseProfile[] = [
   {
     id: 'nurse-101',
     name: 'Nurse Priya Sharma',
@@ -385,9 +149,7 @@ export const DEFAULT_NURSES: NurseProfile[] = [
     rating: 4.88,
     avatarUrl: 'https://images.unsplash.com/photo-1559839734-2b71ea197ec2?w=150&auto=format&fit=crop&q=80',
     certificateVerified: true,
-    referralCode: 'XN-ANJALI103',
-    referredByNurseId: 'nurse-101',
-    referredByNurseName: 'Nurse Priya Sharma'
+    referralCode: 'XN-ANJALI103'
   },
   {
     id: 'nurse-104',
@@ -410,379 +172,221 @@ export const DEFAULT_NURSES: NurseProfile[] = [
   }
 ];
 
-export const DEFAULT_BOOKINGS: Booking[] = [
+export const BASELINE_BOOKINGS: Booking[] = [
   {
-    id: 'BK-1001',
-    createdAt: '2026-10-01T08:30:00Z',
-    patientName: 'Venkat Rao',
-    patientPhone: '98491 23456',
-    patientAge: 58,
+    id: 'BK-8901',
+    createdAt: new Date(Date.now() - 2 * 3600 * 1000).toISOString(),
+    patientName: 'K. Venkatesh Rao (68 yrs, Male)',
+    patientPhone: '98765 43210',
+    patientAge: 68,
     patientGender: 'Male',
     serviceId: 'saline-infusion',
     serviceTitle: 'IV Infusions & Antibiotics Infusion',
     area: 'Gachibowli',
-    fullAddress: 'Flat 402, Cyber Towers View, Gachibowli, Hyderabad',
+    fullAddress: 'Flat 402, Aditya Empress Towers, Gachibowli, Hyderabad',
     preferredDate: 'Today',
-    preferredTime: 'Morning (09:00 AM)',
-    status: 'In-Progress',
-    nurseAcceptanceStatus: 'Accepted',
-    assignedNurseId: 'nurse-101',
-    assignedNurseName: 'Nurse Priya Sharma',
-    estimatedFee: 899,
+    preferredTime: '11:00 AM - 12:30 PM',
     hasPrescription: true,
-    bookingType: 'scheduled',
-    scheduledSlot: '09:00 AM - 10:30 AM',
-    notes: 'Post-discharge IV hydration procedure. Attending nurse Priya accepted visit.'
+    prescriptionFileName: 'Dr_Reddy_IV_Prescription.pdf',
+    status: 'Assigned',
+    assignedNurseId: 'nurse-101',
+    assignedNurseName: 'Nurse Priya Sharma (Gachibowli Area Match)',
+    estimatedFee: 899,
+    finalFee: 899,
+    notes: 'Normal Saline 500ml post gastroenteritis.'
   },
   {
-    id: 'BK-1002',
-    createdAt: '2026-10-01T09:15:00Z',
-    patientName: 'Laxmi Devi',
-    patientPhone: '98492 34567',
-    patientAge: 64,
+    id: 'BK-8902',
+    createdAt: new Date(Date.now() - 1 * 3600 * 1000).toISOString(),
+    patientName: 'Smt. Lakshmi Devi (74 yrs, Female)',
+    patientPhone: '97654 32109',
+    patientAge: 74,
     patientGender: 'Female',
+    serviceId: 'foleys-catheter',
+    serviceTitle: 'Foley Catheter Replacement',
+    area: 'LB Nagar',
+    fullAddress: 'H.No 3-4-12, Near Kamineni Hospital, LB Nagar, Hyderabad',
+    preferredDate: 'Today',
+    preferredTime: '02:00 PM - 03:00 PM',
+    hasPrescription: true,
+    prescriptionFileName: 'Urology_Catheter_Order.pdf',
+    status: 'Assigned',
+    assignedNurseId: 'nurse-102',
+    assignedNurseName: 'Nurse Rajesh Kumar (LB Nagar Area Match)',
+    referringNurseId: 'nurse-101',
+    referringNurseName: 'Nurse Priya Sharma (Gachibowli - 10% Referral)',
+    estimatedFee: 1299,
+    finalFee: 1299,
+    referralBonusRupees: 129.90,
+    notes: 'Referred by Nurse Priya from Gachibowli for LB Nagar resident. 10% bonus credited to Priya.'
+  },
+  {
+    id: 'BK-8903',
+    createdAt: new Date(Date.now() - 30 * 60 * 1000).toISOString(),
+    patientName: 'Arun Kumar (45 yrs, Male)',
+    patientPhone: '96543 21098',
+    patientAge: 45,
+    patientGender: 'Male',
     serviceId: 'wound-dressing',
     serviceTitle: 'Wound Dressing',
     area: 'LB Nagar',
-    fullAddress: 'Plot 18, Vanasthalipuram Road, LB Nagar, Hyderabad',
-    preferredDate: 'Today',
-    preferredTime: 'Afternoon (02:00 PM)',
-    status: 'In-Progress',
-    nurseAcceptanceStatus: 'Accepted',
+    fullAddress: 'Villa 18, Golf View, LB Nagar, Hyderabad',
+    preferredDate: 'Tomorrow',
+    preferredTime: '09:00 AM - 10:00 AM',
+    hasPrescription: true,
+    prescriptionFileName: 'PostOp_Dressing.pdf',
+    status: 'Assigned',
     assignedNurseId: 'nurse-102',
-    assignedNurseName: 'Nurse Rajesh Kumar',
-    estimatedFee: 799,
-    hasPrescription: true,
-    bookingType: 'instant',
-    notes: 'Diabetic foot ulcer dressing. Attending nurse Rajesh accepted visit.'
-  },
-  {
-    id: 'BK-1003',
-    createdAt: '2026-10-01T07:45:00Z',
-    patientName: 'Ramesh Chary',
-    patientPhone: '98493 45678',
-    patientAge: 72,
-    patientGender: 'Male',
-    serviceId: 'foleys-catheter',
-    serviceTitle: 'Foley Catheter Replacement',
-    area: 'Madhapur',
-    fullAddress: 'House 12-2, Madhapur Metro Station Pillar 1042, Hyderabad',
-    preferredDate: 'Today',
-    preferredTime: 'Immediate (ASAP)',
-    status: 'Completed',
-    nurseAcceptanceStatus: 'Accepted',
-    assignedNurseId: 'nurse-103',
-    assignedNurseName: 'Nurse Anjali Rao',
-    estimatedFee: 1299,
-    hasPrescription: true,
-    bookingType: 'instant',
-    notes: 'Catheter replacement completed successfully. Vitals documented normal.'
-  },
-  {
-    id: 'BK-1004',
-    createdAt: '2026-10-01T10:00:00Z',
-    patientName: 'Sunita K.',
-    patientPhone: '98494 56789',
-    patientAge: 46,
-    patientGender: 'Female',
-    serviceId: 'ryles-tube',
-    serviceTitle: 'Ryles / Nasogastric Tube Care',
-    area: 'Banjara Hills',
-    fullAddress: 'Road No. 12, MLA Colony, Banjara Hills, Hyderabad',
-    preferredDate: 'Today',
-    preferredTime: 'Evening (05:00 PM)',
-    status: 'Pending',
-    estimatedFee: 1299,
-    hasPrescription: true,
-    bookingType: 'scheduled',
-    scheduledSlot: '05:00 PM - 06:30 PM',
-    notes: 'NG tube feeding care request. Awaiting dispatcher nurse allocation.'
-  },
-  {
-    id: 'BK-1005',
-    createdAt: '2026-10-01T10:30:00Z',
-    patientName: 'Rajesh Varma',
-    patientPhone: '98495 67890',
-    patientAge: 51,
-    patientGender: 'Male',
-    serviceId: 'vital-monitoring',
-    serviceTitle: 'Vital Signs & Blood Sugar Monitoring',
-    area: 'Kondapur',
-    fullAddress: 'Green Glen Layout, Kondapur, Hyderabad',
-    preferredDate: 'Today',
-    preferredTime: 'Afternoon (03:00 PM)',
-    status: 'Pending',
-    estimatedFee: 499,
-    hasPrescription: false,
-    bookingType: 'instant',
-    notes: 'Routine blood pressure and GRBS vitals profile check.'
-  },
-  {
-    id: 'BK-1006',
-    createdAt: '2026-10-01T09:40:00Z',
-    patientName: 'Anuradha S.',
-    patientPhone: '98496 78901',
-    patientAge: 62,
-    patientGender: 'Female',
-    serviceId: 'elderly-care',
-    serviceTitle: 'Elderly Bedridden General Nursing',
-    area: 'Gachibowli',
-    fullAddress: 'Diamond Hills, Gachibowli, Hyderabad',
-    preferredDate: 'Today',
-    preferredTime: 'Immediate (ASAP)',
-    status: 'Rejected',
-    nurseAcceptanceStatus: 'Rejected',
-    rejectedBy: 'Nurse',
-    rejectedNurseId: 'nurse-101',
-    rejectedNurseName: 'Nurse Priya Sharma',
-    rejectionReason: 'Nurse Priya Sharma Declined: Currently attending another urgent patient',
-    assignedNurseId: 'nurse-101',
-    assignedNurseName: 'Nurse Priya Sharma',
+    assignedNurseName: 'Nurse Rajesh Kumar (LB Nagar Area Match)',
+    referringNurseId: 'nurse-101',
+    referringNurseName: 'Nurse Priya Sharma (Gachibowli - 10% Referral)',
     estimatedFee: 800,
-    hasPrescription: true,
-    bookingType: 'instant',
-    notes: '[10:15 AM] Declined by Nurse Priya Sharma: "Currently attending another urgent patient". Admin alert: Referral/reassignment needed.'
+    finalFee: 800,
+    referralBonusRupees: 80.00,
+    notes: 'Post knee arthroscopy dressing change. Referred by Nurse Priya.'
   }
 ];
 
-export const DEFAULT_LEADS: NurseLead[] = [
+export const BASELINE_LEADS: NurseLead[] = [
   {
-    id: 'LEAD-101',
+    id: 'LD-4001',
     nurseId: 'nurse-101',
-    patientName: 'Sitarama Raju',
-    patientPhone: '98491 11223',
-    serviceId: 'saline-infusion',
-    area: 'Gachibowli',
-    submittedAt: '2026-09-30T10:00:00Z',
-    status: 'Approved',
-    leadValueRupees: 899,
+    patientName: 'Smt. Lakshmi Devi',
+    patientPhone: '97654 32109',
+    serviceId: 'foleys-catheter',
+    area: 'LB Nagar',
+    submittedAt: new Date(Date.now() - 3600 * 1000).toISOString(),
+    status: 'Converted',
+    assignedNurseId: 'nurse-102',
+    leadValueRupees: 1299,
     pointsAwarded: 50,
-    referralCommissionRupees: 50
+    referralCommissionRupees: 129.90
   },
   {
-    id: 'LEAD-102',
-    nurseId: 'nurse-102',
-    patientName: 'Manjula Devi',
-    patientPhone: '98492 22334',
+    id: 'LD-4002',
+    nurseId: 'nurse-101',
+    patientName: 'Arun Kumar',
+    patientPhone: '96543 21098',
     serviceId: 'wound-dressing',
     area: 'LB Nagar',
-    submittedAt: '2026-10-01T08:00:00Z',
-    status: 'Pending Approval',
-    leadValueRupees: 799,
+    submittedAt: new Date(Date.now() - 1800 * 1000).toISOString(),
+    status: 'Converted',
+    assignedNurseId: 'nurse-102',
+    leadValueRupees: 800,
     pointsAwarded: 50,
-    referralCommissionRupees: 50
-  },
-  {
-    id: 'REF-NUR-103',
-    nurseId: 'nurse-101',
-    patientName: 'Nurse Kavitha Reddy',
-    patientPhone: '98493 33445',
-    serviceId: 'saline-infusion',
-    area: 'Kukatpally',
-    submittedAt: '2026-09-29T14:30:00Z',
-    status: 'Approved',
-    leadValueRupees: 1000,
-    pointsAwarded: 50,
-    referralCommissionRupees: 50,
-    referredNurseName: 'Nurse Kavitha Reddy',
-    referredNursePhone: '98493 33445',
-    qualification: 'B.Sc Nursing (Registered RN)',
-    experienceYears: 4
+    referralCommissionRupees: 80.00
   }
 ];
 
-export const DEFAULT_CONSULTATIONS: DoctorConsultation[] = [
+export const BASELINE_COUPONS: Coupon[] = [
   {
-    id: 'DOC-101',
-    patientName: 'Srinivas Murthy',
-    patientPhone: '98480 11223',
-    patientAge: 61,
-    patientGender: 'Male',
-    area: 'Gachibowli',
-    symptoms: 'Post-op IV antibiotic infusion guidance needed',
-    recommendedService: 'saline-infusion',
-    status: 'Awaiting Call',
-    requestedAt: '2026-10-01T10:15:00Z',
-    doctorName: 'Dr. K. V. Reddy (MD)'
-  },
-  {
-    id: 'DOC-102',
-    patientName: 'Gayatri Devi',
-    patientPhone: '98480 22334',
-    patientAge: 55,
-    patientGender: 'Female',
-    area: 'Kukatpally',
-    symptoms: 'Foley catheter replacement clinical prescription approval',
-    recommendedService: 'foleys-catheter',
-    status: 'Prescription Issued',
-    prescriptionIssued: true,
-    prescriptionText: 'Rx: Sterile Foley 14Fr catheter change with water-soluble lignocaine jelly.',
-    requestedAt: '2026-10-01T09:00:00Z',
-    doctorName: 'Dr. K. V. Reddy (MD)'
-  }
-];
-
-export const DEFAULT_COUPONS: Coupon[] = [
-  {
-    id: 'CPN-1',
-    code: 'XPRESS50',
+    id: 'coup-1',
+    code: 'WELCOME50',
+    description: 'Flat ₹50 OFF on your first home clinical care visit in Hyderabad',
     discountType: 'flat',
     discountValue: 50,
-    minOrderAmount: 500,
-    description: 'Flat ₹50 OFF on all doorstep home nursing care visits',
+    minOrderAmount: 499,
     status: 'Active',
-    timesUsed: 42,
-    validUntil: '2026-12-31T23:59:59Z'
+    timesUsed: 142
   },
   {
-    id: 'CPN-2',
-    code: 'NURSEFIRST',
+    id: 'coup-2',
+    code: 'HEALTH20',
+    description: '20% OFF on advanced home nursing procedures (up to ₹200)',
+    discountType: 'percent',
+    discountValue: 20,
+    maxDiscount: 200,
+    minOrderAmount: 799,
+    status: 'Active',
+    timesUsed: 89
+  },
+  {
+    id: 'coup-3',
+    code: 'FLAT100',
+    description: 'Flat ₹100 discount for elderly geriatric care visits',
     discountType: 'flat',
     discountValue: 100,
-    minOrderAmount: 699,
-    description: 'Welcome gift: ₹100 OFF on your first Hyderabad clinical booking',
+    minOrderAmount: 800,
     status: 'Active',
-    timesUsed: 89,
-    validUntil: '2026-12-31T23:59:59Z'
-  },
-  {
-    id: 'CPN-3',
-    code: 'SENIORCARE',
-    discountType: 'flat',
-    discountValue: 150,
-    minOrderAmount: 899,
-    description: 'Special ₹150 OFF for elderly & bedridden patients',
-    status: 'Active',
-    timesUsed: 65,
-    validUntil: '2026-12-31T23:59:59Z'
+    timesUsed: 67
   }
 ];
 
-
-export const SEED_APP_USERS: AppUser[] = [
-  {
-    id: 'user-admin-1',
-    role: 'admin',
-    identifier: 'admin@xpressnurse.in',
-    name: 'Operations Dispatcher',
-    pin: '2026',
-    phone: '7569657371',
-    email: 'admin@xpressnurse.in',
-    designation: 'Fleet Supervisor & Dispatch Head',
-    serviceArea: 'Hyderabad HQ' as any
-  },
-  {
-    id: 'user-doc-1',
-    role: 'doctor',
-    identifier: 'dr.reddy@xpressnurse.in',
-    name: 'Dr. K. V. Reddy (MD Gen Med)',
-    pin: '4321',
-    phone: '9848011223',
-    email: 'dr.reddy@xpressnurse.in',
-    designation: 'Senior Consulting Physician',
-    serviceArea: 'Hyderabad Tele-Care' as any
-  },
-  {
-    id: 'nurse-101',
-    role: 'nurse',
-    identifier: 'priya.nursing@xpressnurse.in',
-    name: 'Nurse Priya Sharma',
-    pin: '1001',
-    phone: '9849012345',
-    email: 'priya.nursing@xpressnurse.in',
-    designation: 'Registered Nurse (B.Sc Nursing)',
-    serviceArea: 'Gachibowli'
-  },
-  {
-    id: 'nurse-102',
-    role: 'nurse',
-    identifier: 'rajesh.nursing@xpressnurse.in',
-    name: 'Nurse Rajesh Kumar',
-    pin: '1002',
-    phone: '9849067890',
-    email: 'rajesh.nursing@xpressnurse.in',
-    designation: 'General Nursing & Midwifery (GNM)',
-    serviceArea: 'LB Nagar'
-  },
-  {
-    id: 'nurse-103',
-    role: 'nurse',
-    identifier: 'anjali.rao@xpressnurse.in',
-    name: 'Nurse Anjali Rao',
-    pin: '1003',
-    phone: '9849045678',
-    email: 'anjali.rao@xpressnurse.in',
-    designation: 'Critical Care Nurse',
-    serviceArea: 'Madhapur'
-  },
-  {
-    id: 'nurse-104',
-    role: 'nurse',
-    identifier: 'sunita.reddy@xpressnurse.in',
-    name: 'Nurse Sunita Reddy',
-    pin: '1004',
-    phone: '9849089123',
-    email: 'sunita.reddy@xpressnurse.in',
-    designation: 'Geriatric Care Specialist',
-    serviceArea: 'Banjara Hills'
+// Helper to execute database query with exponential backoff retry for transient network / schema cache cold starts
+export async function executeWithRetry<T>(
+  queryFn: () => Promise<{ data: T | null; error: any }>,
+  maxRetries = 3
+): Promise<T | null> {
+  let delay = 350;
+  for (let attempt = 1; attempt <= maxRetries; attempt++) {
+    try {
+      const { data, error } = await queryFn();
+      if (!error && data !== null) {
+        return data;
+      }
+      if (error) {
+        console.warn(`[DB] Query attempt ${attempt} warning:`, error.message);
+        if (attempt === maxRetries) return null;
+      }
+    } catch (err: any) {
+      console.warn(`[DB] Query attempt ${attempt} exception:`, err?.message || err);
+      if (attempt === maxRetries) return null;
+    }
+    await new Promise((resolve) => setTimeout(resolve, delay));
+    delay *= 2;
   }
-];
+  return null;
+}
 
 // ============================================================================
 // 1. SERVICES TABLE (public.services)
 // ============================================================================
 
 export async function dbFetchServices(): Promise<ServiceItem[] | null> {
-  try {
-    const { data, error } = await supabase
+  const data = await executeWithRetry(async () => {
+    return await supabase
       .from('services')
       .select('*')
       .order('single_visit_price', { ascending: false });
+  });
 
-    if (error) {
-      console.warn('[DB] Supabase services fetch error:', error.message);
-      return [];
-    }
-    if (!data) return [];
+  if (data === null) return null;
 
-    return data.map((s: any) => ({
-      id: s.id,
-      title: s.title,
-      subtitle: s.subtitle || '',
-      description: s.description || '',
-      singleVisitPrice: Number(s.single_visit_price),
-      multiVisitPrice: s.multi_visit_price ? Number(s.multi_visit_price) : Number(s.single_visit_price),
-      nightSurcharge: s.night_surcharge ? Number(s.night_surcharge) : 399,
-      prescriptionRequired: Boolean(s.prescription_required),
-      duration: s.duration || '30 - 45 mins',
-      indicativePrice: `Single: ₹${Math.round(s.single_visit_price)} / Multi: ₹${Math.round(s.multi_visit_price || s.single_visit_price)}`,
-      priceNumber: Number(s.single_visit_price) || 800,
-      features: [
-        'Doorstep clinical service across Hyderabad',
-        'Certified & background-verified RN attending',
-        'Transport & basic PPE kit charges included',
-        'Digital vitals check & medical observation log'
-      ],
-      icon: s.icon || 'Activity',
-      badge: s.badge || undefined,
-      procedureSteps: [
-        'Vitals evaluation & doctor prescription verification',
-        'Aseptic preparation & equipment sterility check',
-        'Standard clinical procedure execution by RN',
-        'Patient monitoring & digital handover documentation'
-      ],
-      equipmentProvided: [
-        'Sterile gloves & disposable surgical drape',
-        'Clinical disinfectant & skin preparation swab',
-        'Digital thermometer & automated BP apparatus',
-        'Bio-medical waste disposal pouch'
-      ],
-      imageUrl: s.image_url || `/images/services/${s.id}.jpg`,
-      createdAt: s.created_at
-    }));
-  } catch {
-    return DEFAULT_SERVICES;
-  }
+  return data.map((s: any) => ({
+    id: s.id,
+    title: s.title,
+    subtitle: s.subtitle || '',
+    description: s.description || '',
+    singleVisitPrice: Number(s.single_visit_price),
+    multiVisitPrice: s.multi_visit_price ? Number(s.multi_visit_price) : Number(s.single_visit_price),
+    nightSurcharge: s.night_surcharge ? Number(s.night_surcharge) : 399,
+    prescriptionRequired: Boolean(s.prescription_required),
+    duration: s.duration || '30 - 45 mins',
+    indicativePrice: `Single: ₹${Math.round(s.single_visit_price)} / Multi: ₹${Math.round(s.multi_visit_price || s.single_visit_price)}`,
+    priceNumber: Number(s.single_visit_price) || 800,
+    features: [
+      'Doorstep clinical service across Hyderabad',
+      'Certified & background-verified RN attending',
+      'Transport & basic PPE kit charges included',
+      'Digital vitals check & medical observation log'
+    ],
+    icon: s.icon || 'Activity',
+    badge: s.badge || undefined,
+    procedureSteps: [
+      'Vitals evaluation & doctor prescription verification',
+      'Aseptic preparation & equipment sterility check',
+      'Standard clinical procedure execution by RN',
+      'Patient monitoring & digital handover documentation'
+    ],
+    equipmentProvided: [
+      'Sterile gloves & disposable surgical drape',
+      'Clinical disinfectant & skin preparation swab',
+      'Digital thermometer & automated BP apparatus',
+      'Bio-medical waste disposal pouch'
+    ],
+    imageUrl: s.image_url || `/images/services/${s.id}.jpg`,
+    createdAt: s.created_at
+  }));
 }
 
 export async function dbInsertService(s: ServiceItem): Promise<boolean> {
@@ -835,9 +439,34 @@ export async function dbUpdateServiceById(id: string, updates: Partial<ServiceIt
 
 export async function dbDeleteService(id: string): Promise<boolean> {
   try {
+    // Unlink any foreign key references first
+    await supabase.from('bookings').update({ service_id: null }).eq('service_id', id);
+    await supabase.from('leads').update({ service_id: null }).eq('service_id', id);
     const { error } = await supabase.from('services').delete().eq('id', id);
-    return !error;
-  } catch {
+    if (error) {
+      console.error('[Supabase dbDeleteService error]:', error);
+      return false;
+    }
+    return true;
+  } catch (err) {
+    console.error('[Supabase dbDeleteService exception]:', err);
+    return false;
+  }
+}
+
+export async function dbDeleteMultipleServices(ids: string[]): Promise<boolean> {
+  if (!ids || ids.length === 0) return true;
+  try {
+    await supabase.from('bookings').update({ service_id: null }).in('service_id', ids);
+    await supabase.from('leads').update({ service_id: null }).in('service_id', ids);
+    const { error } = await supabase.from('services').delete().in('id', ids);
+    if (error) {
+      console.error('[Supabase dbDeleteMultipleServices error]:', error);
+      return false;
+    }
+    return true;
+  } catch (err) {
+    console.error('[Supabase dbDeleteMultipleServices exception]:', err);
     return false;
   }
 }
@@ -872,46 +501,40 @@ export function findNurseByReferralCode(code: string, nurses: NurseProfile[]): N
 }
 
 export async function dbFetchNurses(): Promise<NurseProfile[] | null> {
-  try {
-    const { data, error } = await supabase
+  const data = await executeWithRetry(async () => {
+    return await supabase
       .from('nurses')
       .select('*')
       .order('name', { ascending: true });
+  });
 
-    if (error) {
-      console.warn('[DB] Supabase nurses fetch error:', error.message);
-      return [];
-    }
-    if (!data) return [];
+  if (data === null) return null;
 
-    return data.map((n: any) => ({
-      id: n.id,
-      name: n.name,
-      phone: n.phone,
-      email: n.email,
-      experienceYears: Number(n.experience_years) || 5,
-      qualification: n.qualification,
-      serviceArea: n.service_area,
-      status: n.status || 'Active',
-      totalLeads: Number(n.total_leads) || 0,
-      convertedLeads: Number(n.converted_leads) || 0,
-      totalReferrals: Number(n.total_referrals) || 0,
-      pointsEarned: Number(n.points_earned) || 300,
-      referralEarningsRupees: Number(n.referral_earnings_rupees) || 0,
-      rating: Number(n.rating) || 4.90,
-      avatarUrl: n.avatar_url || 'https://images.unsplash.com/photo-1594824813589-9a25b42d768a?w=150&auto=format&fit=crop&q=80',
-      certificateVerified: Boolean(n.certificate_verified),
-      certificateUrl: n.certificate_url || undefined,
-      createdAt: n.created_at,
-      referredByNurseId: n.referred_by_nurse_id || undefined,
-      referralCode: n.referral_code || generateNurseReferralCode(n.name, n.id, n.phone),
-      earningsPaid: Number(n.earnings_paid) || 0,
-      earningsPending: Number(n.earnings_pending) || 0,
-      rejectionReason: n.rejection_reason || undefined
-    }));
-  } catch {
-    return [];
-  }
+  return data.map((n: any) => ({
+    id: n.id,
+    name: n.name,
+    phone: n.phone,
+    email: n.email,
+    experienceYears: Number(n.experience_years) || 5,
+    qualification: n.qualification,
+    serviceArea: n.service_area,
+    status: n.status || 'Active',
+    totalLeads: Number(n.total_leads) || 0,
+    convertedLeads: Number(n.converted_leads) || 0,
+    totalReferrals: Number(n.total_referrals) || 0,
+    pointsEarned: Number(n.points_earned) || 300,
+    referralEarningsRupees: Number(n.referral_earnings_rupees) || 0,
+    rating: Number(n.rating) || 4.90,
+    avatarUrl: n.avatar_url || 'https://images.unsplash.com/photo-1594824813589-9a25b42d768a?w=150&auto=format&fit=crop&q=80',
+    certificateVerified: Boolean(n.certificate_verified),
+    certificateUrl: n.certificate_url || undefined,
+    createdAt: n.created_at,
+    referredByNurseId: n.referred_by_nurse_id || undefined,
+    referralCode: n.referral_code || generateNurseReferralCode(n.name, n.id, n.phone),
+    earningsPaid: Number(n.earnings_paid) || 0,
+    earningsPending: Number(n.earnings_pending) || 0,
+    rejectionReason: n.rejection_reason || undefined
+  }));
 }
 
 export async function dbSaveNurse(n: NurseProfile): Promise<boolean> {
@@ -1019,9 +642,40 @@ export async function dbUpdateNurseById(id: string, updates: Partial<NurseProfil
 
 export async function dbDeleteNurse(id: string): Promise<boolean> {
   try {
+    // 1. Unassign nurse from bookings to prevent foreign key errors
+    await supabase.from('bookings').update({ assigned_nurse_id: null, assigned_nurse_name: null }).eq('assigned_nurse_id', id);
+    await supabase.from('bookings').update({ referring_nurse_id: null, referring_nurse_name: null }).eq('referring_nurse_id', id);
+    // 2. Unassign from leads
+    await supabase.from('leads').update({ assigned_nurse_id: null }).eq('assigned_nurse_id', id);
+    await supabase.from('leads').update({ nurse_id: null }).eq('nurse_id', id);
+    // 3. Delete nurse
     const { error } = await supabase.from('nurses').delete().eq('id', id);
-    return !error;
-  } catch {
+    if (error) {
+      console.error('[Supabase dbDeleteNurse error]:', error);
+      return false;
+    }
+    return true;
+  } catch (err) {
+    console.error('[Supabase dbDeleteNurse exception]:', err);
+    return false;
+  }
+}
+
+export async function dbDeleteMultipleNurses(ids: string[]): Promise<boolean> {
+  if (!ids || ids.length === 0) return true;
+  try {
+    await supabase.from('bookings').update({ assigned_nurse_id: null, assigned_nurse_name: null }).in('assigned_nurse_id', ids);
+    await supabase.from('bookings').update({ referring_nurse_id: null, referring_nurse_name: null }).in('referring_nurse_id', ids);
+    await supabase.from('leads').update({ assigned_nurse_id: null }).in('assigned_nurse_id', ids);
+    await supabase.from('leads').update({ nurse_id: null }).in('nurse_id', ids);
+    const { error } = await supabase.from('nurses').delete().in('id', ids);
+    if (error) {
+      console.error('[Supabase dbDeleteMultipleNurses error]:', error);
+      return false;
+    }
+    return true;
+  } catch (err) {
+    console.error('[Supabase dbDeleteMultipleNurses exception]:', err);
     return false;
   }
 }
@@ -1031,62 +685,55 @@ export async function dbDeleteNurse(id: string): Promise<boolean> {
 // ============================================================================
 
 export async function dbFetchBookings(): Promise<Booking[] | null> {
-  try {
-    const { data, error } = await supabase
+  const data = await executeWithRetry(async () => {
+    return await supabase
       .from('bookings')
       .select('*')
       .order('created_at', { ascending: false });
+  });
 
-    if (error) {
-      console.warn('[DB] Supabase bookings fetch error:', error.message);
-      return [];
-    }
-    if (!data) return [];
+  if (data === null) return null;
 
-    return data.map((b: any) => ({
-      id: b.id,
-      createdAt: b.created_at,
-      patientName: b.patient_name,
-      patientPhone: b.patient_phone,
-      patientAge: b.patient_age !== null ? Number(b.patient_age) : undefined,
-      patientGender: b.patient_gender || undefined,
-      serviceId: b.service_id,
-      serviceTitle: b.service_title,
-      area: b.area,
-      fullAddress: b.full_address,
-      bookingType: b.booking_type || (b.preferred_time?.toLowerCase().includes('immediate') || b.preferred_date?.toLowerCase().includes('instant') || b.preferred_date?.toLowerCase().includes('immediate') ? 'Instant' : 'Scheduled'),
-      scheduledSlot: b.scheduled_slot || b.preferred_time,
-      preferredDate: b.preferred_date,
-      preferredTime: b.preferred_time,
-      hasPrescription: Boolean(b.has_prescription),
-      prescriptionFileName: b.prescription_file_name,
-      prescriptionUrl: b.prescription_url,
-      status: b.status || 'Assigned',
-      nurseAcceptanceStatus: b.nurse_acceptance_status || (
-        b.status === 'In-Progress' || b.status === 'Completed'
-          ? 'Accepted'
-          : (b.status === 'Rejected' && (b.rejected_by === 'Nurse' || b.rejection_reason?.toLowerCase().includes('nurse') || b.notes?.toLowerCase().includes('declined by nurse')))
-          ? 'Rejected'
-          : (b.assigned_nurse_id ? 'Pending' : undefined)
-      ),
-      assignedNurseId: b.assigned_nurse_id,
-      assignedNurseName: b.assigned_nurse_name,
-      referringNurseId: b.referring_nurse_id,
-      referringNurseName: b.referring_nurse_name,
-      estimatedFee: Number(b.estimated_fee) || 800,
-      nightSurcharge: Number(b.night_surcharge) || 0,
-      referralBonusRupees: Number(b.referral_bonus_rupees) || 0,
-      notes: b.notes,
-      rejectionReason: b.rejection_reason || undefined,
-      rejectedBy: b.rejected_by || (b.status === 'Rejected' ? (b.rejection_reason?.toLowerCase().includes('nurse') || b.notes?.toLowerCase().includes('declined by nurse') ? 'Nurse' : 'Admin') : undefined),
-      rejectedNurseId: b.rejected_nurse_id || undefined,
-      rejectedNurseName: b.rejected_nurse_name || undefined,
-      rejectedAt: b.rejected_at || undefined
-    }));
-  } catch (err) {
-    console.error('[DB] dbFetchBookings exception:', err);
-    return [];
-  }
+  return data.map((b: any) => ({
+    id: b.id,
+    createdAt: b.created_at,
+    patientName: b.patient_name,
+    patientPhone: b.patient_phone,
+    patientAge: b.patient_age !== null ? Number(b.patient_age) : undefined,
+    patientGender: b.patient_gender || undefined,
+    serviceId: b.service_id,
+    serviceTitle: b.service_title,
+    area: b.area,
+    fullAddress: b.full_address,
+    bookingType: b.booking_type || (b.preferred_time?.toLowerCase().includes('immediate') || b.preferred_date?.toLowerCase().includes('instant') || b.preferred_date?.toLowerCase().includes('immediate') ? 'Instant' : 'Scheduled'),
+    scheduledSlot: b.scheduled_slot || b.preferred_time,
+    preferredDate: b.preferred_date,
+    preferredTime: b.preferred_time,
+    hasPrescription: Boolean(b.has_prescription),
+    prescriptionFileName: b.prescription_file_name,
+    prescriptionUrl: b.prescription_url,
+    status: b.status || 'Assigned',
+    nurseAcceptanceStatus: b.nurse_acceptance_status || (
+      b.status === 'In-Progress' || b.status === 'Completed'
+        ? 'Accepted'
+        : (b.status === 'Rejected' && (b.rejected_by === 'Nurse' || b.rejection_reason?.toLowerCase().includes('nurse') || b.notes?.toLowerCase().includes('declined by nurse')))
+        ? 'Rejected'
+        : (b.assigned_nurse_id ? 'Pending' : undefined)
+    ),
+    assignedNurseId: b.assigned_nurse_id,
+    assignedNurseName: b.assigned_nurse_name,
+    referringNurseId: b.referring_nurse_id,
+    referringNurseName: b.referring_nurse_name,
+    estimatedFee: Number(b.estimated_fee) || 800,
+    nightSurcharge: Number(b.night_surcharge) || 0,
+    referralBonusRupees: Number(b.referral_bonus_rupees) || 0,
+    notes: b.notes,
+    rejectionReason: b.rejection_reason || undefined,
+    rejectedBy: b.rejected_by || (b.status === 'Rejected' ? (b.rejection_reason?.toLowerCase().includes('nurse') || b.notes?.toLowerCase().includes('declined by nurse') ? 'Nurse' : 'Admin') : undefined),
+    rejectedNurseId: b.rejected_nurse_id || undefined,
+    rejectedNurseName: b.rejected_nurse_name || undefined,
+    rejectedAt: b.rejected_at || undefined
+  }));
 }
 
 export async function dbSaveBooking(b: Booking): Promise<boolean> {
@@ -1184,6 +831,7 @@ export async function dbUpdateBooking(id: string, updates: Partial<Booking>): Pr
   if (updates.preferredTime !== undefined) payload.preferred_time = updates.preferredTime || null;
   if (updates.status !== undefined) payload.status = updates.status;
   if (updates.rejectionReason !== undefined) payload.rejection_reason = updates.rejectionReason || null;
+  if (updates.nurseAcceptanceStatus !== undefined) payload.nurse_acceptance_status = updates.nurseAcceptanceStatus;
   if (updates.hasPrescription !== undefined) payload.has_prescription = Boolean(updates.hasPrescription);
   if (updates.prescriptionFileName !== undefined) payload.prescription_file_name = updates.prescriptionFileName || null;
   if (updates.prescriptionUrl !== undefined) payload.prescription_url = updates.prescriptionUrl || null;
@@ -1212,6 +860,7 @@ export async function dbUpdateBooking(id: string, updates: Partial<Booking>): Pr
         }
         delete fallbackPayload.booking_type;
         delete fallbackPayload.scheduled_slot;
+        delete fallbackPayload.nurse_acceptance_status;
         const retry = await supabase.from('bookings').update(fallbackPayload).eq('id', id);
         return !retry.error;
       }
@@ -1226,8 +875,28 @@ export async function dbUpdateBooking(id: string, updates: Partial<Booking>): Pr
 export async function dbDeleteBooking(id: string): Promise<boolean> {
   try {
     const { error } = await supabase.from('bookings').delete().eq('id', id);
-    return !error;
-  } catch {
+    if (error) {
+      console.error('[Supabase dbDeleteBooking error]:', error);
+      return false;
+    }
+    return true;
+  } catch (err) {
+    console.error('[Supabase dbDeleteBooking exception]:', err);
+    return false;
+  }
+}
+
+export async function dbDeleteMultipleBookings(ids: string[]): Promise<boolean> {
+  if (!ids || ids.length === 0) return true;
+  try {
+    const { error } = await supabase.from('bookings').delete().in('id', ids);
+    if (error) {
+      console.error('[Supabase dbDeleteMultipleBookings error]:', error);
+      return false;
+    }
+    return true;
+  } catch (err) {
+    console.error('[Supabase dbDeleteMultipleBookings exception]:', err);
     return false;
   }
 }
@@ -1237,41 +906,35 @@ export async function dbDeleteBooking(id: string): Promise<boolean> {
 // ============================================================================
 
 export async function dbFetchLeads(): Promise<NurseLead[] | null> {
-  try {
-    const { data, error } = await supabase
+  const data = await executeWithRetry(async () => {
+    return await supabase
       .from('leads')
       .select('*')
       .order('submitted_at', { ascending: false });
+  });
 
-    if (error) {
-      console.warn('[DB] Supabase leads fetch error:', error.message);
-      return [];
-    }
-    if (!data) return [];
+  if (data === null) return null;
 
-    return data.map((l: any) => ({
-      id: l.id,
-      nurseId: l.nurse_id,
-      patientName: l.patient_name || l.referred_nurse_name,
-      patientPhone: l.patient_phone || l.referred_nurse_phone,
-      serviceId: l.service_id,
-      area: l.area,
-      submittedAt: l.submitted_at,
-      status: l.status || 'Converted',
-      assignedNurseId: l.assigned_nurse_id,
-      leadValueRupees: Number(l.lead_value_rupees) || 1000.00,
-      pointsAwarded: Math.round(Number(l.points_awarded)) || 50,
-      referralCommissionRupees: Number(l.referral_commission_rupees) || 100.00,
-      referredNurseName: l.referred_nurse_name || l.patient_name || undefined,
-      referredNursePhone: l.referred_nurse_phone || l.patient_phone || undefined,
-      qualification: l.qualification || undefined,
-      experienceYears: Number(l.experience_years) || 3,
-      rejectionReason: l.rejection_reason || undefined
-    }));
-  } catch (err) {
-    console.error('[DB] dbFetchLeads exception:', err);
-    return [];
-  }
+  return data.map((l: any) => ({
+    id: l.id,
+    nurseId: l.nurse_id,
+    patientName: l.patient_name || l.referred_nurse_name,
+    patientPhone: l.patient_phone || l.referred_nurse_phone,
+    serviceId: l.service_id,
+    area: l.area,
+    submittedAt: l.submitted_at,
+    status: l.status || 'Converted',
+    assignedNurseId: l.assigned_nurse_id,
+    leadValueRupees: Number(l.lead_value_rupees) || 1000.00,
+    pointsAwarded: Math.round(Number(l.points_awarded)) || 50,
+    referralCommissionRupees: Number(l.referral_commission_rupees) || 100.00,
+    referralRupees: Number(l.referral_commission_rupees) || 100.00,
+    referredNurseName: l.referred_nurse_name || l.patient_name || undefined,
+    referredNursePhone: l.referred_nurse_phone || l.patient_phone || undefined,
+    qualification: l.qualification || undefined,
+    experienceYears: Number(l.experience_years) || 3,
+    rejectionReason: l.rejection_reason || undefined
+  }));
 }
 
 export async function dbSaveLead(lead: NurseLead): Promise<boolean> {
@@ -1290,7 +953,7 @@ export async function dbSaveLead(lead: NurseLead): Promise<boolean> {
       patient_name: lead.patientName || lead.referredNurseName || null,
       patient_phone: lead.patientPhone || lead.referredNursePhone || null,
       service_id: lead.serviceId || null,
-      area: lead.area,
+      area: lead.area || (lead as any).serviceArea || 'Hyderabad Central',
       submitted_at: isoSubmittedAt,
       status: lead.status || 'Converted',
       assigned_nurse_id: cleanAssignedNurseId,
@@ -1314,7 +977,7 @@ export async function dbSaveLead(lead: NurseLead): Promise<boolean> {
           patient_name: payload.patient_name,
           patient_phone: payload.patient_phone,
           service_id: payload.service_id,
-          area: payload.area,
+          area: payload.area || 'Hyderabad Central',
           submitted_at: payload.submitted_at,
           status: payload.status,
           assigned_nurse_id: payload.assigned_nurse_id,
@@ -1354,7 +1017,9 @@ export async function dbUpdateLeadById(id: string, updates: Partial<NurseLead>):
   }
   if (updates.pointsAwarded !== undefined) payload.points_awarded = Math.round(Number(updates.pointsAwarded));
   if (updates.leadValueRupees !== undefined) payload.lead_value_rupees = Number(updates.leadValueRupees);
-  if (updates.referralCommissionRupees !== undefined) payload.referral_commission_rupees = Number(updates.referralCommissionRupees);
+  if (updates.referralCommissionRupees !== undefined || (updates as any).referralRupees !== undefined) {
+    payload.referral_commission_rupees = Number(updates.referralCommissionRupees ?? (updates as any).referralRupees);
+  }
   if (updates.referredNurseName !== undefined) payload.referred_nurse_name = updates.referredNurseName;
   if (updates.referredNursePhone !== undefined) payload.referred_nurse_phone = updates.referredNursePhone;
   if (updates.qualification !== undefined) payload.qualification = updates.qualification;
@@ -1385,8 +1050,28 @@ export async function dbUpdateLeadById(id: string, updates: Partial<NurseLead>):
 export async function dbDeleteLead(id: string): Promise<boolean> {
   try {
     const { error } = await supabase.from('leads').delete().eq('id', id);
-    return !error;
-  } catch {
+    if (error) {
+      console.error('[Supabase dbDeleteLead error]:', error);
+      return false;
+    }
+    return true;
+  } catch (err) {
+    console.error('[Supabase dbDeleteLead exception]:', err);
+    return false;
+  }
+}
+
+export async function dbDeleteMultipleLeads(ids: string[]): Promise<boolean> {
+  if (!ids || ids.length === 0) return true;
+  try {
+    const { error } = await supabase.from('leads').delete().in('id', ids);
+    if (error) {
+      console.error('[Supabase dbDeleteMultipleLeads error]:', error);
+      return false;
+    }
+    return true;
+  } catch (err) {
+    console.error('[Supabase dbDeleteMultipleLeads exception]:', err);
     return false;
   }
 }
@@ -1396,35 +1081,29 @@ export async function dbDeleteLead(id: string): Promise<boolean> {
 // ============================================================================
 
 export async function dbFetchConsultations(): Promise<DoctorConsultation[] | null> {
-  try {
-    const { data, error } = await supabase
+  const data = await executeWithRetry(async () => {
+    return await supabase
       .from('consultations')
       .select('*')
       .order('requested_at', { ascending: false });
+  });
 
-    if (error) {
-      console.warn('[DB] Supabase consultations fetch error:', error.message);
-      return [];
-    }
-    if (!data) return [];
+  if (data === null) return null;
 
-    return data.map((c: any) => ({
-      id: c.id,
-      patientName: c.patient_name,
-      patientAge: c.patient_age !== null ? Number(c.patient_age) : undefined,
-      patientPhone: c.patient_phone,
-      symptoms: c.symptoms,
-      area: c.area,
-      requestedAt: c.requested_at,
-      status: c.status || 'Awaiting Call',
-      prescriptionIssued: Boolean(c.prescription_issued),
-      prescriptionText: c.prescription_text,
-      recommendedService: c.recommended_service
-    }));
-  } catch (err) {
-    console.error('[DB] dbFetchConsultations exception:', err);
-    return [];
-  }
+  return data.map((c: any) => ({
+    id: c.id,
+    patientName: c.patient_name,
+    patientAge: c.patient_age !== null ? Number(c.patient_age) : undefined,
+    patientPhone: c.patient_phone,
+    symptoms: c.symptoms,
+    area: c.area,
+    requestedAt: c.requested_at,
+    status: c.status || 'Awaiting Call',
+    prescriptionIssued: Boolean(c.prescription_issued),
+    prescriptionText: c.prescription_text,
+    doctorNotes: c.prescription_text || '',
+    recommendedService: c.recommended_service
+  }));
 }
 
 export async function dbSaveConsultation(c: DoctorConsultation): Promise<boolean> {
@@ -1444,7 +1123,7 @@ export async function dbSaveConsultation(c: DoctorConsultation): Promise<boolean
       requested_at: isoRequestedAt,
       status: c.status || 'Awaiting Call',
       prescription_issued: Boolean(c.prescriptionIssued),
-      prescription_text: c.prescriptionText || null,
+      prescription_text: c.prescriptionText || c.doctorNotes || null,
       recommended_service: c.recommendedService || null
     };
 
@@ -1468,7 +1147,9 @@ export async function dbUpdateConsultationById(id: string, updates: Partial<Doct
   if (updates.area !== undefined) payload.area = updates.area;
   if (updates.status !== undefined) payload.status = updates.status;
   if (updates.prescriptionIssued !== undefined) payload.prescription_issued = Boolean(updates.prescriptionIssued);
-  if (updates.prescriptionText !== undefined) payload.prescription_text = updates.prescriptionText || null;
+  if (updates.prescriptionText !== undefined || updates.doctorNotes !== undefined) {
+    payload.prescription_text = updates.prescriptionText || updates.doctorNotes || null;
+  }
   if (updates.recommendedService !== undefined) payload.recommended_service = updates.recommendedService || null;
 
   try {
@@ -1482,8 +1163,28 @@ export async function dbUpdateConsultationById(id: string, updates: Partial<Doct
 export async function dbDeleteConsultation(id: string): Promise<boolean> {
   try {
     const { error } = await supabase.from('consultations').delete().eq('id', id);
-    return !error;
-  } catch {
+    if (error) {
+      console.error('[Supabase dbDeleteConsultation error]:', error);
+      return false;
+    }
+    return true;
+  } catch (err) {
+    console.error('[Supabase dbDeleteConsultation exception]:', err);
+    return false;
+  }
+}
+
+export async function dbDeleteMultipleConsultations(ids: string[]): Promise<boolean> {
+  if (!ids || ids.length === 0) return true;
+  try {
+    const { error } = await supabase.from('consultations').delete().in('id', ids);
+    if (error) {
+      console.error('[Supabase dbDeleteMultipleConsultations error]:', error);
+      return false;
+    }
+    return true;
+  } catch (err) {
+    console.error('[Supabase dbDeleteMultipleConsultations exception]:', err);
     return false;
   }
 }
@@ -1493,37 +1194,30 @@ export async function dbDeleteConsultation(id: string): Promise<boolean> {
 // ============================================================================
 
 export async function dbFetchCoupons(): Promise<Coupon[] | null> {
-  try {
-    const { data, error } = await supabase
+  const data = await executeWithRetry(async () => {
+    return await supabase
       .from('coupons')
       .select('*')
       .order('created_at', { ascending: false });
+  });
 
-    if (error) {
-      console.warn('[DB] Supabase coupons fetch error:', error.message);
-      return [];
-    }
-    if (!data) return [];
+  if (data === null) return null;
 
-    return data.map((c: any) => ({
-      id: c.id,
-      code: c.code,
-      discountType: c.discount_type as 'flat' | 'percent',
-      discountValue: Number(c.discount_value),
-      maxDiscount: c.max_discount !== null && c.max_discount !== undefined ? Number(c.max_discount) : undefined,
-      minOrderAmount: c.min_order_amount !== null && c.min_order_amount !== undefined ? Number(c.min_order_amount) : 0,
-      description: c.description || '',
-      status: (c.status || 'Active') as 'Active' | 'Inactive' | 'Expired',
-      usageLimit: c.usage_limit !== null && c.usage_limit !== undefined ? Number(c.usage_limit) : undefined,
-      timesUsed: Number(c.times_used) || 0,
-      validUntil: c.valid_until || undefined,
-      createdAt: c.created_at,
-      updatedAt: c.updated_at
-    }));
-  } catch (err) {
-    console.error('[DB] dbFetchCoupons exception:', err);
-    return [];
-  }
+  return data.map((c: any) => ({
+    id: c.id,
+    code: c.code,
+    discountType: c.discount_type as 'flat' | 'percent',
+    discountValue: Number(c.discount_value),
+    maxDiscount: c.max_discount !== null && c.max_discount !== undefined ? Number(c.max_discount) : undefined,
+    minOrderAmount: c.min_order_amount !== null && c.min_order_amount !== undefined ? Number(c.min_order_amount) : 0,
+    description: c.description || '',
+    status: (c.status || 'Active') as 'Active' | 'Inactive' | 'Expired',
+    usageLimit: c.usage_limit !== null && c.usage_limit !== undefined ? Number(c.usage_limit) : undefined,
+    timesUsed: Number(c.times_used) || 0,
+    validUntil: c.valid_until || undefined,
+    createdAt: c.created_at,
+    updatedAt: c.updated_at
+  }));
 }
 
 export async function dbInsertCoupon(coupon: Omit<Coupon, 'id' | 'createdAt' | 'timesUsed'>): Promise<Coupon | null> {
@@ -1541,7 +1235,7 @@ export async function dbInsertCoupon(coupon: Omit<Coupon, 'id' | 'createdAt' | '
     discount_value: Number(coupon.discountValue),
     max_discount: coupon.maxDiscount ? Number(coupon.maxDiscount) : null,
     min_order_amount: coupon.minOrderAmount ? Number(coupon.minOrderAmount) : 0,
-    description: coupon.description.trim(),
+    description: (coupon.description || '').trim(),
     status: ['Active', 'Inactive', 'Expired'].includes(coupon.status) ? coupon.status : 'Active',
     usage_limit: coupon.usageLimit ? Math.round(Number(coupon.usageLimit)) : null,
     times_used: 0,
@@ -1635,8 +1329,28 @@ export async function dbDeleteCoupon(id: string): Promise<boolean> {
       .delete()
       .eq('id', id);
 
-    return !error;
-  } catch {
+    if (error) {
+      console.error('[Supabase dbDeleteCoupon error]:', error);
+      return false;
+    }
+    return true;
+  } catch (err) {
+    console.error('[Supabase dbDeleteCoupon exception]:', err);
+    return false;
+  }
+}
+
+export async function dbDeleteMultipleCoupons(ids: string[]): Promise<boolean> {
+  if (!ids || ids.length === 0) return true;
+  try {
+    const { error } = await supabase.from('coupons').delete().in('id', ids);
+    if (error) {
+      console.error('[Supabase dbDeleteMultipleCoupons error]:', error);
+      return false;
+    }
+    return true;
+  } catch (err) {
+    console.error('[Supabase dbDeleteMultipleCoupons exception]:', err);
     return false;
   }
 }
@@ -1676,7 +1390,7 @@ export async function dbFetchAppUsers(): Promise<AppUser[]> {
         role: u.role,
         identifier: u.identifier,
         name: u.name,
-        pin: u.pin,
+        pin: '••••', // Never leak credentials to frontend
         phone: u.phone,
         email: u.email,
         designation: u.designation,
@@ -1690,195 +1404,137 @@ export async function dbFetchAppUsers(): Promise<AppUser[]> {
   return SEED_APP_USERS;
 }
 
+/**
+ * Hardened Authentication Wrapper
+ * Delegates directly to server-backed authenticateUserSecure with brute-force rate-limiting
+ */
 export async function dbVerifyUserPin(
   role: 'patient' | 'nurse' | 'doctor' | 'admin' | 'any' = 'any',
   inputIdentifier: string,
   inputPin: string
 ): Promise<{ success: boolean; user?: AppUser; message: string }> {
-  const cleanId = inputIdentifier.trim().toLowerCase().replace(/[\s-+]/g, '');
-  const cleanPin = inputPin.trim();
+  return authenticateUserSecure(
+    inputIdentifier,
+    inputPin,
+    role === 'any' ? undefined : role
+  );
+}
 
-  if (cleanPin.length !== 4 || !/^\d{4}$/.test(cleanPin)) {
-    return { success: false, message: 'PIN must be exactly 4 numeric digits.' };
-  }
+/**
+ * Atomic Server-Side Coupon Redemption (Prevents double-spending and client-side price tampering)
+ */
+export async function dbRedeemCouponAtomic(
+  code: string,
+  orderAmount: number,
+  userId?: string
+): Promise<{ valid: boolean; discount: number; finalAmount: number; message: string }> {
+  try {
+    const { data, error } = await supabase.rpc('redeem_coupon_atomic', {
+      p_code: code.trim(),
+      p_order_amount: orderAmount,
+      p_user_id: userId || null
+    });
 
-  // 1. FAST PATH (0ms): Check Seed Directory & Local Storage Cache First
-  // All default credentials (admin@xpressnurse.in, dr.reddy, priya, rajesh, etc.) verify INSTANTLY!
-  const localRegisteredUsers: AppUser[] = (() => {
-    try {
-      const raw = localStorage.getItem('xn_registered_users');
-      return raw ? JSON.parse(raw) : [];
-    } catch {
-      return [];
-    }
-  })();
-
-  const allFastUsers = [...SEED_APP_USERS, ...localRegisteredUsers];
-
-  const fastMatch = allFastUsers.find((u) => {
-    const uId = (u.identifier || '').toLowerCase().replace(/[\s-+]/g, '');
-    const uPhone = (u.phone || '').toLowerCase().replace(/[\s-+]/g, '');
-    const uEmail = (u.email || '').toLowerCase().replace(/[\s-+]/g, '');
-    const uUid = (u.id || '').toLowerCase().replace(/[\s-+]/g, '');
-    return uId === cleanId || uPhone === cleanId || uEmail === cleanId || uUid === cleanId;
-  });
-
-  if (fastMatch) {
-    if (fastMatch.pin === cleanPin) {
+    if (!error && data) {
       return {
-        success: true,
-        user: fastMatch,
-        message: `Verified successfully as ${fastMatch.role.toUpperCase()}.`
+        valid: Boolean(data.valid),
+        discount: Number(data.discount) || 0,
+        finalAmount: Number(data.final_amount) || orderAmount,
+        message: data.message || ''
       };
+    }
+  } catch (err) {
+    console.warn('[DB] RPC redeem_coupon_atomic error:', err);
+  }
+
+  // Authoritative server-validation fallback against coupons table
+  try {
+    const { data: coupon } = await supabase
+      .from('coupons')
+      .select('*')
+      .eq('code', code.trim().toUpperCase())
+      .single();
+
+    if (!coupon || coupon.status !== 'Active') {
+      return { valid: false, discount: 0, finalAmount: orderAmount, message: 'Invalid or inactive promo code.' };
+    }
+    if (coupon.valid_until && new Date(coupon.valid_until) < new Date()) {
+      return { valid: false, discount: 0, finalAmount: orderAmount, message: 'Promo code has expired.' };
+    }
+    if (coupon.usage_limit && (coupon.times_used || 0) >= coupon.usage_limit) {
+      return { valid: false, discount: 0, finalAmount: orderAmount, message: 'Promo code usage limit reached.' };
+    }
+    if (coupon.min_order_amount && orderAmount < Number(coupon.min_order_amount)) {
+      return { 
+        valid: false, 
+        discount: 0, 
+        finalAmount: orderAmount, 
+        message: `Minimum order amount of ₹${coupon.min_order_amount} required.` 
+      };
+    }
+
+    let calculatedDiscount = 0;
+    if (coupon.discount_type === 'flat') {
+      calculatedDiscount = Math.min(Number(coupon.discount_value), orderAmount);
     } else {
-      return { success: false, message: 'Incorrect 4-digit PIN for this account.' };
+      const pct = orderAmount * (Number(coupon.discount_value) / 100);
+      calculatedDiscount = Math.min(pct, Number(coupon.max_discount || orderAmount));
     }
-  }
+    calculatedDiscount = Math.round(calculatedDiscount);
 
-  // Also check active/saved nurse in localStorage
-  try {
-    const rawSavedNurse = localStorage.getItem('xn_auth_user');
-    if (rawSavedNurse) {
-      const savedUser = JSON.parse(rawSavedNurse) as AppUser;
-      const sId = (savedUser.identifier || '').toLowerCase().replace(/[\s-+]/g, '');
-      const sPhone = (savedUser.phone || '').toLowerCase().replace(/[\s-+]/g, '');
-      const sEmail = (savedUser.email || '').toLowerCase().replace(/[\s-+]/g, '');
-      if (sId === cleanId || sPhone === cleanId || sEmail === cleanId) {
-        if (savedUser.pin === cleanPin) {
-          return {
-            success: true,
-            user: savedUser,
-            message: `Verified successfully as ${savedUser.role.toUpperCase()}.`
-          };
-        } else {
-          return { success: false, message: 'Incorrect 4-digit PIN for this account.' };
-        }
-      }
-    }
-  } catch {}
-
-  // 2. REMOTE DB LOOKUP WITH STRICT 1500ms TIMEOUT (Prevents hanging on slow Supabase cold-starts)
-  try {
-    const timeoutPromise = new Promise<{ data: null; error: Error }>((_, reject) =>
-      setTimeout(() => reject(new Error('Network timeout')), 1500)
-    );
-
-    // Query app_users with targeted query
-    const dbPromise = (async () => {
-      let query = supabase.from('app_users').select('*');
-      if (role && role !== 'any') {
-        const { data } = await query.eq('role', role);
-        return data;
-      }
-      const { data } = await query;
-      return data;
-    })();
-
-    const appUsersData: any = await Promise.race([dbPromise, timeoutPromise]).catch(() => null);
-
-    if (appUsersData && appUsersData.length > 0) {
-      const matched = appUsersData.find((u: any) => {
-        const uId = (u.identifier || '').toLowerCase().replace(/[\s-+]/g, '');
-        const uPhone = (u.phone || '').toLowerCase().replace(/[\s-+]/g, '');
-        const uEmail = (u.email || '').toLowerCase().replace(/[\s-+]/g, '');
-        return uId === cleanId || uPhone === cleanId || uEmail === cleanId;
-      });
-
-      if (matched) {
-        if (matched.pin === cleanPin) {
-          const userObj: AppUser = {
-            id: matched.id,
-            role: matched.role,
-            identifier: matched.identifier,
-            name: matched.name,
-            pin: matched.pin,
-            phone: matched.phone,
-            email: matched.email,
-            designation: matched.designation,
-            serviceArea: matched.service_area,
-            avatarUrl: matched.avatar_url
-          };
-          // Cache in local storage for zero-delay logins in the future
-          try {
-            const cached = [...localRegisteredUsers.filter(u => u.id !== userObj.id), userObj];
-            localStorage.setItem('xn_registered_users', JSON.stringify(cached));
-          } catch {}
-
-          return {
-            success: true,
-            user: userObj,
-            message: `Verified successfully as ${matched.role.toUpperCase()}.`
-          };
-        } else {
-          return { success: false, message: 'Incorrect 4-digit PIN for this account.' };
-        }
-      }
-    }
-
-    // Query nurses table with timeout
-    const nurseDbPromise = (async () => {
-      const { data } = await supabase.from('nurses').select('*');
-      return data;
-    })();
-
-    const nursesData: any = await Promise.race([nurseDbPromise, timeoutPromise]).catch(() => null);
-
-    if (nursesData && nursesData.length > 0) {
-      const matchedNurse = nursesData.find((n: any) => {
-        const nEmail = (n.email || '').toLowerCase().replace(/[\s-+]/g, '');
-        const nPhone = (n.phone || '').toLowerCase().replace(/[\s-+]/g, '');
-        const nId = (n.id || '').toLowerCase().replace(/[\s-+]/g, '');
-        return nEmail === cleanId || nPhone === cleanId || nId === cleanId;
-      });
-
-      if (matchedNurse) {
-        const userObj: AppUser = {
-          id: matchedNurse.id,
-          role: 'nurse',
-          identifier: matchedNurse.email || matchedNurse.phone,
-          name: matchedNurse.name,
-          pin: cleanPin,
-          phone: matchedNurse.phone,
-          email: matchedNurse.email,
-          designation: matchedNurse.qualification,
-          serviceArea: matchedNurse.service_area
-        };
-        try {
-          const cached = [...localRegisteredUsers.filter(u => u.id !== userObj.id), userObj];
-          localStorage.setItem('xn_registered_users', JSON.stringify(cached));
-        } catch {}
-
-        return {
-          success: true,
-          user: userObj,
-          message: 'Nurse verified from registry with 4-digit PIN.'
-        };
-      }
-    }
-  } catch {
-    // proceed to patient test fallback
-  }
-
-  // 3. For patient testing with 10-digit mobile number
-  if (cleanId.length === 10 && (cleanPin === '7569' || cleanPin === '1234' || cleanPin === '8899')) {
     return {
-      success: true,
-      user: {
-        id: `user-pat-${cleanId.slice(-4)}`,
-        role: 'patient',
-        identifier: cleanId,
-        name: `Patient (${cleanId})`,
-        pin: cleanPin,
-        phone: cleanId
-      },
-      message: 'Patient verified with 4-digit PIN.'
+      valid: true,
+      discount: calculatedDiscount,
+      finalAmount: Math.max(0, orderAmount - calculatedDiscount),
+      message: `Promo applied: ₹${calculatedDiscount} savings`
     };
+  } catch {
+    return { valid: false, discount: 0, finalAmount: orderAmount, message: 'Could not verify coupon.' };
   }
+}
 
-  return {
-    success: false,
-    message: 'No registered staff account found matching that email, phone, or staff ID.'
-  };
+/**
+ * Fetch System Audit Logs (Admin authorized only)
+ */
+export async function dbFetchAuditLogs(): Promise<any[]> {
+  try {
+    const { data, error } = await supabase
+      .from('audit_logs')
+      .select('*')
+      .order('created_at', { ascending: false })
+      .limit(100);
+
+    if (!error && data) return data;
+  } catch {}
+  return [];
+}
+
+/**
+ * Log System Audit Event
+ */
+export async function dbLogAuditEvent(
+  action: string,
+  targetEntity: string,
+  targetId: string,
+  details: Record<string, any> = {}
+): Promise<void> {
+  try {
+    await supabase.rpc('log_audit_event_secure', {
+      p_action: action,
+      p_target_entity: targetEntity,
+      p_target_id: targetId,
+      p_details: details
+    });
+  } catch {
+    try {
+      await supabase.from('audit_logs').insert({
+        action,
+        target_entity: targetEntity,
+        target_id: targetId,
+        details
+      });
+    } catch {}
+  }
 }
 
 export async function dbInsertAppUser(u: AppUser): Promise<boolean> {
@@ -1886,7 +1542,7 @@ export async function dbInsertAppUser(u: AppUser): Promise<boolean> {
     const { error } = await supabase.from('app_users').insert({
       id: u.id,
       role: u.role,
-      identifier: u.identifier,
+      identifier: (u.identifier || u.phone || u.email || u.id).trim().toLowerCase(),
       name: u.name,
       pin: u.pin,
       phone: u.phone || null,
@@ -1923,8 +1579,28 @@ export async function dbUpdateAppUserById(id: string, updates: Partial<AppUser>)
 export async function dbDeleteAppUser(id: string): Promise<boolean> {
   try {
     const { error } = await supabase.from('app_users').delete().eq('id', id);
-    return !error;
-  } catch {
+    if (error) {
+      console.error('[Supabase dbDeleteAppUser error]:', error);
+      return false;
+    }
+    return true;
+  } catch (err) {
+    console.error('[Supabase dbDeleteAppUser exception]:', err);
+    return false;
+  }
+}
+
+export async function dbDeleteMultipleAppUsers(ids: string[]): Promise<boolean> {
+  if (!ids || ids.length === 0) return true;
+  try {
+    const { error } = await supabase.from('app_users').delete().in('id', ids);
+    if (error) {
+      console.error('[Supabase dbDeleteMultipleAppUsers error]:', error);
+      return false;
+    }
+    return true;
+  } catch (err) {
+    console.error('[Supabase dbDeleteMultipleAppUsers exception]:', err);
     return false;
   }
 }
