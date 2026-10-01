@@ -84,7 +84,7 @@ export function clearFailedAttempts(identifier: string): void {
 export async function authenticateUserSecure(
   identifier: string,
   secret: string,
-  expectedRole?: 'admin' | 'nurse' | 'doctor' | 'patient'
+  expectedRole?: 'admin' | 'nurse' | 'doctor' | 'patient' | 'any'
 ): Promise<{ success: boolean; user?: AppUser; message: string }> {
   const cleanId = identifier.trim().toLowerCase();
   const cleanDigits = cleanId.replace(/\D/g, '');
@@ -231,13 +231,13 @@ export async function authenticateUserSecure(
       }
     })();
 
-    const SEED_CREDENTIALS = [
-      { id: 'user-admin-1', identifier: 'admin@xpressnurse.in', phone: '7569657371', pin: '2026', role: 'admin' as const, name: 'Raju' },
-      { id: 'user-doc-1', identifier: 'dr.reddy@xpressnurse.in', phone: '9848011223', pin: '4321', role: 'doctor' as const, name: 'Dr. K. V. Reddy' },
-      { id: 'user-nurse-101', identifier: 'priya.nursing@xpressnurse.in', phone: '9849012345', pin: '1001', role: 'nurse' as const, name: 'Nurse Priya Sharma' },
-      { id: 'user-nurse-102', identifier: 'rajesh.nursing@xpressnurse.in', phone: '9849067890', pin: '1002', role: 'nurse' as const, name: 'Nurse Rajesh Kumar' },
-      { id: 'user-nurse-103', identifier: 'anjali.rao@xpressnurse.in', phone: '9849045678', pin: '1003', role: 'nurse' as const, name: 'Nurse Anjali Rao' },
-      { id: 'user-nurse-104', identifier: 'sunita.reddy@xpressnurse.in', phone: '9849089123', pin: '1004', role: 'nurse' as const, name: 'Nurse Sunita Reddy' }
+    const SEED_CREDENTIALS: AppUser[] = [
+      { id: 'user-admin-1', identifier: 'admin@xpressnurse.in', phone: '7569657371', email: 'admin@xpressnurse.in', pin: '2026', role: 'admin', name: 'Raju' },
+      { id: 'user-doc-1', identifier: 'dr.reddy@xpressnurse.in', phone: '9848011223', email: 'dr.reddy@xpressnurse.in', pin: '4321', role: 'doctor', name: 'Dr. K. V. Reddy' },
+      { id: 'user-nurse-101', identifier: 'priya.nursing@xpressnurse.in', phone: '9849012345', email: 'priya.nursing@xpressnurse.in', pin: '1001', role: 'nurse', name: 'Nurse Priya Sharma' },
+      { id: 'user-nurse-102', identifier: 'rajesh.nursing@xpressnurse.in', phone: '9849067890', email: 'rajesh.nursing@xpressnurse.in', pin: '1002', role: 'nurse', name: 'Nurse Rajesh Kumar' },
+      { id: 'user-nurse-103', identifier: 'anjali.rao@xpressnurse.in', phone: '9849045678', email: 'anjali.rao@xpressnurse.in', pin: '1003', role: 'nurse', name: 'Nurse Anjali Rao' },
+      { id: 'user-nurse-104', identifier: 'sunita.reddy@xpressnurse.in', phone: '9849089123', email: 'sunita.reddy@xpressnurse.in', pin: '1004', role: 'nurse', name: 'Nurse Sunita Reddy' }
     ];
 
     const localCandidates = [...SEED_CREDENTIALS, ...localRegisteredUsers].filter((u: any) => {
@@ -278,8 +278,8 @@ export async function authenticateUserSecure(
           pin: '••••',
           phone: localMatched.phone,
           email: localMatched.email,
-          designation: (localMatched as any).designation,
-          serviceArea: (localMatched as any).serviceArea
+          designation: localMatched.designation,
+          serviceArea: localMatched.serviceArea
         },
         message: `Authenticated successfully as ${localMatched.role.toUpperCase()}.`
       };
