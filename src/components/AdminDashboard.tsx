@@ -8803,9 +8803,6 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                         const referrer = nurses.find((rn) => rn.id === adminCertModalNurse.referredByNurseId);
                         if (referrer) {
                           await onUpdateNurseRecord(referrer.id, {
-                            earningsPaid: (referrer.earningsPaid || 0) + 50,
-                            earningsPending: Math.max(0, (referrer.earningsPending || 0) - 50),
-                            referralEarningsRupees: (referrer.referralEarningsRupees || 0) + 50,
                             pointsEarned: (referrer.pointsEarned || 0) + 50,
                             convertedLeads: (referrer.convertedLeads || 0) + 1
                           });

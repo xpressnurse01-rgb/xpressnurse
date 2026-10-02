@@ -1,36 +1,36 @@
 import React, { useState, useEffect } from 'react';
-import { 
-  NurseProfile, 
-  NurseLead, 
-  Booking, 
-  HyderabadArea, 
-  ServiceId, 
-  ServiceItem, 
-  InvoiceDetails 
+import {
+  NurseProfile,
+  NurseLead,
+  Booking,
+  HyderabadArea,
+  ServiceId,
+  ServiceItem,
+  InvoiceDetails
 } from '../types';
-import { 
-  Phone, 
-  MapPin, 
-  Calendar, 
-  Clock, 
-  CheckCircle2, 
-  AlertCircle, 
-  Plus, 
-  Share2, 
-  Copy, 
-  Check, 
-  User, 
-  Award, 
-  FileText, 
-  Receipt, 
-  Printer, 
-  Navigation, 
-  MessageCircle, 
-  UploadCloud, 
-  Eye, 
-  X, 
-  ArrowRight, 
-  Sparkles, 
+import {
+  Phone,
+  MapPin,
+  Calendar,
+  Clock,
+  CheckCircle2,
+  AlertCircle,
+  Plus,
+  Share2,
+  Copy,
+  Check,
+  User,
+  Award,
+  FileText,
+  Receipt,
+  Printer,
+  Navigation,
+  MessageCircle,
+  UploadCloud,
+  Eye,
+  X,
+  ArrowRight,
+  Sparkles,
   RefreshCw,
   TrendingUp,
   Coins,
@@ -41,9 +41,9 @@ import {
 } from 'lucide-react';
 import confetti from 'canvas-confetti';
 import { EmptyState } from './EmptyState';
-import { 
-  generateInvoiceDetails, 
-  openPrintableInvoiceWindow, 
+import {
+  generateInvoiceDetails,
+  openPrintableInvoiceWindow,
   saveInvoiceToCloudflareBucket,
   getPrescriptionStorageObject,
   uploadCertificateToCloudflareBucket
@@ -136,7 +136,7 @@ export const NurseDashboard: React.FC<NurseDashboardProps> = ({
     convertedLeads: 6,
     totalReferrals: 12,
     pointsEarned: 1200,
-    referralEarningsRupees: 2400,
+    referralEarningsRupees: 0,
     rating: 4.9,
     certificateVerified: true
   };
@@ -189,21 +189,21 @@ export const NurseDashboard: React.FC<NurseDashboardProps> = ({
   // Filter Bookings assigned to THIS nurse
   const nurseNameClean = (nurse.name || '').toLowerCase();
   const nursePhoneClean = (nurse.phone || '').replace(/\D/g, '');
-  const myVisits = bookings.filter((b) => 
-    b.assignedNurseId === nurse.id || 
+  const myVisits = bookings.filter((b) =>
+    b.assignedNurseId === nurse.id ||
     (nurseNameClean && b.assignedNurseName && b.assignedNurseName.toLowerCase().includes(nurseNameClean))
   );
   const activeVisits = myVisits.filter((b) => b.status === 'Assigned' || b.status === 'In-Progress');
   const completedVisits = myVisits.filter((b) => b.status === 'Completed');
 
   // Filter Leads submitted by THIS nurse
-  const myLeads = leads.filter((l) => 
-    l.nurseId === nurse.id || 
+  const myLeads = leads.filter((l) =>
+    l.nurseId === nurse.id ||
     (nursePhoneClean && l.referredNursePhone && l.referredNursePhone.replace(/\D/g, '') === nursePhoneClean) ||
     (nursePhoneClean && l.patientPhone && l.patientPhone.replace(/\D/g, '') === nursePhoneClean)
   );
-  const myConvertedLeads = myLeads.filter((l) => 
-    l.status === 'Converted' || 
+  const myConvertedLeads = myLeads.filter((l) =>
+    l.status === 'Converted' ||
     (l.status === 'Approved' && (l.referralType === 'nurse' || Boolean(l.referredNursePhone)))
   );
 
@@ -213,7 +213,8 @@ export const NurseDashboard: React.FC<NurseDashboardProps> = ({
   myConvertedLeads.forEach(lead => {
     if (lead.referralType !== 'nurse' && !lead.referredNursePhone) {
       const procedure = services.find(s => s.id === lead.serviceId);
-      calculatedMoney += lead.referralCommissionRupees || (procedure ? Math.round((procedure.priceNumber || 800) * 0.10) : 0);
+      const fee = Number(lead.leadValueRupees) || (procedure?.priceNumber ?? 800);
+      calculatedMoney += Math.round(fee * 0.10);
     }
   });
 
@@ -225,11 +226,10 @@ export const NurseDashboard: React.FC<NurseDashboardProps> = ({
     completedVisitsEarnings += Math.round(fee * 0.70);
   });
 
-  const totalCalculatedRupees = calculatedMoney + completedVisitsEarnings;
-  const totalMoney = Math.max(
-    (Number(nurse.referralEarningsRupees) || 0),
-    totalCalculatedRupees
-  );
+  // Strictly calculate what the nurse earned through percentage:
+  // 70% service charge from completed visits + 10% procedure fee from converted patient referrals
+  // Never mix or show how much they earned from points in rupees
+  const totalMoney = completedVisitsEarnings + calculatedMoney;
   const totalPoints = (nurse.pointsEarned !== undefined && nurse.pointsEarned !== null && !isNaN(Number(nurse.pointsEarned)))
     ? Number(nurse.pointsEarned)
     : (myConvertedLeads.length * 50);
@@ -243,7 +243,7 @@ export const NurseDashboard: React.FC<NurseDashboardProps> = ({
       });
       try {
         confetti({ particleCount: 40, spread: 50, origin: { y: 0.6 } });
-      } catch {}
+      } catch { }
     }
   };
 
@@ -270,7 +270,7 @@ export const NurseDashboard: React.FC<NurseDashboardProps> = ({
       });
       try {
         confetti({ particleCount: 70, spread: 70, origin: { y: 0.5 } });
-      } catch {}
+      } catch { }
       alert(`Duty Completed! ₹${payoutRupees} (70% service charge) has been added to your earnings.`);
     }
   };
@@ -335,7 +335,7 @@ export const NurseDashboard: React.FC<NurseDashboardProps> = ({
 
     try {
       confetti({ particleCount: 60, spread: 60, origin: { y: 0.5 } });
-    } catch {}
+    } catch { }
   };
 
   const handleViewInvoice = (booking: Booking) => {
@@ -346,7 +346,7 @@ export const NurseDashboard: React.FC<NurseDashboardProps> = ({
   return (
     <div style={{ background: '#F8FAFC', minHeight: '90vh', padding: '1rem 0 3rem' }}>
       <div className="container" style={{ maxWidth: 960 }}>
-        
+
         {/* ================================================================= */}
         {/* 1. TOP NURSE PROFILE BAR (Clean, Friendly, Simple) */}
         {/* ================================================================= */}
@@ -446,7 +446,7 @@ export const NurseDashboard: React.FC<NurseDashboardProps> = ({
               <div style={{ fontSize: '0.7rem', color: '#1E40AF', fontWeight: 600 }}>Active Visits</div>
               <div style={{ fontSize: '1.1rem', fontWeight: 900, color: '#1D4ED8' }}>{activeVisits.length}</div>
             </div>
-            <a 
+            <a
               href="https://wa.me/917569657371"
               className="btn btn-outline"
               style={{
@@ -488,7 +488,7 @@ export const NurseDashboard: React.FC<NurseDashboardProps> = ({
             { id: 'home', label: '🏠 Home', badge: null },
             { id: 'visits', label: '🚗 My Visits', badge: activeVisits.length > 0 ? activeVisits.length : null },
             { id: 'add-patient', label: '➕ Add Patient', badge: '+50 Pts' },
-            { id: 'my-money', label: '⭐ My Points', badge: null },
+            { id: 'my-money', label: '💰 My Earnings', badge: null },
             { id: 'profile', label: '👤 My Profile', badge: null }
           ].map((tab) => {
             const isSelected = activeTab === tab.id;
@@ -538,7 +538,7 @@ export const NurseDashboard: React.FC<NurseDashboardProps> = ({
         {/* ================================================================= */}
         {activeTab === 'home' && (
           <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
-            
+
             {/* Friendly Greeting Card */}
             <div style={{
               background: 'linear-gradient(135deg, #0A192F 0%, #1E3A5F 100%)',
@@ -556,8 +556,8 @@ export const NurseDashboard: React.FC<NurseDashboardProps> = ({
                   Namaste, {nurse.name.replace('Nurse ', '')}! 👋
                 </h3>
                 <p style={{ margin: '0.35rem 0 0', fontSize: '0.9rem', color: '#CBD5E1' }}>
-                  {activeVisits.length > 0 
-                    ? `You have ${activeVisits.length} patient visit waiting. Please check your visits.` 
+                  {activeVisits.length > 0
+                    ? `You have ${activeVisits.length} patient visit waiting. Please check your visits.`
                     : 'No pending visits right now. You can add a patient or share your code to earn cash!'}
                 </p>
               </div>
@@ -610,9 +610,9 @@ export const NurseDashboard: React.FC<NurseDashboardProps> = ({
 
             {/* 3 Big Action Cards */}
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: '1rem' }}>
-              
+
               {/* Card 1: Visits */}
-              <div 
+              <div
                 onClick={() => setActiveTab('visits')}
                 style={{
                   background: '#FFFFFF',
@@ -639,7 +639,7 @@ export const NurseDashboard: React.FC<NurseDashboardProps> = ({
               </div>
 
               {/* Card 2: Patients Referred */}
-              <div 
+              <div
                 onClick={() => setActiveTab('my-money')}
                 style={{
                   background: '#FFFFFF',
@@ -665,7 +665,7 @@ export const NurseDashboard: React.FC<NurseDashboardProps> = ({
               </div>
 
               {/* Card 3: Money */}
-              <div 
+              <div
                 onClick={() => setActiveTab('my-money')}
                 style={{
                   background: '#FFFFFF',
@@ -676,7 +676,7 @@ export const NurseDashboard: React.FC<NurseDashboardProps> = ({
                 }}
               >
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                  <span style={{ fontSize: '0.85rem', color: '#64748B', fontWeight: 600 }}>Total Money</span>
+                  <span style={{ fontSize: '0.85rem', color: '#64748B', fontWeight: 600 }}>Total Earnings</span>
                   <div style={{ width: 36, height: 36, borderRadius: 10, background: '#FEF3C7', color: '#D97706', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
                     <Coins size={18} />
                   </div>
@@ -684,8 +684,8 @@ export const NurseDashboard: React.FC<NurseDashboardProps> = ({
                 <div style={{ fontSize: '2rem', fontWeight: 900, color: '#059669', margin: '0.4rem 0' }}>
                   ₹{totalMoney}
                 </div>
-                <div style={{ fontSize: '0.82rem', color: '#D97706', fontWeight: 700, display: 'flex', alignItems: 'center', gap: '0.25rem' }}>
-                  <span>{totalPoints} Points Earned</span>
+                <div style={{ fontSize: '0.82rem', color: '#059669', fontWeight: 700, display: 'flex', alignItems: 'center', gap: '0.25rem' }}>
+                  <span>70% Duty + 10% Referrals</span>
                   <ChevronRight size={14} />
                 </div>
               </div>
@@ -1444,7 +1444,7 @@ export const NurseDashboard: React.FC<NurseDashboardProps> = ({
         {/* ================================================================= */}
         {activeTab === 'my-money' && (
           <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
-            
+
             {/* Big Money Card */}
             <div style={{
               background: 'linear-gradient(135deg, #059669 0%, #047857 100%)',
@@ -1458,7 +1458,7 @@ export const NurseDashboard: React.FC<NurseDashboardProps> = ({
               gap: '1rem'
             }}>
               <div>
-                <div style={{ fontSize: '0.85rem', color: '#D1FAE5', fontWeight: 600 }}>Total Earnings (70% Visits Payout + Referrals)</div>
+                <div style={{ fontSize: '0.85rem', color: '#D1FAE5', fontWeight: 600 }}>Total Rupee Earnings (Percentage)</div>
                 <div style={{ fontSize: '2.4rem', fontWeight: 900, color: '#FFFFFF', margin: '0.2rem 0' }}>
                   ₹{totalMoney}
                 </div>
@@ -1467,10 +1467,7 @@ export const NurseDashboard: React.FC<NurseDashboardProps> = ({
                     💰 ₹{completedVisitsEarnings} from {completedVisits.length} Finished Visits (70%)
                   </span>
                   <span style={{ fontSize: '0.76rem', background: 'rgba(255,255,255,0.2)', padding: '2px 8px', borderRadius: 6, color: '#FFFFFF', fontWeight: 700 }}>
-                    👥 ₹{calculatedMoney} from Referrals
-                  </span>
-                  <span style={{ fontSize: '0.76rem', background: 'rgba(255,255,255,0.2)', padding: '2px 8px', borderRadius: 6, color: '#A7F3D0', fontWeight: 700 }}>
-                    ⭐ {totalPoints} Points
+                    👥 ₹{calculatedMoney} from Patient Referrals (10%)
                   </span>
                 </div>
               </div>
@@ -1508,6 +1505,41 @@ export const NurseDashboard: React.FC<NurseDashboardProps> = ({
                   <MessageCircle size={13} />
                   <span>Share on WhatsApp</span>
                 </button>
+              </div>
+            </div>
+
+            {/* Separate Points Card */}
+            <div style={{
+              background: '#FFFFFF',
+              borderRadius: 16,
+              padding: '1.25rem 1.5rem',
+              border: '1.5px solid #E2E8F0',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              flexWrap: 'wrap',
+              gap: '1rem'
+            }}>
+              <div>
+                <div style={{ fontSize: '0.85rem', color: '#64748B', fontWeight: 700, textTransform: 'uppercase', letterSpacing: 0.5 }}>
+                  Reward Points
+                </div>
+                <div style={{ fontSize: '2rem', fontWeight: 900, color: '#059669', margin: '0.2rem 0' }}>
+                  ⭐ {totalPoints} Points
+                </div>
+                <div style={{ fontSize: '0.8rem', color: '#64748B' }}>
+                  Earned through referrals (+50 pts each)
+                </div>
+              </div>
+              <div style={{
+                background: '#ECFDF5',
+                border: '1px solid #A7F3D0',
+                borderRadius: 12,
+                padding: '0.6rem 1rem',
+                textAlign: 'center'
+              }}>
+                <div style={{ fontSize: '0.72rem', color: '#065F46', fontWeight: 700 }}>Total Converted Leads</div>
+                <div style={{ fontSize: '1.25rem', fontWeight: 900, color: '#059669' }}>{myConvertedLeads.length}</div>
               </div>
             </div>
 
@@ -1605,8 +1637,8 @@ export const NurseDashboard: React.FC<NurseDashboardProps> = ({
                             background: isFullyCompleted ? '#DCFCE7' : (isApprovedAwaitingVisit ? '#FEF3C7' : '#F1F5F9'),
                             color: isFullyCompleted ? '#15803D' : (isApprovedAwaitingVisit ? '#B45309' : '#475569')
                           }}>
-                            {isFullyCompleted 
-                              ? `✓ Visit Done (+50 Pts, +₹${lead.referralCommissionRupees || 80})` 
+                            {isFullyCompleted
+                              ? `✓ Visit Done (+50 Pts, +₹${lead.referralCommissionRupees || 80})`
                               : (isApprovedAwaitingVisit ? '⏳ Allotted • Visit in Progress' : '⏳ Office Review')}
                           </span>
                           {isFullyCompleted ? (
@@ -1782,61 +1814,61 @@ export const NurseDashboard: React.FC<NurseDashboardProps> = ({
                 </div>
               </form>
             ) : (
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.85rem' }}>
-              <div style={{ padding: '0.75rem', background: '#F8FAFC', borderRadius: 10 }}>
-                <span style={{ fontSize: '0.75rem', color: '#64748B', display: 'block' }}>Full Name</span>
-                <span style={{ fontSize: '0.95rem', fontWeight: 800, color: '#0F172A' }}>{nurse.name}</span>
-              </div>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '0.85rem' }}>
+                <div style={{ padding: '0.75rem', background: '#F8FAFC', borderRadius: 10 }}>
+                  <span style={{ fontSize: '0.75rem', color: '#64748B', display: 'block' }}>Full Name</span>
+                  <span style={{ fontSize: '0.95rem', fontWeight: 800, color: '#0F172A' }}>{nurse.name}</span>
+                </div>
 
-              <div style={{ padding: '0.75rem', background: '#F8FAFC', borderRadius: 10 }}>
-                <span style={{ fontSize: '0.75rem', color: '#64748B', display: 'block' }}>Mobile Number (Login ID)</span>
-                <span style={{ fontSize: '0.95rem', fontWeight: 800, color: '#0F172A' }}>{nurse.phone}</span>
-              </div>
+                <div style={{ padding: '0.75rem', background: '#F8FAFC', borderRadius: 10 }}>
+                  <span style={{ fontSize: '0.75rem', color: '#64748B', display: 'block' }}>Mobile Number (Login ID)</span>
+                  <span style={{ fontSize: '0.95rem', fontWeight: 800, color: '#0F172A' }}>{nurse.phone}</span>
+                </div>
 
-              <div style={{ padding: '0.75rem', background: '#F8FAFC', borderRadius: 10 }}>
-                <span style={{ fontSize: '0.75rem', color: '#64748B', display: 'block' }}>Service Area in Hyderabad</span>
-                <span style={{ fontSize: '0.95rem', fontWeight: 800, color: '#0F172A' }}>{nurse.serviceArea || 'Gachibowli'}</span>
-              </div>
+                <div style={{ padding: '0.75rem', background: '#F8FAFC', borderRadius: 10 }}>
+                  <span style={{ fontSize: '0.75rem', color: '#64748B', display: 'block' }}>Service Area in Hyderabad</span>
+                  <span style={{ fontSize: '0.95rem', fontWeight: 800, color: '#0F172A' }}>{nurse.serviceArea || 'Gachibowli'}</span>
+                </div>
 
-              <div style={{ padding: '0.75rem', background: '#F8FAFC', borderRadius: 10 }}>
-                <span style={{ fontSize: '0.75rem', color: '#64748B', display: 'block' }}>Qualification</span>
-                <span style={{ fontSize: '0.95rem', fontWeight: 800, color: '#0F172A' }}>{nurse.qualification || 'B.Sc Nursing (Registered RN)'}</span>
-              </div>
+                <div style={{ padding: '0.75rem', background: '#F8FAFC', borderRadius: 10 }}>
+                  <span style={{ fontSize: '0.75rem', color: '#64748B', display: 'block' }}>Qualification</span>
+                  <span style={{ fontSize: '0.95rem', fontWeight: 800, color: '#0F172A' }}>{nurse.qualification || 'B.Sc Nursing (Registered RN)'}</span>
+                </div>
 
-              <div style={{ padding: '0.75rem', background: '#F8FAFC', borderRadius: 10 }}>
-                <span style={{ fontSize: '0.75rem', color: '#64748B', display: 'block' }}>Experience</span>
-                <span style={{ fontSize: '0.95rem', fontWeight: 800, color: '#0F172A' }}>{nurse.experienceYears || 4} Years in Clinical Care</span>
-              </div>
+                <div style={{ padding: '0.75rem', background: '#F8FAFC', borderRadius: 10 }}>
+                  <span style={{ fontSize: '0.75rem', color: '#64748B', display: 'block' }}>Experience</span>
+                  <span style={{ fontSize: '0.95rem', fontWeight: 800, color: '#0F172A' }}>{nurse.experienceYears || 4} Years in Clinical Care</span>
+                </div>
 
-              <div style={{ padding: '0.75rem', background: '#F8FAFC', borderRadius: 10 }}>
-                <span style={{ fontSize: '0.75rem', color: '#64748B', display: 'block' }}>Government Nursing Certificate</span>
-                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginTop: '0.25rem' }}>
-                  <span style={{
-                    fontSize: '0.8rem',
-                    fontWeight: 700,
-                    color: nurse.certificateVerified ? '#15803D' : '#B45309'
-                  }}>
-                    {nurse.certificateVerified ? '✓ Verified by Admin' : '⏳ Pending Admin Verification'}
-                  </span>
-                  <button
-                    type="button"
-                    onClick={() => setCertModalOpen(true)}
-                    style={{
-                      background: '#EFF6FF',
-                      border: '1px solid #BFDBFE',
-                      color: '#0284C7',
-                      padding: '0.3rem 0.75rem',
-                      borderRadius: 6,
-                      fontSize: '0.75rem',
+                <div style={{ padding: '0.75rem', background: '#F8FAFC', borderRadius: 10 }}>
+                  <span style={{ fontSize: '0.75rem', color: '#64748B', display: 'block' }}>Government Nursing Certificate</span>
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginTop: '0.25rem' }}>
+                    <span style={{
+                      fontSize: '0.8rem',
                       fontWeight: 700,
-                      cursor: 'pointer'
-                    }}
-                  >
-                    View / Upload
-                  </button>
+                      color: nurse.certificateVerified ? '#15803D' : '#B45309'
+                    }}>
+                      {nurse.certificateVerified ? '✓ Verified by Admin' : '⏳ Pending Admin Verification'}
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => setCertModalOpen(true)}
+                      style={{
+                        background: '#EFF6FF',
+                        border: '1px solid #BFDBFE',
+                        color: '#0284C7',
+                        padding: '0.3rem 0.75rem',
+                        borderRadius: 6,
+                        fontSize: '0.75rem',
+                        fontWeight: 700,
+                        cursor: 'pointer'
+                      }}
+                    >
+                      View / Upload
+                    </button>
+                  </div>
                 </div>
               </div>
-            </div>
             )}
 
             <div style={{ marginTop: '1.5rem', textAlign: 'center' }}>
@@ -1846,7 +1878,7 @@ export const NurseDashboard: React.FC<NurseDashboardProps> = ({
                   try {
                     localStorage.removeItem('xn_auth_user');
                     window.location.href = '/login';
-                  } catch {}
+                  } catch { }
                 }}
                 className="btn btn-outline"
                 style={{ color: '#EF4444', borderColor: '#FECDD3', borderRadius: 8, fontSize: '0.85rem' }}
@@ -1955,7 +1987,7 @@ export const NurseDashboard: React.FC<NurseDashboardProps> = ({
                 {previewRxBooking.patientName}
               </div>
             </div>
-            
+
             {previewRxBooking.prescriptionUrl ? (
               <div style={{ textAlign: 'center', marginBottom: '1rem' }}>
                 <img src={previewRxBooking.prescriptionUrl} alt="Prescription" style={{ maxWidth: '100%', borderRadius: 8, border: '1px solid #E2E8F0', objectFit: 'contain', maxHeight: '400px' }} onError={(e) => { e.currentTarget.style.display = 'none'; }} />
@@ -1967,7 +1999,7 @@ export const NurseDashboard: React.FC<NurseDashboardProps> = ({
               </div>
             ) : (
               <div style={{ fontSize: '0.85rem', color: '#64748B', textAlign: 'center', marginBottom: '1rem' }}>
-                No prescription file attached, or it was manually verified. 
+                No prescription file attached, or it was manually verified.
                 {previewRxBooking.prescriptionFileName && <div>File Name: {previewRxBooking.prescriptionFileName}</div>}
               </div>
             )}
@@ -2022,11 +2054,12 @@ export const NurseDashboard: React.FC<NurseDashboardProps> = ({
                 <X size={20} />
               </button>
             </div>
-            
+
             <div style={{ padding: '1.5rem', display: 'flex', flexDirection: 'column', gap: '0.8rem' }}>
               {myConvertedLeads.filter(l => l.referralType !== 'nurse' && !l.referredNursePhone).map(lead => {
                 const procedure = services.find(s => s.id === lead.serviceId);
-                const fallbackEarnings = procedure ? Math.round((procedure.priceNumber || 800) * 0.10) : 0;
+                const fee = Number(lead.leadValueRupees) || (procedure?.priceNumber ?? 800);
+                const fallbackEarnings = Math.round(fee * 0.10);
                 return (
                   <div key={lead.id} style={{ display: 'flex', justifyContent: 'space-between', padding: '1rem', border: '1px solid #E2E8F0', borderRadius: 12 }}>
                     <div>
@@ -2034,13 +2067,13 @@ export const NurseDashboard: React.FC<NurseDashboardProps> = ({
                       <div style={{ fontSize: '0.8rem', color: '#64748B' }}>Status: {lead.status}</div>
                     </div>
                     <div style={{ textAlign: 'right' }}>
-                      <div style={{ fontWeight: 800, color: '#059669' }}>+₹{lead.referralCommissionRupees || fallbackEarnings} (10%)</div>
+                      <div style={{ fontWeight: 800, color: '#059669' }}>+₹{fallbackEarnings} (10%)</div>
                       <div style={{ fontSize: '0.8rem', color: '#16A34A', fontWeight: 600 }}>+{lead.pointsAwarded || 50} pts</div>
                     </div>
                   </div>
                 );
               })}
-              
+
               {myConvertedLeads.filter(l => l.referralType === 'nurse' || l.referredNursePhone).map(lead => (
                 <div key={lead.id} style={{ display: 'flex', justifyContent: 'space-between', padding: '1rem', border: '1px solid #E2E8F0', borderRadius: 12 }}>
                   <div>
@@ -2126,8 +2159,8 @@ export const NurseDashboard: React.FC<NurseDashboardProps> = ({
                 <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.85rem', color: '#334155' }}>
                   <span>
                     {previewInvoice.serviceTitle}
-                    {previewInvoice.serviceDate && <span style={{display:'block', fontSize:'0.75rem', color:'#64748B'}}>Date: {previewInvoice.serviceDate}</span>}
-                    {previewInvoice.timeSlot && <span style={{display:'block', fontSize:'0.75rem', color:'#64748B'}}>Slot: {previewInvoice.timeSlot}</span>}
+                    {previewInvoice.serviceDate && <span style={{ display: 'block', fontSize: '0.75rem', color: '#64748B' }}>Date: {previewInvoice.serviceDate}</span>}
+                    {previewInvoice.timeSlot && <span style={{ display: 'block', fontSize: '0.75rem', color: '#64748B' }}>Slot: {previewInvoice.timeSlot}</span>}
                   </span>
                   <strong>₹{previewInvoice.baseAmount * (previewInvoice.numberOfVisits || 1)}</strong>
                 </div>
@@ -2221,10 +2254,10 @@ export const NurseDashboard: React.FC<NurseDashboardProps> = ({
             ) : (
               <div style={{ marginBottom: '1.5rem', padding: '1rem', background: '#F1F5F9', borderRadius: 10, textAlign: 'center' }}>
                 <label className="form-label" style={{ fontWeight: 700, fontSize: '0.85rem' }}>Upload Certificate (PDF/JPG/PNG)</label>
-                <input 
-                  type="file" 
-                  accept=".pdf,image/*" 
-                  style={{ display: 'block', width: '100%', marginBottom: '0.5rem', fontSize: '0.85rem' }} 
+                <input
+                  type="file"
+                  accept=".pdf,image/*"
+                  style={{ display: 'block', width: '100%', marginBottom: '0.5rem', fontSize: '0.85rem' }}
                   onChange={async (e) => {
                     const file = e.target.files?.[0];
                     if (!file) return;

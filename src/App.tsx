@@ -373,7 +373,7 @@ export const App: React.FC = () => {
     convertedLeads: 6,
     totalReferrals: 12,
     pointsEarned: 1200,
-    referralEarningsRupees: 2400,
+    referralEarningsRupees: 0,
     rating: 4.9,
     avatarUrl: '/images/nurse_priya.jpg',
     certificateVerified: true
@@ -1063,7 +1063,7 @@ export const App: React.FC = () => {
       ? referralRupees
       : (lead.referralCommissionRupees && lead.referralCommissionRupees > 0
           ? lead.referralCommissionRupees
-          : (lead.referralType === 'nurse' || lead.referredNursePhone ? 50 : Math.round(fee * 0.10)));
+          : (lead.referralType === 'nurse' || lead.referredNursePhone ? 0 : Math.round(fee * 0.10)));
 
     const isNurseReferral = lead.referralType === 'nurse' || Boolean(lead.referredNursePhone);
 
@@ -1109,7 +1109,6 @@ export const App: React.FC = () => {
       const updatedNurse: NurseProfile = {
         ...referringNurse,
         pointsEarned: (referringNurse.pointsEarned || 0) + pointsToCredit,
-        referralEarningsRupees: (referringNurse.referralEarningsRupees || 0) + commissionRupees,
         convertedLeads: (referringNurse.convertedLeads || 0) + 1,
         totalReferrals: Math.max(referringNurse.totalReferrals || 0, (referringNurse.convertedLeads || 0) + 1)
       };
