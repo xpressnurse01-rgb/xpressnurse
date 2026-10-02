@@ -145,8 +145,6 @@ export const NurseDashboard: React.FC<NurseDashboardProps> = ({
 
   // Ultra-simple 5 tabs with easy English words
   const [activeTab, setActiveTab] = useState<'home' | 'visits' | 'add-patient' | 'my-money' | 'profile'>('home');
-  const [isRefreshingData, setIsRefreshingData] = useState(false);
-  const [refreshMsg, setRefreshMsg] = useState('');
 
   // New Patient Form
   const [patientName, setPatientName] = useState('');
@@ -354,7 +352,7 @@ export const NurseDashboard: React.FC<NurseDashboardProps> = ({
         {/* ================================================================= */}
         {/* 1. TOP NURSE PROFILE BAR (Clean, Friendly, Simple) */}
         {/* ================================================================= */}
-        <div style={{
+        <div className="nurse-profile-header-card" style={{
           background: '#FFFFFF',
           borderRadius: 16,
           padding: '1.25rem 1.5rem',
@@ -379,6 +377,7 @@ export const NurseDashboard: React.FC<NurseDashboardProps> = ({
               justifyContent: 'center',
               fontWeight: 800,
               fontSize: '1.3rem',
+              flexShrink: 0,
               boxShadow: '0 4px 10px rgba(2, 132, 199, 0.25)'
             }}>
               {nurse.name ? nurse.name.replace('Nurse ', '').charAt(0) : 'N'}
@@ -415,22 +414,31 @@ export const NurseDashboard: React.FC<NurseDashboardProps> = ({
                   </span>
                 )}
               </div>
-              <div style={{ fontSize: '0.84rem', color: '#64748B', display: 'flex', alignItems: 'center', gap: '0.75rem', marginTop: '0.2rem' }}>
-                <span style={{ display: 'flex', alignItems: 'center', gap: '0.25rem' }}>
+              <div style={{
+                fontSize: '0.82rem',
+                color: '#64748B',
+                display: 'flex',
+                alignItems: 'center',
+                flexWrap: 'wrap',
+                columnGap: '0.45rem',
+                rowGap: '0.2rem',
+                marginTop: '0.25rem'
+              }}>
+                <span style={{ display: 'inline-flex', alignItems: 'center', gap: '0.2rem', whiteSpace: 'nowrap' }}>
                   <MapPin size={13} style={{ color: '#0284C7' }} />
                   {nurse.serviceArea || 'Hyderabad'}
                 </span>
-                <span>•</span>
-                <span>{nurse.qualification || 'Registered Nurse'}</span>
-                <span>•</span>
-                <span>{nurse.phone}</span>
+                <span style={{ color: '#CBD5E1' }}>•</span>
+                <span style={{ whiteSpace: 'nowrap' }}>{nurse.qualification || 'Registered Nurse'}</span>
+                <span style={{ color: '#CBD5E1' }}>•</span>
+                <span style={{ whiteSpace: 'nowrap' }}>{nurse.phone}</span>
               </div>
             </div>
           </div>
 
           {/* Quick Stats Pill */}
-          <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem' }}>
-            <div style={{
+          <div className="nurse-top-stats">
+            <div className="nurse-top-stat-box" style={{
               background: '#ECFDF5',
               border: '1px solid #A7F3D0',
               padding: '0.45rem 0.9rem',
@@ -440,7 +448,7 @@ export const NurseDashboard: React.FC<NurseDashboardProps> = ({
               <div style={{ fontSize: '0.7rem', color: '#065F46', fontWeight: 600 }}>My Points</div>
               <div style={{ fontSize: '1.1rem', fontWeight: 900, color: '#059669' }}>⭐ {totalPoints}</div>
             </div>
-            <div style={{
+            <div className="nurse-top-stat-box" style={{
               background: '#EFF6FF',
               border: '1px solid #BFDBFE',
               padding: '0.45rem 0.9rem',
@@ -450,49 +458,9 @@ export const NurseDashboard: React.FC<NurseDashboardProps> = ({
               <div style={{ fontSize: '0.7rem', color: '#1E40AF', fontWeight: 600 }}>Active Visits</div>
               <div style={{ fontSize: '1.1rem', fontWeight: 900, color: '#1D4ED8' }}>{activeVisits.length}</div>
             </div>
-            <button
-              type="button"
-              onClick={async () => {
-                if (isRefreshingData) return;
-                setIsRefreshingData(true);
-                try {
-                  if (onRefreshData) {
-                    await onRefreshData();
-                  } else {
-                    await new Promise(r => setTimeout(r, 600));
-                  }
-                  setRefreshMsg('✓ Dashboard refreshed!');
-                  setTimeout(() => setRefreshMsg(''), 3000);
-                } catch {
-                  setRefreshMsg('✓ Refreshed!');
-                  setTimeout(() => setRefreshMsg(''), 3000);
-                } finally {
-                  setIsRefreshingData(false);
-                }
-              }}
-              disabled={isRefreshingData}
-              className="btn btn-outline"
-              style={{
-                display: 'flex',
-                flexDirection: 'column',
-                alignItems: 'center',
-                justifyContent: 'center',
-                padding: '0.45rem 0.85rem',
-                borderRadius: 12,
-                border: '1px solid #CBD5E1',
-                color: isRefreshingData ? '#0284C7' : '#0F172A',
-                background: '#F8FAFC',
-                gap: '0.1rem',
-                cursor: 'pointer'
-              }}
-              title="Refresh Dashboard"
-            >
-              <RefreshCw size={17} style={{ animation: isRefreshingData ? 'spin 1s linear infinite' : 'none', color: '#0284C7' }} />
-              <span style={{ fontSize: '0.65rem', fontWeight: 700 }}>{isRefreshingData ? 'Syncing' : 'Refresh'}</span>
-            </button>
             <a
               href="https://wa.me/917569657371"
-              className="btn btn-outline"
+              className="btn btn-outline nurse-top-stat-box"
               style={{
                 display: 'flex',
                 flexDirection: 'column',
@@ -514,47 +482,16 @@ export const NurseDashboard: React.FC<NurseDashboardProps> = ({
           </div>
         </div>
 
-        {refreshMsg && (
-          <div style={{
-            background: '#ECFDF5',
-            border: '1px solid #A7F3D0',
-            color: '#065F46',
-            borderRadius: 12,
-            padding: '0.6rem 1rem',
-            marginBottom: '1rem',
-            fontSize: '0.85rem',
-            fontWeight: 700,
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            gap: '0.5rem',
-            animation: 'fadeIn 0.2s ease-in'
-          }}>
-            <RefreshCw size={15} style={{ color: '#059669' }} />
-            <span>{refreshMsg}</span>
-          </div>
-        )}
-
         {/* ================================================================= */}
         {/* 2. NAVIGATION BAR (Big, Easy Words - No Hard English) */}
         {/* ================================================================= */}
-        <div style={{
-          display: 'flex',
-          gap: '0.4rem',
-          background: '#FFFFFF',
-          padding: '0.4rem',
-          borderRadius: 14,
-          border: '1px solid #E2E8F0',
-          marginBottom: '1.25rem',
-          overflowX: 'auto',
-          boxShadow: '0 1px 3px rgba(0,0,0,0.03)'
-        }}>
+        <div className="nurse-nav-tabs-bar">
           {[
-            { id: 'home', label: '🏠 Home', badge: null },
-            { id: 'visits', label: '🚗 My Visits', badge: activeVisits.length > 0 ? activeVisits.length : null },
-            { id: 'add-patient', label: '➕ Add Patient', badge: '+50 Pts' },
-            { id: 'my-money', label: '💰 My Earnings', badge: null },
-            { id: 'profile', label: '👤 My Profile', badge: null }
+            { id: 'home', icon: '🏠', label: 'Home', badge: null },
+            { id: 'visits', icon: '🚗', label: 'Visits', badge: activeVisits.length > 0 ? activeVisits.length : null },
+            { id: 'add-patient', icon: '➕', label: 'Add Patient', badge: '+50' },
+            { id: 'my-money', icon: '💰', label: 'Earnings', badge: null },
+            { id: 'profile', icon: '👤', label: 'Profile', badge: null }
           ].map((tab) => {
             const isSelected = activeTab === tab.id;
             return (
@@ -562,33 +499,24 @@ export const NurseDashboard: React.FC<NurseDashboardProps> = ({
                 key={tab.id}
                 type="button"
                 onClick={() => setActiveTab(tab.id as any)}
+                className="nurse-nav-tab-btn"
                 style={{
-                  flex: '1 1 auto',
-                  minWidth: 110,
-                  padding: '0.65rem 0.9rem',
-                  borderRadius: 10,
-                  border: 'none',
                   background: isSelected ? '#0284C7' : 'transparent',
                   color: isSelected ? '#FFFFFF' : '#475569',
-                  fontWeight: isSelected ? 800 : 600,
-                  fontSize: '0.88rem',
-                  cursor: 'pointer',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  gap: '0.35rem',
-                  transition: 'all 0.15s ease'
+                  fontWeight: isSelected ? 800 : 600
                 }}
               >
-                <span>{tab.label}</span>
+                <span className="tab-icon">{tab.icon}</span>
+                <span className="tab-title">{tab.label}</span>
                 {tab.badge !== null && (
                   <span style={{
                     background: isSelected ? '#FFFFFF' : '#EF4444',
                     color: isSelected ? '#0284C7' : '#FFFFFF',
-                    fontSize: '0.68rem',
+                    fontSize: '0.65rem',
                     fontWeight: 800,
-                    padding: '1px 6px',
-                    borderRadius: 9999
+                    padding: '1px 5px',
+                    borderRadius: 9999,
+                    lineHeight: 1
                   }}>
                     {tab.badge}
                   </span>
@@ -627,7 +555,7 @@ export const NurseDashboard: React.FC<NurseDashboardProps> = ({
                 </p>
               </div>
 
-              <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
+              <div className="nurse-hero-btns" style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
                 <button
                   type="button"
                   onClick={() => setActiveTab('add-patient')}

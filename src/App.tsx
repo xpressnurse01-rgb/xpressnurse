@@ -265,6 +265,62 @@ export const App: React.FC = () => {
     try { localStorage.setItem('xn_cached_app_users', JSON.stringify(appUsers)); } catch {}
   }, [appUsers]);
 
+  // Treat all referred patients as bookings: ensure every patient lead has a corresponding booking in bookings
+  useEffect(() => {
+    let hasNewBookings = false;
+    let syncedBookings = [...bookings];
+
+    leads.forEach((l) => {
+      const isPatient = (l.referralType !== 'nurse' && !l.referredNursePhone && Boolean(l.patientName));
+      if (!isPatient || !l.patientName) return;
+
+      const cleanPhone = (l.patientPhone || '').replace(/\D/g, '');
+      const exists = syncedBookings.some((b) =>
+        (cleanPhone && b.patientPhone && b.patientPhone.replace(/\D/g, '') === cleanPhone) ||
+        (b.referringNurseId === l.nurseId && b.patientName && b.patientName.toLowerCase() === l.patientName!.toLowerCase())
+      );
+
+      if (!exists) {
+        hasNewBookings = true;
+        const refNurse = nurses.find((n) => n.id === l.nurseId);
+        const procedure = services.find((s) => s.id === l.serviceId);
+        const fee = Number(l.leadValueRupees) || (procedure?.priceNumber || 800);
+        const comm = Number(l.referralCommissionRupees) || Math.round(fee * 0.10);
+        const assignedNurse = l.assignedNurseId ? nurses.find((n) => n.id === l.assignedNurseId) : null;
+        const bStatus = l.status === 'Converted' ? 'Completed' : (l.assignedNurseId ? 'Assigned' : 'Pending');
+
+        const synthBooking: Booking = {
+          id: `BK-${l.id.replace(/\D/g, '').slice(-4) || Date.now().toString().slice(-6)}`,
+          patientName: l.patientName,
+          patientPhone: l.patientPhone || '',
+          area: l.area || 'Hyderabad Central',
+          fullAddress: l.fullAddress || '',
+          serviceId: l.serviceId || 'saline-infusion',
+          serviceTitle: procedure?.title || l.serviceId || 'Clinical Service',
+          estimatedFee: fee,
+          status: bStatus,
+          assignedNurseId: l.assignedNurseId || undefined,
+          assignedNurseName: assignedNurse ? `${assignedNurse.name} (${assignedNurse.serviceArea})` : undefined,
+          nurseAcceptanceStatus: l.assignedNurseId ? 'Accepted' : undefined,
+          createdAt: l.submittedAt || new Date().toISOString(),
+          hasPrescription: false,
+          referringNurseId: l.nurseId,
+          referringNurseName: refNurse?.name || 'Referred Nurse',
+          referralBonusRupees: comm,
+          notes: `${l.notes ? 'Description: ' + l.notes + ' | ' : ''}Patient Referral by ${refNurse?.name || 'Nurse'}. [50 points + ₹${comm} (10%) credited upon visit completion]`
+        };
+
+        syncedBookings.unshift(synthBooking);
+        dbSaveBooking(synthBooking);
+      }
+    });
+
+    if (hasNewBookings) {
+      setBookings(syncedBookings);
+      try { localStorage.setItem('xn_cached_bookings', JSON.stringify(syncedBookings)); } catch {}
+    }
+  }, [leads, services, nurses]);
+
   // Master Scroll-Driven Slide-Down & Reveal Animation Engine
   useEffect(() => {
     const observerCallback: IntersectionObserverCallback = (entries) => {
@@ -543,11 +599,60 @@ export const App: React.FC = () => {
       ]);
 
       if (remoteBookings !== null) {
+        const effectiveLeads = remoteLeads !== null ? remoteLeads : leads;
+        const effectiveNurses = remoteNurses !== null ? remoteNurses : nurses;
+        const mergedBookings = [...remoteBookings];
+
+        // Ensure every patient referral from leads is also present in bookings
+        effectiveLeads.forEach((l) => {
+          const isPatient = (l.referralType !== 'nurse' && !l.referredNursePhone && Boolean(l.patientName));
+          if (!isPatient || !l.patientName) return;
+
+          const cleanPhone = (l.patientPhone || '').replace(/\D/g, '');
+          const exists = mergedBookings.some((b) =>
+            (cleanPhone && b.patientPhone && b.patientPhone.replace(/\D/g, '') === cleanPhone) ||
+            (b.referringNurseId === l.nurseId && b.patientName && b.patientName.toLowerCase() === l.patientName!.toLowerCase())
+          );
+
+          if (!exists) {
+            const refNurse = effectiveNurses.find((n) => n.id === l.nurseId);
+            const procedure = services.find((s) => s.id === l.serviceId);
+            const fee = Number(l.leadValueRupees) || (procedure?.priceNumber || 800);
+            const comm = Number(l.referralCommissionRupees) || Math.round(fee * 0.10);
+            const assignedNurse = l.assignedNurseId ? effectiveNurses.find((n) => n.id === l.assignedNurseId) : null;
+            const bStatus = l.status === 'Converted' ? 'Completed' : (l.assignedNurseId ? 'Assigned' : 'Pending');
+
+            const synthBooking: Booking = {
+              id: `BK-${l.id.replace(/\D/g, '').slice(-4) || Date.now().toString().slice(-6)}`,
+              patientName: l.patientName,
+              patientPhone: l.patientPhone || '',
+              area: l.area || 'Hyderabad Central',
+              fullAddress: l.fullAddress || '',
+              serviceId: l.serviceId || 'saline-infusion',
+              serviceTitle: procedure?.title || l.serviceId || 'Clinical Service',
+              estimatedFee: fee,
+              status: bStatus,
+              assignedNurseId: l.assignedNurseId || undefined,
+              assignedNurseName: assignedNurse ? `${assignedNurse.name} (${assignedNurse.serviceArea})` : undefined,
+              nurseAcceptanceStatus: l.assignedNurseId ? 'Accepted' : undefined,
+              createdAt: l.submittedAt || new Date().toISOString(),
+              hasPrescription: false,
+              referringNurseId: l.nurseId,
+              referringNurseName: refNurse?.name || 'Referred Nurse',
+              referralBonusRupees: comm,
+              notes: `${l.notes ? 'Description: ' + l.notes + ' | ' : ''}Patient Referral by ${refNurse?.name || 'Nurse'}. [50 points + ₹${comm} (10%) credited upon visit completion]`
+            };
+
+            mergedBookings.unshift(synthBooking);
+            dbSaveBooking(synthBooking);
+          }
+        });
+
         setBookings((prev) => {
-          if (prev.length === remoteBookings.length && JSON.stringify(prev) === JSON.stringify(remoteBookings)) {
+          if (prev.length === mergedBookings.length && JSON.stringify(prev) === JSON.stringify(mergedBookings)) {
             return prev;
           }
-          return remoteBookings;
+          return mergedBookings;
         });
       }
       if (remoteNurses !== null) {
@@ -1030,8 +1135,46 @@ export const App: React.FC = () => {
     broadcastRealtimeUpdate('LEAD_CREATE', pendingLead);
     dbSaveLead(pendingLead);
 
-    // Track total submitted referrals counter ONLY. 50 points and 10% commission are strictly credited AFTER Admin approval!
+    // Treat referred patient also as a booking: immediately queue in Bookings & Assign Nurses
+    const isPatient = (newLead.referralType !== 'nurse' && !newLead.referredNursePhone);
     const referringNurse = nurses.find((n) => n.id === newLead.nurseId);
+    if (isPatient && newLead.patientName) {
+      const pName = newLead.patientName.trim();
+      const cleanPhone = (newLead.patientPhone || '').replace(/\D/g, '');
+      const existingB = bookings.find((b) =>
+        (cleanPhone && b.patientPhone && b.patientPhone.replace(/\D/g, '') === cleanPhone) ||
+        (b.referringNurseId === newLead.nurseId && b.patientName && b.patientName.toLowerCase() === pName.toLowerCase())
+      );
+      if (!existingB) {
+        const newBookingId = `BK-${Date.now().toString().slice(-6)}`;
+        const refBooking: Booking = {
+          id: newBookingId,
+          patientName: pName,
+          patientPhone: newLead.patientPhone || '',
+          area: newLead.area || 'Hyderabad Central',
+          fullAddress: newLead.fullAddress || '',
+          serviceId: newLead.serviceId || 'saline-infusion',
+          serviceTitle: procedure?.title || newLead.serviceId || 'Clinical Service',
+          estimatedFee: fee,
+          status: 'Pending',
+          createdAt: new Date().toISOString(),
+          hasPrescription: false,
+          referringNurseId: newLead.nurseId,
+          referringNurseName: referringNurse?.name || 'Referred Nurse',
+          referralBonusRupees: commissionRupees,
+          notes: `${newLead.notes ? 'Description: ' + newLead.notes + ' | ' : ''}Patient Referral by ${referringNurse?.name || 'Nurse'}. [Awaiting Office Dispatch - 50 points + ₹${commissionRupees} (10%) credited upon visit completion]`
+        };
+        setBookings((prev) => {
+          const next = [refBooking, ...prev];
+          try { localStorage.setItem('xn_cached_bookings', JSON.stringify(next)); } catch {}
+          return next;
+        });
+        broadcastRealtimeUpdate('BOOKING_UPDATE', refBooking);
+        dbSaveBooking(refBooking);
+      }
+    }
+
+    // Track total submitted referrals counter ONLY. 50 points and 10% commission are strictly credited AFTER Admin approval!
     if (referringNurse) {
       const updatedReferringNurse: NurseProfile = {
         ...referringNurse,
@@ -1049,14 +1192,13 @@ export const App: React.FC = () => {
     leadId: string,
     pointsAwarded: number = 50,
     referralRupees: number = 0,
-    adminNotes?: string
-  ) => {
+    adminNotes?: string,
+    assignToNurseId?: string
+  ): Promise<string | undefined> => {
     const lead = leads.find((l) => l.id === leadId);
-    if (!lead) return;
+    if (!lead) return undefined;
 
-    // Prevent double approval / double point crediting
-    if (lead.status === 'Approved') return;
-
+    const isAlreadyApproved = lead.status === 'Approved' || lead.status === 'Converted';
     const pointsToCredit = pointsAwarded > 0 ? pointsAwarded : 50;
     const procedure = services.find((s) => s.id === lead.serviceId);
     const fee = Number(lead.leadValueRupees) || (procedure?.priceNumber || 800);
@@ -1067,17 +1209,21 @@ export const App: React.FC = () => {
           : (lead.referralType === 'nurse' || lead.referredNursePhone ? 0 : Math.round(fee * 0.10)));
 
     const isNurseReferral = lead.referralType === 'nurse' || Boolean(lead.referredNursePhone);
+    const assignedNurse = assignToNurseId ? nurses.find((n) => n.id === assignToNurseId) : undefined;
 
     const approvedLead: NurseLead = {
       ...lead,
       status: 'Approved',
+      assignedNurseId: assignToNurseId || lead.assignedNurseId,
       pointsAwarded: pointsToCredit,
       referralCommissionRupees: commissionRupees,
-      approvedAt: new Date().toISOString(),
+      approvedAt: lead.approvedAt || new Date().toISOString(),
       approvedBy: 'Admin',
       adminNotes: adminNotes || (isNurseReferral 
         ? `Referred nurse approved (+${pointsToCredit} points credited)`
-        : `Patient approved & booking queued. 50 points + 10% commission credited after assigned nurse completes visit.`
+        : assignToNurseId && assignedNurse
+        ? `Patient approved & assigned to ${assignedNurse.name}. 50 points + ₹${commissionRupees} (10%) credited upon visit completion.`
+        : `Patient approved & booking queued in Assign Nurses. 50 points + 10% commission credited after assigned nurse completes visit.`
       )
     };
 
@@ -1103,10 +1249,9 @@ export const App: React.FC = () => {
       await dbUpdateNurse(activatedNurse);
     }
 
-    // For Nurse Referral: credit referring nurse 50 points upon nurse verification.
-    // For Patient Referral: DO NOT credit points or rupees yet! Points + 10% commission are strictly credited when the assigned nurse completes the visit.
+    // For Nurse Referral: credit referring nurse 50 points upon nurse verification (only if not already credited).
     const referringNurse = nurses.find((n) => n.id === lead.nurseId);
-    if (referringNurse && isNurseReferral) {
+    if (referringNurse && isNurseReferral && !isAlreadyApproved) {
       const updatedNurse: NurseProfile = {
         ...referringNurse,
         pointsEarned: (referringNurse.pointsEarned || 0) + pointsToCredit,
@@ -1122,41 +1267,76 @@ export const App: React.FC = () => {
       await dbUpdateNurse(updatedNurse);
     }
 
-    // Update matching booking's referral bonus record, or create a new booking
-    const existingBooking = bookings.find((b) => b.patientPhone === lead.patientPhone || (b.referringNurseId === lead.nurseId && b.patientName === lead.patientName));
-    
-    if (existingBooking) {
-      const updatedB = {
-        ...existingBooking,
-        referralBonusRupees: commissionRupees,
-        notes: `${existingBooking.notes || ''} [Approved: 50 points + ₹${commissionRupees} (10%) credited upon visit completion]`.trim()
-      };
-      setBookings((prev) => prev.map(b => b.id === existingBooking.id ? updatedB : b));
-      broadcastRealtimeUpdate('BOOKING_UPDATE', updatedB);
-      await dbSaveBooking(updatedB);
-    } else if (lead.referralType !== 'nurse' && lead.patientName) {
-      const newBookingId = `BK-${Date.now().toString().slice(-6)}`;
-      const newBooking: Booking = {
-        id: newBookingId,
-        patientName: lead.patientName,
-        patientPhone: lead.patientPhone || '',
-        area: lead.area || '',
-        fullAddress: lead.fullAddress || '',
-        serviceId: lead.serviceId || 'c_basic',
-        serviceTitle: services.find((s) => s.id === lead.serviceId)?.title || lead.serviceId || 'Clinical Service',
-        estimatedFee: lead.leadValueRupees || 800,
-        status: 'Pending',
-        createdAt: new Date().toISOString(),
-        hasPrescription: false,
-        referringNurseId: lead.nurseId,
-        referringNurseName: referringNurse?.name || 'Assigned Nurse',
-        referralBonusRupees: commissionRupees,
-        notes: `${lead.notes ? 'Description: ' + lead.notes + ' | ' : ''}Auto-created from Patient Referral. [50 points + ₹${commissionRupees} (10%) credited upon visit completion]`
-      };
-      setBookings((prev) => [newBooking, ...prev]);
-      broadcastRealtimeUpdate('BOOKING_UPDATE', newBooking);
-      await dbSaveBooking(newBooking);
+    // For patient referrals: Guarantee a fresh booking is queued in "Assign Nurses" (or assigned to chosen nurse)
+    let bookingResultId: string | undefined = undefined;
+    if (!isNurseReferral && lead.patientName) {
+      const cleanLeadPhone = (lead.patientPhone || '').replace(/\D/g, '');
+      const existingBooking = bookings.find((b) => 
+        (cleanLeadPhone && b.patientPhone && b.patientPhone.replace(/\D/g, '') === cleanLeadPhone) ||
+        (b.referringNurseId === lead.nurseId && b.patientName && lead.patientName && b.patientName.toLowerCase() === lead.patientName.toLowerCase())
+      );
+
+      const targetStatus = assignToNurseId ? 'Assigned' : (existingBooking && existingBooking.status === 'Completed' ? 'Completed' : 'Pending');
+      const assignedName = assignToNurseId && assignedNurse ? `${assignedNurse.name} (${assignedNurse.serviceArea})` : (existingBooking?.assignedNurseName);
+
+      if (existingBooking) {
+        bookingResultId = existingBooking.id;
+        const updatedB: Booking = {
+          ...existingBooking,
+          status: targetStatus,
+          assignedNurseId: assignToNurseId || existingBooking.assignedNurseId,
+          assignedNurseName: assignedName,
+          nurseAcceptanceStatus: assignToNurseId ? 'Pending' : existingBooking.nurseAcceptanceStatus,
+          nursePayoutRupees: assignToNurseId ? Math.round(fee * 0.70) : existingBooking.nursePayoutRupees,
+          referringNurseId: lead.nurseId,
+          referringNurseName: referringNurse?.name || 'Referred Nurse',
+          referralBonusRupees: commissionRupees,
+          area: existingBooking.area || lead.area || 'Hyderabad Central',
+          serviceId: existingBooking.serviceId || lead.serviceId || 'saline-infusion',
+          notes: `${existingBooking.notes || ''} [Approved: 50 points + ₹${commissionRupees} (10%) credited upon visit completion]`.trim()
+        };
+        setBookings((prev) => {
+          const next = prev.map((b) => (b.id === existingBooking.id ? updatedB : b));
+          try { localStorage.setItem('xn_cached_bookings', JSON.stringify(next)); } catch {}
+          return next;
+        });
+        broadcastRealtimeUpdate('BOOKING_UPDATE', updatedB);
+        await dbSaveBooking(updatedB);
+      } else {
+        const newBookingId = `BK-${Date.now().toString().slice(-6)}`;
+        bookingResultId = newBookingId;
+        const newBooking: Booking = {
+          id: newBookingId,
+          patientName: lead.patientName,
+          patientPhone: lead.patientPhone || '',
+          area: lead.area || 'Hyderabad Central',
+          fullAddress: lead.fullAddress || '',
+          serviceId: lead.serviceId || 'saline-infusion',
+          serviceTitle: services.find((s) => s.id === lead.serviceId)?.title || lead.serviceId || 'Clinical Service',
+          estimatedFee: fee,
+          status: targetStatus,
+          assignedNurseId: assignToNurseId || undefined,
+          assignedNurseName: assignedName,
+          nurseAcceptanceStatus: assignToNurseId ? 'Pending' : undefined,
+          nursePayoutRupees: assignToNurseId ? Math.round(fee * 0.70) : undefined,
+          createdAt: new Date().toISOString(),
+          hasPrescription: false,
+          referringNurseId: lead.nurseId,
+          referringNurseName: referringNurse?.name || 'Referred Nurse',
+          referralBonusRupees: commissionRupees,
+          notes: `${lead.notes ? 'Description: ' + lead.notes + ' | ' : ''}Patient Referral by ${referringNurse?.name || 'Nurse'}. [50 points + ₹${commissionRupees} (10%) credited upon visit completion]`
+        };
+        setBookings((prev) => {
+          const next = [newBooking, ...prev];
+          try { localStorage.setItem('xn_cached_bookings', JSON.stringify(next)); } catch {}
+          return next;
+        });
+        broadcastRealtimeUpdate('BOOKING_UPDATE', newBooking);
+        await dbSaveBooking(newBooking);
+      }
     }
+
+    return bookingResultId;
   };
 
   // Handler: Admin Rejects Lead — strictly removes points and commission if previously approved
@@ -1334,6 +1514,25 @@ export const App: React.FC = () => {
           };
           broadcastRealtimeUpdate('BOOKING_UPDATE', updated);
           dbSaveBooking(updated);
+
+          // Link assignedNurseId to matching patient referral lead
+          if (b.referringNurseId) {
+            const bPhoneClean = (b.patientPhone || '').replace(/\D/g, '');
+            const matchingLead = leads.find(l => 
+              (bPhoneClean && l.patientPhone && l.patientPhone.replace(/\D/g, '') === bPhoneClean) ||
+              (l.nurseId === b.referringNurseId && l.patientName && b.patientName && l.patientName.toLowerCase() === b.patientName.toLowerCase())
+            );
+            if (matchingLead) {
+              const updatedLead: NurseLead = {
+                ...matchingLead,
+                assignedNurseId: nurseId
+              };
+              setLeads((prevLeads) => prevLeads.map(l => l.id === matchingLead.id ? updatedLead : l));
+              broadcastRealtimeUpdate('LEAD_UPDATE', updatedLead);
+              dbUpdateLeadById(matchingLead.id, updatedLead);
+            }
+          }
+
           return updated;
         }
         return b;

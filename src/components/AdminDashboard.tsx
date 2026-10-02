@@ -108,7 +108,7 @@ interface AdminDashboardProps {
   onCreateLead?: (lead: NurseLead) => Promise<void>;
   onUpdateLead?: (id: string, updates: Partial<NurseLead>) => Promise<void>;
   onDeleteLead?: (id: string) => Promise<void>;
-  onApproveLead?: (leadId: string, pointsAwarded: number, referralRupees: number, adminNotes?: string) => Promise<void>;
+  onApproveLead?: (leadId: string, pointsAwarded: number, referralRupees: number, adminNotes?: string, assignToNurseId?: string) => Promise<string | undefined | void>;
   onRejectLead?: (leadId: string, adminNotes?: string) => Promise<void>;
   // Services CRUD
   onCreateService?: (service: ServiceItem) => Promise<void>;
@@ -982,6 +982,8 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
     const matchesStatus = 
       bookingStatusFilter === 'all' 
         ? true 
+        : bookingStatusFilter === 'Referrals'
+        ? Boolean(b.referringNurseId)
         : bookingStatusFilter === 'Nurse-Declined'
         ? isNurseDeclined
         : bookingStatusFilter === 'Accepted'
@@ -1724,12 +1726,14 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
   const [approvalPoints, setApprovalPoints] = useState<number>(50);
   const [approvalReferralRupees, setApprovalReferralRupees] = useState<number>(80);
   const [approvalNotes, setApprovalNotes] = useState<string>('');
+  const [approvalAssignNurseId, setApprovalAssignNurseId] = useState<string>('');
   const [isRejectConfirmOpen, setIsRejectConfirmOpen] = useState<boolean>(false);
   const [rejectReason, setRejectReason] = useState<string>('');
   const [isProcessingApproval, setIsProcessingApproval] = useState<boolean>(false);
 
   const handleOpenApproveModal = (lead: NurseLead) => {
     setApprovalModalLead(lead);
+    setApprovalAssignNurseId(lead.assignedNurseId || '');
     
     // Calculate 10% of procedure value if it's a patient lead, otherwise 50 rupees for nurse lead
     let defaultRupees = 50; // Default 50 for nurse referrals
@@ -1750,16 +1754,77 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
     if (!approvalModalLead || !onApproveLead) return;
     setIsProcessingApproval(true);
     try {
-      await onApproveLead(approvalModalLead.id, approvalPoints, approvalReferralRupees, approvalNotes);
-      const referringNurse = nurses.find((n) => n.id === approvalModalLead.nurseId);
       const isPatient = approvalModalLead.referralType !== 'nurse' && !approvalModalLead.referredNursePhone;
-      showToast(isPatient
-        ? `Patient Referral approved & booking queued! 50 points + ₹${approvalReferralRupees} (10%) will be credited to ${referringNurse?.name || 'Nurse'} once the visit is completed.`
-        : `Nurse Referral ${approvalModalLead.id} approved! Credited +${approvalPoints} points and ₹${approvalReferralRupees} to ${referringNurse?.name || 'Nurse'}.`
+      const createdBookingId = await onApproveLead(
+        approvalModalLead.id,
+        approvalPoints,
+        approvalReferralRupees,
+        approvalNotes,
+        isPatient ? (approvalAssignNurseId || undefined) : undefined
       );
-      setApprovalModalLead(null);
+
+      const referringNurse = nurses.find((n) => n.id === approvalModalLead.nurseId);
+      const assignedNurse = approvalAssignNurseId ? nurses.find(n => n.id === approvalAssignNurseId) : null;
+
+      if (isPatient) {
+        if (assignedNurse) {
+          showToast(`✓ Patient Referral approved & assigned to ${assignedNurse.name}! 50 points + ₹${approvalReferralRupees} will credit to ${referringNurse?.name || 'Nurse'} once visit is done.`);
+        } else {
+          showToast(`✓ Patient Referral approved & booking queued in Assign Nurses! 50 points + ₹${approvalReferralRupees} credited upon visit completion.`);
+        }
+        setApprovalModalLead(null);
+        setActiveTab('routing');
+
+        // If unassigned, automatically open the nurse search assign dialog for this booking
+        setTimeout(() => {
+          const targetB = bookings.find(b => 
+            (createdBookingId && b.id === createdBookingId) ||
+            (approvalModalLead.patientPhone && b.patientPhone === approvalModalLead.patientPhone) ||
+            (approvalModalLead.patientName && b.patientName && b.patientName.toLowerCase() === approvalModalLead.patientName.toLowerCase())
+          );
+          if (targetB && targetB.status === 'Pending') {
+            setSearchAssignBooking(targetB);
+            setNurseSearchQuery('');
+            setNurseSearchFilterArea(targetB.area || 'all');
+          }
+        }, 120);
+      } else {
+        showToast(`Nurse Referral ${approvalModalLead.id} approved! Credited +${approvalPoints} points and ₹${approvalReferralRupees} to ${referringNurse?.name || 'Nurse'}.`);
+        setApprovalModalLead(null);
+      }
     } catch {
       showToast('Error approving referral in Supabase', 'error');
+    } finally {
+      setIsProcessingApproval(false);
+    }
+  };
+
+  const handleQuickAssignLead = async (lead: NurseLead) => {
+    setIsProcessingApproval(true);
+    try {
+      let bId: string | undefined = undefined;
+      if (onApproveLead && (lead.status === 'Pending Approval' || lead.status === 'Submitted')) {
+        const procedure = services.find(s => s.id === lead.serviceId);
+        const fee = Number(lead.leadValueRupees) || (procedure?.priceNumber || 800);
+        const comm = Math.round(fee * 0.10);
+        bId = (await onApproveLead(lead.id, 50, comm, 'Approved for direct dispatch')) as any;
+      }
+      setActiveTab('routing');
+      setTimeout(() => {
+        const cleanLeadPhone = (lead.patientPhone || '').replace(/\D/g, '');
+        const targetB = bookings.find(b => 
+          (bId && b.id === bId) ||
+          (cleanLeadPhone && b.patientPhone && b.patientPhone.replace(/\D/g, '') === cleanLeadPhone) ||
+          (lead.patientName && b.patientName && b.patientName.toLowerCase() === lead.patientName.toLowerCase())
+        );
+        if (targetB) {
+          setSearchAssignBooking(targetB);
+          setNurseSearchQuery('');
+          setNurseSearchFilterArea(targetB.area || 'all');
+        }
+      }, 120);
+    } catch {
+      showToast('Error routing lead to Assign Nurses', 'error');
     } finally {
       setIsProcessingApproval(false);
     }
@@ -2276,6 +2341,13 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                               </span>
                             )}
                           </div>
+                          {b.referringNurseId && (
+                            <div style={{ marginTop: '0.2rem' }}>
+                              <span style={{ fontSize: '0.7rem', background: '#FEF3C7', color: '#92400E', padding: '2px 7px', borderRadius: 9999, fontWeight: 700, border: '1px solid #FDE68A', display: 'inline-flex', alignItems: 'center', gap: '3px' }}>
+                                ⭐ Nurse Referral ({b.referringNurseName || 'Nurse'})
+                              </span>
+                            </div>
+                          )}
                         </td>
                         <td style={{ whiteSpace: 'nowrap' }}>
                           <span style={{ fontWeight: 650, color: '#1E293B' }}>{b.serviceTitle}</span>
@@ -2576,6 +2648,9 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                 }}
               >
                 <option value="all">All Bookings ({bookings.length})</option>
+                <option value="Referrals" style={{ color: '#D97706', fontWeight: 700 }}>
+                  ⭐ Nurse Patient Referrals ({bookings.filter(b => Boolean(b.referringNurseId)).length})
+                </option>
                 {nurseDeclinedBookings.length > 0 && (
                   <option value="Nurse-Declined" style={{ color: '#DC2626', fontWeight: 800 }}>
                     ⚠️ Nurse Declined (Referral Needed) ({nurseDeclinedBookings.length})
@@ -2678,6 +2753,13 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                           <span style={{ fontSize: '0.74rem', color: '#94A3B8', fontWeight: 600 }}>✕ Contact Hidden (Rejected)</span>
                         ) : (
                           <div style={{ fontSize: '0.76rem', color: '#64748B', fontFamily: 'monospace', whiteSpace: 'nowrap' }}>{b.patientPhone}</div>
+                        )}
+                        {b.referringNurseId && (
+                          <div style={{ marginTop: '0.2rem' }}>
+                            <span style={{ fontSize: '0.7rem', background: '#FEF3C7', color: '#92400E', padding: '2px 7px', borderRadius: 9999, fontWeight: 700, border: '1px solid #FDE68A', display: 'inline-flex', alignItems: 'center', gap: '3px', whiteSpace: 'nowrap' }}>
+                              ⭐ Nurse Referral ({b.referringNurseName || 'Nurse'})
+                            </span>
+                          </div>
                         )}
                       </td>
                       <td style={{ whiteSpace: 'nowrap' }}>
@@ -4155,6 +4237,31 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                               >
                                 <Award size={12} />
                                 <span>Edit</span>
+                              </button>
+                            )}
+
+                            {l.referralType !== 'nurse' && !l.referredNursePhone && !isRejected && (
+                              <button
+                                type="button"
+                                onClick={() => handleQuickAssignLead(l)}
+                                style={{
+                                  background: '#0284C7',
+                                  color: '#FFFFFF',
+                                  border: 'none',
+                                  borderRadius: 6,
+                                  padding: '0.3rem 0.65rem',
+                                  fontWeight: 700,
+                                  fontSize: '0.74rem',
+                                  cursor: 'pointer',
+                                  display: 'inline-flex',
+                                  alignItems: 'center',
+                                  gap: '0.3rem',
+                                  boxShadow: '0 2px 5px rgba(2,132,199,0.25)'
+                                }}
+                                title="Dispatch / Assign Local Nurse to this Patient"
+                              >
+                                <Shuffle size={12} />
+                                <span>🚗 Assign Nurse</span>
                               </button>
                             )}
 
@@ -7408,14 +7515,53 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                         </div>
                         <div>
                           <div style={{ fontWeight: 800, color: '#065F46', fontSize: '1rem' }}>
-                            Referral Reward: +50 Points
+                            Referral Reward: +50 Points {approvalModalLead.referralType !== 'nurse' && !approvalModalLead.referredNursePhone ? `+ 10% Fee (₹${approvalReferralRupees})` : ''}
                           </div>
                           <div style={{ fontSize: '0.82rem', color: '#047857', marginTop: '0.15rem' }}>
-                            Credited directly to <strong>{referringNurse?.name || 'Nurse'}</strong> upon approval.
+                            {approvalModalLead.referralType !== 'nurse' && !approvalModalLead.referredNursePhone
+                              ? `Credited to referring nurse (${referringNurse?.name || 'Nurse'}) after assigned nurse completes the doorstep visit.`
+                              : `Credited directly to ${referringNurse?.name || 'Nurse'} upon certificate verification.`}
                           </div>
                         </div>
                       </div>
                     </div>
+
+                    {/* Patient Referral Dispatch / Nurse Assignment Option */}
+                    {approvalModalLead.referralType !== 'nurse' && !approvalModalLead.referredNursePhone && (
+                      <div style={{
+                        marginBottom: '1.25rem',
+                        background: '#F0F9FF',
+                        border: '1.5px solid #0284C7',
+                        borderRadius: 12,
+                        padding: '0.9rem 1.1rem'
+                      }}>
+                        <label className="form-label" style={{ fontSize: '0.84rem', fontWeight: 800, color: '#0369A1', display: 'flex', alignItems: 'center', gap: '0.35rem', marginBottom: '0.35rem' }}>
+                          <Shuffle size={14} />
+                          <span>🚗 Assign to Local Nurse Now (Optional)</span>
+                        </label>
+                        <select
+                          value={approvalAssignNurseId}
+                          onChange={(e) => setApprovalAssignNurseId(e.target.value)}
+                          className="form-control"
+                          style={{ fontSize: '0.85rem', fontWeight: 600, background: '#FFFFFF', borderColor: '#BAE6FD' }}
+                        >
+                          <option value="">Leave Unassigned (Queue directly in "🚗 Assign Nurses" tab)</option>
+                          {nurses
+                            .filter((n) => n.certificateVerified)
+                            .sort((a, b) => (a.serviceArea === approvalModalLead.area ? -1 : 1))
+                            .map((n) => (
+                              <option key={n.id} value={n.id}>
+                                {n.name} — {n.serviceArea} {n.serviceArea === approvalModalLead.area ? '⭐ (Local Area Match)' : ''}
+                              </option>
+                            ))}
+                        </select>
+                        <p style={{ fontSize: '0.74rem', color: '#0369A1', margin: '0.35rem 0 0' }}>
+                          {approvalAssignNurseId
+                            ? `✓ Patient will be immediately assigned to ${nurses.find(n => n.id === approvalAssignNurseId)?.name}. Points (+50) will credit to referring nurse once visit is completed.`
+                            : 'Order will queue in "🚗 Assign Nurses" tab and switch there immediately so you can dispatch.'}
+                        </p>
+                      </div>
+                    )}
 
                     {/* Admin Input: Optional Note */}
                     <div style={{ marginBottom: '1.25rem' }}>
@@ -7527,7 +7673,13 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                           }}
                         >
                           <CheckCircle size={16} />
-                          <span>{isProcessingApproval ? 'Approving...' : '✓ Approve (+50 Points)'}</span>
+                          <span>
+                            {isProcessingApproval
+                              ? 'Approving...'
+                              : approvalAssignNurseId
+                              ? `✓ Approve & Assign to ${nurses.find(n => n.id === approvalAssignNurseId)?.name.split(' ')[0] || 'Nurse'}`
+                              : '✓ Approve & Go to Assign Nurse'}
+                          </span>
                         </button>
                       </div>
                     </div>

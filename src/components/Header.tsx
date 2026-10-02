@@ -58,8 +58,8 @@ export const Header: React.FC<HeaderProps> = ({
 
           {/* Center Navigation Links (Hidden on dedicated portal/login routes) */}
           {isPortalRoute ? (
-            <div className="header-portal-info">
-              <span className="section-badge" style={{ margin: 0 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem' }}>
+              <span className="section-badge desktop-only-cta" style={{ margin: 0, whiteSpace: 'nowrap' }}>
                 {currentPath === '/nurse' && 'Nurse Portal'}
                 {currentPath === '/doctor' && 'Doctor Panel'}
                 {currentPath === '/admin' && 'Admin Operations'}
@@ -69,10 +69,18 @@ export const Header: React.FC<HeaderProps> = ({
               <button
                 onClick={() => onNavigate('/')}
                 className="btn btn-outline btn-sm"
-                style={{ display: 'inline-flex', alignItems: 'center', gap: '0.35rem' }}
+                style={{
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: '0.35rem',
+                  padding: '0.35rem 0.75rem',
+                  fontSize: '0.8rem',
+                  borderRadius: 8,
+                  fontWeight: 700
+                }}
               >
                 <ArrowLeft size={14} />
-                <span>Back to Home</span>
+                <span>Home</span>
               </button>
             </div>
           ) : (

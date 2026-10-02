@@ -5702,6 +5702,128 @@ button,
   font-weight: 400 !important;
 }
 
+/* ==========================================================================
+   NURSE DASHBOARD MOBILE ALIGNMENT & SYMMETRY (CORNERED, EDGE-TO-EDGE)
+   ========================================================================== */
+.nurse-top-stats {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+}
+
+.nurse-nav-tabs-bar {
+  display: flex;
+  gap: 0.4rem;
+  background: #FFFFFF;
+  padding: 0.4rem;
+  border-radius: 14px;
+  border: 1px solid #E2E8F0;
+  margin-bottom: 1.25rem;
+  overflow-x: auto;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.03);
+}
+
+.nurse-nav-tab-btn {
+  flex: 1 1 auto;
+  min-width: 105px;
+  padding: 0.65rem 0.9rem;
+  border-radius: 10px;
+  border: none;
+  font-size: 0.88rem;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.35rem;
+  transition: all 0.2s ease;
+}
+
+.nurse-hero-btns {
+  display: flex;
+  gap: 0.65rem;
+  flex-wrap: wrap;
+}
+
+@media (max-width: 640px) {
+  .nurse-profile-header-card {
+    padding: 1.15rem !important;
+    border-radius: 16px !important;
+  }
+
+  .nurse-top-stats {
+    display: grid !important;
+    grid-template-columns: repeat(3, 1fr) !important;
+    width: 100% !important;
+    gap: 0.45rem !important;
+    margin-top: 0.85rem !important;
+  }
+
+  .nurse-top-stat-box {
+    width: 100% !important;
+    min-height: 56px !important;
+    padding: 0.45rem 0.2rem !important;
+    border-radius: 12px !important;
+    display: flex !important;
+    flex-direction: column !important;
+    align-items: center !important;
+    justify-content: center !important;
+    text-align: center !important;
+    box-sizing: border-box !important;
+  }
+
+  .nurse-nav-tabs-bar {
+    display: grid !important;
+    grid-template-columns: repeat(5, 1fr) !important;
+    width: 100% !important;
+    gap: 0.25rem !important;
+    padding: 0.3rem !important;
+    overflow-x: hidden !important;
+    border-radius: 14px !important;
+    box-sizing: border-box !important;
+  }
+
+  .nurse-nav-tab-btn {
+    min-width: 0 !important;
+    width: 100% !important;
+    padding: 0.5rem 0.15rem !important;
+    font-size: 0.72rem !important;
+    display: flex !important;
+    flex-direction: column !important;
+    align-items: center !important;
+    justify-content: center !important;
+    gap: 0.2rem !important;
+    border-radius: 8px !important;
+    text-align: center !important;
+    box-sizing: border-box !important;
+  }
+
+  .nurse-nav-tab-btn span.tab-icon {
+    font-size: 1.15rem !important;
+    line-height: 1 !important;
+  }
+
+  .nurse-nav-tab-btn span.tab-title {
+    font-size: 0.72rem !important;
+    line-height: 1.1 !important;
+    white-space: nowrap !important;
+  }
+
+  .nurse-hero-btns {
+    display: grid !important;
+    grid-template-columns: 1fr 1fr !important;
+    width: 100% !important;
+    gap: 0.5rem !important;
+  }
+
+  .nurse-hero-btns > * {
+    width: 100% !important;
+    justify-content: center !important;
+    text-align: center !important;
+    padding: 0.55rem 0.5rem !important;
+    font-size: 0.8rem !important;
+  }
+}
+
 
 
 
