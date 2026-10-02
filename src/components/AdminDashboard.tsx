@@ -7942,7 +7942,8 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                       </div>
                     </div>
                   </div>
-                )}
+                  );
+                })()}
               </div>
 
               {/* Cloudflare Public URL Bar */}
