@@ -21,6 +21,7 @@ import { NotFoundPage } from './components/NotFoundPage';
 import { LoginPage } from './components/LoginPage';
 import { PolicyModal, PolicyType } from './components/PolicyModal';
 import { AuthGuard } from './components/AuthGuard';
+import { PullToRefresh } from './components/PullToRefresh';
 import { 
   supabase,
   dbFetchBookings, 
@@ -2117,8 +2118,9 @@ export const App: React.FC = () => {
         onOpenBooking={() => setIsBookingOpen(true)}
       />
 
-      {/* Main Routed Views */}
-      <main>
+      {/* Main Routed Views with Mobile Drag-Scroll Pull to Refresh */}
+      <PullToRefresh onRefresh={async () => { await refreshAllDataFromDb(true); }}>
+        <main>
         {/* Route: / -> Public Marketing Website */}
         {(currentPath === '/' || currentPath === '') && (
           <>
@@ -2160,6 +2162,7 @@ export const App: React.FC = () => {
               onUpdateNurse={handleUpdateNurse}
               onReassignBooking={handleReassignBooking}
               onUpdateBooking={handleUpdateBooking}
+              onRefreshData={() => refreshAllDataFromDb(true)}
             />
           </AuthGuard>
         )}
@@ -2256,6 +2259,7 @@ export const App: React.FC = () => {
           />
         )}
       </main>
+      </PullToRefresh>
 
       {/* Interactive Booking Modal */}
       <BookingModal

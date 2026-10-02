@@ -104,6 +104,7 @@ interface NurseDashboardProps {
   onUpdateNurse: (nurse: NurseProfile) => void;
   onReassignBooking?: (bookingId: string, targetNurseId: string) => void;
   onUpdateBooking?: (bookingId: string, updates: Partial<Booking>) => Promise<boolean | void> | void;
+  onRefreshData?: () => Promise<void> | void;
 }
 
 export const NurseDashboard: React.FC<NurseDashboardProps> = ({
@@ -116,7 +117,8 @@ export const NurseDashboard: React.FC<NurseDashboardProps> = ({
   onAddNewLead,
   onUpdateNurse,
   onReassignBooking,
-  onUpdateBooking
+  onUpdateBooking,
+  onRefreshData
 }) => {
   const serviceList: ServiceItem[] = services;
   const liveNurse = (allNurses && currentNurse)
@@ -143,6 +145,8 @@ export const NurseDashboard: React.FC<NurseDashboardProps> = ({
 
   // Ultra-simple 5 tabs with easy English words
   const [activeTab, setActiveTab] = useState<'home' | 'visits' | 'add-patient' | 'my-money' | 'profile'>('home');
+  const [isRefreshingData, setIsRefreshingData] = useState(false);
+  const [refreshMsg, setRefreshMsg] = useState('');
 
   // New Patient Form
   const [patientName, setPatientName] = useState('');
@@ -446,6 +450,46 @@ export const NurseDashboard: React.FC<NurseDashboardProps> = ({
               <div style={{ fontSize: '0.7rem', color: '#1E40AF', fontWeight: 600 }}>Active Visits</div>
               <div style={{ fontSize: '1.1rem', fontWeight: 900, color: '#1D4ED8' }}>{activeVisits.length}</div>
             </div>
+            <button
+              type="button"
+              onClick={async () => {
+                if (isRefreshingData) return;
+                setIsRefreshingData(true);
+                try {
+                  if (onRefreshData) {
+                    await onRefreshData();
+                  } else {
+                    await new Promise(r => setTimeout(r, 600));
+                  }
+                  setRefreshMsg('✓ Dashboard refreshed!');
+                  setTimeout(() => setRefreshMsg(''), 3000);
+                } catch {
+                  setRefreshMsg('✓ Refreshed!');
+                  setTimeout(() => setRefreshMsg(''), 3000);
+                } finally {
+                  setIsRefreshingData(false);
+                }
+              }}
+              disabled={isRefreshingData}
+              className="btn btn-outline"
+              style={{
+                display: 'flex',
+                flexDirection: 'column',
+                alignItems: 'center',
+                justifyContent: 'center',
+                padding: '0.45rem 0.85rem',
+                borderRadius: 12,
+                border: '1px solid #CBD5E1',
+                color: isRefreshingData ? '#0284C7' : '#0F172A',
+                background: '#F8FAFC',
+                gap: '0.1rem',
+                cursor: 'pointer'
+              }}
+              title="Refresh Dashboard"
+            >
+              <RefreshCw size={17} style={{ animation: isRefreshingData ? 'spin 1s linear infinite' : 'none', color: '#0284C7' }} />
+              <span style={{ fontSize: '0.65rem', fontWeight: 700 }}>{isRefreshingData ? 'Syncing' : 'Refresh'}</span>
+            </button>
             <a
               href="https://wa.me/917569657371"
               className="btn btn-outline"
@@ -469,6 +513,27 @@ export const NurseDashboard: React.FC<NurseDashboardProps> = ({
             </a>
           </div>
         </div>
+
+        {refreshMsg && (
+          <div style={{
+            background: '#ECFDF5',
+            border: '1px solid #A7F3D0',
+            color: '#065F46',
+            borderRadius: 12,
+            padding: '0.6rem 1rem',
+            marginBottom: '1rem',
+            fontSize: '0.85rem',
+            fontWeight: 700,
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            gap: '0.5rem',
+            animation: 'fadeIn 0.2s ease-in'
+          }}>
+            <RefreshCw size={15} style={{ color: '#059669' }} />
+            <span>{refreshMsg}</span>
+          </div>
+        )}
 
         {/* ================================================================= */}
         {/* 2. NAVIGATION BAR (Big, Easy Words - No Hard English) */}
