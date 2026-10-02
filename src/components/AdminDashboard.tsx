@@ -66,7 +66,7 @@ import {
   User
 } from 'lucide-react';
 import { EmptyState } from './EmptyState';
-import { SEED_APP_USERS, generateNurseReferralCode, dbLogAuditEvent } from '../lib/supabase';
+import { generateNurseReferralCode, dbLogAuditEvent } from '../lib/supabase';
 import { getSafeBlobUrl } from './NurseDashboard';
 import { calculateNurseMetrics } from '../lib/nurseCalculations';
 import {
@@ -141,7 +141,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
   services = [],
   consultations = [],
   coupons = [],
-  appUsers = SEED_APP_USERS,
+  appUsers = [],
   onAssignOrder,
   onAutoRouteAll,
   onCreateCoupon,

@@ -38,11 +38,6 @@ import {
   dbUpdateCoupon,
   dbDeleteCoupon,
   dbDeleteMultipleCoupons,
-  SEED_APP_USERS,
-  BASELINE_NURSES,
-  BASELINE_BOOKINGS,
-  BASELINE_LEADS,
-  BASELINE_COUPONS,
   dbFetchAppUsers,
   dbInsertBooking,
   dbUpdateBooking,
@@ -173,10 +168,12 @@ export const App: React.FC = () => {
       const cached = localStorage.getItem('xn_cached_bookings');
       if (cached !== null) {
         const parsed = JSON.parse(cached);
-        if (Array.isArray(parsed)) return parsed;
+        if (Array.isArray(parsed)) {
+          return parsed.filter(b => b.id !== 'BK-8901' && b.id !== 'BK-8902' && b.id !== 'BK-8903');
+        }
       }
     } catch { }
-    return BASELINE_BOOKINGS;
+    return [];
   });
 
   const [nurses, setNurses] = useState<NurseProfile[]>(() => {
@@ -184,7 +181,9 @@ export const App: React.FC = () => {
       const cached = localStorage.getItem('xn_cached_nurses');
       if (cached !== null) {
         const parsed = JSON.parse(cached);
-        if (Array.isArray(parsed)) return parsed;
+        if (Array.isArray(parsed)) {
+          return parsed.filter(n => n.id !== 'nurse-101' && n.id !== 'nurse-102' && n.id !== 'nurse-103' && n.id !== 'nurse-104');
+        }
       }
     } catch { }
     return [];
@@ -195,10 +194,12 @@ export const App: React.FC = () => {
       const cached = localStorage.getItem('xn_cached_leads');
       if (cached !== null) {
         const parsed = JSON.parse(cached);
-        if (Array.isArray(parsed)) return parsed;
+        if (Array.isArray(parsed)) {
+          return parsed.filter(l => l.id !== 'LD-4001' && l.id !== 'LD-4002');
+        }
       }
     } catch { }
-    return BASELINE_LEADS;
+    return [];
   });
 
   const [consultations, setConsultations] = useState<DoctorConsultation[]>(() => {
@@ -217,10 +218,12 @@ export const App: React.FC = () => {
       const cached = localStorage.getItem('xn_cached_coupons');
       if (cached !== null) {
         const parsed = JSON.parse(cached);
-        if (Array.isArray(parsed)) return parsed;
+        if (Array.isArray(parsed)) {
+          return parsed.filter(c => c.id !== 'coup-1' && c.id !== 'coup-2' && c.id !== 'coup-3');
+        }
       }
     } catch { }
-    return BASELINE_COUPONS;
+    return [];
   });
 
   const [appUsers, setAppUsers] = useState<AppUser[]>(() => {
@@ -228,10 +231,12 @@ export const App: React.FC = () => {
       const cached = localStorage.getItem('xn_cached_app_users');
       if (cached !== null) {
         const parsed = JSON.parse(cached);
-        if (Array.isArray(parsed)) return parsed;
+        if (Array.isArray(parsed)) {
+          return parsed.filter(u => u.id !== 'user-nurse-101' && u.id !== 'user-nurse-102' && u.id !== 'user-nurse-103' && u.id !== 'user-nurse-104');
+        }
       }
     } catch { }
-    return SEED_APP_USERS;
+    return [];
   });
 
   const [dbLoading, setDbLoading] = useState(false);

@@ -24,173 +24,11 @@ export const supabase = createClient(clientUrl, clientKey, {
   }
 });
 
-export const SEED_APP_USERS: AppUser[] = [
-  {
-    id: 'user-admin-1',
-    role: 'admin',
-    identifier: 'admin@xpressnurse.in',
-    name: 'Operations Dispatcher',
-    pin: '2026',
-    phone: '7569657371',
-    email: 'admin@xpressnurse.in',
-    designation: 'Fleet Supervisor & Dispatch Head',
-    serviceArea: 'Hyderabad HQ'
-  },
-  {
-    id: 'user-doc-1',
-    role: 'doctor',
-    identifier: 'dr.reddy@xpressnurse.in',
-    name: 'Dr. K. V. Reddy (MD Gen Med)',
-    pin: '4321',
-    phone: '9848011223',
-    email: 'dr.reddy@xpressnurse.in',
-    designation: 'Senior Physician',
-    serviceArea: 'Hyderabad Tele-Care'
-  }
-];
-
+export const SEED_APP_USERS: AppUser[] = [];
 export const BASELINE_NURSES: NurseProfile[] = [];
-
-
-export const BASELINE_BOOKINGS: Booking[] = [
-  {
-    id: 'BK-8901',
-    createdAt: new Date(Date.now() - 2 * 3600 * 1000).toISOString(),
-    patientName: 'K. Venkatesh Rao (68 yrs, Male)',
-    patientPhone: '98765 43210',
-    patientAge: 68,
-    patientGender: 'Male',
-    serviceId: 'saline-infusion',
-    serviceTitle: 'IV Infusions & Antibiotics Infusion',
-    area: 'Gachibowli',
-    fullAddress: 'Flat 402, Aditya Empress Towers, Gachibowli, Hyderabad',
-    preferredDate: 'Today',
-    preferredTime: '11:00 AM - 12:30 PM',
-    hasPrescription: true,
-    prescriptionFileName: 'Dr_Reddy_IV_Prescription.pdf',
-    status: 'Assigned',
-    assignedNurseId: 'nurse-101',
-    assignedNurseName: 'Nurse Priya Sharma (Gachibowli Area Match)',
-    estimatedFee: 899,
-    finalFee: 899,
-    notes: 'Normal Saline 500ml post gastroenteritis.'
-  },
-  {
-    id: 'BK-8902',
-    createdAt: new Date(Date.now() - 1 * 3600 * 1000).toISOString(),
-    patientName: 'Smt. Lakshmi Devi (74 yrs, Female)',
-    patientPhone: '97654 32109',
-    patientAge: 74,
-    patientGender: 'Female',
-    serviceId: 'foleys-catheter',
-    serviceTitle: 'Foley Catheter Replacement',
-    area: 'LB Nagar',
-    fullAddress: 'H.No 3-4-12, Near Kamineni Hospital, LB Nagar, Hyderabad',
-    preferredDate: 'Today',
-    preferredTime: '02:00 PM - 03:00 PM',
-    hasPrescription: true,
-    prescriptionFileName: 'Urology_Catheter_Order.pdf',
-    status: 'Assigned',
-    assignedNurseId: 'nurse-102',
-    assignedNurseName: 'Nurse Rajesh Kumar (LB Nagar Area Match)',
-    referringNurseId: 'nurse-101',
-    referringNurseName: 'Nurse Priya Sharma (Gachibowli - 10% Referral)',
-    estimatedFee: 1299,
-    finalFee: 1299,
-    referralBonusRupees: 129.90,
-    notes: 'Referred by Nurse Priya from Gachibowli for LB Nagar resident. 10% bonus credited to Priya.'
-  },
-  {
-    id: 'BK-8903',
-    createdAt: new Date(Date.now() - 30 * 60 * 1000).toISOString(),
-    patientName: 'Arun Kumar (45 yrs, Male)',
-    patientPhone: '96543 21098',
-    patientAge: 45,
-    patientGender: 'Male',
-    serviceId: 'wound-dressing',
-    serviceTitle: 'Wound Dressing',
-    area: 'LB Nagar',
-    fullAddress: 'Villa 18, Golf View, LB Nagar, Hyderabad',
-    preferredDate: 'Tomorrow',
-    preferredTime: '09:00 AM - 10:00 AM',
-    hasPrescription: true,
-    prescriptionFileName: 'PostOp_Dressing.pdf',
-    status: 'Assigned',
-    assignedNurseId: 'nurse-102',
-    assignedNurseName: 'Nurse Rajesh Kumar (LB Nagar Area Match)',
-    referringNurseId: 'nurse-101',
-    referringNurseName: 'Nurse Priya Sharma (Gachibowli - 10% Referral)',
-    estimatedFee: 800,
-    finalFee: 800,
-    referralBonusRupees: 80.00,
-    notes: 'Post knee arthroscopy dressing change. Referred by Nurse Priya.'
-  }
-];
-
-export const BASELINE_LEADS: NurseLead[] = [
-  {
-    id: 'LD-4001',
-    nurseId: 'nurse-101',
-    patientName: 'Smt. Lakshmi Devi',
-    patientPhone: '97654 32109',
-    serviceId: 'foleys-catheter',
-    area: 'LB Nagar',
-    submittedAt: new Date(Date.now() - 3600 * 1000).toISOString(),
-    status: 'Converted',
-    assignedNurseId: 'nurse-102',
-    leadValueRupees: 1299,
-    pointsAwarded: 50,
-    referralCommissionRupees: 129.90
-  },
-  {
-    id: 'LD-4002',
-    nurseId: 'nurse-101',
-    patientName: 'Arun Kumar',
-    patientPhone: '96543 21098',
-    serviceId: 'wound-dressing',
-    area: 'LB Nagar',
-    submittedAt: new Date(Date.now() - 1800 * 1000).toISOString(),
-    status: 'Converted',
-    assignedNurseId: 'nurse-102',
-    leadValueRupees: 800,
-    pointsAwarded: 50,
-    referralCommissionRupees: 80.00
-  }
-];
-
-export const BASELINE_COUPONS: Coupon[] = [
-  {
-    id: 'coup-1',
-    code: 'WELCOME50',
-    description: 'Flat ₹50 OFF on your first home clinical care visit in Hyderabad [SHOW_IN_MODAL]',
-    discountType: 'flat',
-    discountValue: 50,
-    minOrderAmount: 499,
-    status: 'Active',
-    timesUsed: 142
-  },
-  {
-    id: 'coup-2',
-    code: 'HEALTH20',
-    description: '20% OFF on advanced home nursing procedures (up to ₹200) [SHOW_IN_MODAL]',
-    discountType: 'percent',
-    discountValue: 20,
-    maxDiscount: 200,
-    minOrderAmount: 799,
-    status: 'Active',
-    timesUsed: 89
-  },
-  {
-    id: 'coup-3',
-    code: 'FLAT100',
-    description: 'Flat ₹100 discount for elderly geriatric care visits [SHOW_IN_MODAL]',
-    discountType: 'flat',
-    discountValue: 100,
-    minOrderAmount: 800,
-    status: 'Active',
-    timesUsed: 67
-  }
-];
+export const BASELINE_BOOKINGS: Booking[] = [];
+export const BASELINE_LEADS: NurseLead[] = [];
+export const BASELINE_COUPONS: Coupon[] = [];
 
 // Helper to execute database query with exponential backoff retry for transient network / schema cache cold starts
 export async function executeWithRetry<T>(
@@ -1355,9 +1193,9 @@ export async function dbFetchAppUsers(): Promise<AppUser[]> {
       }));
     }
   } catch {
-    // Graceful fallback to seed users
+    // If database unavailable or empty, return empty list
   }
-  return SEED_APP_USERS;
+  return [];
 }
 
 /**
