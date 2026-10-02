@@ -726,9 +726,12 @@ export const App: React.FC = () => {
                   nightSurcharge: Number(raw.night_surcharge) || 0,
                   referralBonusRupees: Number(raw.referral_bonus_rupees) || 0,
                   notes: raw.notes || '',
-                  bookingType: raw.booking_type || 'instant',
+                  bookingType: raw.booking_type || ((raw.preferred_time?.toLowerCase().includes('immediate') || raw.preferred_date?.toLowerCase().includes('instant') || raw.preferred_date?.toLowerCase().includes('immediate')) ? 'Instant' : 'Scheduled'),
                   scheduledSlot: raw.scheduled_slot,
-                  rejectionReason: raw.rejection_reason || undefined
+                  rejectionReason: raw.rejection_reason || undefined,
+                  promoCode: raw.promo_code || undefined,
+                  discountRupees: Number(raw.discount_rupees) || 0,
+                  finalFee: raw.final_fee != null ? Number(raw.final_fee) : undefined
                 };
                 const exists = prev.some((b) => b.id === mapped.id);
                 return exists ? prev.map((b) => (b.id === mapped.id ? mapped : b)) : [mapped, ...prev];

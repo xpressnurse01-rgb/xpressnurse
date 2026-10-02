@@ -7,6 +7,8 @@ import {
   StorageCategory 
 } from '../types';
 
+import { AwsClient } from 'aws4fetch';
+
 // ============================================================================
 // CLOUDFLARE R2 STORAGE BUCKET CONFIGURATION & SERVICE
 // ============================================================================
@@ -16,6 +18,8 @@ export const DEFAULT_CLOUDFLARE_CONFIG: CloudflareR2Config = {
   bucketName: import.meta.env.VITE_CLOUDFLARE_R2_BUCKET_NAME || 'xpressnurse-storage',
   publicDomain: import.meta.env.VITE_CLOUDFLARE_R2_PUBLIC_DOMAIN || '/buckets',
   endpoint: import.meta.env.VITE_CLOUDFLARE_R2_ENDPOINT || '',
+  accessKeyId: import.meta.env.VITE_CLOUDFLARE_R2_ACCESS_KEY_ID || '',
+  secretAccessKey: import.meta.env.VITE_CLOUDFLARE_R2_SECRET_ACCESS_KEY || '',
   corsEnabled: true
 };
 
@@ -168,23 +172,28 @@ export const syncDatabaseRecordsToStorage = (
   // 1. Generate / sync nurse certificates (only for non-deleted records with real/assigned profile)
   const effectiveNurses = nurses || [];
   effectiveNurses.forEach((n) => {
-    const cleanName = n.name.replace(/[^a-zA-Z0-9]/g, '_');
-    const fileName = `Cert_${n.id}_Telangana_Council_Cert_${cleanName}.pdf`;
-    const key = `certificates/${fileName}`;
+    if (!n.certificateUrl) return; // Don't generate a mock if there is no URL at all (i.e., didn't upload)
+
+    const hasRealUpload = existing.some(o => o.publicUrl === n.certificateUrl);
+    if (hasRealUpload) return; // Skip if already perfectly tracked
+
+    // Extract real filename and key from the existing URL instead of making a fake one
+    const urlParts = n.certificateUrl.split('/');
+    const realFileName = urlParts[urlParts.length - 1];
+    const realKey = `certificates/${realFileName}`;
     const docId = `r2-cert-${n.id}`;
-    if (!existingKeyMap.has(key) && !deletedKeys.has(key) && !deletedKeys.has(docId)) {
-      const publicDomain = (config.publicDomain || 'https://pub-xn-healthcare.r2.dev').replace(/\/+$/, '');
-      const publicUrl = n.certificateUrl || `${publicDomain}/${key}`;
+
+    if (!deletedKeys.has(realKey) && !deletedKeys.has(docId)) {
       generated.push({
         id: docId,
         bucketName: config.bucketName,
-        key,
+        key: realKey,
         category: 'certificates',
-        fileName,
+        fileName: realFileName,
         contentType: 'application/pdf',
         sizeBytes: 245000 + (Math.abs(n.name.length * 3421) % 150000),
         uploadedAt: n.createdAt || new Date().toISOString(),
-        publicUrl,
+        publicUrl: n.certificateUrl,
         metadata: {
           nurseId: n.id,
           patientName: n.name,
@@ -205,25 +214,37 @@ export const syncDatabaseRecordsToStorage = (
 
     // Prescription (if hasPrescription or fileName or url)
     if (b.hasPrescription || b.prescriptionFileName || b.prescriptionUrl) {
-      const originalFileName = b.prescriptionFileName || `Clinical_${cleanPatient}.pdf`;
-      const rxCleanName = originalFileName.replace(/[^a-zA-Z0-9._-]/g, '_');
-      const cleanPrefix = rxCleanName.toLowerCase().startsWith('rx_') ? '' : 'Rx_';
-      const fileName = `${cleanPrefix}${cleanId}_${rxCleanName}`;
-      const rxKey = `prescriptions/${fileName}`;
-      const rxId = `r2-rx-${b.id}`;
-      if (!existingKeyMap.has(rxKey) && !deletedKeys.has(rxKey) && !deletedKeys.has(rxId)) {
-        const publicDomain = (config.publicDomain || 'https://pub-xn-healthcare.r2.dev').replace(/\/+$/, '');
-        const publicUrl = b.prescriptionUrl || `${publicDomain}/${rxKey}`;
-        generated.push({
-          id: rxId,
-          bucketName: config.bucketName,
-          key: rxKey,
-          category: 'prescriptions',
-          fileName,
-          contentType: 'application/pdf',
-          sizeBytes: 195000 + (Math.abs(cleanId.length * 4117) % 120000),
-          uploadedAt: b.createdAt || new Date().toISOString(),
-          publicUrl,
+      // Prevent duplicate mock generation if the real upload is already tracked
+      const hasRealUpload = existing.some(o => 
+        (b.prescriptionUrl && o.publicUrl === b.prescriptionUrl) || 
+        (b.prescriptionFileName && o.fileName === b.prescriptionFileName)
+      );
+
+      if (!hasRealUpload) {
+        let realFileName = b.prescriptionFileName;
+        if (!realFileName && b.prescriptionUrl) {
+          const urlParts = b.prescriptionUrl.split('/');
+          realFileName = urlParts[urlParts.length - 1];
+        }
+        if (!realFileName) {
+          realFileName = `Clinical_${cleanPatient}.pdf`;
+        }
+        const realKey = `prescriptions/${realFileName}`;
+        const rxId = `r2-rx-${b.id}`;
+
+        if (!existingKeyMap.has(realKey) && !deletedKeys.has(realKey) && !deletedKeys.has(rxId)) {
+          const publicDomain = (config.publicDomain || 'https://pub-xn-healthcare.r2.dev').replace(/\/+$/, '');
+          const publicUrl = b.prescriptionUrl || `${publicDomain}/${realKey}`;
+          generated.push({
+            id: rxId,
+            bucketName: config.bucketName,
+            key: realKey,
+            category: 'prescriptions',
+            fileName: realFileName,
+            contentType: 'application/pdf',
+            sizeBytes: 195000 + (Math.abs(cleanId.length * 4117) % 120000),
+            uploadedAt: b.createdAt || new Date().toISOString(),
+            publicUrl,
           metadata: {
             bookingId: b.id,
             patientName: b.patientName,
@@ -232,6 +253,7 @@ export const syncDatabaseRecordsToStorage = (
             description: `Doctor Mandatory Prescription for ${b.serviceTitle}`
           }
         });
+      }
       }
     }
   });
@@ -294,20 +316,45 @@ export const uploadToCloudflareStorage = async (
       const headers: Record<string, string> = {
         'Content-Type': fileData.contentType || 'application/pdf'
       };
-      if (config.apiToken) {
-        headers['Authorization'] = `Bearer ${config.apiToken}`;
+
+      let response: Response;
+
+      if (config.accessKeyId && config.secretAccessKey) {
+        // Authenticate with AWS Signature V4 using aws4fetch
+        const aws = new AwsClient({
+          accessKeyId: config.accessKeyId,
+          secretAccessKey: config.secretAccessKey,
+          service: 's3',
+          region: 'auto',
+        });
+        response = await aws.fetch(uploadUrl, {
+          method: 'PUT',
+          headers,
+          body: bodyData,
+        });
+      } else {
+        // Fallback to simple fetch (e.g. for custom Worker proxies)
+        if ((config as any).apiToken) {
+          headers['Authorization'] = `Bearer ${(config as any).apiToken}`;
+        }
+        response = await fetch(uploadUrl, {
+          method: 'PUT',
+          headers,
+          body: bodyData,
+          mode: 'cors'
+        });
       }
-      await fetch(uploadUrl, {
-        method: 'PUT',
-        headers,
-        body: bodyData,
-        mode: 'cors'
-      }).catch(() => {
-        // Fallback gracefully if CORS or token required
-      });
-    } catch {
-      // safe fallback
+      if (!response.ok) {
+        const errorText = await response.text();
+        console.error(`Cloudflare R2 Upload Failed (${response.status}):`, errorText);
+        throw new Error(`Cloudflare R2 Upload Failed: ${response.statusText}. Please ensure your bucket CORS policy allows PUT requests from this origin.`);
+      }
+    } catch (err: any) {
+      console.error('Cloudflare R2 Upload Error (CORS/Network):', err);
+      throw new Error(`Upload Failed: ${err.message || 'Network error or CORS issue. Please check your R2 bucket CORS settings.'}`);
     }
+  } else {
+    throw new Error('Cloudflare R2 endpoint is not configured in settings.');
   }
 
   const newObj: CloudflareStorageObject = {
@@ -461,8 +508,20 @@ export const deleteFromCloudflareStorage = async (keyOrId: string): Promise<void
     try {
       const deleteUrl = `${config.endpoint.replace(/\/+$/, '')}/${config.bucketName}/${target.key}`;
       const headers: Record<string, string> = {};
-      if (config.apiToken) headers['Authorization'] = `Bearer ${config.apiToken}`;
-      await fetch(deleteUrl, { method: 'DELETE', headers, mode: 'cors' }).catch(() => {});
+      let response: Response;
+      
+      if (config.accessKeyId && config.secretAccessKey) {
+        const aws = new AwsClient({
+          accessKeyId: config.accessKeyId,
+          secretAccessKey: config.secretAccessKey,
+          service: 's3',
+          region: 'auto',
+        });
+        response = await aws.fetch(deleteUrl, { method: 'DELETE', headers });
+      } else {
+        if ((config as any).apiToken) headers['Authorization'] = `Bearer ${(config as any).apiToken}`;
+        response = await fetch(deleteUrl, { method: 'DELETE', headers, mode: 'cors' });
+      }
     } catch {
       // safe fallback
     }
@@ -490,8 +549,20 @@ export const deleteMultipleFromCloudflareStorage = async (keysOrIds: string[]): 
         try {
           const deleteUrl = `${config.endpoint.replace(/\/+$/, '')}/${config.bucketName}/${t.key}`;
           const headers: Record<string, string> = {};
-          if (config.apiToken) headers['Authorization'] = `Bearer ${config.apiToken}`;
-          await fetch(deleteUrl, { method: 'DELETE', headers, mode: 'cors' }).catch(() => {});
+          let response: Response;
+
+          if (config.accessKeyId && config.secretAccessKey) {
+            const aws = new AwsClient({
+              accessKeyId: config.accessKeyId,
+              secretAccessKey: config.secretAccessKey,
+              service: 's3',
+              region: 'auto',
+            });
+            response = await aws.fetch(deleteUrl, { method: 'DELETE', headers });
+          } else {
+            if ((config as any).apiToken) headers['Authorization'] = `Bearer ${(config as any).apiToken}`;
+            response = await fetch(deleteUrl, { method: 'DELETE', headers, mode: 'cors' });
+          }
         } catch {
           // safe fallback
         }

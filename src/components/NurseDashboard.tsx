@@ -318,8 +318,7 @@ export const NurseDashboard: React.FC<NurseDashboardProps> = ({
 
   const handleViewInvoice = (booking: Booking) => {
     const inv = generateInvoiceDetails(booking);
-    setPreviewInvoice(inv);
-    setIsInvoiceModalOpen(true);
+    openPrintableInvoiceWindow(inv);
   };
 
   return (
@@ -939,7 +938,12 @@ export const NurseDashboard: React.FC<NurseDashboardProps> = ({
                             {visit.patientName} {visit.patientAge ? `(${visit.patientAge} yrs, ${visit.patientGender})` : ''}
                           </h4>
                           <div style={{ fontSize: '0.92rem', color: '#0F172A', fontWeight: 700, marginTop: '0.25rem' }}>
-                            Service: <span style={{ color: '#0284C7' }}>{visit.serviceTitle}</span> (₹{visit.finalFee || visit.estimatedFee || 899})
+                            Service: <span style={{ color: '#0284C7' }}>{visit.serviceTitle}</span> (₹{visit.finalFee !== undefined ? visit.finalFee : (visit.estimatedFee || 899)})
+                            {visit.promoCode && (
+                              <span style={{ fontSize: '0.75rem', color: '#10B981', fontWeight: 700, marginLeft: '0.5rem', background: '#ECFDF5', padding: '2px 6px', borderRadius: 4, display: 'inline-block', border: '1px solid #A7F3D0' }}>
+                                🎉 {visit.promoCode} (-₹{visit.discountRupees})
+                              </span>
+                            )}
                           </div>
                           <div style={{ fontSize: '0.84rem', color: '#475569', marginTop: '0.35rem', display: 'flex', alignItems: 'center', gap: '0.35rem' }}>
                             <MapPin size={14} style={{ color: '#EF4444', flexShrink: 0 }} />

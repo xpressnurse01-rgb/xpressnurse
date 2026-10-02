@@ -246,8 +246,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
 
   const handleViewBookingInvoice = async (booking: Booking) => {
     const inv = generateInvoiceDetails(booking);
-    setPreviewInvoice(inv);
-    setIsInvoicePreviewModalOpen(true);
+    openPrintableInvoiceWindow(inv);
   };
 
   const handlePrintCurrentInvoice = () => {
@@ -255,13 +254,11 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
       openPrintableInvoiceWindow(previewInvoice);
     }
   };
-
-  const handleSyncAllInvoicesToCloudflare = async () => {
+  const handleSyncStorage = async () => {
     const synced = syncDatabaseRecordsToStorage(bookings, nurses, getCloudflareObjects());
     setStorageObjects(synced);
-    showToast(`Synced documents and certificates to Cloudflare R2 bucket!`);
+    showToast(`Invoices generated successfully!`);
   };
-
   const handleSaveR2ConfigSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     const updated = saveCloudflareConfig(r2ConfigForm);
@@ -2252,9 +2249,9 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                           <div style={{ fontWeight: 750, color: 'var(--primary-navy-950)' }}>{b.patientName}</div>
                           <div style={{ fontSize: '0.76rem', color: '#64748B', fontFamily: 'monospace' }}>{b.patientPhone}</div>
                           <div style={{ marginTop: '0.2rem' }}>
-                            {b.bookingType?.toLowerCase() === 'scheduled' ? (
+                            {(b.bookingType?.toLowerCase() === 'scheduled' || (b.preferredTime && !b.preferredTime.toLowerCase().includes('immediate') && !b.preferredTime.toLowerCase().includes('asap') && !b.preferredTime.toLowerCase().includes('instant'))) ? (
                               <span style={{ fontSize: '0.72rem', background: '#F0FDF4', color: '#166534', padding: '2px 7px', borderRadius: 9999, fontWeight: 700, border: '1px solid #BBF7D0', whiteSpace: 'nowrap' }}>
-                                📅 {b.scheduledSlot || 'Scheduled Slot'}
+                                📅 {b.scheduledSlot || b.preferredTime || 'Scheduled Slot'}
                               </span>
                             ) : (
                               <span style={{ fontSize: '0.72rem', background: '#EFF6FF', color: '#1D4ED8', padding: '2px 7px', borderRadius: 9999, fontWeight: 700, border: '1px solid #BFDBFE', whiteSpace: 'nowrap' }}>
@@ -2458,10 +2455,10 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                 <span>Export Bookings (Excel/CSV)</span>
               </button>
               <button
-                onClick={handleSyncAllInvoicesToCloudflare}
+                onClick={handleSyncStorage}
                 className="btn btn-outline btn-sm"
                 style={{ borderRadius: 9999, fontWeight: 700, gap: '0.4rem', borderColor: '#BAE6FD', color: '#0284C7', background: '#F0F9FF' }}
-                title="Issue and sync invoices for all bookings"
+                title="Generate Invoices for all bookings"
               >
                 <Receipt size={15} />
                 <span>Invoice Generator ({bookings.length})</span>
@@ -2638,7 +2635,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                             </div>
                           </td>
                           <td style={{ whiteSpace: 'nowrap' }}>
-                        {b.bookingType?.toLowerCase() === 'scheduled' ? (
+                        {(b.bookingType?.toLowerCase() === 'scheduled' || (b.preferredTime && !b.preferredTime.toLowerCase().includes('immediate') && !b.preferredTime.toLowerCase().includes('asap') && !b.preferredTime.toLowerCase().includes('instant'))) ? (
                           <div style={{ display: 'inline-flex', alignItems: 'center', gap: '0.35rem', whiteSpace: 'nowrap' }}>
                             <span style={{ fontSize: '0.74rem', background: '#F0FDF4', color: '#166534', padding: '2px 8px', borderRadius: 9999, fontWeight: 750, border: '1px solid #BBF7D0', whiteSpace: 'nowrap' }}>
                               📅 Scheduled
@@ -2744,7 +2741,16 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                             ₹0 <small style={{ color: '#DC2626' }}>(Rejected)</small>
                           </span>
                         ) : (
-                          <strong style={{ color: 'var(--primary-navy-900)', fontSize: '0.88rem' }}>₹{b.estimatedFee}</strong>
+                          <div style={{ display: 'flex', flexDirection: 'column' }}>
+                            <strong style={{ color: 'var(--primary-navy-900)', fontSize: '0.88rem' }}>
+                              ₹{b.finalFee !== undefined ? b.finalFee : b.estimatedFee}
+                            </strong>
+                            {b.promoCode && (
+                              <div style={{ fontSize: '0.72rem', color: '#10B981', fontWeight: 700, marginTop: '2px', background: '#ECFDF5', padding: '2px 6px', borderRadius: 4, display: 'inline-block', border: '1px solid #A7F3D0' }}>
+                                🎉 {b.promoCode} (-₹{b.discountRupees})
+                              </div>
+                            )}
+                          </div>
                         )}
                       </td>
                       <td style={{ whiteSpace: 'nowrap' }}>
@@ -5118,14 +5124,15 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                 </button>
                 <button
                   type="button"
-                  onClick={handleSyncAllInvoicesToCloudflare}
+                  onClick={handleSyncStorage}
                   className="btn btn-outline btn-sm"
                   style={{ borderRadius: 9999, fontSize: '0.8rem', gap: '0.35rem', height: 34 }}
-                  title="Sync invoices with Cloudflare R2 bucket"
+                  title="Sync documents and certificates with Cloudflare R2 bucket"
                 >
-                  <Receipt size={14} />
-                  <span>Sync Invoices</span>
+                  <RefreshCw size={14} />
+                  <span>Sync Storage</span>
                 </button>
+
                 <button
                   type="button"
                   onClick={() => {
@@ -5970,8 +5977,11 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                       {searchAssignBooking.fullAddress && <span>({searchAssignBooking.fullAddress})</span>}
                     </div>
                   </div>
-                  <span style={{ fontSize: '0.75rem', background: '#ECFDF5', color: '#059669', padding: '3px 8px', borderRadius: 9999, fontWeight: 700, border: '1px solid #A7F3D0' }}>
-                    Fee: ₹{searchAssignBooking.estimatedFee || 800}
+                  <span style={{ fontSize: '0.75rem', background: '#ECFDF5', color: '#059669', padding: '3px 8px', borderRadius: 9999, fontWeight: 700, border: '1px solid #A7F3D0', display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: '2px' }}>
+                    <span>Fee: ₹{searchAssignBooking.finalFee !== undefined ? searchAssignBooking.finalFee : (searchAssignBooking.estimatedFee || 800)}</span>
+                    {searchAssignBooking.promoCode && (
+                      <span style={{ fontSize: '0.65rem', color: '#047857' }}>🎉 {searchAssignBooking.promoCode} (-₹{searchAssignBooking.discountRupees})</span>
+                    )}
                   </span>
                 </div>
               </div>
@@ -7926,11 +7936,13 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                                   (previewPrescriptionObject?.fileName && previewPrescriptionObject.fileName.toLowerCase().match(/\.(jpg|jpeg|png|gif|webp)$/)) ||
                                   (srcUrl && typeof srcUrl === 'string' && srcUrl.toLowerCase().match(/\.(jpg|jpeg|png|gif|webp)(\?.*)?$/));
                   
-                  if (srcUrl) {
+                  const safeSrcUrl = typeof srcUrl === 'string' ? encodeURI(srcUrl) : srcUrl;
+                  
+                  if (srcUrl && safeSrcUrl) {
                     return isImage ? (
                       <div style={{ padding: '1rem', textAlign: 'center', background: '#F8FAFC' }}>
                         <img 
-                          src={srcUrl} 
+                          src={safeSrcUrl} 
                           alt="Prescription Document" 
                           style={{ maxWidth: '100%', maxHeight: 420, borderRadius: 8, objectFit: 'contain', boxShadow: '0 2px 10px rgba(0,0,0,0.1)' }} 
                         />
@@ -7938,7 +7950,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                     ) : (
                       <div style={{ height: 420 }}>
                         <iframe 
-                          src={srcUrl} 
+                          src={safeSrcUrl} 
                           title="Prescription PDF" 
                           style={{ width: '100%', height: '100%', border: 'none' }} 
                         />
@@ -8002,14 +8014,15 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                       const isImage = previewPrescriptionObject?.contentType?.startsWith('image/') || 
                                       (previewPrescriptionObject?.fileName && previewPrescriptionObject.fileName.toLowerCase().match(/\.(jpg|jpeg|png|gif|webp)$/)) ||
                                       (srcUrl && typeof srcUrl === 'string' && srcUrl.toLowerCase().match(/\.(jpg|jpeg|png|gif|webp)(\?.*)?$/));
+                      const safeSrcUrl = typeof srcUrl === 'string' ? encodeURI(srcUrl) : srcUrl;
                       
-                      if (srcUrl) {
+                      if (srcUrl && safeSrcUrl) {
                         return (
                           <div style={{ marginBottom: '1.5rem', textAlign: 'center' }}>
                             {isImage ? (
-                              <img src={srcUrl} alt="Prescription" style={{ maxWidth: '100%', maxHeight: '50vh', borderRadius: 8, border: '1px solid #CBD5E1', objectFit: 'contain' }} />
+                              <img src={safeSrcUrl} alt="Prescription" style={{ maxWidth: '100%', maxHeight: '50vh', borderRadius: 8, border: '1px solid #CBD5E1', objectFit: 'contain' }} />
                             ) : (
-                              <iframe src={srcUrl} style={{ width: '100%', height: '50vh', borderRadius: 8, border: '1px solid #CBD5E1' }} title="Prescription Document" />
+                              <iframe src={safeSrcUrl} style={{ width: '100%', height: '50vh', borderRadius: 8, border: '1px solid #CBD5E1' }} title="Prescription Document" />
                             )}
                           </div>
                         );
@@ -8082,13 +8095,14 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                   <Cloud size={14} style={{ color: '#0284C7', flexShrink: 0 }} />
                   <span style={{ color: '#0369A1', fontWeight: 700, flexShrink: 0 }}>Public CDN Link:</span>
                   <span style={{ color: '#0284C7', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                    {previewPrescriptionObject?.publicUrl || previewPrescriptionBooking?.prescriptionUrl || `${r2Config.publicDomain}/prescriptions/${previewPrescriptionBooking?.prescriptionFileName || 'Rx_Verified.pdf'}`}
+                    {encodeURI(previewPrescriptionObject?.publicUrl || previewPrescriptionBooking?.prescriptionUrl || `${r2Config.publicDomain}/prescriptions/${previewPrescriptionBooking?.prescriptionFileName || 'Rx_Verified.pdf'}`)}
                   </span>
                 </div>
                 <button
                   type="button"
                   onClick={() => {
-                    const url = previewPrescriptionObject?.publicUrl || previewPrescriptionBooking?.prescriptionUrl || `${r2Config.publicDomain}/prescriptions/${previewPrescriptionBooking?.prescriptionFileName || 'Rx_Verified.pdf'}`;
+                    const rawUrl = previewPrescriptionObject?.publicUrl || previewPrescriptionBooking?.prescriptionUrl || `${r2Config.publicDomain}/prescriptions/${previewPrescriptionBooking?.prescriptionFileName || 'Rx_Verified.pdf'}`;
+                    const url = encodeURI(rawUrl);
                     navigator.clipboard.writeText(url);
                     showToast('Cloudflare public URL copied to clipboard!');
                   }}
@@ -8449,6 +8463,26 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                   type="url"
                   value={r2ConfigForm.endpoint}
                   onChange={(e) => setR2ConfigForm({ ...r2ConfigForm, endpoint: e.target.value })}
+                  className="form-control"
+                />
+              </div>
+
+              <div style={{ marginBottom: '1.25rem' }}>
+                <label className="form-label" style={{ fontSize: '0.78rem', fontWeight: 700 }}>ACCESS KEY ID (API TOKEN KEY)</label>
+                <input
+                  type="text"
+                  value={r2ConfigForm.accessKeyId || ''}
+                  onChange={(e) => setR2ConfigForm({ ...r2ConfigForm, accessKeyId: e.target.value })}
+                  className="form-control"
+                />
+              </div>
+
+              <div style={{ marginBottom: '1.25rem' }}>
+                <label className="form-label" style={{ fontSize: '0.78rem', fontWeight: 700 }}>SECRET ACCESS KEY (API TOKEN SECRET)</label>
+                <input
+                  type="password"
+                  value={r2ConfigForm.secretAccessKey || ''}
+                  onChange={(e) => setR2ConfigForm({ ...r2ConfigForm, secretAccessKey: e.target.value })}
                   className="form-control"
                 />
               </div>

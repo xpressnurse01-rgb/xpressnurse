@@ -281,7 +281,8 @@ export interface CloudflareR2Config {
   accountId: string;
   bucketName: string;
   publicDomain: string;
-  apiToken?: string;
+  accessKeyId?: string;
+  secretAccessKey?: string;
   endpoint?: string;
   corsEnabled?: boolean;
 }
