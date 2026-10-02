@@ -273,7 +273,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
             id: 'item-1',
             description: booking.serviceTitle || 'Clinical Nursing Care',
             date: booking.preferredDate || new Date().toISOString().split('T')[0],
-            slot: booking.scheduledSlot || booking.preferredTime || 'Morning (09:00 AM - 01:00 PM)',
+            slot: booking.scheduledSlot || booking.preferredTime || '8:00 AM',
             rate: Number(booking.estimatedFee) || 800,
             quantity: booking.numberOfVisits || 1,
             amount: (Number(booking.estimatedFee) || 800) * (booking.numberOfVisits || 1)
@@ -289,7 +289,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
             id: 'item-1',
             description: bookings[0].serviceTitle || 'Clinical Nursing Care',
             date: bookings[0].preferredDate || new Date().toISOString().split('T')[0],
-            slot: bookings[0].scheduledSlot || bookings[0].preferredTime || 'Morning (09:00 AM - 01:00 PM)',
+            slot: bookings[0].scheduledSlot || bookings[0].preferredTime || '8:00 AM',
             rate: Number(bookings[0].estimatedFee) || 800,
             quantity: bookings[0].numberOfVisits || 1,
             amount: (Number(bookings[0].estimatedFee) || 800) * (bookings[0].numberOfVisits || 1)
@@ -315,7 +315,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
         area: 'Banjara Hills',
         serviceTitle: services[0]?.title || 'Clinical Nursing Care',
         serviceDate: new Date().toISOString().split('T')[0],
-        timeSlot: 'Morning (09:00 AM - 01:00 PM)',
+        timeSlot: '8:00 AM',
         numberOfVisits: 1,
         serviceId: services[0]?.id || 'general-care',
         assignedNurseName: nurses[0]?.name || 'Attending RN',
@@ -325,7 +325,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
             id: 'item-1',
             description: services[0]?.title || 'Clinical Nursing Care',
             date: new Date().toISOString().split('T')[0],
-            slot: 'Morning (09:00 AM - 01:00 PM)',
+            slot: '8:00 AM',
             rate: initialRate,
             quantity: 1,
             amount: initialRate
@@ -388,7 +388,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
 
       const lastItem = currentItems[currentItems.length - 1];
       const nextDate = customDate || lastItem?.date || new Date().toISOString().split('T')[0];
-      const nextSlot = customSlot || 'Morning (09:00 AM - 01:00 PM)';
+      const nextSlot = customSlot || '8:00 AM';
       const title = serviceTitle || lastItem?.description || prev.serviceTitle || services[0]?.title || 'Clinical Care';
       const rate = customRate !== undefined ? customRate : (lastItem?.rate || Number(prev.baseAmount) || 800);
 
@@ -422,16 +422,19 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
       if (!prev || !prev.items || !prev.items[index]) return prev;
       const baseItem = prev.items[index];
       
-      const slotsOrder = [
-        'Morning (09:00 AM - 01:00 PM)',
-        'Afternoon (01:00 PM - 05:00 PM)',
-        'Evening (05:00 PM - 09:00 PM)',
-        'Night (09:00 PM - 07:00 AM)'
-      ];
-      const currentIdx = slotsOrder.findIndex((s) => s.toLowerCase().startsWith((baseItem.slot || '').split(' ')[0].toLowerCase()));
-      const nextSlot = currentIdx !== -1 && currentIdx < slotsOrder.length - 1 
-        ? slotsOrder[currentIdx + 1] 
-        : 'Evening (05:00 PM - 09:00 PM)';
+      const slotsOrder = ['8:00 AM', '2:00 PM', '8:00 PM'];
+      const curLower = (baseItem.slot || '').toLowerCase();
+      let nextSlot = '2:00 PM';
+      if (curLower.includes('8:00 am') || curLower.includes('8 am') || curLower.includes('morning')) {
+        nextSlot = '2:00 PM';
+      } else if (curLower.includes('2:00 pm') || curLower.includes('2 pm') || curLower.includes('afternoon')) {
+        nextSlot = '8:00 PM';
+      } else if (curLower.includes('8:00 pm') || curLower.includes('8 pm') || curLower.includes('night') || curLower.includes('evening')) {
+        nextSlot = '8:00 AM';
+      } else {
+        const foundIdx = slotsOrder.indexOf(baseItem.slot);
+        nextSlot = foundIdx !== -1 && foundIdx < slotsOrder.length - 1 ? slotsOrder[foundIdx + 1] : slotsOrder[0];
+      }
 
       const newItem: InvoiceItem = {
         id: 'item-' + Date.now() + '-' + Math.floor(Math.random() * 1000),
@@ -9191,18 +9194,16 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                               id: 'item-1',
                               description: previewInvoice.serviceTitle || services[0]?.title || 'Clinical Nursing Care',
                               date: previewInvoice.serviceDate || new Date().toISOString().split('T')[0],
-                              slot: previewInvoice.timeSlot || 'Morning (09:00 AM - 01:00 PM)',
+                              slot: previewInvoice.timeSlot || '8:00 AM',
                               rate: Number(previewInvoice.baseAmount) || 800,
                               quantity: Number(previewInvoice.numberOfVisits) || 1,
                               amount: (Number(previewInvoice.baseAmount) || 800) * (Number(previewInvoice.numberOfVisits) || 1)
                             }
                           ]).map((item, index) => {
                             const standardSlots = [
-                              'Morning (09:00 AM - 01:00 PM)',
-                              'Afternoon (01:00 PM - 05:00 PM)',
-                              'Evening (05:00 PM - 09:00 PM)',
-                              'Night Shift (09:00 PM - 07:00 AM)',
-                              'Full Day (24-Hour Care)'
+                              '8:00 AM',
+                              '2:00 PM',
+                              '8:00 PM'
                             ];
                             const isCustomSlot = !standardSlots.includes(item.slot);
 
@@ -9271,12 +9272,12 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                                         onChange={(e) => handleUpdateItemRow(index, { slot: e.target.value })}
                                         className="form-control"
                                         style={{ height: 32, fontSize: '0.76rem' }}
-                                        placeholder="Custom slot e.g. 10:30 AM"
+                                        placeholder="e.g. 10:00 AM"
                                       />
                                       <button
                                         type="button"
                                         onClick={() => handleUpdateItemRow(index, { slot: standardSlots[0] })}
-                                        style={{ border: '1px solid #CBD5E1', background: '#FFF', borderRadius: 4, padding: '0 5px', fontSize: '0.68rem', cursor: 'pointer' }}
+                                        style={{ border: '1px solid #CBD5E1', background: '#FFF', borderRadius: 4, padding: '0 5px', fontSize: '0.68rem', cursor: 'pointer', whiteSpace: 'nowrap' }}
                                         title="Pick standard preset"
                                       >
                                         Presets
@@ -9287,13 +9288,13 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                                       value={item.slot}
                                       onChange={(e) => {
                                         if (e.target.value === '__custom__') {
-                                          handleUpdateItemRow(index, { slot: 'Special Timing (11:00 AM)' });
+                                          handleUpdateItemRow(index, { slot: '10:00 AM' });
                                         } else {
                                           handleUpdateItemRow(index, { slot: e.target.value });
                                         }
                                       }}
                                       className="form-control"
-                                      style={{ height: 32, fontSize: '0.76rem' }}
+                                      style={{ height: 32, fontSize: '0.78rem' }}
                                     >
                                       {standardSlots.map((s) => (
                                         <option key={s} value={s}>{s}</option>
@@ -9392,12 +9393,24 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                           type="button"
                           onClick={() => {
                             const today = new Date().toISOString().split('T')[0];
-                            handleAddItemRow(today, 'Morning (09:00 AM - 01:00 PM)');
-                            handleAddItemRow(today, 'Evening (05:00 PM - 09:00 PM)');
+                            handleAddItemRow(today, '8:00 AM');
+                            handleAddItemRow(today, '8:00 PM');
                           }}
                           style={{ border: '1px solid #BFDBFE', background: '#EFF6FF', color: '#0284C7', padding: '3px 8px', borderRadius: 6, fontSize: '0.72rem', fontWeight: 700, cursor: 'pointer' }}
                         >
-                          + Morning & Evening (2 visits)
+                          + 8:00 AM & 8:00 PM (2 visits)
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            const today = new Date().toISOString().split('T')[0];
+                            handleAddItemRow(today, '8:00 AM');
+                            handleAddItemRow(today, '2:00 PM');
+                            handleAddItemRow(today, '8:00 PM');
+                          }}
+                          style={{ border: '1px solid #FED7AA', background: '#FFF7ED', color: '#C2410C', padding: '3px 8px', borderRadius: 6, fontSize: '0.72rem', fontWeight: 700, cursor: 'pointer' }}
+                        >
+                          + All 3 Slots (8am, 2pm, 8pm)
                         </button>
                         <button
                           type="button"
@@ -9406,12 +9419,12 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                             for (let i = 1; i <= 3; i++) {
                               const d = new Date(baseD);
                               d.setDate(d.getDate() + i);
-                              handleAddItemRow(d.toISOString().split('T')[0], 'Morning (09:00 AM - 01:00 PM)', 'Wound Dressing & Vitals Check', 650);
+                              handleAddItemRow(d.toISOString().split('T')[0], '8:00 AM', 'Wound Dressing & Vitals Check', 650);
                             }
                           }}
                           style={{ border: '1px solid #A7F3D0', background: '#ECFDF5', color: '#059669', padding: '3px 8px', borderRadius: 6, fontSize: '0.72rem', fontWeight: 700, cursor: 'pointer' }}
                         >
-                          + 3-Day Daily Dressing (3 dates)
+                          + 3-Day Plan (8:00 AM)
                         </button>
                         <button
                           type="button"
@@ -9420,12 +9433,12 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                             for (let i = 1; i <= 7; i++) {
                               const d = new Date(baseD);
                               d.setDate(d.getDate() + i);
-                              handleAddItemRow(d.toISOString().split('T')[0], 'Morning (09:00 AM - 01:00 PM)', 'Post-Surgical Nursing Care', 800);
+                              handleAddItemRow(d.toISOString().split('T')[0], '8:00 AM', 'Post-Surgical Nursing Care', 800);
                             }
                           }}
                           style={{ border: '1px solid #E2E8F0', background: '#FFFFFF', color: '#334155', padding: '3px 8px', borderRadius: 6, fontSize: '0.72rem', fontWeight: 700, cursor: 'pointer' }}
                         >
-                          + 7-Day Care Package (7 dates)
+                          + 7-Day Care (8:00 AM)
                         </button>
                       </div>
                     </div>

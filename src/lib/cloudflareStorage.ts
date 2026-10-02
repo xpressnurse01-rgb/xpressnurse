@@ -653,7 +653,7 @@ export const generateInvoiceDetails = (booking: Booking): InvoiceDetails => {
         id: 'item-1',
         description: booking.serviceTitle || 'Clinical Nursing Care',
         date: booking.preferredDate || new Date().toISOString().split('T')[0],
-        slot: booking.scheduledSlot || booking.preferredTime || 'Morning (09:00 AM - 01:00 PM)',
+        slot: booking.scheduledSlot || booking.preferredTime || '8:00 AM',
         rate: baseFee,
         quantity: booking.numberOfVisits || 1,
         amount: baseFee * (booking.numberOfVisits || 1)
