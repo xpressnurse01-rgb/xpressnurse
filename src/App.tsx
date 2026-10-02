@@ -76,6 +76,12 @@ import {
   Coupon
 } from './types';
 import { uploadToCloudflareStorage } from './lib/cloudflareStorage';
+import {
+  deduplicateBookings,
+  deduplicateLeads,
+  normalizePhone10,
+  areBookingsDuplicate
+} from './lib/nurseCalculations';
 
 export const App: React.FC = () => {
   // URL Routing State
@@ -169,7 +175,7 @@ export const App: React.FC = () => {
       if (cached !== null) {
         const parsed = JSON.parse(cached);
         if (Array.isArray(parsed)) {
-          return parsed.filter(b => b.id !== 'BK-8901' && b.id !== 'BK-8902' && b.id !== 'BK-8903');
+          return deduplicateBookings(parsed.filter(b => b.id !== 'BK-8901' && b.id !== 'BK-8902' && b.id !== 'BK-8903'));
         }
       }
     } catch { }
@@ -182,7 +188,14 @@ export const App: React.FC = () => {
       if (cached !== null) {
         const parsed = JSON.parse(cached);
         if (Array.isArray(parsed)) {
-          return parsed.filter(n => n.id !== 'nurse-101' && n.id !== 'nurse-102' && n.id !== 'nurse-103' && n.id !== 'nurse-104');
+          return parsed
+            .filter(n => n.id !== 'nurse-101' && n.id !== 'nurse-102' && n.id !== 'nurse-103' && n.id !== 'nurse-104')
+            .map(n => {
+              if (Number(n.convertedLeads || 0) === 0 && Number(n.referralEarningsRupees || 0) > 0) {
+                return { ...n, referralEarningsRupees: 0 };
+              }
+              return n;
+            });
         }
       }
     } catch { }
@@ -195,7 +208,7 @@ export const App: React.FC = () => {
       if (cached !== null) {
         const parsed = JSON.parse(cached);
         if (Array.isArray(parsed)) {
-          return parsed.filter(l => l.id !== 'LD-4001' && l.id !== 'LD-4002');
+          return deduplicateLeads(parsed.filter(l => l.id !== 'LD-4001' && l.id !== 'LD-4002'));
         }
       }
     } catch { }
@@ -247,7 +260,7 @@ export const App: React.FC = () => {
   }, [services]);
 
   useEffect(() => {
-    try { localStorage.setItem('xn_cached_bookings', JSON.stringify(bookings)); } catch { }
+    try { localStorage.setItem('xn_cached_bookings', JSON.stringify(deduplicateBookings(bookings))); } catch { }
   }, [bookings]);
 
   useEffect(() => {
@@ -255,7 +268,7 @@ export const App: React.FC = () => {
   }, [nurses]);
 
   useEffect(() => {
-    try { localStorage.setItem('xn_cached_leads', JSON.stringify(leads)); } catch { }
+    try { localStorage.setItem('xn_cached_leads', JSON.stringify(deduplicateLeads(leads))); } catch { }
   }, [leads]);
 
   useEffect(() => {
@@ -270,23 +283,64 @@ export const App: React.FC = () => {
     try { localStorage.setItem('xn_cached_app_users', JSON.stringify(appUsers)); } catch { }
   }, [appUsers]);
 
-  // Treat all referred patients as bookings: ensure every patient lead has a corresponding booking in bookings
+  // Treat approved referred patients as bookings: ensure ONLY APPROVED patient leads appear in bookings or assign nurse
   useEffect(() => {
-    let hasNewBookings = false;
-    let syncedBookings = [...bookings];
+    let hasChanges = false;
+    let syncedBookings = deduplicateBookings([...bookings]);
 
-    leads.forEach((l) => {
-      const isPatient = (l.referralType !== 'nurse' && !l.referredNursePhone && Boolean(l.patientName));
-      if (!isPatient || !l.patientName) return;
+    // Only patient leads that have been Approved or Converted by Admin are allowed in bookings
+    const approvedPatientLeads = leads.filter(
+      (l) => (l.status === 'Approved' || l.status === 'Converted') &&
+             l.referralType !== 'nurse' &&
+             !l.referredNursePhone &&
+             Boolean(l.patientName)
+    );
 
-      const cleanPhone = (l.patientPhone || '').replace(/\D/g, '');
-      const exists = syncedBookings.some((b) =>
-        (cleanPhone && b.patientPhone && b.patientPhone.replace(/\D/g, '') === cleanPhone) ||
-        (b.referringNurseId === l.nurseId && b.patientName && b.patientName.toLowerCase() === l.patientName!.toLowerCase())
+    // Identify leads that are still not approved (Pending Approval, Rejected, etc.)
+    const unapprovedLeadPhones = new Set(
+      leads.filter((l) => l.status !== 'Approved' && l.status !== 'Converted')
+           .map((l) => normalizePhone10(l.patientPhone))
+           .filter(Boolean)
+    );
+    const unapprovedLeadCleanIds = new Set(
+      leads.filter((l) => l.status !== 'Approved' && l.status !== 'Converted')
+           .map((l) => (l.id.replace(/\D/g, '') || l.id).slice(-6))
+    );
+
+    // Filter out any bookings created for unapproved leads (must NOT show in bookings or assign nurse)
+    const validBookings = syncedBookings.filter((b) => {
+      const bPhone10 = normalizePhone10(b.patientPhone);
+      const bCleanId = b.id.replace(/\D/g, '').slice(-6);
+      if (b.notes?.includes('Patient Referral') && b.status === 'Pending') {
+        if (unapprovedLeadPhones.has(bPhone10) || unapprovedLeadCleanIds.has(bCleanId)) {
+          const hasApprovedMatch = approvedPatientLeads.some((al) =>
+            normalizePhone10(al.patientPhone) === bPhone10 ||
+            (al.id.replace(/\D/g, '') || al.id).slice(-6) === bCleanId
+          );
+          if (!hasApprovedMatch) {
+            hasChanges = true;
+            return false;
+          }
+        }
+      }
+      return true;
+    });
+
+    approvedPatientLeads.forEach((l) => {
+      const lPhone10 = normalizePhone10(l.patientPhone);
+      const lName = (l.patientName || '').toLowerCase().trim();
+      const leadCleanDigits = l.id.replace(/\D/g, '') || l.id.slice(-6);
+      const deterministicId = `BK-${leadCleanDigits.slice(-6)}`;
+
+      const exists = validBookings.some((b) =>
+        b.id === deterministicId ||
+        b.id === `BK-${leadCleanDigits.slice(-4)}` ||
+        (lPhone10 && normalizePhone10(b.patientPhone) === lPhone10) ||
+        (b.referringNurseId === l.nurseId && b.patientName && b.patientName.toLowerCase().trim() === lName)
       );
 
       if (!exists) {
-        hasNewBookings = true;
+        hasChanges = true;
         const refNurse = nurses.find((n) => n.id === l.nurseId);
         const procedure = services.find((s) => s.id === l.serviceId);
         const fee = Number(l.leadValueRupees) || (procedure?.priceNumber || 800);
@@ -295,8 +349,8 @@ export const App: React.FC = () => {
         const bStatus = l.status === 'Converted' ? 'Completed' : (l.assignedNurseId ? 'Assigned' : 'Pending');
 
         const synthBooking: Booking = {
-          id: `BK-${l.id.replace(/\D/g, '').slice(-4) || Date.now().toString().slice(-6)}`,
-          patientName: l.patientName,
+          id: deterministicId,
+          patientName: l.patientName!,
           patientPhone: l.patientPhone || '',
           area: l.area || 'Hyderabad Central',
           fullAddress: l.fullAddress || '',
@@ -315,14 +369,15 @@ export const App: React.FC = () => {
           notes: `${l.notes ? 'Description: ' + l.notes + ' | ' : ''}Patient Referral by ${refNurse?.name || 'Nurse'}. [50 points + ₹${comm} (10%) credited upon visit completion]`
         };
 
-        syncedBookings.unshift(synthBooking);
+        validBookings.unshift(synthBooking);
         dbSaveBooking(synthBooking);
       }
     });
 
-    if (hasNewBookings) {
-      setBookings(syncedBookings);
-      try { localStorage.setItem('xn_cached_bookings', JSON.stringify(syncedBookings)); } catch { }
+    const finalDeduplicated = deduplicateBookings(validBookings);
+    if (hasChanges || finalDeduplicated.length !== bookings.length) {
+      setBookings(finalDeduplicated);
+      try { localStorage.setItem('xn_cached_bookings', JSON.stringify(finalDeduplicated)); } catch { }
     }
   }, [leads, services, nurses]);
 
@@ -612,19 +667,54 @@ export const App: React.FC = () => {
       ]);
 
       if (remoteBookings !== null) {
-        const effectiveLeads = remoteLeads !== null ? remoteLeads : leads;
+        const effectiveLeads = deduplicateLeads(remoteLeads !== null ? remoteLeads : leads);
         const effectiveNurses = remoteNurses !== null ? remoteNurses : nurses;
-        const mergedBookings = [...remoteBookings];
 
-        // Ensure every patient referral from leads is also present in bookings
-        effectiveLeads.forEach((l) => {
-          const isPatient = (l.referralType !== 'nurse' && !l.referredNursePhone && Boolean(l.patientName));
-          if (!isPatient || !l.patientName) return;
+        // Only patient referrals approved or converted by Admin are allowed in bookings
+        const approvedPatientLeads = effectiveLeads.filter(
+          (l) => (l.status === 'Approved' || l.status === 'Converted') &&
+                 l.referralType !== 'nurse' &&
+                 !l.referredNursePhone &&
+                 Boolean(l.patientName)
+        );
 
-          const cleanPhone = (l.patientPhone || '').replace(/\D/g, '');
-          const exists = mergedBookings.some((b) =>
-            (cleanPhone && b.patientPhone && b.patientPhone.replace(/\D/g, '') === cleanPhone) ||
-            (b.referringNurseId === l.nurseId && b.patientName && b.patientName.toLowerCase() === l.patientName!.toLowerCase())
+        const unapprovedLeadPhones = new Set(
+          effectiveLeads.filter((l) => l.status !== 'Approved' && l.status !== 'Converted')
+                        .map((l) => normalizePhone10(l.patientPhone))
+                        .filter(Boolean)
+        );
+        const unapprovedLeadCleanIds = new Set(
+          effectiveLeads.filter((l) => l.status !== 'Approved' && l.status !== 'Converted')
+                        .map((l) => (l.id.replace(/\D/g, '') || l.id).slice(-6))
+        );
+
+        // Filter out any bookings created for unapproved leads
+        const cleanMergedBookings = remoteBookings.filter((b) => {
+          const bPhone10 = normalizePhone10(b.patientPhone);
+          const bCleanId = b.id.replace(/\D/g, '').slice(-6);
+          if (b.notes?.includes('Patient Referral') && b.status === 'Pending') {
+            if (unapprovedLeadPhones.has(bPhone10) || unapprovedLeadCleanIds.has(bCleanId)) {
+              const hasApprovedMatch = approvedPatientLeads.some((al) =>
+                normalizePhone10(al.patientPhone) === bPhone10 ||
+                (al.id.replace(/\D/g, '') || al.id).slice(-6) === bCleanId
+              );
+              if (!hasApprovedMatch) return false;
+            }
+          }
+          return true;
+        });
+
+        approvedPatientLeads.forEach((l) => {
+          const lPhone10 = normalizePhone10(l.patientPhone);
+          const lName = (l.patientName || '').toLowerCase().trim();
+          const leadCleanDigits = l.id.replace(/\D/g, '') || l.id.slice(-6);
+          const deterministicId = `BK-${leadCleanDigits.slice(-6)}`;
+
+          const exists = cleanMergedBookings.some((b) =>
+            b.id === deterministicId ||
+            b.id === `BK-${leadCleanDigits.slice(-4)}` ||
+            (lPhone10 && normalizePhone10(b.patientPhone) === lPhone10) ||
+            (b.referringNurseId === l.nurseId && b.patientName && b.patientName.toLowerCase().trim() === lName)
           );
 
           if (!exists) {
@@ -636,8 +726,8 @@ export const App: React.FC = () => {
             const bStatus = l.status === 'Converted' ? 'Completed' : (l.assignedNurseId ? 'Assigned' : 'Pending');
 
             const synthBooking: Booking = {
-              id: `BK-${l.id.replace(/\D/g, '').slice(-4) || Date.now().toString().slice(-6)}`,
-              patientName: l.patientName,
+              id: deterministicId,
+              patientName: l.patientName!,
               patientPhone: l.patientPhone || '',
               area: l.area || 'Hyderabad Central',
               fullAddress: l.fullAddress || '',
@@ -656,16 +746,17 @@ export const App: React.FC = () => {
               notes: `${l.notes ? 'Description: ' + l.notes + ' | ' : ''}Patient Referral by ${refNurse?.name || 'Nurse'}. [50 points + ₹${comm} (10%) credited upon visit completion]`
             };
 
-            mergedBookings.unshift(synthBooking);
+            cleanMergedBookings.unshift(synthBooking);
             dbSaveBooking(synthBooking);
           }
         });
 
+        const deduplicatedMerged = deduplicateBookings(cleanMergedBookings);
         setBookings((prev) => {
-          if (prev.length === mergedBookings.length && JSON.stringify(prev) === JSON.stringify(mergedBookings)) {
+          if (prev.length === deduplicatedMerged.length && JSON.stringify(prev) === JSON.stringify(deduplicatedMerged)) {
             return prev;
           }
-          return mergedBookings;
+          return deduplicatedMerged;
         });
       }
       if (remoteNurses !== null) {
@@ -1174,48 +1265,18 @@ export const App: React.FC = () => {
       referralType: newLead.referralType || 'patient'
     };
 
-    setLeads((prev) => [pendingLead, ...prev]);
+    setLeads((prev) => {
+      const next = deduplicateLeads([pendingLead, ...prev]);
+      try { localStorage.setItem('xn_cached_leads', JSON.stringify(next)); } catch { }
+      return next;
+    });
     broadcastRealtimeUpdate('LEAD_CREATE', pendingLead);
     dbSaveLead(pendingLead);
 
-    // Treat referred patient also as a booking: immediately queue in Bookings & Assign Nurses
-    const isPatient = (newLead.referralType !== 'nurse' && !newLead.referredNursePhone);
+    // Directly after refer: DO NOT show in booking or assign nurse.
+    // The referral enters "Pending Approval" in Leads for Admin review.
+    // ONLY after Admin approves the lead (handleAdminApproveLead), the booking is created and queued in Bookings and Assign Nurse.
     const referringNurse = nurses.find((n) => n.id === newLead.nurseId);
-    if (isPatient && newLead.patientName) {
-      const pName = newLead.patientName.trim();
-      const cleanPhone = (newLead.patientPhone || '').replace(/\D/g, '');
-      const existingB = bookings.find((b) =>
-        (cleanPhone && b.patientPhone && b.patientPhone.replace(/\D/g, '') === cleanPhone) ||
-        (b.referringNurseId === newLead.nurseId && b.patientName && b.patientName.toLowerCase() === pName.toLowerCase())
-      );
-      if (!existingB) {
-        const newBookingId = `BK-${Date.now().toString().slice(-6)}`;
-        const refBooking: Booking = {
-          id: newBookingId,
-          patientName: pName,
-          patientPhone: newLead.patientPhone || '',
-          area: newLead.area || 'Hyderabad Central',
-          fullAddress: newLead.fullAddress || '',
-          serviceId: newLead.serviceId || 'saline-infusion',
-          serviceTitle: procedure?.title || newLead.serviceId || 'Clinical Service',
-          estimatedFee: fee,
-          status: 'Pending',
-          createdAt: new Date().toISOString(),
-          hasPrescription: false,
-          referringNurseId: newLead.nurseId,
-          referringNurseName: referringNurse?.name || 'Referred Nurse',
-          referralBonusRupees: commissionRupees,
-          notes: `${newLead.notes ? 'Description: ' + newLead.notes + ' | ' : ''}Patient Referral by ${referringNurse?.name || 'Nurse'}. [Awaiting Office Dispatch - 50 points + ₹${commissionRupees} (10%) credited upon visit completion]`
-        };
-        setBookings((prev) => {
-          const next = [refBooking, ...prev];
-          try { localStorage.setItem('xn_cached_bookings', JSON.stringify(next)); } catch { }
-          return next;
-        });
-        broadcastRealtimeUpdate('BOOKING_UPDATE', refBooking);
-        dbSaveBooking(refBooking);
-      }
-    }
 
     // Track total submitted referrals counter ONLY. 50 points and 10% commission are strictly credited AFTER Admin approval!
     if (referringNurse) {
@@ -1313,10 +1374,15 @@ export const App: React.FC = () => {
     // For patient referrals: Guarantee a fresh booking is queued in "Assign Nurses" (or assigned to chosen nurse)
     let bookingResultId: string | undefined = undefined;
     if (!isNurseReferral && lead.patientName) {
-      const cleanLeadPhone = (lead.patientPhone || '').replace(/\D/g, '');
+      const cleanLeadPhone10 = normalizePhone10(lead.patientPhone);
+      const cleanLeadDigits = lead.id.replace(/\D/g, '') || lead.id.slice(-6);
+      const deterministicId = `BK-${cleanLeadDigits.slice(-6)}`;
+
       const existingBooking = bookings.find((b) =>
-        (cleanLeadPhone && b.patientPhone && b.patientPhone.replace(/\D/g, '') === cleanLeadPhone) ||
-        (b.referringNurseId === lead.nurseId && b.patientName && lead.patientName && b.patientName.toLowerCase() === lead.patientName.toLowerCase())
+        b.id === deterministicId ||
+        b.id === `BK-${cleanLeadDigits.slice(-4)}` ||
+        (cleanLeadPhone10 && normalizePhone10(b.patientPhone) === cleanLeadPhone10) ||
+        (b.referringNurseId === lead.nurseId && b.patientName && lead.patientName && b.patientName.toLowerCase().trim() === lead.patientName.toLowerCase().trim())
       );
 
       const targetStatus = assignToNurseId ? 'Assigned' : (existingBooking && existingBooking.status === 'Completed' ? 'Completed' : 'Pending');
@@ -1339,14 +1405,14 @@ export const App: React.FC = () => {
           notes: `${existingBooking.notes || ''} [Approved: 50 points + ₹${commissionRupees} (10%) credited upon visit completion]`.trim()
         };
         setBookings((prev) => {
-          const next = prev.map((b) => (b.id === existingBooking.id ? updatedB : b));
+          const next = deduplicateBookings(prev.map((b) => (b.id === existingBooking.id ? updatedB : b)));
           try { localStorage.setItem('xn_cached_bookings', JSON.stringify(next)); } catch { }
           return next;
         });
         broadcastRealtimeUpdate('BOOKING_UPDATE', updatedB);
         await dbSaveBooking(updatedB);
       } else {
-        const newBookingId = `BK-${Date.now().toString().slice(-6)}`;
+        const newBookingId = deterministicId;
         bookingResultId = newBookingId;
         const newBooking: Booking = {
           id: newBookingId,
@@ -1370,7 +1436,7 @@ export const App: React.FC = () => {
           notes: `${lead.notes ? 'Description: ' + lead.notes + ' | ' : ''}Patient Referral by ${referringNurse?.name || 'Nurse'}. [50 points + ₹${commissionRupees} (10%) credited upon visit completion]`
         };
         setBookings((prev) => {
-          const next = [newBooking, ...prev];
+          const next = deduplicateBookings([newBooking, ...prev]);
           try { localStorage.setItem('xn_cached_bookings', JSON.stringify(next)); } catch { }
           return next;
         });
@@ -1818,7 +1884,6 @@ export const App: React.FC = () => {
           const updatedNurse: NurseProfile = {
             ...assignedNurse,
             earningsPending: (assignedNurse.earningsPending || 0) + earningsToAdd,
-            referralEarningsRupees: (assignedNurse.referralEarningsRupees || 0) + earningsToAdd,
             totalEarningsRupees: ((assignedNurse.earningsPaid || 0) + (assignedNurse.earningsPending || 0) + earningsToAdd),
             completedVisits: (assignedNurse.completedVisits || 0) + 1
           };
@@ -1888,11 +1953,23 @@ export const App: React.FC = () => {
   };
   const handleDeleteBooking = async (id: string) => {
     const bookingToDelete = bookings.find((b) => b.id === id);
+    const twinBookings = bookingToDelete
+      ? bookings.filter((b) => b.id !== id && areBookingsDuplicate(b, bookingToDelete))
+      : [];
+
+    const idsToDelete = new Set<string>([id, ...twinBookings.map((b) => b.id)]);
+
     if (bookingToDelete) {
+      const bPhone10 = normalizePhone10(bookingToDelete.patientPhone);
+      const bName = (bookingToDelete.patientName || '').toLowerCase().trim();
+
       const matchLead = leads.find((l) =>
         l.id === `LEAD-BK-${id}` ||
+        idsToDelete.has(`BK-${(l.id.replace(/\D/g, '') || l.id).slice(-6)}`) ||
+        idsToDelete.has(`BK-${(l.id.replace(/\D/g, '') || l.id).slice(-4)}`) ||
+        (bPhone10 && normalizePhone10(l.patientPhone) === bPhone10) ||
         (bookingToDelete.referringNurseId && l.nurseId === bookingToDelete.referringNurseId &&
-          (l.patientPhone === bookingToDelete.patientPhone || l.patientName === bookingToDelete.patientName))
+          bName && l.patientName && l.patientName.toLowerCase().trim() === bName)
       );
       const referringNurseId = bookingToDelete.referringNurseId || matchLead?.nurseId;
       if (referringNurseId) {
@@ -1927,12 +2004,15 @@ export const App: React.FC = () => {
     }
 
     setBookings((prev) => {
-      const next = prev.filter((b) => b.id !== id);
+      const next = prev.filter((b) => !idsToDelete.has(b.id));
       try { localStorage.setItem('xn_cached_bookings', JSON.stringify(next)); } catch { }
       return next;
     });
-    broadcastRealtimeUpdate('BOOKING_DELETE', { id });
-    await dbDeleteBooking(id);
+
+    for (const bId of idsToDelete) {
+      broadcastRealtimeUpdate('BOOKING_DELETE', { id: bId });
+      await dbDeleteBooking(bId);
+    }
   };
 
   // 2. Nurses CRUD Handlers
@@ -2156,12 +2236,23 @@ export const App: React.FC = () => {
     const idSet = new Set(ids);
     const bookingsToDelete = bookings.filter((b) => idSet.has(b.id));
 
+    // Also include any duplicate twins of the selected bookings
+    bookingsToDelete.forEach((b) => {
+      bookings.filter((cand) => areBookingsDuplicate(b, cand)).forEach((cand) => idSet.add(cand.id));
+    });
+
     const leadsToDeleteIds: string[] = [];
     bookingsToDelete.forEach((b) => {
+      const bPhone10 = normalizePhone10(b.patientPhone);
+      const bName = (b.patientName || '').toLowerCase().trim();
+
       const matchLead = leads.find((l) =>
         l.id === `LEAD-BK-${b.id}` ||
+        idSet.has(`BK-${(l.id.replace(/\D/g, '') || l.id).slice(-6)}`) ||
+        idSet.has(`BK-${(l.id.replace(/\D/g, '') || l.id).slice(-4)}`) ||
+        (bPhone10 && normalizePhone10(l.patientPhone) === bPhone10) ||
         (b.referringNurseId && l.nurseId === b.referringNurseId &&
-          (l.patientPhone === b.patientPhone || l.patientName === b.patientName))
+          bName && l.patientName && l.patientName.toLowerCase().trim() === bName)
       );
       const referringNurseId = b.referringNurseId || matchLead?.nurseId;
       if (referringNurseId) {
@@ -2200,13 +2291,14 @@ export const App: React.FC = () => {
       await dbDeleteMultipleLeads(leadsToDeleteIds);
     }
 
+    const allIdsToDelete = Array.from(idSet);
     setBookings((prev) => {
       const next = prev.filter((b) => !idSet.has(b.id));
       try { localStorage.setItem('xn_cached_bookings', JSON.stringify(next)); } catch { }
       return next;
     });
-    ids.forEach((id) => broadcastRealtimeUpdate('BOOKING_DELETE', { id }));
-    await dbDeleteMultipleBookings(ids);
+    allIdsToDelete.forEach((id) => broadcastRealtimeUpdate('BOOKING_DELETE', { id }));
+    await dbDeleteMultipleBookings(allIdsToDelete);
   };
 
   const handleDeleteMultipleNurses = async (ids: string[]) => {
@@ -2425,8 +2517,8 @@ export const App: React.FC = () => {
                 currentNurse={activeNurse}
                 allNurses={nurses}
                 onSelectNurse={(n) => setActiveNurseId(n.id)}
-                bookings={bookings}
-                leads={leads}
+                bookings={deduplicateBookings(bookings)}
+                leads={deduplicateLeads(leads)}
                 services={services}
                 onAddNewLead={handleAddNewLead}
                 onUpdateNurse={handleUpdateNurse}
@@ -2441,9 +2533,9 @@ export const App: React.FC = () => {
           {currentPath === '/admin' && (
             <AuthGuard user={authUser} requiredRole="admin" onNavigate={navigate}>
               <AdminDashboard
-                bookings={bookings}
+                bookings={deduplicateBookings(bookings)}
                 nurses={nurses}
-                leads={leads}
+                leads={deduplicateLeads(leads)}
                 services={services}
                 consultations={consultations}
                 coupons={coupons}

@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import {
   Booking,
   NurseProfile,
@@ -68,7 +68,7 @@ import {
 import { EmptyState } from './EmptyState';
 import { generateNurseReferralCode, dbLogAuditEvent } from '../lib/supabase';
 import { getSafeBlobUrl } from './NurseDashboard';
-import { calculateNurseMetrics } from '../lib/nurseCalculations';
+import { calculateNurseMetrics, deduplicateBookings, deduplicateLeads } from '../lib/nurseCalculations';
 import {
   getCloudflareConfig,
   saveCloudflareConfig,
@@ -135,9 +135,9 @@ interface AdminDashboardProps {
 }
 
 export const AdminDashboard: React.FC<AdminDashboardProps> = ({
-  bookings,
+  bookings: rawBookings = [],
   nurses,
-  leads,
+  leads: rawLeads = [],
   services = [],
   consultations = [],
   coupons = [],
@@ -176,6 +176,9 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
   onDeleteMultipleAppUsers,
   onRefreshData
 }) => {
+  const bookings = useMemo(() => deduplicateBookings(rawBookings), [rawBookings]);
+  const leads = useMemo(() => deduplicateLeads(rawLeads), [rawLeads]);
+
   const [activeTab, setActiveTab] = useState<'routing' | 'bookings' | 'nurses' | 'services' | 'leads' | 'consultations' | 'coupons' | 'credentials' | 'storage'>('routing');
   const [testSimPatientArea, setTestSimPatientArea] = useState<HyderabadArea>('LB Nagar');
   const [testSimReferringNurse, setTestSimReferringNurse] = useState<string>('none');

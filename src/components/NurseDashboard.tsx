@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import {
   NurseProfile,
   NurseLead,
@@ -49,7 +49,7 @@ import {
   uploadCertificateToCloudflareBucket
 } from '../lib/cloudflareStorage';
 import { generateNurseReferralCode } from '../lib/supabase';
-import { calculateNurseMetrics } from '../lib/nurseCalculations';
+import { calculateNurseMetrics, deduplicateBookings, deduplicateLeads } from '../lib/nurseCalculations';
 
 // Helper to convert base64 data URLs to safe Blob URLs that modern browsers won't block
 export function getSafeBlobUrl(dataUrl: string): string {
@@ -112,8 +112,8 @@ export const NurseDashboard: React.FC<NurseDashboardProps> = ({
   currentNurse,
   allNurses,
   onSelectNurse,
-  bookings,
-  leads = [],
+  bookings: rawBookings = [],
+  leads: rawLeads = [],
   services = [],
   onAddNewLead,
   onUpdateNurse,
@@ -121,6 +121,8 @@ export const NurseDashboard: React.FC<NurseDashboardProps> = ({
   onUpdateBooking,
   onRefreshData
 }) => {
+  const bookings = useMemo(() => deduplicateBookings(rawBookings), [rawBookings]);
+  const leads = useMemo(() => deduplicateLeads(rawLeads), [rawLeads]);
   const serviceList: ServiceItem[] = services;
   const liveNurse = (allNurses && currentNurse)
     ? (allNurses.find((n) => n.id === currentNurse.id || (n.phone && currentNurse.phone && n.phone.replace(/\D/g, '') === currentNurse.phone.replace(/\D/g, ''))) || currentNurse)
