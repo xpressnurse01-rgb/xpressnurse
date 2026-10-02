@@ -78,7 +78,9 @@ export const getCloudflareConfig = (): CloudflareR2Config => {
           accountId: parsed.accountId || import.meta.env.VITE_CLOUDFLARE_R2_ACCOUNT_ID || '',
           bucketName: parsed.bucketName || import.meta.env.VITE_CLOUDFLARE_R2_BUCKET_NAME || 'xpressnurse-storage',
           endpoint: parsed.endpoint || import.meta.env.VITE_CLOUDFLARE_R2_ENDPOINT || '',
-          publicDomain: parsed.publicDomain || import.meta.env.VITE_CLOUDFLARE_R2_PUBLIC_DOMAIN || '/buckets'
+          publicDomain: parsed.publicDomain || import.meta.env.VITE_CLOUDFLARE_R2_PUBLIC_DOMAIN || '/buckets',
+          accessKeyId: parsed.accessKeyId || import.meta.env.VITE_CLOUDFLARE_R2_ACCESS_KEY_ID || '',
+          secretAccessKey: parsed.secretAccessKey || import.meta.env.VITE_CLOUDFLARE_R2_SECRET_ACCESS_KEY || ''
         };
         return config;
       }
@@ -305,25 +307,48 @@ export const uploadToCloudflareStorage = async (
   // Attempt real upload to Cloudflare R2 bucket endpoint
   if (config.endpoint) {
     try {
-      const uploadUrl = `${config.endpoint.replace(/\/+$/, '')}/${config.bucketName}/${key}`;
-      let bodyData: BodyInit | null = null;
+      // Strip trailing slashes and accidentally included bucket names from the endpoint URL
+      let baseEndpoint = config.endpoint.trim().replace(/\/+$/, '');
+      if (!baseEndpoint.startsWith('http')) {
+        baseEndpoint = 'https://' + baseEndpoint;
+      }
+      
+      // If the user accidentally pasted the bucket name at the end of the endpoint (very common mistake)
+      if (baseEndpoint.endsWith(`/${config.bucketName}`)) {
+        baseEndpoint = baseEndpoint.replace(new RegExp(`/${config.bucketName}$`), '');
+      }
+
+      const uploadUrl = `${baseEndpoint}/${config.bucketName}/${key}`;
+      let bodyData: ArrayBuffer | null = null;
       if (fileData.dataUrl) {
-        const res = await fetch(fileData.dataUrl);
-        bodyData = await res.blob();
+        if (fileData.dataUrl.startsWith('data:')) {
+          const base64 = fileData.dataUrl.split(',')[1];
+          const binaryString = window.atob(base64);
+          const len = binaryString.length;
+          const bytes = new Uint8Array(len);
+          for (let i = 0; i < len; i++) {
+            bytes[i] = binaryString.charCodeAt(i);
+          }
+          bodyData = bytes.buffer;
+        } else {
+          const res = await fetch(fileData.dataUrl);
+          bodyData = await res.arrayBuffer();
+        }
       } else {
-        bodyData = new Blob([`%PDF-1.4\n% Xpress Nurse Storage Object: ${key}\nMetadata: ${JSON.stringify(fileData.metadata || {})}`], { type: fileData.contentType || 'application/pdf' });
+        const str = `%PDF-1.4\n% Xpress Nurse Storage Object: ${key}\nMetadata: ${JSON.stringify(fileData.metadata || {})}`;
+        bodyData = new TextEncoder().encode(str).buffer;
       }
       const headers: Record<string, string> = {
-        'Content-Type': fileData.contentType || 'application/pdf'
+        'Content-Type': fileData.contentType || 'application/pdf',
+        'X-Amz-Content-Sha256': 'UNSIGNED-PAYLOAD'
       };
 
       let response: Response;
 
       if (config.accessKeyId && config.secretAccessKey) {
-        // Authenticate with AWS Signature V4 using aws4fetch
         const aws = new AwsClient({
-          accessKeyId: config.accessKeyId,
-          secretAccessKey: config.secretAccessKey,
+          accessKeyId: config.accessKeyId.trim(),
+          secretAccessKey: config.secretAccessKey.trim(),
           service: 's3',
           region: 'auto',
         });
@@ -351,7 +376,8 @@ export const uploadToCloudflareStorage = async (
       }
     } catch (err: any) {
       console.error('Cloudflare R2 Upload Error (CORS/Network):', err);
-      throw new Error(`Upload Failed: ${err.message || 'Network error or CORS issue. Please check your R2 bucket CORS settings.'}`);
+      const urlHint = config.endpoint ? `(Target: ${config.endpoint})` : '';
+      throw new Error(`Upload Failed: ${err.message}. ${urlHint} This usually means either: 1) Your Cloudflare CORS policy wasn't saved correctly, 2) Your endpoint URL is missing 'https://' or has a typo, OR 3) You have an aggressive Ad-Blocker (like uBlock/Brave) blocking 'cloudflarestorage.com'.`);
     }
   } else {
     throw new Error('Cloudflare R2 endpoint is not configured in settings.');

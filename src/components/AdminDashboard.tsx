@@ -211,7 +211,16 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
   const [r2ConfigForm, setR2ConfigForm] = useState<CloudflareR2Config>(r2Config);
 
   // Upload Form
-  const [uploadForm, setUploadForm] = useState({
+  const [uploadForm, setUploadForm] = useState<{
+    fileName: string;
+    category: StorageCategory;
+    bookingId: string;
+    patientName: string;
+    description: string;
+    fileDataUrl?: string;
+    fileSize?: number;
+    fileType?: string;
+  }>({
     fileName: '',
     category: 'invoices' as StorageCategory,
     bookingId: '',
@@ -276,25 +285,30 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
     const cleanFileName = uploadForm.fileName.endsWith('.pdf') ? uploadForm.fileName : `${uploadForm.fileName}.pdf`;
     const relatedBooking = bookings.find(b => b.id === uploadForm.bookingId);
     
-    await uploadToCloudflareStorage({
-      fileName: cleanFileName,
-      category: uploadForm.category,
-      contentType: 'application/pdf',
-      sizeBytes: Math.floor(110000 + Math.random() * 200000),
-      metadata: {
-        bookingId: uploadForm.bookingId || undefined,
-        patientName: relatedBooking ? relatedBooking.patientName : (uploadForm.patientName || undefined),
-        patientPhone: relatedBooking ? relatedBooking.patientPhone : undefined,
-        assignedNurseId: relatedBooking ? relatedBooking.assignedNurseId : undefined,
-        serviceId: relatedBooking ? relatedBooking.serviceId : undefined,
-        estimatedFee: relatedBooking ? relatedBooking.estimatedFee : undefined,
-        description: uploadForm.description || `Uploaded document to ${uploadForm.category}`
-      }
-    });
-    setStorageObjects(getCloudflareObjects());
-    setIsUploadModalOpen(false);
-    setUploadForm({ fileName: '', category: 'invoices', bookingId: '', patientName: '', description: '' });
-    showToast(`Uploaded "${cleanFileName}" to Cloudflare R2 bucket!`);
+    try {
+      await uploadToCloudflareStorage({
+        fileName: cleanFileName,
+        category: uploadForm.category,
+        contentType: uploadForm.fileType || 'application/pdf',
+        sizeBytes: uploadForm.fileSize || Math.floor(110000 + Math.random() * 200000),
+        dataUrl: uploadForm.fileDataUrl,
+        metadata: {
+          bookingId: uploadForm.bookingId || undefined,
+          patientName: relatedBooking ? relatedBooking.patientName : (uploadForm.patientName || undefined),
+          patientPhone: relatedBooking ? relatedBooking.patientPhone : undefined,
+          assignedNurseId: relatedBooking ? relatedBooking.assignedNurseId : undefined,
+          serviceId: relatedBooking ? relatedBooking.serviceId : undefined,
+          estimatedFee: relatedBooking ? relatedBooking.estimatedFee : undefined,
+          description: uploadForm.description || `Uploaded document to ${uploadForm.category}`
+        }
+      });
+      setStorageObjects(getCloudflareObjects());
+      setIsUploadModalOpen(false);
+      setUploadForm({ fileName: '', category: 'invoices', bookingId: '', patientName: '', description: '', fileDataUrl: undefined, fileSize: undefined, fileType: undefined });
+      showToast(`Uploaded "${cleanFileName}" to Cloudflare R2 bucket!`);
+    } catch (err: any) {
+      alert(`Upload Failed: ${err.message}`);
+    }
   };
 
   const handleDeleteObjectClick = (obj: CloudflareStorageObject) => {
@@ -8550,6 +8564,33 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                   <option value="teleconsult-rx">Doctor Teleconsult Orders</option>
                   <option value="lab-reports">Diagnostic & Lab Reports</option>
                 </select>
+              </div>
+
+              <div style={{ marginBottom: '1rem' }}>
+                <label className="form-label" style={{ fontSize: '0.78rem', fontWeight: 700 }}>SELECT DOCUMENT *</label>
+                <input
+                  type="file"
+                  accept=".pdf,image/png,image/jpeg,image/webp"
+                  required
+                  onChange={(e) => {
+                    const file = e.target.files?.[0];
+                    if (file) {
+                      const reader = new FileReader();
+                      reader.onload = () => {
+                        setUploadForm(prev => ({ 
+                          ...prev, 
+                          fileDataUrl: reader.result as string,
+                          fileSize: file.size,
+                          fileType: file.type || 'application/pdf',
+                          fileName: prev.fileName || file.name
+                        }));
+                      };
+                      reader.readAsDataURL(file);
+                    }
+                  }}
+                  className="form-control"
+                  style={{ padding: '0.4rem' }}
+                />
               </div>
 
               <div style={{ marginBottom: '1rem' }}>

@@ -305,8 +305,9 @@ export const BookingModal: React.FC<BookingModalProps> = ({
         setPrescriptionUrl(r2Obj.publicUrl);
         setPrescriptionFileName(r2Obj.fileName);
         setR2UploadSuccess(true);
-      } catch (uploadErr) {
+      } catch (uploadErr: any) {
         console.error('Cloudflare R2 Bucket upload error:', uploadErr);
+        alert(`Failed to upload prescription: ${uploadErr.message}`);
         setErrors((prev) => ({
           ...prev,
           prescription: 'Cloudflare upload warning: File queued for retry.'
