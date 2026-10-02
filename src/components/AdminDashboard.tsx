@@ -67,16 +67,18 @@ import {
 } from 'lucide-react';
 import { EmptyState } from './EmptyState';
 import { generateNurseReferralCode, dbLogAuditEvent } from '../lib/supabase';
-import { getSafeBlobUrl } from './NurseDashboard';
+import { getSafeBlobUrl, HYDERABAD_AREAS } from './NurseDashboard';
 import { calculateNurseMetrics, deduplicateBookings, deduplicateLeads } from '../lib/nurseCalculations';
 import {
   getCloudflareConfig,
   saveCloudflareConfig,
   getCloudflareObjects,
+  persistCloudflareObjects,
   uploadToCloudflareStorage,
   deleteFromCloudflareStorage,
   deleteMultipleFromCloudflareStorage,
   generateInvoiceDetails,
+  generatePrintableInvoiceHtml,
   saveInvoiceToCloudflareBucket,
   openPrintableInvoiceWindow,
   getPrescriptionStorageObject,
@@ -205,6 +207,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
   // Modals
   const [isInvoicePreviewModalOpen, setIsInvoicePreviewModalOpen] = useState(false);
   const [previewInvoice, setPreviewInvoice] = useState<InvoiceDetails | null>(null);
+  const [invoiceModalTab, setInvoiceModalTab] = useState<'edit' | 'preview'>('edit');
   const [adminCertModalOpen, setAdminCertModalOpen] = useState(false);
   const [adminCertModalNurse, setAdminCertModalNurse] = useState<NurseProfile | null>(null);
   const [isR2ConfigModalOpen, setIsR2ConfigModalOpen] = useState(false);
@@ -260,9 +263,124 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
     setIsPrescriptionModalOpen(true);
   };
 
-  const handleViewBookingInvoice = async (booking: Booking) => {
-    const inv = generateInvoiceDetails(booking);
-    openPrintableInvoiceWindow(inv);
+  const handleOpenCustomInvoiceModal = (booking?: Booking) => {
+    if (booking) {
+      setPreviewInvoice(generateInvoiceDetails(booking));
+    } else if (bookings.length > 0) {
+      setPreviewInvoice(generateInvoiceDetails(bookings[0]));
+    } else {
+      const newInv: InvoiceDetails = {
+        invoiceNumber: `XN-INV-2026-CUSTOM-${Math.floor(1000 + Math.random() * 9000)}`,
+        invoiceDate: new Date().toLocaleDateString('en-IN', {
+          day: '2-digit',
+          month: 'short',
+          year: 'numeric'
+        }),
+        bookingId: 'CUSTOM-' + Date.now().toString().slice(-4),
+        patientName: 'Custom Patient',
+        patientPhone: '+91 ',
+        patientAge: 45,
+        patientGender: 'Female',
+        fullAddress: 'Doorstep Care, Hyderabad',
+        area: 'Banjara Hills',
+        serviceTitle: services[0]?.title || 'Clinical Nursing Care',
+        serviceDate: new Date().toISOString().split('T')[0],
+        timeSlot: 'Morning (09:00 AM - 01:00 PM)',
+        numberOfVisits: 1,
+        serviceId: services[0]?.id || 'general-care',
+        assignedNurseName: nurses[0]?.name || 'Attending RN',
+        baseAmount: services[0]?.priceNumber || 800,
+        nightSurcharge: 0,
+        discountRupees: 0,
+        totalAmount: services[0]?.priceNumber || 800,
+        paymentStatus: 'Paid',
+        paymentMode: 'UPI / Online',
+        r2StorageKey: `invoices/custom_${Date.now()}.pdf`,
+        r2PublicUrl: `/buckets/invoices/custom_${Date.now()}.pdf`
+      };
+      setPreviewInvoice(newInv);
+    }
+    setInvoiceModalTab('edit');
+    setIsInvoicePreviewModalOpen(true);
+  };
+
+  const handleViewBookingInvoice = (booking: Booking) => {
+    handleOpenCustomInvoiceModal(booking);
+  };
+
+  const updateInvoiceCalculation = (fields: Partial<InvoiceDetails>) => {
+    setPreviewInvoice((prev) => {
+      if (!prev) return null;
+      const merged = { ...prev, ...fields };
+      const base = Number(merged.baseAmount) || 0;
+      const visits = Number(merged.numberOfVisits) || 1;
+      const surcharge = Number(merged.nightSurcharge) || 0;
+      const discount = Number(merged.discountRupees) || 0;
+      merged.totalAmount = Math.max(0, (base * visits) + surcharge - discount);
+      return merged;
+    });
+  };
+
+  const handleSaveAndSyncInvoice = async () => {
+    if (!previewInvoice) return;
+    try {
+      const matchingBooking = bookings.find((b) => b.id === previewInvoice.bookingId);
+      if (matchingBooking && onUpdateBooking) {
+        await onUpdateBooking(matchingBooking.id, {
+          preferredDate: previewInvoice.serviceDate,
+          scheduledSlot: previewInvoice.timeSlot,
+          numberOfVisits: previewInvoice.numberOfVisits,
+          finalFee: previewInvoice.totalAmount,
+          assignedNurseName: previewInvoice.assignedNurseName,
+          patientName: previewInvoice.patientName,
+          patientPhone: previewInvoice.patientPhone,
+          fullAddress: previewInvoice.fullAddress,
+          area: previewInvoice.area as any,
+          invoiceNumber: previewInvoice.invoiceNumber,
+          status: matchingBooking.status
+        });
+        showToast(`Invoice #${previewInvoice.invoiceNumber} saved & synced to Supabase for ${previewInvoice.patientName}!`);
+      } else {
+        showToast(`Custom Invoice #${previewInvoice.invoiceNumber} generated!`);
+      }
+
+      // Persist invoice HTML to local storage objects safely
+      try {
+        const html = generatePrintableInvoiceHtml(previewInvoice);
+        const dataUrl = `data:text/html;charset=utf-8,${encodeURIComponent(html)}`;
+        const existing = getCloudflareObjects();
+        const cleanName = `${previewInvoice.invoiceNumber}.html`;
+        const key = `invoices/${cleanName}`;
+        const newObj: CloudflareStorageObject = {
+          id: 'r2-inv-' + Date.now(),
+          bucketName: r2Config.bucketName || 'xpressnurse-storage',
+          key,
+          category: 'invoices',
+          fileName: cleanName,
+          contentType: 'text/html',
+          sizeBytes: new Blob([html]).size,
+          uploadedAt: new Date().toISOString(),
+          publicUrl: r2Config.publicDomain ? `${r2Config.publicDomain.replace(/\/+$/, '')}/${key}` : `/buckets/${key}`,
+          dataUrl,
+          metadata: {
+            bookingId: previewInvoice.bookingId,
+            patientName: previewInvoice.patientName,
+            nurseName: previewInvoice.assignedNurseName,
+            amount: previewInvoice.totalAmount,
+            description: `Invoice for ${previewInvoice.serviceTitle} (${previewInvoice.patientName})`
+          }
+        };
+        const updated = [newObj, ...existing.filter((o) => o.key !== key)];
+        persistCloudflareObjects(updated);
+        setStorageObjects(updated);
+      } catch (storageErr) {
+        console.warn('Could not persist storage object:', storageErr);
+      }
+
+      setIsInvoicePreviewModalOpen(false);
+    } catch (err: any) {
+      showToast(err.message || 'Error saving invoice', 'error');
+    }
   };
 
   const handlePrintCurrentInvoice = () => {
@@ -270,6 +388,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
       openPrintableInvoiceWindow(previewInvoice);
     }
   };
+
   const handleSyncStorage = async () => {
     const synced = syncDatabaseRecordsToStorage(bookings, nurses, getCloudflareObjects());
     setStorageObjects(synced);
@@ -2585,13 +2704,13 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                 <span>Export Bookings (Excel/CSV)</span>
               </button>
               <button
-                onClick={handleSyncStorage}
+                onClick={() => handleOpenCustomInvoiceModal()}
                 className="btn btn-outline btn-sm"
                 style={{ borderRadius: 9999, fontWeight: 700, gap: '0.4rem', borderColor: '#BAE6FD', color: '#0284C7', background: '#F0F9FF' }}
-                title="Generate Invoices for all bookings"
+                title="Open Custom Invoice Generator"
               >
                 <Receipt size={15} />
-                <span>Invoice Generator ({bookings.length})</span>
+                <span>Custom Invoice Generator ({bookings.length})</span>
               </button>
               <button
                 onClick={handleOpenCreateBookingModal}
@@ -5329,6 +5448,16 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                 >
                   <RefreshCw size={14} />
                   <span>Sync Storage</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => handleOpenCustomInvoiceModal()}
+                  className="btn btn-outline btn-sm"
+                  style={{ borderRadius: 9999, fontSize: '0.8rem', gap: '0.35rem', height: 34, borderColor: '#BAE6FD', color: '#0284C7', background: '#F0F9FF', fontWeight: 700 }}
+                  title="Create or customize patient invoices"
+                >
+                  <Receipt size={14} />
+                  <span>Custom Invoice Generator</span>
                 </button>
 
                 <button
@@ -8428,28 +8557,58 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
         </div>
       )}
 
-      {/* 2. CLOUDFLARE R2 INVOICE PREVIEW MODAL */}
+      {/* 2. CUSTOM INVOICE GENERATOR & PREVIEW MODAL */}
       {isInvoicePreviewModalOpen && previewInvoice && (
         <div
           className="modal-overlay"
+          data-lenis-prevent="true"
           onClick={() => setIsInvoicePreviewModalOpen(false)}
-          style={{ zIndex: 999999, pointerEvents: 'auto' }}
+          style={{
+            zIndex: 999999,
+            pointerEvents: 'auto',
+            overflowY: 'auto',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            padding: '1.25rem 1rem'
+          }}
         >
           <div
             className="modal-box"
+            data-lenis-prevent="true"
             onClick={(e) => e.stopPropagation()}
-            style={{ maxWidth: 720, borderRadius: 20, pointerEvents: 'auto', maxHeight: '92vh', overflowY: 'auto' }}
+            style={{
+              maxWidth: 820,
+              width: '100%',
+              borderRadius: 20,
+              pointerEvents: 'auto',
+              maxHeight: '88vh',
+              height: '88vh',
+              display: 'flex',
+              flexDirection: 'column',
+              boxShadow: '0 25px 60px -15px rgba(2, 12, 27, 0.45)',
+              overflow: 'hidden',
+              background: '#FFFFFF'
+            }}
           >
-            <div className="modal-header" style={{ padding: '1.25rem 1.5rem', background: '#FAFAFA', borderBottom: '1px solid var(--neutral-200)' }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '0.65rem' }}>
-                <div style={{ width: 38, height: 38, borderRadius: 10, background: '#FFFBEB', color: '#D97706', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+            {/* 1. Fixed Header */}
+            <div className="modal-header" style={{ padding: '0.9rem 1.4rem', background: '#FAFAFA', borderBottom: '1px solid var(--neutral-200)', flexShrink: 0 }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+                <div style={{ width: 38, height: 38, borderRadius: 10, background: '#EFF6FF', color: '#0284C7', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
                   <Receipt size={20} />
                 </div>
                 <div>
-                  <h3 style={{ fontSize: '1.15rem', fontWeight: 800, color: 'var(--primary-navy-950)', margin: 0 }}>
-                    Invoice {previewInvoice.invoiceNumber}
-                  </h3>
-
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                    <h3 style={{ fontSize: '1.15rem', fontWeight: 800, color: 'var(--primary-navy-950)', margin: 0 }}>
+                      Custom Invoice Generator
+                    </h3>
+                    <span style={{ fontSize: '0.74rem', fontWeight: 800, padding: '2px 8px', borderRadius: 9999, background: '#ECFDF5', color: '#059669', border: '1px solid #A7F3D0' }}>
+                      Payable: ₹{previewInvoice.totalAmount}
+                    </span>
+                  </div>
+                  <div style={{ fontSize: '0.74rem', color: 'var(--neutral-500)', marginTop: '2px' }}>
+                    Invoice #{previewInvoice.invoiceNumber} • Customize dates, time slots, RN override & packages
+                  </div>
                 </div>
               </div>
               <button
@@ -8457,191 +8616,550 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                 onClick={() => setIsInvoicePreviewModalOpen(false)}
                 className="modal-close-btn"
                 style={{ background: '#F1F5F9', border: 'none', borderRadius: '50%', width: 32, height: 32, display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer' }}
+                title="Close"
               >
                 <X size={16} />
               </button>
             </div>
 
-            <div style={{ padding: '1rem 1.5rem', background: '#F8FAFC', borderBottom: '1px solid #E2E8F0', display: 'flex', gap: '1rem', flexWrap: 'wrap' }}>
-              <div style={{ flex: 1, minWidth: 200 }}>
-                <label style={{ fontSize: '0.72rem', fontWeight: 700, color: '#64748B', display: 'block', marginBottom: '4px' }}>Custom Dates</label>
-                <input
-                  type="text"
-                  value={previewInvoice.serviceDate || ''}
-                  onChange={(e) => setPreviewInvoice({ ...previewInvoice, serviceDate: e.target.value })}
-                  placeholder="e.g. 12 Oct to 15 Oct"
+            {/* 2. Source Selector & Clean Tab Bar */}
+            <div style={{ padding: '0.75rem 1.4rem', background: '#F8FAFC', borderBottom: '1px solid #E2E8F0', display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '0.75rem', flexWrap: 'wrap', flexShrink: 0 }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', flex: 1, minWidth: 260 }}>
+                <span style={{ fontSize: '0.78rem', fontWeight: 800, color: 'var(--primary-navy-950)', whiteSpace: 'nowrap' }}>Order Source:</span>
+                <select
                   className="form-control"
-                />
-              </div>
-              <div style={{ flex: 1, minWidth: 200 }}>
-                <label style={{ fontSize: '0.72rem', fontWeight: 700, color: '#64748B', display: 'block', marginBottom: '4px' }}>Custom Slots</label>
-                <input
-                  type="text"
-                  value={previewInvoice.timeSlot || ''}
-                  onChange={(e) => setPreviewInvoice({ ...previewInvoice, timeSlot: e.target.value })}
-                  placeholder="e.g. Morning & Evening"
-                  className="form-control"
-                />
-              </div>
-              <div style={{ flex: 1, minWidth: 200 }}>
-                <label style={{ fontSize: '0.72rem', fontWeight: 700, color: '#64748B', display: 'block', marginBottom: '4px' }}>Staff Name Override</label>
-                <input
-                  type="text"
-                  value={previewInvoice.assignedNurseName || ''}
-                  onChange={(e) => setPreviewInvoice({ ...previewInvoice, assignedNurseName: e.target.value })}
-                  placeholder="Attending Staff"
-                  className="form-control"
-                />
-              </div>
-              <div style={{ flex: 0.5, minWidth: 100 }}>
-                <label style={{ fontSize: '0.72rem', fontWeight: 700, color: '#64748B', display: 'block', marginBottom: '4px' }}>Total Slots</label>
-                <input
-                  type="number"
-                  min="1"
-                  value={previewInvoice.numberOfVisits || 1}
+                  style={{ height: 34, fontSize: '0.8rem', fontWeight: 600, background: '#FFFFFF', flex: 1 }}
+                  value={previewInvoice.bookingId}
                   onChange={(e) => {
-                    const visits = parseInt(e.target.value) || 1;
-                    const baseAmount = previewInvoice.baseAmount;
-                    const surcharge = previewInvoice.nightSurcharge || 0;
-                    const discount = previewInvoice.discountRupees || 0;
-                    const totalAmount = (baseAmount * visits) + surcharge - discount;
-                    setPreviewInvoice({ ...previewInvoice, numberOfVisits: visits, totalAmount });
-                  }}
-                  className="form-control"
-                />
-              </div>
-            </div>
-
-            <div style={{ padding: '1.5rem' }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', borderBottom: '2px solid #0A192F', paddingBottom: '1rem', marginBottom: '1.25rem' }}>
-                <div>
-                  <div style={{ fontSize: '1.3rem', fontWeight: 900, color: '#0A192F' }}>Xpress Nurse</div>
-                  <div style={{ fontSize: '0.8rem', color: '#0284C7', fontWeight: 700 }}>24/7 Clinical Home Care Hyderabad</div>
-                </div>
-                <div style={{ textAlign: 'right' }}>
-                  <div style={{ fontSize: '1.1rem', fontWeight: 800 }}>INVOICE</div>
-                  <div style={{ fontSize: '0.82rem', color: '#0284C7', fontWeight: 700 }}>{previewInvoice.invoiceNumber}</div>
-                  <div style={{ fontSize: '0.74rem', color: '#64748B' }}>Date: {previewInvoice.invoiceDate}</div>
-                </div>
-              </div>
-
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem', marginBottom: '1.25rem', background: '#F8FAFC', padding: '1rem', borderRadius: 10 }}>
-                <div>
-                  <div style={{ fontSize: '0.72rem', fontWeight: 700, color: '#64748B', textTransform: 'uppercase' }}>PATIENT / BILLED TO</div>
-                  <div style={{ fontSize: '0.88rem', fontWeight: 800 }}>{previewInvoice.patientName}</div>
-                  <div style={{ fontSize: '0.78rem', color: '#475569' }}>{previewInvoice.patientPhone}</div>
-                  <div style={{ fontSize: '0.78rem', color: '#475569' }}>{previewInvoice.fullAddress}, {previewInvoice.area}</div>
-                </div>
-                <div>
-                  <div style={{ fontSize: '0.72rem', fontWeight: 700, color: '#64748B', textTransform: 'uppercase' }}>DISPATCH & ATTENDING STAFF</div>
-                  <div style={{ fontSize: '0.88rem', fontWeight: 800 }}>{previewInvoice.assignedNurseName}</div>
-                  <div style={{ fontSize: '0.78rem', color: '#475569' }}>Booking ID: {previewInvoice.bookingId}</div>
-                  <div style={{ fontSize: '0.78rem', color: '#059669', fontWeight: 700 }}>Payment Status: {previewInvoice.paymentStatus}</div>
-                </div>
-              </div>
-
-              <div className="table-responsive" style={{ marginBottom: '1.25rem' }}>
-                <table className="data-table">
-                  <thead>
-                    <tr>
-                      <th style={{ width: 40, textAlign: 'center' }}>S.No</th>
-                      <th>Procedure</th>
-                      <th>Date</th>
-                      <th>Slot No</th>
-                      <th style={{ textAlign: 'right' }}>Amount (₹)</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    <tr>
-                      <td style={{ textAlign: 'center' }}>1</td>
-                      <td><strong>{previewInvoice.serviceTitle}</strong></td>
-                      <td>{previewInvoice.serviceDate || '-'}</td>
-                      <td>{previewInvoice.timeSlot || '-'}</td>
-                      <td style={{ textAlign: 'right' }}>₹{previewInvoice.baseAmount * (previewInvoice.numberOfVisits || 1)}</td>
-                    </tr>
-                    {Boolean(previewInvoice.nightSurcharge && previewInvoice.nightSurcharge > 0) && (
-                      <tr>
-                        <td style={{ textAlign: 'center' }}>2</td>
-                        <td><strong>Night Emergency Surcharge</strong></td>
-                        <td>-</td>
-                        <td>-</td>
-                        <td style={{ textAlign: 'right' }}>₹{previewInvoice.nightSurcharge}</td>
-                      </tr>
-                    )}
-                    {Boolean(previewInvoice.discountRupees && previewInvoice.discountRupees > 0) && (
-                      <tr>
-                        <td style={{ textAlign: 'center' }}>{previewInvoice.nightSurcharge && previewInvoice.nightSurcharge > 0 ? '3' : '2'}</td>
-                        <td style={{ color: '#059669' }}>Coupon Discount</td>
-                        <td>-</td>
-                        <td>-</td>
-                        <td style={{ textAlign: 'right', color: '#059669' }}>-₹{previewInvoice.discountRupees}</td>
-                      </tr>
-                    )}
-                  </tbody>
-                </table>
-              </div>
-
-              <div style={{ width: 280, marginLeft: 'auto', marginBottom: '1.25rem' }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', padding: '0.25rem 0', fontSize: '0.82rem' }}>
-                  <span>Subtotal:</span>
-                  <strong>₹{previewInvoice.baseAmount * (previewInvoice.numberOfVisits || 1)}</strong>
-                </div>
-
-                {Boolean(previewInvoice.discountRupees && previewInvoice.discountRupees > 0) && (
-                  <div style={{ display: 'flex', justifyContent: 'space-between', padding: '0.25rem 0', fontSize: '0.82rem', color: '#059669' }}>
-                    <span>Discount:</span>
-                    <strong>-₹{previewInvoice.discountRupees}</strong>
-                  </div>
-                )}
-
-                <div style={{ display: 'flex', justifyContent: 'space-between', padding: '0.4rem 0', borderTop: '2px solid #0A192F', fontSize: '1.1rem', fontWeight: 900 }}>
-                  <span>Total Payable:</span>
-                  <span style={{ color: '#059669' }}>₹{previewInvoice.totalAmount}</span>
-                </div>
-              </div>
-            </div>
-
-            <div style={{ padding: '1rem 1.4rem', background: '#FAFAFA', borderTop: '1px solid var(--neutral-200)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-              <div style={{ display: 'flex', gap: '0.75rem' }}>
-                <button
-                  type="button"
-                  onClick={async () => {
-                    if (onUpdateBooking) {
-                      await onUpdateBooking(previewInvoice.bookingId, {
-                        preferredDate: previewInvoice.serviceDate,
-                        scheduledSlot: previewInvoice.timeSlot,
-                        numberOfVisits: previewInvoice.numberOfVisits,
-                        finalFee: previewInvoice.totalAmount,
-                        assignedNurseName: previewInvoice.assignedNurseName
+                    const selectedId = e.target.value;
+                    if (selectedId === 'custom') {
+                      setPreviewInvoice({
+                        invoiceNumber: `XN-INV-2026-CUSTOM-${Math.floor(1000 + Math.random() * 9000)}`,
+                        invoiceDate: new Date().toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' }),
+                        bookingId: 'CUSTOM-' + Date.now().toString().slice(-4),
+                        patientName: 'Custom Patient',
+                        patientPhone: '+91 ',
+                        patientAge: 45,
+                        patientGender: 'Female',
+                        fullAddress: 'Doorstep Care, Hyderabad',
+                        area: 'Banjara Hills',
+                        serviceTitle: services[0]?.title || 'Clinical Home Care',
+                        serviceDate: new Date().toISOString().split('T')[0],
+                        timeSlot: 'Morning (09:00 AM - 01:00 PM)',
+                        numberOfVisits: 1,
+                        serviceId: services[0]?.id || 'general-care',
+                        assignedNurseName: nurses[0]?.name || 'Attending RN',
+                        baseAmount: services[0]?.priceNumber || 800,
+                        nightSurcharge: 0,
+                        discountRupees: 0,
+                        totalAmount: services[0]?.priceNumber || 800,
+                        paymentStatus: 'Paid',
+                        paymentMode: 'UPI / Online',
+                        r2StorageKey: `invoices/custom_${Date.now()}.pdf`,
+                        r2PublicUrl: `/buckets/invoices/custom_${Date.now()}.pdf`
                       });
-                      alert('Invoice details saved and synced successfully!');
-                      setIsInvoicePreviewModalOpen(false);
+                    } else {
+                      const found = bookings.find((b) => b.id === selectedId);
+                      if (found) {
+                        setPreviewInvoice(generateInvoiceDetails(found));
+                      }
                     }
                   }}
-                  className="btn btn-primary"
-                  style={{ borderRadius: 9999, gap: '0.35rem' }}
+                >
+                  <option value="custom">✏️ Custom / Manual Invoice (Blank Template)</option>
+                  <optgroup label="Active Patient Bookings">
+                    {bookings.map((b) => (
+                      <option key={b.id} value={b.id}>
+                        #{b.id} — {b.patientName} ({b.serviceTitle}) • ₹{b.finalFee || b.estimatedFee} • {b.area}
+                      </option>
+                    ))}
+                  </optgroup>
+                </select>
+              </div>
+
+              {/* View Switcher Pills */}
+              <div style={{ display: 'inline-flex', background: '#E2E8F0', padding: '3px', borderRadius: 10, gap: '2px' }}>
+                <button
+                  type="button"
+                  onClick={() => setInvoiceModalTab('edit')}
+                  style={{
+                    padding: '0.35rem 0.85rem',
+                    fontSize: '0.78rem',
+                    fontWeight: 700,
+                    borderRadius: 8,
+                    border: 'none',
+                    cursor: 'pointer',
+                    background: invoiceModalTab === 'edit' ? '#FFFFFF' : 'transparent',
+                    color: invoiceModalTab === 'edit' ? '#0F172A' : '#64748B',
+                    boxShadow: invoiceModalTab === 'edit' ? '0 1px 3px rgba(0,0,0,0.1)' : 'none',
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    gap: '0.35rem'
+                  }}
+                >
+                  <Edit2 size={13} />
+                  <span>Customize Fields</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setInvoiceModalTab('preview')}
+                  style={{
+                    padding: '0.35rem 0.85rem',
+                    fontSize: '0.78rem',
+                    fontWeight: 700,
+                    borderRadius: 8,
+                    border: 'none',
+                    cursor: 'pointer',
+                    background: invoiceModalTab === 'preview' ? '#FFFFFF' : 'transparent',
+                    color: invoiceModalTab === 'preview' ? '#0F172A' : '#64748B',
+                    boxShadow: invoiceModalTab === 'preview' ? '0 1px 3px rgba(0,0,0,0.1)' : 'none',
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    gap: '0.35rem'
+                  }}
+                >
+                  <Eye size={13} />
+                  <span>Bill Preview ({previewInvoice.paymentStatus})</span>
+                </button>
+              </div>
+            </div>
+
+            {/* 3. Fully Scrollable Content Body */}
+            <div
+              data-lenis-prevent="true"
+              style={{
+                flex: 1,
+                overflowY: 'auto',
+                padding: '1.25rem 1.4rem',
+                WebkitOverflowScrolling: 'touch',
+                overscrollBehavior: 'contain'
+              }}
+            >
+              {invoiceModalTab === 'edit' ? (
+                /* EDIT PARAMETERS VIEW */
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+                  {/* Card 1: Patient & Location */}
+                  <div style={{ background: '#FFFFFF', border: '1px solid #E2E8F0', borderRadius: 12, padding: '1rem 1.15rem' }}>
+                    <div style={{ fontSize: '0.8rem', fontWeight: 800, color: '#334155', textTransform: 'uppercase', marginBottom: '0.75rem', display: 'flex', alignItems: 'center', gap: '0.35rem' }}>
+                      <User size={14} style={{ color: '#0284C7' }} />
+                      <span>Patient & Service Address</span>
+                    </div>
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem', marginBottom: '0.75rem' }}>
+                      <div>
+                        <label style={{ fontSize: '0.74rem', fontWeight: 700, color: '#64748B', display: 'block', marginBottom: '3px' }}>Patient Full Name</label>
+                        <input
+                          type="text"
+                          value={previewInvoice.patientName || ''}
+                          onChange={(e) => updateInvoiceCalculation({ patientName: e.target.value })}
+                          placeholder="Patient name"
+                          className="form-control"
+                          style={{ height: 34, fontSize: '0.82rem' }}
+                        />
+                      </div>
+                      <div>
+                        <label style={{ fontSize: '0.74rem', fontWeight: 700, color: '#64748B', display: 'block', marginBottom: '3px' }}>Contact Phone</label>
+                        <input
+                          type="tel"
+                          value={previewInvoice.patientPhone || ''}
+                          onChange={(e) => updateInvoiceCalculation({ patientPhone: e.target.value })}
+                          placeholder="+91 Phone"
+                          className="form-control"
+                          style={{ height: 34, fontSize: '0.82rem' }}
+                        />
+                      </div>
+                    </div>
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1.5fr', gap: '0.75rem' }}>
+                      <div>
+                        <label style={{ fontSize: '0.74rem', fontWeight: 700, color: '#64748B', display: 'block', marginBottom: '3px' }}>Hyderabad Zone / Area</label>
+                        <select
+                          value={previewInvoice.area || 'Banjara Hills'}
+                          onChange={(e) => updateInvoiceCalculation({ area: e.target.value })}
+                          className="form-control"
+                          style={{ height: 34, fontSize: '0.82rem' }}
+                        >
+                          {HYDERABAD_AREAS.map((a) => (
+                            <option key={a} value={a}>{a}</option>
+                          ))}
+                        </select>
+                      </div>
+                      <div>
+                        <label style={{ fontSize: '0.74rem', fontWeight: 700, color: '#64748B', display: 'block', marginBottom: '3px' }}>Full Street Address</label>
+                        <input
+                          type="text"
+                          value={previewInvoice.fullAddress || ''}
+                          onChange={(e) => updateInvoiceCalculation({ fullAddress: e.target.value })}
+                          placeholder="House/flat, apartment, landmark"
+                          className="form-control"
+                          style={{ height: 34, fontSize: '0.82rem' }}
+                        />
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Card 2: Procedure & Staff Override */}
+                  <div style={{ background: '#FFFFFF', border: '1px solid #E2E8F0', borderRadius: 12, padding: '1rem 1.15rem' }}>
+                    <div style={{ fontSize: '0.8rem', fontWeight: 800, color: '#334155', textTransform: 'uppercase', marginBottom: '0.75rem', display: 'flex', alignItems: 'center', gap: '0.35rem' }}>
+                      <Activity size={14} style={{ color: '#0284C7' }} />
+                      <span>Clinical Procedure & Assigned Staff</span>
+                    </div>
+                    <div style={{ display: 'grid', gridTemplateColumns: '1.2fr 1fr', gap: '0.75rem', marginBottom: '0.75rem' }}>
+                      <div>
+                        <label style={{ fontSize: '0.74rem', fontWeight: 700, color: '#64748B', display: 'block', marginBottom: '3px' }}>Procedure / Clinical Service</label>
+                        <select
+                          value={previewInvoice.serviceId || ''}
+                          onChange={(e) => {
+                            const s = services.find((x) => x.id === e.target.value);
+                            if (s) {
+                              updateInvoiceCalculation({
+                                serviceId: s.id,
+                                serviceTitle: s.title,
+                                baseAmount: s.priceNumber
+                              });
+                            }
+                          }}
+                          className="form-control"
+                          style={{ height: 34, fontSize: '0.82rem' }}
+                        >
+                          {services.map((s) => (
+                            <option key={s.id} value={s.id}>{s.title} (₹{s.priceNumber})</option>
+                          ))}
+                        </select>
+                      </div>
+                      <div>
+                        <label style={{ fontSize: '0.74rem', fontWeight: 700, color: '#64748B', display: 'block', marginBottom: '3px' }}>Attending Staff Override</label>
+                        <select
+                          value={previewInvoice.assignedNurseName || ''}
+                          onChange={(e) => updateInvoiceCalculation({ assignedNurseName: e.target.value })}
+                          className="form-control"
+                          style={{ height: 34, fontSize: '0.82rem' }}
+                        >
+                          <option value="Assigned Fleet RN">Assigned Fleet RN (Default)</option>
+                          {nurses.map((n) => (
+                            <option key={n.id} value={n.name}>{n.name} ({n.serviceArea}) {n.certificateVerified ? '✓ Verified' : ''}</option>
+                          ))}
+                        </select>
+                      </div>
+                    </div>
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem' }}>
+                      <div>
+                        <label style={{ fontSize: '0.74rem', fontWeight: 700, color: '#64748B', display: 'block', marginBottom: '3px' }}>Payment Status</label>
+                        <select
+                          value={previewInvoice.paymentStatus}
+                          onChange={(e) => updateInvoiceCalculation({ paymentStatus: e.target.value as any })}
+                          className="form-control"
+                          style={{ height: 34, fontSize: '0.82rem' }}
+                        >
+                          <option value="Paid">Paid</option>
+                          <option value="Pending">Pending</option>
+                        </select>
+                      </div>
+                      <div>
+                        <label style={{ fontSize: '0.74rem', fontWeight: 700, color: '#64748B', display: 'block', marginBottom: '3px' }}>Payment Mode</label>
+                        <select
+                          value={previewInvoice.paymentMode}
+                          onChange={(e) => updateInvoiceCalculation({ paymentMode: e.target.value as any })}
+                          className="form-control"
+                          style={{ height: 34, fontSize: '0.82rem' }}
+                        >
+                          <option value="UPI / Online">UPI / Online</option>
+                          <option value="Cash on Visit">Cash on Visit</option>
+                          <option value="Corporate Direct">Corporate Direct</option>
+                        </select>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Card 3: Schedule, Slots & Package Math */}
+                  <div style={{ background: '#FFFFFF', border: '1px solid #E2E8F0', borderRadius: 12, padding: '1rem 1.15rem' }}>
+                    <div style={{ fontSize: '0.8rem', fontWeight: 800, color: '#334155', textTransform: 'uppercase', marginBottom: '0.75rem', display: 'flex', alignItems: 'center', gap: '0.35rem' }}>
+                      <Calendar size={14} style={{ color: '#0284C7' }} />
+                      <span>Dates, Slots & Pricing Breakdown</span>
+                    </div>
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem', marginBottom: '0.75rem' }}>
+                      <div>
+                        <label style={{ fontSize: '0.74rem', fontWeight: 700, color: '#64748B', display: 'block', marginBottom: '3px' }}>Custom Service Dates</label>
+                        <input
+                          type="text"
+                          value={previewInvoice.serviceDate || ''}
+                          onChange={(e) => updateInvoiceCalculation({ serviceDate: e.target.value })}
+                          placeholder="e.g. 12 Oct to 15 Oct, 2026"
+                          className="form-control"
+                          style={{ height: 34, fontSize: '0.82rem' }}
+                        />
+                      </div>
+                      <div>
+                        <label style={{ fontSize: '0.74rem', fontWeight: 700, color: '#64748B', display: 'block', marginBottom: '3px' }}>Custom Time Slots</label>
+                        <input
+                          type="text"
+                          value={previewInvoice.timeSlot || ''}
+                          onChange={(e) => updateInvoiceCalculation({ timeSlot: e.target.value })}
+                          placeholder="e.g. Morning 09:00 AM"
+                          className="form-control"
+                          style={{ height: 34, fontSize: '0.82rem' }}
+                        />
+                      </div>
+                    </div>
+
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr 1fr', gap: '0.65rem', marginBottom: '0.85rem' }}>
+                      <div>
+                        <label style={{ fontSize: '0.74rem', fontWeight: 700, color: '#64748B', display: 'block', marginBottom: '3px' }}>Rate / Visit (₹)</label>
+                        <input
+                          type="number"
+                          min="0"
+                          value={previewInvoice.baseAmount || 0}
+                          onChange={(e) => updateInvoiceCalculation({ baseAmount: Number(e.target.value) || 0 })}
+                          className="form-control"
+                          style={{ height: 34, fontSize: '0.82rem' }}
+                        />
+                      </div>
+                      <div>
+                        <label style={{ fontSize: '0.74rem', fontWeight: 700, color: '#64748B', display: 'block', marginBottom: '3px' }}>Visits / Slots</label>
+                        <input
+                          type="number"
+                          min="1"
+                          value={previewInvoice.numberOfVisits || 1}
+                          onChange={(e) => updateInvoiceCalculation({ numberOfVisits: Math.max(1, parseInt(e.target.value) || 1) })}
+                          className="form-control"
+                          style={{ height: 34, fontSize: '0.82rem' }}
+                        />
+                      </div>
+                      <div>
+                        <label style={{ fontSize: '0.74rem', fontWeight: 700, color: '#64748B', display: 'block', marginBottom: '3px' }}>Night Surch. (₹)</label>
+                        <input
+                          type="number"
+                          min="0"
+                          value={previewInvoice.nightSurcharge || 0}
+                          onChange={(e) => updateInvoiceCalculation({ nightSurcharge: Number(e.target.value) || 0 })}
+                          className="form-control"
+                          style={{ height: 34, fontSize: '0.82rem' }}
+                        />
+                      </div>
+                      <div>
+                        <label style={{ fontSize: '0.74rem', fontWeight: 700, color: '#64748B', display: 'block', marginBottom: '3px' }}>Discount (₹)</label>
+                        <input
+                          type="number"
+                          min="0"
+                          value={previewInvoice.discountRupees || 0}
+                          onChange={(e) => updateInvoiceCalculation({ discountRupees: Number(e.target.value) || 0 })}
+                          className="form-control"
+                          style={{ height: 34, fontSize: '0.82rem' }}
+                        />
+                      </div>
+                    </div>
+
+                    {/* Real-time Math Summary Banner */}
+                    <div style={{ background: '#F8FAFC', border: '1px solid #E2E8F0', borderRadius: 8, padding: '0.65rem 0.85rem', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '0.5rem' }}>
+                      <div style={{ fontSize: '0.78rem', color: '#475569' }}>
+                        ₹{previewInvoice.baseAmount} × {previewInvoice.numberOfVisits || 1} slot{(previewInvoice.numberOfVisits || 1) > 1 ? 's' : ''} = ₹{previewInvoice.baseAmount * (previewInvoice.numberOfVisits || 1)}
+                        {Boolean(previewInvoice.nightSurcharge && previewInvoice.nightSurcharge > 0) && ` + ₹${previewInvoice.nightSurcharge} night`}
+                        {Boolean(previewInvoice.discountRupees && previewInvoice.discountRupees > 0) && ` - ₹${previewInvoice.discountRupees} discount`}
+                      </div>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '0.65rem' }}>
+                        <span style={{ fontSize: '0.82rem', fontWeight: 800, color: '#0F172A' }}>Total:</span>
+                        <span style={{ fontSize: '1.05rem', fontWeight: 900, color: '#059669', background: '#ECFDF5', padding: '2px 8px', borderRadius: 6, border: '1px solid #A7F3D0' }}>
+                          ₹{previewInvoice.totalAmount}
+                        </span>
+                        <button
+                          type="button"
+                          onClick={() => setInvoiceModalTab('preview')}
+                          className="btn btn-outline btn-sm"
+                          style={{ fontSize: '0.74rem', padding: '0.25rem 0.65rem', borderRadius: 6, gap: '0.25rem' }}
+                        >
+                          <span>Preview Bill →</span>
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              ) : (
+                /* OFFICIAL BILL PREVIEW */
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                    <button
+                      type="button"
+                      onClick={() => setInvoiceModalTab('edit')}
+                      className="btn btn-outline btn-sm"
+                      style={{ borderRadius: 8, fontSize: '0.76rem', gap: '0.35rem' }}
+                    >
+                      <Edit2 size={13} />
+                      <span>← Back to Customize Fields</span>
+                    </button>
+                    <span style={{ fontSize: '0.74rem', color: '#64748B' }}>
+                      Official printable format with Xpress Nurse credentials
+                    </span>
+                  </div>
+
+                  <div style={{ padding: '1.5rem', background: '#FFFFFF', border: '1px solid #E2E8F0', borderRadius: 14 }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', borderBottom: '2px solid #0A192F', paddingBottom: '1rem', marginBottom: '1.25rem' }}>
+                      <div>
+                        <div style={{ fontSize: '1.35rem', fontWeight: 900, color: '#0A192F' }}>Xpress Nurse</div>
+                        <div style={{ fontSize: '0.8rem', color: '#0284C7', fontWeight: 700, letterSpacing: '0.02em' }}>24/7 Clinical Home Care Hyderabad</div>
+                      </div>
+                      <div style={{ textAlign: 'right' }}>
+                        <div style={{ fontSize: '1.15rem', fontWeight: 800, color: '#0A192F' }}>INVOICE</div>
+                        <div style={{ fontSize: '0.82rem', color: '#0284C7', fontWeight: 700 }}>{previewInvoice.invoiceNumber}</div>
+                        <div style={{ fontSize: '0.74rem', color: '#64748B' }}>Date: {previewInvoice.invoiceDate}</div>
+                        <div style={{ marginTop: '4px' }}>
+                          <span style={{
+                            display: 'inline-block',
+                            padding: '2px 8px',
+                            borderRadius: 9999,
+                            fontSize: '0.7rem',
+                            fontWeight: 800,
+                            textTransform: 'uppercase',
+                            background: previewInvoice.paymentStatus === 'Paid' ? '#ECFDF5' : '#FFFBEB',
+                            color: previewInvoice.paymentStatus === 'Paid' ? '#059669' : '#D97706',
+                            border: `1px solid ${previewInvoice.paymentStatus === 'Paid' ? '#A7F3D0' : '#FDE68A'}`
+                          }}>
+                            {previewInvoice.paymentStatus}
+                          </span>
+                        </div>
+                      </div>
+                    </div>
+
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem', marginBottom: '1.25rem', background: '#F8FAFC', padding: '1rem', borderRadius: 10, border: '1px solid #E2E8F0' }}>
+                      <div>
+                        <div style={{ fontSize: '0.72rem', fontWeight: 700, color: '#64748B', textTransform: 'uppercase' }}>PATIENT / BILLED TO</div>
+                        <div style={{ fontSize: '0.9rem', fontWeight: 800, color: 'var(--primary-navy-950)' }}>{previewInvoice.patientName}</div>
+                        <div style={{ fontSize: '0.78rem', color: '#475569' }}>{previewInvoice.patientPhone}</div>
+                        <div style={{ fontSize: '0.78rem', color: '#475569' }}>{previewInvoice.fullAddress}, {previewInvoice.area}</div>
+                      </div>
+                      <div>
+                        <div style={{ fontSize: '0.72rem', fontWeight: 700, color: '#64748B', textTransform: 'uppercase' }}>DISPATCH & ATTENDING STAFF</div>
+                        <div style={{ fontSize: '0.9rem', fontWeight: 800, color: 'var(--primary-navy-950)' }}>{previewInvoice.assignedNurseName}</div>
+                        <div style={{ fontSize: '0.78rem', color: '#475569' }}>Booking ID: {previewInvoice.bookingId}</div>
+                        <div style={{ fontSize: '0.78rem', color: '#475569' }}>Payment Mode: {previewInvoice.paymentMode}</div>
+                      </div>
+                    </div>
+
+                    <div className="table-responsive" style={{ marginBottom: '1.25rem' }}>
+                      <table className="data-table">
+                        <thead>
+                          <tr>
+                            <th style={{ width: 40, textAlign: 'center' }}>S.No</th>
+                            <th>Procedure</th>
+                            <th>Date</th>
+                            <th>Slot No</th>
+                            <th style={{ textAlign: 'right' }}>Amount (₹)</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          <tr>
+                            <td style={{ textAlign: 'center' }}>1</td>
+                            <td><strong>{previewInvoice.serviceTitle}</strong> ({previewInvoice.numberOfVisits || 1} visit{(previewInvoice.numberOfVisits || 1) > 1 ? 's' : ''})</td>
+                            <td>{previewInvoice.serviceDate || '-'}</td>
+                            <td>{previewInvoice.timeSlot || '-'}</td>
+                            <td style={{ textAlign: 'right' }}>₹{previewInvoice.baseAmount * (previewInvoice.numberOfVisits || 1)}</td>
+                          </tr>
+                          {Boolean(previewInvoice.nightSurcharge && previewInvoice.nightSurcharge > 0) && (
+                            <tr>
+                              <td style={{ textAlign: 'center' }}>2</td>
+                              <td><strong>Night Emergency Surcharge</strong></td>
+                              <td>-</td>
+                              <td>-</td>
+                              <td style={{ textAlign: 'right' }}>₹{previewInvoice.nightSurcharge}</td>
+                            </tr>
+                          )}
+                          {Boolean(previewInvoice.discountRupees && previewInvoice.discountRupees > 0) && (
+                            <tr>
+                              <td style={{ textAlign: 'center' }}>{previewInvoice.nightSurcharge && previewInvoice.nightSurcharge > 0 ? '3' : '2'}</td>
+                              <td style={{ color: '#059669' }}>Coupon / Fee Adjustment Discount</td>
+                              <td>-</td>
+                              <td>-</td>
+                              <td style={{ textAlign: 'right', color: '#059669' }}>-₹{previewInvoice.discountRupees}</td>
+                            </tr>
+                          )}
+                        </tbody>
+                      </table>
+                    </div>
+
+                    <div style={{ width: 300, marginLeft: 'auto', marginBottom: '0.5rem' }}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', padding: '0.25rem 0', fontSize: '0.82rem' }}>
+                        <span>Subtotal ({previewInvoice.numberOfVisits || 1} slots):</span>
+                        <strong>₹{previewInvoice.baseAmount * (previewInvoice.numberOfVisits || 1)}</strong>
+                      </div>
+
+                      {Boolean(previewInvoice.nightSurcharge && previewInvoice.nightSurcharge > 0) && (
+                        <div style={{ display: 'flex', justifyContent: 'space-between', padding: '0.25rem 0', fontSize: '0.82rem' }}>
+                          <span>Night Surcharge:</span>
+                          <strong>+₹{previewInvoice.nightSurcharge}</strong>
+                        </div>
+                      )}
+
+                      {Boolean(previewInvoice.discountRupees && previewInvoice.discountRupees > 0) && (
+                        <div style={{ display: 'flex', justifyContent: 'space-between', padding: '0.25rem 0', fontSize: '0.82rem', color: '#059669' }}>
+                          <span>Discount:</span>
+                          <strong>-₹{previewInvoice.discountRupees}</strong>
+                        </div>
+                      )}
+
+                      <div style={{ display: 'flex', justifyContent: 'space-between', padding: '0.45rem 0', borderTop: '2px solid #0A192F', fontSize: '1.15rem', fontWeight: 900 }}>
+                        <span>Total Payable:</span>
+                        <span style={{ color: '#059669' }}>₹{previewInvoice.totalAmount}</span>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {/* 4. Fixed Sticky Footer */}
+            <div style={{ padding: '0.85rem 1.4rem', background: '#FAFAFA', borderTop: '1px solid var(--neutral-200)', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '0.65rem', flexShrink: 0 }}>
+              <div style={{ display: 'flex', gap: '0.65rem', flexWrap: 'wrap' }}>
+                <button
+                  type="button"
+                  onClick={handleSaveAndSyncInvoice}
+                  className="btn btn-primary btn-sm"
+                  style={{ borderRadius: 9999, gap: '0.35rem', fontWeight: 700 }}
+                  title="Save invoice and sync updated details with Supabase bookings"
                 >
                   <RefreshCw size={14} />
-                  <span>Save & Sync</span>
+                  <span>Save & Sync to Supabase</span>
                 </button>
                 <button
                   type="button"
                   onClick={handlePrintCurrentInvoice}
-                  className="btn btn-danger"
-                  style={{ borderRadius: 9999, gap: '0.35rem' }}
+                  className="btn btn-danger btn-sm"
+                  style={{ borderRadius: 9999, gap: '0.35rem', fontWeight: 700 }}
+                  title="Print or save as official PDF"
                 >
                   <Printer size={14} />
                   <span>Print / Save PDF</span>
                 </button>
                 <button
                   type="button"
-                  onClick={() => setIsInvoicePreviewModalOpen(false)}
-                  className="btn btn-outline"
-                  style={{ borderRadius: 9999 }}
+                  onClick={() => {
+                    if (previewInvoice) {
+                      const html = generatePrintableInvoiceHtml(previewInvoice);
+                      const blob = new Blob([html], { type: 'text/html' });
+                      const url = URL.createObjectURL(blob);
+                      const a = document.createElement('a');
+                      a.href = url;
+                      a.download = `${previewInvoice.invoiceNumber}.html`;
+                      document.body.appendChild(a);
+                      a.click();
+                      document.body.removeChild(a);
+                      URL.revokeObjectURL(url);
+                      showToast(`Downloaded ${previewInvoice.invoiceNumber}.html`);
+                    }
+                  }}
+                  className="btn btn-outline btn-sm"
+                  style={{ borderRadius: 9999, gap: '0.35rem', fontWeight: 600 }}
+                  title="Download standalone HTML invoice"
                 >
-                  Close
+                  <Download size={14} />
+                  <span>Download HTML</span>
                 </button>
               </div>
+
+              <button
+                type="button"
+                onClick={() => setIsInvoicePreviewModalOpen(false)}
+                className="btn btn-outline btn-sm"
+                style={{ borderRadius: 9999 }}
+              >
+                Close
+              </button>
             </div>
           </div>
         </div>
