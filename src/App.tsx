@@ -22,15 +22,15 @@ import { LoginPage } from './components/LoginPage';
 import { PolicyModal, PolicyType } from './components/PolicyModal';
 import { AuthGuard } from './components/AuthGuard';
 import { PullToRefresh } from './components/PullToRefresh';
-import { 
+import {
   supabase,
-  dbFetchBookings, 
-  dbSaveBooking, 
-  dbFetchNurses, 
-  dbUpdateNurse, 
-  dbSaveLead, 
+  dbFetchBookings,
+  dbSaveBooking,
+  dbFetchNurses,
+  dbUpdateNurse,
+  dbSaveLead,
   dbFetchLeads,
-  dbFetchConsultations, 
+  dbFetchConsultations,
   dbSaveConsultation,
   dbFetchServices,
   dbFetchCoupons,
@@ -70,11 +70,11 @@ import {
   dbDeleteMultipleAppUsers
 } from './lib/supabase';
 
-import { 
-  Booking, 
-  NurseProfile, 
-  NurseLead, 
-  DoctorConsultation, 
+import {
+  Booking,
+  NurseProfile,
+  NurseLead,
+  DoctorConsultation,
   ServiceId,
   ServiceItem,
   AppUser,
@@ -164,7 +164,7 @@ export const App: React.FC = () => {
         const parsed = JSON.parse(cached);
         if (Array.isArray(parsed)) return parsed;
       }
-    } catch {}
+    } catch { }
     return [];
   });
 
@@ -175,7 +175,7 @@ export const App: React.FC = () => {
         const parsed = JSON.parse(cached);
         if (Array.isArray(parsed)) return parsed;
       }
-    } catch {}
+    } catch { }
     return BASELINE_BOOKINGS;
   });
 
@@ -186,8 +186,8 @@ export const App: React.FC = () => {
         const parsed = JSON.parse(cached);
         if (Array.isArray(parsed)) return parsed;
       }
-    } catch {}
-    return BASELINE_NURSES;
+    } catch { }
+    return [];
   });
 
   const [leads, setLeads] = useState<NurseLead[]>(() => {
@@ -197,7 +197,7 @@ export const App: React.FC = () => {
         const parsed = JSON.parse(cached);
         if (Array.isArray(parsed)) return parsed;
       }
-    } catch {}
+    } catch { }
     return BASELINE_LEADS;
   });
 
@@ -208,7 +208,7 @@ export const App: React.FC = () => {
         const parsed = JSON.parse(cached);
         if (Array.isArray(parsed)) return parsed;
       }
-    } catch {}
+    } catch { }
     return [];
   });
 
@@ -219,7 +219,7 @@ export const App: React.FC = () => {
         const parsed = JSON.parse(cached);
         if (Array.isArray(parsed)) return parsed;
       }
-    } catch {}
+    } catch { }
     return BASELINE_COUPONS;
   });
 
@@ -230,7 +230,7 @@ export const App: React.FC = () => {
         const parsed = JSON.parse(cached);
         if (Array.isArray(parsed)) return parsed;
       }
-    } catch {}
+    } catch { }
     return SEED_APP_USERS;
   });
 
@@ -238,31 +238,31 @@ export const App: React.FC = () => {
 
   // Synchronize collections to localStorage on every change
   useEffect(() => {
-    try { localStorage.setItem('xn_cached_services', JSON.stringify(services)); } catch {}
+    try { localStorage.setItem('xn_cached_services', JSON.stringify(services)); } catch { }
   }, [services]);
 
   useEffect(() => {
-    try { localStorage.setItem('xn_cached_bookings', JSON.stringify(bookings)); } catch {}
+    try { localStorage.setItem('xn_cached_bookings', JSON.stringify(bookings)); } catch { }
   }, [bookings]);
 
   useEffect(() => {
-    try { localStorage.setItem('xn_cached_nurses', JSON.stringify(nurses)); } catch {}
+    try { localStorage.setItem('xn_cached_nurses', JSON.stringify(nurses)); } catch { }
   }, [nurses]);
 
   useEffect(() => {
-    try { localStorage.setItem('xn_cached_leads', JSON.stringify(leads)); } catch {}
+    try { localStorage.setItem('xn_cached_leads', JSON.stringify(leads)); } catch { }
   }, [leads]);
 
   useEffect(() => {
-    try { localStorage.setItem('xn_cached_consultations', JSON.stringify(consultations)); } catch {}
+    try { localStorage.setItem('xn_cached_consultations', JSON.stringify(consultations)); } catch { }
   }, [consultations]);
 
   useEffect(() => {
-    try { localStorage.setItem('xn_cached_coupons', JSON.stringify(coupons)); } catch {}
+    try { localStorage.setItem('xn_cached_coupons', JSON.stringify(coupons)); } catch { }
   }, [coupons]);
 
   useEffect(() => {
-    try { localStorage.setItem('xn_cached_app_users', JSON.stringify(appUsers)); } catch {}
+    try { localStorage.setItem('xn_cached_app_users', JSON.stringify(appUsers)); } catch { }
   }, [appUsers]);
 
   // Treat all referred patients as bookings: ensure every patient lead has a corresponding booking in bookings
@@ -317,7 +317,7 @@ export const App: React.FC = () => {
 
     if (hasNewBookings) {
       setBookings(syncedBookings);
-      try { localStorage.setItem('xn_cached_bookings', JSON.stringify(syncedBookings)); } catch {}
+      try { localStorage.setItem('xn_cached_bookings', JSON.stringify(syncedBookings)); } catch { }
     }
   }, [leads, services, nurses]);
 
@@ -352,7 +352,7 @@ export const App: React.FC = () => {
         '.services-filter-container',
         '.footer-simple'
       ];
-      
+
       const targets = document.querySelectorAll<HTMLElement>(selectors.join(', '));
       const windowHeight = window.innerHeight;
 
@@ -413,7 +413,7 @@ export const App: React.FC = () => {
       }
       const savedNurseId = localStorage.getItem('xn_active_nurse_id');
       if (savedNurseId) return savedNurseId;
-    } catch {}
+    } catch { }
     return 'nurse-101';
   });
 
@@ -439,10 +439,10 @@ export const App: React.FC = () => {
   // Strictly resolve logged-in nurse first to prevent role/account hijacking
   const activeNurse = (authUser?.role === 'nurse'
     ? nurses.find((n) =>
-        n.id === authUser.id ||
-        (n.phone && authUser.phone && n.phone.replace(/\D/g, '') === authUser.phone.replace(/\D/g, '')) ||
-        (n.email && (authUser.email || authUser.identifier) && n.email.toLowerCase() === (authUser.email || authUser.identifier).toLowerCase())
-      )
+      n.id === authUser.id ||
+      (n.phone && authUser.phone && n.phone.replace(/\D/g, '') === authUser.phone.replace(/\D/g, '')) ||
+      (n.email && (authUser.email || authUser.identifier) && n.email.toLowerCase() === (authUser.email || authUser.identifier).toLowerCase())
+    )
     : null) ||
     nurses.find((n) => n.id === activeNurseId) ||
     (authUser?.role === 'nurse' ? {
@@ -512,7 +512,7 @@ export const App: React.FC = () => {
         }
         if (remoteNurses !== null) {
           setNurses(remoteNurses);
-          // If authUser is logged in as a nurse, sync active nurse ID
+          // If authUser is logged in as a nurse, verify they are active in the live database
           const savedAuth = localStorage.getItem('xn_auth_user');
           if (savedAuth) {
             try {
@@ -521,12 +521,20 @@ export const App: React.FC = () => {
                 const found = remoteNurses.find(
                   (n) => n.id === u.id || (n.email && n.email.toLowerCase() === (u.email || u.identifier || '').toLowerCase()) || (n.phone && n.phone.replace(/\D/g, '') === (u.phone || '').replace(/\D/g, ''))
                 );
-                if (found) {
+                if (found && found.status === 'Active') {
                   setActiveNurseId(found.id);
                   localStorage.setItem('xn_active_nurse_id', found.id);
+                } else {
+                  // Nurse was deleted, removed, or is not active — strictly evict session!
+                  setAuthUser(null);
+                  localStorage.removeItem('xn_auth_user');
+                  localStorage.removeItem('xn_active_nurse_id');
+                  if (window.location.pathname === '/nurse') {
+                    navigate('/login?portal=nurse');
+                  }
                 }
               }
-            } catch {}
+            } catch { }
           }
         }
         if (remoteLeads !== null) {
@@ -572,12 +580,12 @@ export const App: React.FC = () => {
         bc.postMessage(payload);
         bc.close();
       }
-    } catch {}
+    } catch { }
     try {
       if (typeof window !== 'undefined' && window.localStorage) {
         localStorage.setItem('xn_realtime_sync_event', JSON.stringify(payload));
       }
-    } catch {}
+    } catch { }
   };
 
   const lastRefreshTimestampRef = useRef<number>(0);
@@ -662,6 +670,24 @@ export const App: React.FC = () => {
           }
           return remoteNurses;
         });
+
+        // Strictly verify active nurse session against fresh database records
+        setAuthUser((prev) => {
+          if (prev && prev.role === 'nurse') {
+            const found = remoteNurses.find(
+              (n) => n.id === prev.id || (n.phone && prev.phone && n.phone.replace(/\D/g, '') === prev.phone.replace(/\D/g, ''))
+            );
+            if (!found || found.status !== 'Active') {
+              try { localStorage.removeItem('xn_auth_user'); } catch {}
+              try { localStorage.removeItem('xn_active_nurse_id'); } catch {}
+              if (window.location.pathname === '/nurse') {
+                navigate('/login?portal=nurse');
+              }
+              return null;
+            }
+          }
+          return prev;
+        });
       }
       if (remoteLeads !== null) {
         setLeads((prev) => {
@@ -714,6 +740,18 @@ export const App: React.FC = () => {
         });
       } else if (type === 'NURSE_DELETE' && data?.id) {
         setNurses((prev) => prev.filter((n) => n.id !== data.id));
+        setAppUsers((prev) => prev.filter((u) => u.id !== data.id));
+        setAuthUser((prev) => {
+          if (prev && prev.id === data.id) {
+            try { localStorage.removeItem('xn_auth_user'); } catch {}
+            try { localStorage.removeItem('xn_active_nurse_id'); } catch {}
+            if (window.location.pathname === '/nurse') {
+              navigate('/login?portal=nurse');
+            }
+            return null;
+          }
+          return prev;
+        });
       } else if (type === 'LEAD_UPDATE' && data?.id) {
         setLeads((prev) => prev.map((l) => (l.id === data.id ? { ...l, ...data } : l)));
       } else if (type === 'LEAD_CREATE' && data?.id) {
@@ -774,7 +812,7 @@ export const App: React.FC = () => {
           handleSyncEvent(type, data);
         };
       }
-    } catch {}
+    } catch { }
 
     // 2. Storage event listener (fires across all tabs/windows in the browser)
     const handleStorageEvent = (e: StorageEvent) => {
@@ -782,7 +820,7 @@ export const App: React.FC = () => {
         try {
           const { type, data } = JSON.parse(e.newValue);
           handleSyncEvent(type, data);
-        } catch {}
+        } catch { }
       }
     };
     window.addEventListener('storage', handleStorageEvent);
@@ -806,49 +844,49 @@ export const App: React.FC = () => {
           console.log('[Realtime DB] Live Booking update:', payload);
           if (payload.new && (payload.eventType === 'UPDATE' || payload.eventType === 'INSERT')) {
             const raw: any = payload.new;
-              setBookings((prev) => {
-                const mapped: Booking = {
-                  id: raw.id,
-                  createdAt: raw.created_at,
-                  patientName: raw.patient_name || '',
-                  patientPhone: raw.patient_phone || '',
-                  patientAge: raw.patient_age ? Number(raw.patient_age) : undefined,
-                  patientGender: raw.patient_gender,
-                  serviceId: raw.service_id,
-                  serviceTitle: raw.service_title || 'Home Visit',
-                  area: raw.area || 'Hyderabad',
-                  fullAddress: raw.full_address || `${raw.area}, Hyderabad`,
-                  preferredDate: raw.preferred_date || 'Today',
-                  preferredTime: raw.preferred_time || 'ASAP',
-                  hasPrescription: Boolean(raw.has_prescription),
-                  prescriptionFileName: raw.prescription_file_name,
-                  prescriptionUrl: raw.prescription_url,
-                  status: raw.status || 'Pending',
-                  assignedNurseId: raw.assigned_nurse_id,
-                  assignedNurseName: raw.assigned_nurse_name,
-                  referringNurseId: raw.referring_nurse_id,
-                  referringNurseName: raw.referring_nurse_name,
-                  estimatedFee: Number(raw.estimated_fee) || 800,
-                  nightSurcharge: Number(raw.night_surcharge) || 0,
-                  referralBonusRupees: Number(raw.referral_bonus_rupees) || 0,
-                  notes: raw.notes || '',
-                  bookingType: raw.booking_type || ((raw.preferred_time?.toLowerCase().includes('immediate') || raw.preferred_date?.toLowerCase().includes('instant') || raw.preferred_date?.toLowerCase().includes('immediate')) ? 'Instant' : 'Scheduled'),
-                  scheduledSlot: raw.scheduled_slot,
-                  rejectionReason: raw.rejection_reason || undefined,
-                  promoCode: raw.promo_code || undefined,
-                  discountRupees: Number(raw.discount_rupees) || 0,
-                  finalFee: raw.final_fee != null ? Number(raw.final_fee) : undefined
-                };
-                const exists = prev.some((b) => b.id === mapped.id);
-                return exists ? prev.map((b) => (b.id === mapped.id ? mapped : b)) : [mapped, ...prev];
-              });
-            } else if (payload.eventType === 'DELETE') {
-              const delId = (payload.old as any)?.id;
-              if (delId) {
-                setBookings((prev) => prev.filter((b) => b.id !== delId));
-              }
+            setBookings((prev) => {
+              const mapped: Booking = {
+                id: raw.id,
+                createdAt: raw.created_at,
+                patientName: raw.patient_name || '',
+                patientPhone: raw.patient_phone || '',
+                patientAge: raw.patient_age ? Number(raw.patient_age) : undefined,
+                patientGender: raw.patient_gender,
+                serviceId: raw.service_id,
+                serviceTitle: raw.service_title || 'Home Visit',
+                area: raw.area || 'Hyderabad',
+                fullAddress: raw.full_address || `${raw.area}, Hyderabad`,
+                preferredDate: raw.preferred_date || 'Today',
+                preferredTime: raw.preferred_time || 'ASAP',
+                hasPrescription: Boolean(raw.has_prescription),
+                prescriptionFileName: raw.prescription_file_name,
+                prescriptionUrl: raw.prescription_url,
+                status: raw.status || 'Pending',
+                assignedNurseId: raw.assigned_nurse_id,
+                assignedNurseName: raw.assigned_nurse_name,
+                referringNurseId: raw.referring_nurse_id,
+                referringNurseName: raw.referring_nurse_name,
+                estimatedFee: Number(raw.estimated_fee) || 800,
+                nightSurcharge: Number(raw.night_surcharge) || 0,
+                referralBonusRupees: Number(raw.referral_bonus_rupees) || 0,
+                notes: raw.notes || '',
+                bookingType: raw.booking_type || ((raw.preferred_time?.toLowerCase().includes('immediate') || raw.preferred_date?.toLowerCase().includes('instant') || raw.preferred_date?.toLowerCase().includes('immediate')) ? 'Instant' : 'Scheduled'),
+                scheduledSlot: raw.scheduled_slot,
+                rejectionReason: raw.rejection_reason || undefined,
+                promoCode: raw.promo_code || undefined,
+                discountRupees: Number(raw.discount_rupees) || 0,
+                finalFee: raw.final_fee != null ? Number(raw.final_fee) : undefined
+              };
+              const exists = prev.some((b) => b.id === mapped.id);
+              return exists ? prev.map((b) => (b.id === mapped.id ? mapped : b)) : [mapped, ...prev];
+            });
+          } else if (payload.eventType === 'DELETE') {
+            const delId = (payload.old as any)?.id;
+            if (delId) {
+              setBookings((prev) => prev.filter((b) => b.id !== delId));
             }
           }
+        }
       )
       .on(
         'postgres_changes',
@@ -1166,7 +1204,7 @@ export const App: React.FC = () => {
         };
         setBookings((prev) => {
           const next = [refBooking, ...prev];
-          try { localStorage.setItem('xn_cached_bookings', JSON.stringify(next)); } catch {}
+          try { localStorage.setItem('xn_cached_bookings', JSON.stringify(next)); } catch { }
           return next;
         });
         broadcastRealtimeUpdate('BOOKING_UPDATE', refBooking);
@@ -1205,8 +1243,8 @@ export const App: React.FC = () => {
     const commissionRupees: number = referralRupees > 0
       ? referralRupees
       : (lead.referralCommissionRupees && lead.referralCommissionRupees > 0
-          ? lead.referralCommissionRupees
-          : (lead.referralType === 'nurse' || lead.referredNursePhone ? 0 : Math.round(fee * 0.10)));
+        ? lead.referralCommissionRupees
+        : (lead.referralType === 'nurse' || lead.referredNursePhone ? 0 : Math.round(fee * 0.10)));
 
     const isNurseReferral = lead.referralType === 'nurse' || Boolean(lead.referredNursePhone);
     const assignedNurse = assignToNurseId ? nurses.find((n) => n.id === assignToNurseId) : undefined;
@@ -1219,11 +1257,11 @@ export const App: React.FC = () => {
       referralCommissionRupees: commissionRupees,
       approvedAt: lead.approvedAt || new Date().toISOString(),
       approvedBy: 'Admin',
-      adminNotes: adminNotes || (isNurseReferral 
+      adminNotes: adminNotes || (isNurseReferral
         ? `Referred nurse approved (+${pointsToCredit} points credited)`
         : assignToNurseId && assignedNurse
-        ? `Patient approved & assigned to ${assignedNurse.name}. 50 points + ₹${commissionRupees} (10%) credited upon visit completion.`
-        : `Patient approved & booking queued in Assign Nurses. 50 points + 10% commission credited after assigned nurse completes visit.`
+          ? `Patient approved & assigned to ${assignedNurse.name}. 50 points + ₹${commissionRupees} (10%) credited upon visit completion.`
+          : `Patient approved & booking queued in Assign Nurses. 50 points + 10% commission credited after assigned nurse completes visit.`
       )
     };
 
@@ -1260,7 +1298,7 @@ export const App: React.FC = () => {
       };
       setNurses((prev) => {
         const next = prev.map((n) => (n.id === updatedNurse.id ? updatedNurse : n));
-        try { localStorage.setItem('xn_cached_nurses', JSON.stringify(next)); } catch {}
+        try { localStorage.setItem('xn_cached_nurses', JSON.stringify(next)); } catch { }
         return next;
       });
       broadcastRealtimeUpdate('NURSE_UPDATE', updatedNurse);
@@ -1271,7 +1309,7 @@ export const App: React.FC = () => {
     let bookingResultId: string | undefined = undefined;
     if (!isNurseReferral && lead.patientName) {
       const cleanLeadPhone = (lead.patientPhone || '').replace(/\D/g, '');
-      const existingBooking = bookings.find((b) => 
+      const existingBooking = bookings.find((b) =>
         (cleanLeadPhone && b.patientPhone && b.patientPhone.replace(/\D/g, '') === cleanLeadPhone) ||
         (b.referringNurseId === lead.nurseId && b.patientName && lead.patientName && b.patientName.toLowerCase() === lead.patientName.toLowerCase())
       );
@@ -1297,7 +1335,7 @@ export const App: React.FC = () => {
         };
         setBookings((prev) => {
           const next = prev.map((b) => (b.id === existingBooking.id ? updatedB : b));
-          try { localStorage.setItem('xn_cached_bookings', JSON.stringify(next)); } catch {}
+          try { localStorage.setItem('xn_cached_bookings', JSON.stringify(next)); } catch { }
           return next;
         });
         broadcastRealtimeUpdate('BOOKING_UPDATE', updatedB);
@@ -1328,7 +1366,7 @@ export const App: React.FC = () => {
         };
         setBookings((prev) => {
           const next = [newBooking, ...prev];
-          try { localStorage.setItem('xn_cached_bookings', JSON.stringify(next)); } catch {}
+          try { localStorage.setItem('xn_cached_bookings', JSON.stringify(next)); } catch { }
           return next;
         });
         broadcastRealtimeUpdate('BOOKING_UPDATE', newBooking);
@@ -1409,7 +1447,7 @@ export const App: React.FC = () => {
         };
         setNurses((prev) => {
           const next = prev.map((n) => (n.id === updatedNurse.id ? updatedNurse : n));
-          try { localStorage.setItem('xn_cached_nurses', JSON.stringify(next)); } catch {}
+          try { localStorage.setItem('xn_cached_nurses', JSON.stringify(next)); } catch { }
           return next;
         });
         broadcastRealtimeUpdate('NURSE_UPDATE', updatedNurse);
@@ -1445,7 +1483,7 @@ export const App: React.FC = () => {
   const handleUpdateNurse = (updated: NurseProfile) => {
     setNurses((prev) => {
       const next = prev.map((n) => (n.id === updated.id ? updated : n));
-      try { localStorage.setItem('xn_cached_nurses', JSON.stringify(next)); } catch {}
+      try { localStorage.setItem('xn_cached_nurses', JSON.stringify(next)); } catch { }
       return next;
     });
     setAppUsers((prev) => {
@@ -1462,7 +1500,7 @@ export const App: React.FC = () => {
         }
         return u;
       });
-      try { localStorage.setItem('xn_cached_app_users', JSON.stringify(next)); } catch {}
+      try { localStorage.setItem('xn_cached_app_users', JSON.stringify(next)); } catch { }
       return next;
     });
     setAuthUser((prev) => {
@@ -1475,7 +1513,7 @@ export const App: React.FC = () => {
           designation: updated.qualification,
           serviceArea: updated.serviceArea,
         };
-        try { localStorage.setItem('xn_auth_user', JSON.stringify(next)); } catch {}
+        try { localStorage.setItem('xn_auth_user', JSON.stringify(next)); } catch { }
         return next;
       }
       return prev;
@@ -1491,7 +1529,7 @@ export const App: React.FC = () => {
       prev.map((b) => {
         if (b.id === bookingId) {
           const wasRejected = b.status === 'Rejected' || b.nurseAcceptanceStatus === 'Rejected';
-          const auditMsg = wasRejected 
+          const auditMsg = wasRejected
             ? `Referred & reassigned to Nurse ${nurseObj?.name || nurseId} by Admin (${ruleExplanation})`
             : undefined;
           const updatedNotes = auditMsg ? (b.notes ? `${b.notes} • ${auditMsg}` : auditMsg) : b.notes;
@@ -1518,7 +1556,7 @@ export const App: React.FC = () => {
           // Link assignedNurseId to matching patient referral lead
           if (b.referringNurseId) {
             const bPhoneClean = (b.patientPhone || '').replace(/\D/g, '');
-            const matchingLead = leads.find(l => 
+            const matchingLead = leads.find(l =>
               (bPhoneClean && l.patientPhone && l.patientPhone.replace(/\D/g, '') === bPhoneClean) ||
               (l.nurseId === b.referringNurseId && l.patientName && b.patientName && l.patientName.toLowerCase() === b.patientName.toLowerCase())
             );
@@ -1781,7 +1819,7 @@ export const App: React.FC = () => {
           };
           setNurses((prev) => {
             const next = prev.map((n) => (n.id === updatedNurse.id ? updatedNurse : n));
-            try { localStorage.setItem('xn_cached_nurses', JSON.stringify(next)); } catch {}
+            try { localStorage.setItem('xn_cached_nurses', JSON.stringify(next)); } catch { }
             return next;
           });
           broadcastRealtimeUpdate('NURSE_UPDATE', updatedNurse);
@@ -1816,7 +1854,7 @@ export const App: React.FC = () => {
 
             setNurses((prev) => {
               const next = prev.map((n) => (n.id === updatedRefNurse.id ? updatedRefNurse : n));
-              try { localStorage.setItem('xn_cached_nurses', JSON.stringify(next)); } catch {}
+              try { localStorage.setItem('xn_cached_nurses', JSON.stringify(next)); } catch { }
               return next;
             });
             broadcastRealtimeUpdate('NURSE_UPDATE', updatedRefNurse);
@@ -1868,7 +1906,7 @@ export const App: React.FC = () => {
           };
           setNurses((prev) => {
             const next = prev.map((n) => (n.id === updatedNurse.id ? updatedNurse : n));
-            try { localStorage.setItem('xn_cached_nurses', JSON.stringify(next)); } catch {}
+            try { localStorage.setItem('xn_cached_nurses', JSON.stringify(next)); } catch { }
             return next;
           });
           broadcastRealtimeUpdate('NURSE_UPDATE', updatedNurse);
@@ -1885,7 +1923,7 @@ export const App: React.FC = () => {
 
     setBookings((prev) => {
       const next = prev.filter((b) => b.id !== id);
-      try { localStorage.setItem('xn_cached_bookings', JSON.stringify(next)); } catch {}
+      try { localStorage.setItem('xn_cached_bookings', JSON.stringify(next)); } catch { }
       return next;
     });
     broadcastRealtimeUpdate('BOOKING_DELETE', { id });
@@ -1901,7 +1939,7 @@ export const App: React.FC = () => {
   const handleUpdateNurseRecord = async (id: string, updates: Partial<NurseProfile>) => {
     setNurses((prev) => {
       const next = prev.map((n) => (n.id === id ? { ...n, ...updates } : n));
-      try { localStorage.setItem('xn_cached_nurses', JSON.stringify(next)); } catch {}
+      try { localStorage.setItem('xn_cached_nurses', JSON.stringify(next)); } catch { }
       return next;
     });
     setAppUsers((prev) => {
@@ -1918,7 +1956,7 @@ export const App: React.FC = () => {
         }
         return u;
       });
-      try { localStorage.setItem('xn_cached_app_users', JSON.stringify(next)); } catch {}
+      try { localStorage.setItem('xn_cached_app_users', JSON.stringify(next)); } catch { }
       return next;
     });
     setAuthUser((prev) => {
@@ -1931,7 +1969,7 @@ export const App: React.FC = () => {
           designation: updates.qualification ?? prev.designation,
           serviceArea: updates.serviceArea ?? prev.serviceArea,
         };
-        try { localStorage.setItem('xn_auth_user', JSON.stringify(next)); } catch {}
+        try { localStorage.setItem('xn_auth_user', JSON.stringify(next)); } catch { }
         return next;
       }
       return prev;
@@ -1976,14 +2014,28 @@ export const App: React.FC = () => {
 
     setNurses((prev) => {
       const next = prev.filter((n) => n.id !== id);
-      try { localStorage.setItem('xn_cached_nurses', JSON.stringify(next)); } catch {}
+      try { localStorage.setItem('xn_cached_nurses', JSON.stringify(next)); } catch { }
       return next;
     });
     setAppUsers((prev) => {
       const next = prev.filter((u) => u.id !== id);
-      try { localStorage.setItem('xn_cached_app_users', JSON.stringify(next)); } catch {}
+      try { localStorage.setItem('xn_cached_app_users', JSON.stringify(next)); } catch { }
       return next;
     });
+
+    // If currently logged-in user is this deleted nurse, immediately evict session!
+    setAuthUser((prev) => {
+      if (prev && (prev.id === id || (nurseToDelete && (prev.phone === nurseToDelete.phone || prev.email === nurseToDelete.email)))) {
+        try { localStorage.removeItem('xn_auth_user'); } catch {}
+        try { localStorage.removeItem('xn_active_nurse_id'); } catch {}
+        if (currentPath === '/nurse') {
+          setTimeout(() => navigate('/login?portal=nurse'), 50);
+        }
+        return null;
+      }
+      return prev;
+    });
+
     broadcastRealtimeUpdate('NURSE_DELETE', { id });
     await dbDeleteNurse(id);
   };
@@ -2007,7 +2059,7 @@ export const App: React.FC = () => {
         const wasApproved = lead.status === 'Approved' || lead.status === 'Converted' || (lead.pointsAwarded && lead.pointsAwarded > 0);
         const pointsToDeduct = wasApproved ? (lead.pointsAwarded || 50) : 0;
         const rupeesToDeduct = wasApproved ? (lead.referralCommissionRupees || 0) : 0;
-        
+
         const updatedNurse: NurseProfile = {
           ...referringNurse,
           pointsEarned: Math.max(0, (referringNurse.pointsEarned || 0) - pointsToDeduct),
@@ -2017,7 +2069,7 @@ export const App: React.FC = () => {
         };
         setNurses((prev) => {
           const next = prev.map((n) => (n.id === updatedNurse.id ? updatedNurse : n));
-          try { localStorage.setItem('xn_cached_nurses', JSON.stringify(next)); } catch {}
+          try { localStorage.setItem('xn_cached_nurses', JSON.stringify(next)); } catch { }
           return next;
         });
         broadcastRealtimeUpdate('NURSE_UPDATE', updatedNurse);
@@ -2027,7 +2079,7 @@ export const App: React.FC = () => {
 
     setLeads((prev) => {
       const next = prev.filter((l) => l.id !== id);
-      try { localStorage.setItem('xn_cached_leads', JSON.stringify(next)); } catch {}
+      try { localStorage.setItem('xn_cached_leads', JSON.stringify(next)); } catch { }
       return next;
     });
     broadcastRealtimeUpdate('LEAD_DELETE', { id });
@@ -2082,12 +2134,12 @@ export const App: React.FC = () => {
   const handleDeleteAppUser = async (id: string) => {
     setAppUsers((prev) => {
       const next = prev.filter((u) => u.id !== id);
-      try { localStorage.setItem('xn_cached_app_users', JSON.stringify(next)); } catch {}
+      try { localStorage.setItem('xn_cached_app_users', JSON.stringify(next)); } catch { }
       return next;
     });
     setNurses((prev) => {
       const next = prev.filter((n) => n.id !== id);
-      try { localStorage.setItem('xn_cached_nurses', JSON.stringify(next)); } catch {}
+      try { localStorage.setItem('xn_cached_nurses', JSON.stringify(next)); } catch { }
       return next;
     });
     broadcastRealtimeUpdate('APP_USER_DELETE', { id });
@@ -2136,7 +2188,7 @@ export const App: React.FC = () => {
       const leadIdSet = new Set(leadsToDeleteIds);
       setLeads((prev) => {
         const next = prev.filter((l) => !leadIdSet.has(l.id));
-        try { localStorage.setItem('xn_cached_leads', JSON.stringify(next)); } catch {}
+        try { localStorage.setItem('xn_cached_leads', JSON.stringify(next)); } catch { }
         return next;
       });
       leadsToDeleteIds.forEach((lid) => broadcastRealtimeUpdate('LEAD_DELETE', { id: lid }));
@@ -2145,7 +2197,7 @@ export const App: React.FC = () => {
 
     setBookings((prev) => {
       const next = prev.filter((b) => !idSet.has(b.id));
-      try { localStorage.setItem('xn_cached_bookings', JSON.stringify(next)); } catch {}
+      try { localStorage.setItem('xn_cached_bookings', JSON.stringify(next)); } catch { }
       return next;
     });
     ids.forEach((id) => broadcastRealtimeUpdate('BOOKING_DELETE', { id }));
@@ -2191,7 +2243,7 @@ export const App: React.FC = () => {
       const leadIdSet = new Set(leadsToDeleteIds);
       setLeads((prev) => {
         const next = prev.filter((l) => !leadIdSet.has(l.id));
-        try { localStorage.setItem('xn_cached_leads', JSON.stringify(next)); } catch {}
+        try { localStorage.setItem('xn_cached_leads', JSON.stringify(next)); } catch { }
         return next;
       });
       leadsToDeleteIds.forEach((lid) => broadcastRealtimeUpdate('LEAD_DELETE', { id: lid }));
@@ -2200,14 +2252,28 @@ export const App: React.FC = () => {
 
     setNurses((prev) => {
       const next = prev.filter((n) => !idSet.has(n.id));
-      try { localStorage.setItem('xn_cached_nurses', JSON.stringify(next)); } catch {}
+      try { localStorage.setItem('xn_cached_nurses', JSON.stringify(next)); } catch { }
       return next;
     });
     setAppUsers((prev) => {
       const next = prev.filter((u) => !idSet.has(u.id));
-      try { localStorage.setItem('xn_cached_app_users', JSON.stringify(next)); } catch {}
+      try { localStorage.setItem('xn_cached_app_users', JSON.stringify(next)); } catch { }
       return next;
     });
+
+    // If currently logged-in user is among the deleted nurses, immediately evict session!
+    setAuthUser((prev) => {
+      if (prev && idSet.has(prev.id)) {
+        try { localStorage.removeItem('xn_auth_user'); } catch {}
+        try { localStorage.removeItem('xn_active_nurse_id'); } catch {}
+        if (currentPath === '/nurse') {
+          setTimeout(() => navigate('/login?portal=nurse'), 50);
+        }
+        return null;
+      }
+      return prev;
+    });
+
     ids.forEach((id) => broadcastRealtimeUpdate('NURSE_DELETE', { id }));
     await dbDeleteMultipleNurses(ids);
   };
@@ -2222,7 +2288,7 @@ export const App: React.FC = () => {
         const wasApproved = lead.status === 'Approved' || lead.status === 'Converted' || (lead.pointsAwarded && lead.pointsAwarded > 0);
         const pointsToDeduct = wasApproved ? (lead.pointsAwarded || 50) : 0;
         const rupeesToDeduct = wasApproved ? (lead.referralCommissionRupees || 0) : 0;
-        
+
         const updatedNurse: NurseProfile = {
           ...referringNurse,
           pointsEarned: Math.max(0, (referringNurse.pointsEarned || 0) - pointsToDeduct),
@@ -2238,7 +2304,7 @@ export const App: React.FC = () => {
 
     setLeads((prev) => {
       const next = prev.filter((l) => !idSet.has(l.id));
-      try { localStorage.setItem('xn_cached_leads', JSON.stringify(next)); } catch {}
+      try { localStorage.setItem('xn_cached_leads', JSON.stringify(next)); } catch { }
       return next;
     });
     ids.forEach((id) => broadcastRealtimeUpdate('LEAD_DELETE', { id }));
@@ -2249,7 +2315,7 @@ export const App: React.FC = () => {
     const idSet = new Set(ids);
     setServices((prev) => {
       const next = prev.filter((s) => !idSet.has(s.id));
-      try { localStorage.setItem('xn_cached_services', JSON.stringify(next)); } catch {}
+      try { localStorage.setItem('xn_cached_services', JSON.stringify(next)); } catch { }
       return next;
     });
     ids.forEach((id) => broadcastRealtimeUpdate('SERVICE_DELETE', { id }));
@@ -2260,7 +2326,7 @@ export const App: React.FC = () => {
     const idSet = new Set(ids);
     setConsultations((prev) => {
       const next = prev.filter((c) => !idSet.has(c.id));
-      try { localStorage.setItem('xn_cached_consultations', JSON.stringify(next)); } catch {}
+      try { localStorage.setItem('xn_cached_consultations', JSON.stringify(next)); } catch { }
       return next;
     });
     ids.forEach((id) => broadcastRealtimeUpdate('CONSULTATION_DELETE', { id }));
@@ -2271,7 +2337,7 @@ export const App: React.FC = () => {
     const idSet = new Set(ids);
     setCoupons((prev) => {
       const next = prev.filter((c) => !idSet.has(c.id));
-      try { localStorage.setItem('xn_cached_coupons', JSON.stringify(next)); } catch {}
+      try { localStorage.setItem('xn_cached_coupons', JSON.stringify(next)); } catch { }
       return next;
     });
     ids.forEach((id) => broadcastRealtimeUpdate('COUPON_DELETE', { id }));
@@ -2282,12 +2348,12 @@ export const App: React.FC = () => {
     const idSet = new Set(ids);
     setAppUsers((prev) => {
       const next = prev.filter((u) => !idSet.has(u.id));
-      try { localStorage.setItem('xn_cached_app_users', JSON.stringify(next)); } catch {}
+      try { localStorage.setItem('xn_cached_app_users', JSON.stringify(next)); } catch { }
       return next;
     });
     setNurses((prev) => {
       const next = prev.filter((n) => !idSet.has(n.id));
-      try { localStorage.setItem('xn_cached_nurses', JSON.stringify(next)); } catch {}
+      try { localStorage.setItem('xn_cached_nurses', JSON.stringify(next)); } catch { }
       return next;
     });
     ids.forEach((id) => broadcastRealtimeUpdate('APP_USER_DELETE', { id }));
@@ -2299,12 +2365,12 @@ export const App: React.FC = () => {
     setIsBookingOpen(true);
   };
 
-  const isKnownRoute = 
-    currentPath === '/' || 
-    currentPath === '' || 
-    currentPath === '/nurse' || 
-    currentPath === '/admin' || 
-    currentPath === '/doctor' || 
+  const isKnownRoute =
+    currentPath === '/' ||
+    currentPath === '' ||
+    currentPath === '/nurse' ||
+    currentPath === '/admin' ||
+    currentPath === '/doctor' ||
     currentPath === '/empty' ||
     currentPath === '/login';
 
@@ -2320,144 +2386,145 @@ export const App: React.FC = () => {
       {/* Main Routed Views with Mobile Drag-Scroll Pull to Refresh */}
       <PullToRefresh onRefresh={async () => { await refreshAllDataFromDb(true); }}>
         <main>
-        {/* Route: / -> Public Marketing Website */}
-        {(currentPath === '/' || currentPath === '') && (
-          <>
-            <Hero
+          {/* Route: / -> Public Marketing Website */}
+          {(currentPath === '/' || currentPath === '') && (
+            <>
+              <Hero
+                onOpenBooking={() => setIsBookingOpen(true)}
+                onOpenQrModal={() => setIsQrModalOpen(true)}
+              />
+              <PrescriptionBanner
+                onDoctorConsultClick={() => {
+                  setPreSelectedServiceId('doctor-consult');
+                  setIsBookingOpen(true);
+                }}
+              />
+              <ServicesSection services={services} onSelectServiceToBook={handleOpenBookingForService} />
+              <WhyChooseUs />
+              <HowItWorks />
+              <DoctorConsultSection
+                onOpenBookingDoctor={() => {
+                  setPreSelectedServiceId('doctor-consult');
+                  setIsBookingOpen(true);
+                }}
+              />
+              <Testimonials />
+              <AboutSection onOpenBooking={() => setIsBookingOpen(true)} />
+            </>
+          )}
+
+          {/* Route: /nurse -> Nurse Portal & Multi-Nurse Fleet */}
+          {currentPath === '/nurse' && (
+            <AuthGuard user={authUser} requiredRole="nurse" onNavigate={navigate}>
+              <NurseDashboard
+                currentNurse={activeNurse}
+                allNurses={nurses}
+                onSelectNurse={(n) => setActiveNurseId(n.id)}
+                bookings={bookings}
+                leads={leads}
+                services={services}
+                onAddNewLead={handleAddNewLead}
+                onUpdateNurse={handleUpdateNurse}
+                onReassignBooking={handleReassignBooking}
+                onUpdateBooking={handleUpdateBooking}
+                onRefreshData={() => refreshAllDataFromDb(true)}
+              />
+            </AuthGuard>
+          )}
+
+          {/* Route: /admin -> Admin Operations & Dispatch */}
+          {currentPath === '/admin' && (
+            <AuthGuard user={authUser} requiredRole="admin" onNavigate={navigate}>
+              <AdminDashboard
+                bookings={bookings}
+                nurses={nurses}
+                leads={leads}
+                services={services}
+                consultations={consultations}
+                coupons={coupons}
+                appUsers={appUsers}
+                onAssignOrder={handleAdminAssignOrder}
+                onAutoRouteAll={handleAutoRouteAll}
+                onCreateCoupon={handleCreateCoupon}
+                onUpdateCoupon={handleUpdateCoupon}
+                onDeleteCoupon={handleDeleteCoupon}
+                onCreateBooking={handleCreateBooking}
+                onUpdateBooking={handleUpdateBooking}
+                onDeleteBooking={handleDeleteBooking}
+                onCreateNurse={handleCreateNurse}
+                onUpdateNurseRecord={handleUpdateNurseRecord}
+                onDeleteNurse={handleDeleteNurse}
+                onCreateLead={handleCreateLead}
+                onUpdateLead={handleUpdateLead}
+                onDeleteLead={handleDeleteLead}
+                onApproveLead={handleAdminApproveLead}
+                onRejectLead={handleAdminRejectLead}
+                onCreateService={handleCreateService}
+                onUpdateService={handleUpdateService}
+                onDeleteService={handleDeleteService}
+                onCreateConsultation={handleCreateConsultation}
+                onUpdateConsultation={handleUpdateConsultation}
+                onDeleteConsultation={handleDeleteConsultation}
+                onCreateAppUser={handleCreateAppUser}
+                onUpdateAppUser={handleUpdateAppUser}
+                onDeleteAppUser={handleDeleteAppUser}
+                onDeleteMultipleBookings={handleDeleteMultipleBookings}
+                onDeleteMultipleNurses={handleDeleteMultipleNurses}
+                onDeleteMultipleLeads={handleDeleteMultipleLeads}
+                onDeleteMultipleServices={handleDeleteMultipleServices}
+                onDeleteMultipleConsultations={handleDeleteMultipleConsultations}
+                onDeleteMultipleCoupons={handleDeleteMultipleCoupons}
+                onDeleteMultipleAppUsers={handleDeleteMultipleAppUsers}
+                onRefreshData={() => refreshAllDataFromDb(true)}
+              />
+            </AuthGuard>
+          )}
+
+          {/* Route: /doctor -> Doctor Consultation Panel */}
+          {currentPath === '/doctor' && (
+            <AuthGuard user={authUser} requiredRole="doctor" onNavigate={navigate}>
+              <DoctorDashboard
+                consultations={consultations}
+                services={services}
+                onIssuePrescription={handleDoctorIssueRx}
+                onAddNewConsultation={handleCreateConsultation}
+              />
+            </AuthGuard>
+          )}
+
+          {/* Route: /empty -> Dedicated Empty State Page */}
+          {currentPath === '/empty' && (
+            <EmptyStatePage
+              onNavigate={navigate}
               onOpenBooking={() => setIsBookingOpen(true)}
-              onOpenQrModal={() => setIsQrModalOpen(true)}
             />
-            <PrescriptionBanner
-              onDoctorConsultClick={() => {
-                setPreSelectedServiceId('doctor-consult');
-                setIsBookingOpen(true);
-              }}
-            />
-            <ServicesSection services={services} onSelectServiceToBook={handleOpenBookingForService} />
-            <WhyChooseUs />
-            <HowItWorks />
-            <DoctorConsultSection
-              onOpenBookingDoctor={() => {
-                setPreSelectedServiceId('doctor-consult');
-                setIsBookingOpen(true);
-              }}
-            />
-            <Testimonials />
-            <AboutSection onOpenBooking={() => setIsBookingOpen(true)} />
-          </>
-        )}
+          )}
 
-        {/* Route: /nurse -> Nurse Portal & Multi-Nurse Fleet */}
-        {currentPath === '/nurse' && (
-          <AuthGuard user={authUser} requiredRole="nurse" onNavigate={navigate}>
-            <NurseDashboard
-              currentNurse={activeNurse}
-              allNurses={nurses}
-              onSelectNurse={(n) => setActiveNurseId(n.id)}
-              bookings={bookings}
-              leads={leads}
-              services={services}
-              onAddNewLead={handleAddNewLead}
-              onUpdateNurse={handleUpdateNurse}
-              onReassignBooking={handleReassignBooking}
-              onUpdateBooking={handleUpdateBooking}
-              onRefreshData={() => refreshAllDataFromDb(true)}
-            />
-          </AuthGuard>
-        )}
-
-        {/* Route: /admin -> Admin Operations & Dispatch */}
-        {currentPath === '/admin' && (
-          <AuthGuard user={authUser} requiredRole="admin" onNavigate={navigate}>
-            <AdminDashboard
-              bookings={bookings}
+          {/* Route: /login -> Staff & Patient Portal Login */}
+          {currentPath === '/login' && (
+            <LoginPage
+              onNavigate={navigate}
+              onLoginSuccess={handleLoginSuccess}
               nurses={nurses}
-              leads={leads}
-              services={services}
-              consultations={consultations}
-              coupons={coupons}
-              appUsers={appUsers}
-              onAssignOrder={handleAdminAssignOrder}
-              onAutoRouteAll={handleAutoRouteAll}
-              onCreateCoupon={handleCreateCoupon}
-              onUpdateCoupon={handleUpdateCoupon}
-              onDeleteCoupon={handleDeleteCoupon}
-              onCreateBooking={handleCreateBooking}
-              onUpdateBooking={handleUpdateBooking}
-              onDeleteBooking={handleDeleteBooking}
-              onCreateNurse={handleCreateNurse}
-              onUpdateNurseRecord={handleUpdateNurseRecord}
-              onDeleteNurse={handleDeleteNurse}
-              onCreateLead={handleCreateLead}
-              onUpdateLead={handleUpdateLead}
-              onDeleteLead={handleDeleteLead}
-              onApproveLead={handleAdminApproveLead}
-              onRejectLead={handleAdminRejectLead}
-              onCreateService={handleCreateService}
-              onUpdateService={handleUpdateService}
-              onDeleteService={handleDeleteService}
-              onCreateConsultation={handleCreateConsultation}
-              onUpdateConsultation={handleUpdateConsultation}
-              onDeleteConsultation={handleDeleteConsultation}
-              onCreateAppUser={handleCreateAppUser}
-              onUpdateAppUser={handleUpdateAppUser}
-              onDeleteAppUser={handleDeleteAppUser}
-              onDeleteMultipleBookings={handleDeleteMultipleBookings}
-              onDeleteMultipleNurses={handleDeleteMultipleNurses}
-              onDeleteMultipleLeads={handleDeleteMultipleLeads}
-              onDeleteMultipleServices={handleDeleteMultipleServices}
-              onDeleteMultipleConsultations={handleDeleteMultipleConsultations}
-              onDeleteMultipleCoupons={handleDeleteMultipleCoupons}
-              onDeleteMultipleAppUsers={handleDeleteMultipleAppUsers}
+              onRefreshNurses={async () => {
+                const [remoteNurses, remoteLeads] = await Promise.all([
+                  dbFetchNurses(),
+                  dbFetchLeads()
+                ]);
+                if (remoteNurses) setNurses(remoteNurses);
+                if (remoteLeads) setLeads(remoteLeads);
+              }}
             />
-          </AuthGuard>
-        )}
+          )}
 
-        {/* Route: /doctor -> Doctor Consultation Panel */}
-        {currentPath === '/doctor' && (
-          <AuthGuard user={authUser} requiredRole="doctor" onNavigate={navigate}>
-            <DoctorDashboard
-              consultations={consultations}
-              services={services}
-              onIssuePrescription={handleDoctorIssueRx}
-              onAddNewConsultation={handleCreateConsultation}
+          {/* Unmatched / 404 Route */}
+          {!isKnownRoute && (
+            <NotFoundPage
+              onNavigate={navigate}
+              onOpenBooking={() => setIsBookingOpen(true)}
             />
-          </AuthGuard>
-        )}
-
-        {/* Route: /empty -> Dedicated Empty State Page */}
-        {currentPath === '/empty' && (
-          <EmptyStatePage
-            onNavigate={navigate}
-            onOpenBooking={() => setIsBookingOpen(true)}
-          />
-        )}
-
-        {/* Route: /login -> Staff & Patient Portal Login */}
-        {currentPath === '/login' && (
-          <LoginPage
-            onNavigate={navigate}
-            onLoginSuccess={handleLoginSuccess}
-            nurses={nurses}
-            onRefreshNurses={async () => {
-              const [remoteNurses, remoteLeads] = await Promise.all([
-                dbFetchNurses(),
-                dbFetchLeads()
-              ]);
-              if (remoteNurses) setNurses(remoteNurses);
-              if (remoteLeads) setLeads(remoteLeads);
-            }}
-          />
-        )}
-
-        {/* Unmatched / 404 Route */}
-        {!isKnownRoute && (
-          <NotFoundPage
-            onNavigate={navigate}
-            onOpenBooking={() => setIsBookingOpen(true)}
-          />
-        )}
-      </main>
+          )}
+        </main>
       </PullToRefresh>
 
       {/* Interactive Booking Modal */}

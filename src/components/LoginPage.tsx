@@ -279,17 +279,48 @@ export const LoginPage: React.FC<LoginPageProps> = ({
 
       if (detectedRole === 'nurse' && matchedUser) {
         try {
-          const { data: nurseData } = await supabase.from('nurses').select('status').eq('id', matchedUser.id).single();
-          if (nurseData && nurseData.status === 'Pending Verification') {
+          const { data: nurseData } = await supabase
+            .from('nurses')
+            .select('id, name, phone, email, status')
+            .or(`id.eq.${matchedUser.id},phone.eq.${matchedUser.phone || matchedUser.identifier},email.eq.${matchedUser.email || matchedUser.identifier}`)
+            .limit(1)
+            .maybeSingle();
+
+          if (!nurseData) {
+            setIsLoading(false);
+            setErrorMsg('Access denied. This nurse profile has been removed or deleted.');
+            return;
+          }
+
+          if (nurseData.status === 'Pending Verification') {
             setIsLoading(false);
             setErrorMsg('Your profile is pending Admin verification. Please wait for approval before logging in.');
             return;
           }
+
+          if (nurseData.status !== 'Active') {
+            setIsLoading(false);
+            setErrorMsg(`Access denied. Nurse profile status is "${nurseData.status}". Only Active nurses can log in.`);
+            return;
+          }
         } catch (err) {
-          const nurseProfile = activeNursesList.find(n => n.id === matchedUser.id);
-          if (nurseProfile && nurseProfile.status === 'Pending Verification') {
+          const nurseProfile = activeNursesList.find(n => 
+            n.id === matchedUser.id || 
+            (n.phone && matchedUser.phone && n.phone.replace(/\D/g, '') === matchedUser.phone.replace(/\D/g, ''))
+          );
+          if (!nurseProfile) {
+            setIsLoading(false);
+            setErrorMsg('Access denied. This nurse profile has been removed or deleted.');
+            return;
+          }
+          if (nurseProfile.status === 'Pending Verification') {
             setIsLoading(false);
             setErrorMsg('Your profile is pending Admin verification. Please wait for approval before logging in.');
+            return;
+          }
+          if (nurseProfile.status !== 'Active') {
+            setIsLoading(false);
+            setErrorMsg(`Access denied. Nurse profile status is "${nurseProfile.status}".`);
             return;
           }
         }

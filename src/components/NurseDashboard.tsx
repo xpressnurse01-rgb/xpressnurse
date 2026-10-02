@@ -49,6 +49,7 @@ import {
   uploadCertificateToCloudflareBucket
 } from '../lib/cloudflareStorage';
 import { generateNurseReferralCode } from '../lib/supabase';
+import { calculateNurseMetrics } from '../lib/nurseCalculations';
 
 // Helper to convert base64 data URLs to safe Blob URLs that modern browsers won't block
 export function getSafeBlobUrl(dataUrl: string): string {
@@ -187,54 +188,33 @@ export const NurseDashboard: React.FC<NurseDashboardProps> = ({
 
   // Referral Link Copy
   const [copiedCode, setCopiedCode] = useState(false);
+  const [isRefreshing, setIsRefreshing] = useState(false);
 
-  // Filter Bookings assigned to THIS nurse
-  const nurseNameClean = (nurse.name || '').toLowerCase();
-  const nursePhoneClean = (nurse.phone || '').replace(/\D/g, '');
-  const myVisits = bookings.filter((b) =>
-    b.assignedNurseId === nurse.id ||
-    (nurseNameClean && b.assignedNurseName && b.assignedNurseName.toLowerCase().includes(nurseNameClean))
-  );
-  const activeVisits = myVisits.filter((b) => b.status === 'Assigned' || b.status === 'In-Progress');
-  const completedVisits = myVisits.filter((b) => b.status === 'Completed');
+  // Centralized calculations engine ensuring 100% sync with Admin Dashboard
+  const metrics = calculateNurseMetrics(nurse, bookings, leads, services);
+  const {
+    myVisits,
+    activeVisits,
+    completedVisits,
+    completedVisitsEarnings,
+    myLeads,
+    myConvertedLeads,
+    referralEarnings: calculatedMoney,
+    totalMoney,
+    totalPoints,
+    referralCode
+  } = metrics;
 
-  // Filter Leads submitted by THIS nurse
-  const myLeads = leads.filter((l) =>
-    l.nurseId === nurse.id ||
-    (nursePhoneClean && l.referredNursePhone && l.referredNursePhone.replace(/\D/g, '') === nursePhoneClean) ||
-    (nursePhoneClean && l.patientPhone && l.patientPhone.replace(/\D/g, '') === nursePhoneClean)
-  );
-  const myConvertedLeads = myLeads.filter((l) =>
-    l.status === 'Converted' ||
-    (l.status === 'Approved' && (l.referralType === 'nurse' || Boolean(l.referredNursePhone)))
-  );
-
-  // Calculate earnings — strictly prioritize live nurse profile points & rupees set by Admin/system
-  const referralCode = nurse.referralCode || generateNurseReferralCode(nurse.name, nurse.id, nurse.phone || '');
-  let calculatedMoney = 0;
-  myConvertedLeads.forEach(lead => {
-    if (lead.referralType !== 'nurse' && !lead.referredNursePhone) {
-      const procedure = services.find(s => s.id === lead.serviceId);
-      const fee = Number(lead.leadValueRupees) || (procedure?.priceNumber ?? 800);
-      calculatedMoney += Math.round(fee * 0.10);
+  const handleSync = async () => {
+    if (onRefreshData) {
+      setIsRefreshing(true);
+      try {
+        await onRefreshData();
+      } finally {
+        setTimeout(() => setIsRefreshing(false), 500);
+      }
     }
-  });
-
-  // Calculate completed visit earnings (70% service charge for finished visits)
-  let completedVisitsEarnings = 0;
-  completedVisits.forEach(visit => {
-    const procedure = services.find(s => s.id === visit.serviceId);
-    const fee = Number(visit.finalFee !== undefined ? visit.finalFee : (visit.estimatedFee || (procedure ? procedure.priceNumber : 899)));
-    completedVisitsEarnings += Math.round(fee * 0.70);
-  });
-
-  // Strictly calculate what the nurse earned through percentage:
-  // 70% service charge from completed visits + 10% procedure fee from converted patient referrals
-  // Never mix or show how much they earned from points in rupees
-  const totalMoney = completedVisitsEarnings + calculatedMoney;
-  const totalPoints = (nurse.pointsEarned !== undefined && nurse.pointsEarned !== null && !isNaN(Number(nurse.pointsEarned)))
-    ? Number(nurse.pointsEarned)
-    : (myConvertedLeads.length * 50);
+  };
 
   // Handlers
   const handleAcceptVisit = async (booking: Booking) => {
@@ -479,7 +459,33 @@ export const NurseDashboard: React.FC<NurseDashboardProps> = ({
               <PhoneCall size={18} style={{ color: '#E11D48' }} />
               <span style={{ fontSize: '0.65rem', fontWeight: 700 }}>Helpline</span>
             </a>
+            {onRefreshData && (
+              <button
+                type="button"
+                onClick={handleSync}
+                disabled={isRefreshing}
+                className="btn btn-outline nurse-top-stat-box"
+                style={{
+                  display: 'flex',
+                  flexDirection: 'column',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  padding: '0.45rem 0.9rem',
+                  borderRadius: 12,
+                  border: '1px solid #CBD5E1',
+                  color: '#0284C7',
+                  background: '#F0F9FF',
+                  cursor: isRefreshing ? 'wait' : 'pointer',
+                  gap: '0.1rem'
+                }}
+                title="Sync with live database"
+              >
+                <RefreshCw size={18} className={isRefreshing ? 'spin' : ''} style={{ color: '#0284C7' }} />
+                <span style={{ fontSize: '0.65rem', fontWeight: 700 }}>{isRefreshing ? 'Syncing...' : 'Sync'}</span>
+              </button>
+            )}
           </div>
+
         </div>
 
         {/* ================================================================= */}

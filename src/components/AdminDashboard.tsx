@@ -1,31 +1,31 @@
 import React, { useState, useEffect } from 'react';
-import { 
-  Booking, 
-  NurseProfile, 
-  HyderabadArea, 
-  NurseLead, 
-  Coupon, 
-  AppUser, 
-  ServiceItem, 
-  DoctorConsultation, 
+import {
+  Booking,
+  NurseProfile,
+  HyderabadArea,
+  NurseLead,
+  Coupon,
+  AppUser,
+  ServiceItem,
+  DoctorConsultation,
   ServiceId,
   CloudflareStorageObject,
   InvoiceDetails,
   CloudflareR2Config,
   StorageCategory
 } from '../types';
-import { 
-  Users, 
-  MapPin, 
-  Clock, 
-  ShieldCheck, 
-  Shuffle, 
-  AlertCircle, 
-  FileText, 
-  CheckCircle, 
+import {
+  Users,
+  MapPin,
+  Clock,
+  ShieldCheck,
+  Shuffle,
+  AlertCircle,
+  FileText,
+  CheckCircle,
   Award,
-  Calendar, 
-  Search, 
+  Calendar,
+  Search,
   Activity,
   ArrowRight,
   Tag,
@@ -68,6 +68,7 @@ import {
 import { EmptyState } from './EmptyState';
 import { SEED_APP_USERS, generateNurseReferralCode, dbLogAuditEvent } from '../lib/supabase';
 import { getSafeBlobUrl } from './NurseDashboard';
+import { calculateNurseMetrics } from '../lib/nurseCalculations';
 import {
   getCloudflareConfig,
   saveCloudflareConfig,
@@ -130,6 +131,7 @@ interface AdminDashboardProps {
   onDeleteMultipleConsultations?: (ids: string[]) => Promise<void>;
   onDeleteMultipleCoupons?: (ids: string[]) => Promise<void>;
   onDeleteMultipleAppUsers?: (ids: string[]) => Promise<void>;
+  onRefreshData?: () => Promise<void> | void;
 }
 
 export const AdminDashboard: React.FC<AdminDashboardProps> = ({
@@ -171,7 +173,8 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
   onDeleteMultipleServices,
   onDeleteMultipleConsultations,
   onDeleteMultipleCoupons,
-  onDeleteMultipleAppUsers
+  onDeleteMultipleAppUsers,
+  onRefreshData
 }) => {
   const [activeTab, setActiveTab] = useState<'routing' | 'bookings' | 'nurses' | 'services' | 'leads' | 'consultations' | 'coupons' | 'credentials' | 'storage'>('routing');
   const [testSimPatientArea, setTestSimPatientArea] = useState<HyderabadArea>('LB Nagar');
@@ -181,7 +184,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
   // --------------------------------------------------------------------------
   // CLOUDFLARE R2 STORAGE & INVOICE MANAGEMENT STATE
   // --------------------------------------------------------------------------
-  const [storageObjects, setStorageObjects] = useState<CloudflareStorageObject[]>(() => 
+  const [storageObjects, setStorageObjects] = useState<CloudflareStorageObject[]>(() =>
     getCloudflareObjects()
   );
 
@@ -194,7 +197,8 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
   const [storageCategoryFilter, setStorageCategoryFilter] = useState<'all' | StorageCategory>('all');
   const [storageSearch, setStorageSearch] = useState('');
   const [invoiceSearch, setInvoiceSearch] = useState('');
-  
+  const [isRefreshingDb, setIsRefreshingDb] = useState(false);
+
   // Modals
   const [isInvoicePreviewModalOpen, setIsInvoicePreviewModalOpen] = useState(false);
   const [previewInvoice, setPreviewInvoice] = useState<InvoiceDetails | null>(null);
@@ -284,7 +288,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
     }
     const cleanFileName = uploadForm.fileName.endsWith('.pdf') ? uploadForm.fileName : `${uploadForm.fileName}.pdf`;
     const relatedBooking = bookings.find(b => b.id === uploadForm.bookingId);
-    
+
     try {
       await uploadToCloudflareStorage({
         fileName: cleanFileName,
@@ -333,10 +337,10 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
   const resolveRealArea = (area: string, fullAddress?: string): string => {
     if (fullAddress) {
       const knownAreas = [
-        'Saroor Nagar', 'Kukatpally', 'Banjara Hills', 'Jubilee Hills', 
-        'Hitec City', 'Gachibowli', 'Madhapur', 'Kondapur', 'Miyapur', 
-        'Secunderabad', 'Begumpet', 'LB Nagar', 'Uppal', 'Dilsukhnagar', 
-        'Mehdipatnam', 'Tolichowki', 'Ameerpet', 'Somajiguda', 'Manikonda', 
+        'Saroor Nagar', 'Kukatpally', 'Banjara Hills', 'Jubilee Hills',
+        'Hitec City', 'Gachibowli', 'Madhapur', 'Kondapur', 'Miyapur',
+        'Secunderabad', 'Begumpet', 'LB Nagar', 'Uppal', 'Dilsukhnagar',
+        'Mehdipatnam', 'Tolichowki', 'Ameerpet', 'Somajiguda', 'Manikonda',
         'Kothapet', 'Attapur', 'Nanakramguda', 'Tellapur', 'Alwal', 'Malakpet'
       ];
       for (const a of knownAreas) {
@@ -349,7 +353,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
   };
 
   const filteredStorageObjects = storageObjects.filter((o) => {
-    const matchesSearch = 
+    const matchesSearch =
       o.fileName.toLowerCase().includes(storageSearch.toLowerCase()) ||
       o.key.toLowerCase().includes(storageSearch.toLowerCase()) ||
       (o.metadata?.patientName && o.metadata.patientName.toLowerCase().includes(storageSearch.toLowerCase())) ||
@@ -731,7 +735,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
         discountValue: Number(couponForm.discountValue),
         maxDiscount: couponForm.maxDiscount ? Number(couponForm.maxDiscount) : undefined,
         minOrderAmount: Number(couponForm.minOrderAmount) || 0,
-        description: couponForm.showInBookingModal 
+        description: couponForm.showInBookingModal
           ? `${couponForm.description.trim()} [SHOW_IN_MODAL]`
           : couponForm.description.trim().replace('[SHOW_IN_MODAL]', '').trim(),
         status: couponForm.status,
@@ -801,17 +805,17 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
 
   // Filtered Coupons
   const filteredCoupons = coupons.filter((c) => {
-    const matchesSearch = 
+    const matchesSearch =
       c.code.toLowerCase().includes(couponSearch.toLowerCase()) ||
       c.description.toLowerCase().includes(couponSearch.toLowerCase());
-    const matchesStatus = 
+    const matchesStatus =
       couponStatusFilter === 'all' ? true : c.status === couponStatusFilter;
     return matchesSearch && matchesStatus;
   });
 
   // Filtered Users & Credentials
   const filteredUsers = appUsers.filter((u) => {
-    const matchesSearch = 
+    const matchesSearch =
       u.name.toLowerCase().includes(credentialSearch.toLowerCase()) ||
       (u.email && u.email.toLowerCase().includes(credentialSearch.toLowerCase())) ||
       (u.phone && u.phone.includes(credentialSearch)) ||
@@ -840,9 +844,9 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
   const [nurseSearchFilterVerifiedOnly, setNurseSearchFilterVerifiedOnly] = useState<boolean>(true);
   const [nurseSearchFilterArea, setNurseSearchFilterArea] = useState<string>('all');
 
-  const nurseDeclinedBookings = bookings.filter((b) => 
-    b.rejectedBy === 'Nurse' || 
-    b.nurseAcceptanceStatus === 'Rejected' || 
+  const nurseDeclinedBookings = bookings.filter((b) =>
+    b.rejectedBy === 'Nurse' ||
+    b.nurseAcceptanceStatus === 'Rejected' ||
     (b.status === 'Rejected' && b.rejectionReason?.toLowerCase().includes('nurse'))
   );
   const [bookingForm, setBookingForm] = useState({
@@ -970,7 +974,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
   };
 
   const filteredBookings = bookings.filter((b) => {
-    const matchesSearch = 
+    const matchesSearch =
       b.patientName.toLowerCase().includes(bookingSearch.toLowerCase()) ||
       b.id.toLowerCase().includes(bookingSearch.toLowerCase()) ||
       b.area.toLowerCase().includes(bookingSearch.toLowerCase()) ||
@@ -979,16 +983,16 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
     const isNurseDeclined = b.rejectedBy === 'Nurse' || b.nurseAcceptanceStatus === 'Rejected' || (b.status === 'Rejected' && b.rejectionReason?.toLowerCase().includes('nurse'));
     const isNurseAccepted = b.nurseAcceptanceStatus === 'Accepted' || (b.status === 'In-Progress' && !isNurseDeclined);
 
-    const matchesStatus = 
-      bookingStatusFilter === 'all' 
-        ? true 
+    const matchesStatus =
+      bookingStatusFilter === 'all'
+        ? true
         : bookingStatusFilter === 'Referrals'
-        ? Boolean(b.referringNurseId)
-        : bookingStatusFilter === 'Nurse-Declined'
-        ? isNurseDeclined
-        : bookingStatusFilter === 'Accepted'
-        ? isNurseAccepted
-        : b.status === bookingStatusFilter;
+          ? Boolean(b.referringNurseId)
+          : bookingStatusFilter === 'Nurse-Declined'
+            ? isNurseDeclined
+            : bookingStatusFilter === 'Accepted'
+              ? isNurseAccepted
+              : b.status === bookingStatusFilter;
 
     return matchesSearch && matchesStatus;
   });
@@ -1090,6 +1094,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
       const tier = exp >= 10 ? 'Senior (> 10 Years)' : exp >= 5 ? 'Mid-Level (5-10 Years)' : 'Junior (< 5 Years)';
       const nurseCode = n.referralCode || generateNurseReferralCode(n.name, n.id, n.phone);
       const origin = n.referredByNurseId ? `Referred (${n.referredByNurseName || n.referredByNurseId})` : 'Individual / Direct';
+      const m = calculateNurseMetrics(n, bookings, leads, services);
       return [
         sanitizeCsvCell(n.id),
         sanitizeCsvCell(n.name),
@@ -1104,12 +1109,12 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
         sanitizeCsvCell(tier),
         n.certificateVerified ? 'Verified' : 'Pending Review',
         sanitizeCsvCell(n.status || 'Active'),
-        n.completedVisits || 0,
-        n.activeVisits || 0,
-        n.pointsEarned || n.points || 0,
-        n.earningsPaid || 0,
-        n.earningsPending || 0,
-        (n.earningsPaid || 0) + (n.earningsPending || 0)
+        m.completedVisitsCount,
+        m.activeVisitsCount,
+        m.totalPoints,
+        m.completedVisitsEarnings,
+        m.referralEarnings,
+        m.totalMoney
       ];
     });
     const csvContent = 'data:text/csv;charset=utf-8,\uFEFF' + [headers.join(','), ...rows.map((r) => r.join(','))].join('\n');
@@ -1131,22 +1136,22 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
       const strVal = String(val).replace(/"/g, '""');
       return `"${strVal}"`;
     };
-    
+
     const headers = [
-      'Lead ID', 'Submitted At', 'Patient Name', 'Patient Phone', 'Patient Age', 'Patient Gender', 
-      'Service ID', 'Area', 'Full Address', 'Status', 'Referral Type', 'Referring Nurse ID', 
+      'Lead ID', 'Submitted At', 'Patient Name', 'Patient Phone', 'Patient Age', 'Patient Gender',
+      'Service ID', 'Area', 'Full Address', 'Status', 'Referral Type', 'Referring Nurse ID',
       'Referring Nurse Name', 'Referred Nurse Phone', 'Points Awarded', 'Commission (Rupees)', 'Rejection Reason', 'Admin Notes'
     ];
-    
+
     const csvContent = leads.map(l => {
       return [
         l.id, l.submittedAt || '', l.patientName, l.patientPhone, l.patientAge || '', l.patientGender || '',
         l.serviceId || '', l.area || '', l.fullAddress || '', l.status, l.referralType || 'patient', l.nurseId,
-        l.referredNurseName || '', l.referredNursePhone || '', l.pointsAwarded || 0, l.referralCommissionRupees || 0, 
+        l.referredNurseName || '', l.referredNursePhone || '', l.pointsAwarded || 0, l.referralCommissionRupees || 0,
         l.rejectionReason || '', l.adminNotes || ''
       ].map(sanitizeCsvCell).join(',');
     });
-    
+
     const finalCsv = [headers.join(','), ...csvContent].join('\n');
     const blob = new Blob([finalCsv], { type: 'text/csv;charset=utf-8;' });
     const url = URL.createObjectURL(blob);
@@ -1165,19 +1170,19 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
       const strVal = String(val).replace(/"/g, '""');
       return `"${strVal}"`;
     };
-    
+
     const headers = [
-      'Consult ID', 'Requested At', 'Booking ID', 'Patient Name', 'Patient Phone', 
+      'Consult ID', 'Requested At', 'Booking ID', 'Patient Name', 'Patient Phone',
       'Status', 'Urgency', 'Prescription File', 'Nurse Comments', 'Admin/Doctor Notes'
     ];
-    
+
     const csvContent = consultations.map(c => {
       return [
         c.id, c.requestedAt, c.bookingId, c.patientName, c.patientPhone,
         c.status, c.urgency, c.prescriptionFileUrl || '', c.nurseComments || '', c.adminNotes || ''
       ].map(sanitizeCsvCell).join(',');
     });
-    
+
     const finalCsv = [headers.join(','), ...csvContent].join('\n');
     const blob = new Blob([finalCsv], { type: 'text/csv;charset=utf-8;' });
     const url = URL.createObjectURL(blob);
@@ -1310,11 +1315,11 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
       if (onUpdateAppUser) {
         const u = appUsers.find((x) => x.id === editingNurse.id || x.phone === editingNurse.phone || (x.email && x.email.toLowerCase() === editingNurse.email.toLowerCase()));
         if (u) {
-          await onUpdateAppUser(u.id, { 
-            pin: nurseForm.pin.trim() || u.pin, 
-            name: nursePayload.name, 
+          await onUpdateAppUser(u.id, {
+            pin: nurseForm.pin.trim() || u.pin,
+            name: nursePayload.name,
             phone: cleanPhone,
-            serviceArea: nursePayload.serviceArea 
+            serviceArea: nursePayload.serviceArea
           });
         }
       }
@@ -1359,7 +1364,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
   };
 
   const filteredNurses = nurses.filter((n) => {
-    const matchesSearch = 
+    const matchesSearch =
       n.name.toLowerCase().includes(nurseSearch.toLowerCase()) ||
       n.phone.includes(nurseSearch) ||
       n.email.toLowerCase().includes(nurseSearch.toLowerCase()) ||
@@ -1367,18 +1372,18 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
       (n.serviceArea && n.serviceArea.toLowerCase().includes(nurseSearch.toLowerCase())) ||
       (n.referredByNurseName && n.referredByNurseName.toLowerCase().includes(nurseSearch.toLowerCase())) ||
       (n.referralCode && n.referralCode.toLowerCase().includes(nurseSearch.toLowerCase()));
-    
-    const exp = n.experienceYears || (parseInt(n.experience || '0', 10) || 0);
-    const matchesExp = 
-      nurseExpFilter === 'all' ? true :
-      nurseExpFilter === '>10' ? exp >= 10 :
-      nurseExpFilter === '5-10' ? (exp >= 5 && exp < 10) :
-      exp < 5;
 
-    const matchesOrigin = 
+    const exp = n.experienceYears || (parseInt(n.experience || '0', 10) || 0);
+    const matchesExp =
+      nurseExpFilter === 'all' ? true :
+        nurseExpFilter === '>10' ? exp >= 10 :
+          nurseExpFilter === '5-10' ? (exp >= 5 && exp < 10) :
+            exp < 5;
+
+    const matchesOrigin =
       nurseOriginFilter === 'all' ? true :
-      nurseOriginFilter === 'referred' ? Boolean(n.referredByNurseId) :
-      !n.referredByNurseId;
+        nurseOriginFilter === 'referred' ? Boolean(n.referredByNurseId) :
+          !n.referredByNurseId;
 
     return matchesSearch && matchesExp && matchesOrigin;
   });
@@ -1475,7 +1480,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
           description: `Avatar for Nurse: ${nurseForm.name || 'Unknown'}`
         }
       });
-      
+
       setNurseForm((prev) => ({ ...prev, avatarUrl: obj.publicUrl }));
       showToast('Nurse avatar uploaded successfully!', 'success');
     } catch (err: any) {
@@ -1515,7 +1520,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
           description: `Thumbnail for Service: ${serviceForm.title || 'Unknown Service'}`,
         }
       });
-      
+
       setServiceForm((prev) => ({ ...prev, imageUrl: obj.publicUrl }));
       showToast('Service image uploaded successfully!', 'success');
     } catch (err: any) {
@@ -1555,7 +1560,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
           description: `Thumbnail for Service: ${serviceForm.title || 'Unknown Service'}`,
         }
       });
-      
+
       setServiceForm((prev) => ({ ...prev, thumbnailUrl: obj.publicUrl }));
       showToast('Service thumbnail uploaded successfully!', 'success');
     } catch (err: any) {
@@ -1734,7 +1739,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
   const handleOpenApproveModal = (lead: NurseLead) => {
     setApprovalModalLead(lead);
     setApprovalAssignNurseId(lead.assignedNurseId || '');
-    
+
     // Calculate 10% of procedure value if it's a patient lead, otherwise 50 rupees for nurse lead
     let defaultRupees = 50; // Default 50 for nurse referrals
     if (lead.referralType !== 'nurse' && !lead.referredNursePhone) {
@@ -1742,7 +1747,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
       const fee = Number(lead.leadValueRupees) || (procedure?.priceNumber || 800);
       defaultRupees = Math.round(fee * 0.10);
     }
-    
+
     setApprovalPoints(50);
     setApprovalReferralRupees(defaultRupees);
     setApprovalNotes(lead.adminNotes || `Approved by Office (+50 points credited, ₹${defaultRupees} 10% commission).`);
@@ -1777,7 +1782,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
 
         // If unassigned, automatically open the nurse search assign dialog for this booking
         setTimeout(() => {
-          const targetB = bookings.find(b => 
+          const targetB = bookings.find(b =>
             (createdBookingId && b.id === createdBookingId) ||
             (approvalModalLead.patientPhone && b.patientPhone === approvalModalLead.patientPhone) ||
             (approvalModalLead.patientName && b.patientName && b.patientName.toLowerCase() === approvalModalLead.patientName.toLowerCase())
@@ -1812,7 +1817,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
       setActiveTab('routing');
       setTimeout(() => {
         const cleanLeadPhone = (lead.patientPhone || '').replace(/\D/g, '');
-        const targetB = bookings.find(b => 
+        const targetB = bookings.find(b =>
           (bId && b.id === bId) ||
           (cleanLeadPhone && b.patientPhone && b.patientPhone.replace(/\D/g, '') === cleanLeadPhone) ||
           (lead.patientName && b.patientName && b.patientName.toLowerCase() === lead.patientName.toLowerCase())
@@ -1848,7 +1853,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
   const filteredLeads = leads.filter((l) => {
     const pName = (l.patientName || l.referredNurseName || '').toLowerCase();
     const pPhone = l.patientPhone || l.referredNursePhone || '';
-    const matchesSearch = 
+    const matchesSearch =
       pName.includes(leadSearch.toLowerCase()) ||
       pPhone.includes(leadSearch) ||
       l.area.toLowerCase().includes(leadSearch.toLowerCase());
@@ -1958,7 +1963,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
   };
 
   const filteredConsults = consultations.filter((c) => {
-    const matchesSearch = 
+    const matchesSearch =
       c.patientName.toLowerCase().includes(consultSearch.toLowerCase()) ||
       c.patientPhone.includes(consultSearch) ||
       c.symptoms.toLowerCase().includes(consultSearch.toLowerCase()) ||
@@ -2168,6 +2173,39 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
             <span>📁 Bills & Files ({storageObjects.length})</span>
           </button>
 
+          {onRefreshData && (
+            <button
+              type="button"
+              className="btn btn-sm btn-outline"
+              disabled={isRefreshingDb}
+              onClick={async () => {
+                setIsRefreshingDb(true);
+                try {
+                  await onRefreshData();
+                  showToast('All fleet, bookings, referrals and consults synchronized with Supabase!');
+                } catch {
+                  showToast('Failed to refresh data', 'error');
+                } finally {
+                  setIsRefreshingDb(false);
+                }
+              }}
+              style={{
+                borderColor: '#BAE6FD',
+                color: '#0284C7',
+                background: '#F0F9FF',
+                fontWeight: 700,
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: '0.35rem',
+                marginLeft: 'auto'
+              }}
+              title="Force resync and refresh all data live from Supabase"
+            >
+              <RefreshCw size={14} className={isRefreshingDb ? 'spin' : ''} />
+              <span>{isRefreshingDb ? 'Syncing...' : 'Sync DB'}</span>
+            </button>
+          )}
+
           <button
             type="button"
             className="btn btn-sm btn-outline"
@@ -2175,7 +2213,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
               try {
                 localStorage.removeItem('xn_auth_user');
                 window.location.href = '/login?portal=admin';
-              } catch {}
+              } catch { }
             }}
             style={{
               color: '#EF4444',
@@ -2185,7 +2223,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
               display: 'inline-flex',
               alignItems: 'center',
               gap: '0.35rem',
-              marginLeft: 'auto'
+              marginLeft: onRefreshData ? undefined : 'auto'
             }}
             title="Sign out of Admin Operations"
           >
@@ -2197,7 +2235,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
 
       {/* Real-time DB Operation Toast Banner */}
       {dbToast && (
-        <div 
+        <div
           role="alert"
           aria-live="assertive"
           style={{
@@ -2317,206 +2355,206 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                     pendingBookings.map((b) => {
                       const isSelected = selectedRoutingBookingIds.has(b.id);
                       return (
-                      <tr key={b.id} style={{ background: isSelected ? '#FFF1F2' : undefined }}>
-                        <td style={{ textAlign: 'center', width: 40 }}>
-                          <input
-                            type="checkbox"
-                            checked={isSelected}
-                            onChange={() => toggleItemSelection(b.id, setSelectedRoutingBookingIds)}
-                            style={{ cursor: 'pointer', accentColor: '#E11D48', width: 16, height: 16 }}
-                          />
-                        </td>
-                        <td style={{ whiteSpace: 'nowrap' }}><strong style={{ fontFamily: 'monospace' }}>{b.id}</strong></td>
-                        <td style={{ whiteSpace: 'nowrap' }}>
-                          <div style={{ fontWeight: 750, color: 'var(--primary-navy-950)' }}>{b.patientName}</div>
-                          <div style={{ fontSize: '0.76rem', color: '#64748B', fontFamily: 'monospace' }}>{b.patientPhone}</div>
-                          <div style={{ marginTop: '0.2rem' }}>
-                            {(b.bookingType?.toLowerCase() === 'scheduled' || (b.preferredTime && !b.preferredTime.toLowerCase().includes('immediate') && !b.preferredTime.toLowerCase().includes('asap') && !b.preferredTime.toLowerCase().includes('instant'))) ? (
-                              <span style={{ fontSize: '0.72rem', background: '#F0FDF4', color: '#166534', padding: '2px 7px', borderRadius: 9999, fontWeight: 700, border: '1px solid #BBF7D0', whiteSpace: 'nowrap' }}>
-                                📅 {b.scheduledSlot || b.preferredTime || 'Scheduled Slot'}
-                              </span>
-                            ) : (
-                              <span style={{ fontSize: '0.72rem', background: '#EFF6FF', color: '#1D4ED8', padding: '2px 7px', borderRadius: 9999, fontWeight: 700, border: '1px solid #BFDBFE', whiteSpace: 'nowrap' }}>
-                                ⚡ Instant Request
-                              </span>
-                            )}
-                          </div>
-                          {b.referringNurseId && (
+                        <tr key={b.id} style={{ background: isSelected ? '#FFF1F2' : undefined }}>
+                          <td style={{ textAlign: 'center', width: 40 }}>
+                            <input
+                              type="checkbox"
+                              checked={isSelected}
+                              onChange={() => toggleItemSelection(b.id, setSelectedRoutingBookingIds)}
+                              style={{ cursor: 'pointer', accentColor: '#E11D48', width: 16, height: 16 }}
+                            />
+                          </td>
+                          <td style={{ whiteSpace: 'nowrap' }}><strong style={{ fontFamily: 'monospace' }}>{b.id}</strong></td>
+                          <td style={{ whiteSpace: 'nowrap' }}>
+                            <div style={{ fontWeight: 750, color: 'var(--primary-navy-950)' }}>{b.patientName}</div>
+                            <div style={{ fontSize: '0.76rem', color: '#64748B', fontFamily: 'monospace' }}>{b.patientPhone}</div>
                             <div style={{ marginTop: '0.2rem' }}>
-                              <span style={{ fontSize: '0.7rem', background: '#FEF3C7', color: '#92400E', padding: '2px 7px', borderRadius: 9999, fontWeight: 700, border: '1px solid #FDE68A', display: 'inline-flex', alignItems: 'center', gap: '3px' }}>
-                                ⭐ Nurse Referral ({b.referringNurseName || 'Nurse'})
-                              </span>
+                              {(b.bookingType?.toLowerCase() === 'scheduled' || (b.preferredTime && !b.preferredTime.toLowerCase().includes('immediate') && !b.preferredTime.toLowerCase().includes('asap') && !b.preferredTime.toLowerCase().includes('instant'))) ? (
+                                <span style={{ fontSize: '0.72rem', background: '#F0FDF4', color: '#166534', padding: '2px 7px', borderRadius: 9999, fontWeight: 700, border: '1px solid #BBF7D0', whiteSpace: 'nowrap' }}>
+                                  📅 {b.scheduledSlot || b.preferredTime || 'Scheduled Slot'}
+                                </span>
+                              ) : (
+                                <span style={{ fontSize: '0.72rem', background: '#EFF6FF', color: '#1D4ED8', padding: '2px 7px', borderRadius: 9999, fontWeight: 700, border: '1px solid #BFDBFE', whiteSpace: 'nowrap' }}>
+                                  ⚡ Instant Request
+                                </span>
+                              )}
                             </div>
-                          )}
-                        </td>
-                        <td style={{ whiteSpace: 'nowrap' }}>
-                          <span style={{ fontWeight: 650, color: '#1E293B' }}>{b.serviceTitle}</span>
-                        </td>
-                        <td style={{ whiteSpace: 'nowrap' }}>
-                          <div style={{ display: 'flex', alignItems: 'center', gap: '0.3rem', whiteSpace: 'nowrap' }}>
-                            <MapPin size={13} style={{ color: '#0284C7', flexShrink: 0 }} />
-                            <strong style={{ fontSize: '0.82rem', color: '#0F172A' }}>{resolveRealArea(b.area, b.fullAddress)}</strong>
-                          </div>
-                          {b.fullAddress && (
-                            <div style={{ fontSize: '0.72rem', color: '#64748B', maxWidth: 200, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }} title={b.fullAddress}>
-                              {b.fullAddress}
+                            {b.referringNurseId && (
+                              <div style={{ marginTop: '0.2rem' }}>
+                                <span style={{ fontSize: '0.7rem', background: '#FEF3C7', color: '#92400E', padding: '2px 7px', borderRadius: 9999, fontWeight: 700, border: '1px solid #FDE68A', display: 'inline-flex', alignItems: 'center', gap: '3px' }}>
+                                  ⭐ Nurse Referral ({b.referringNurseName || 'Nurse'})
+                                </span>
+                              </div>
+                            )}
+                          </td>
+                          <td style={{ whiteSpace: 'nowrap' }}>
+                            <span style={{ fontWeight: 650, color: '#1E293B' }}>{b.serviceTitle}</span>
+                          </td>
+                          <td style={{ whiteSpace: 'nowrap' }}>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '0.3rem', whiteSpace: 'nowrap' }}>
+                              <MapPin size={13} style={{ color: '#0284C7', flexShrink: 0 }} />
+                              <strong style={{ fontSize: '0.82rem', color: '#0F172A' }}>{resolveRealArea(b.area, b.fullAddress)}</strong>
                             </div>
-                          )}
-                        </td>
-                        <td style={{ whiteSpace: 'nowrap' }}>
-                          {b.hasPrescription || b.prescriptionFileName || b.prescriptionUrl ? (
-                            <button
-                              type="button"
-                              onClick={() => handleViewPrescription(b)}
-                              className="btn btn-sm"
-                              style={{
-                                background: '#F0FDF4',
-                                border: '1px solid #BBF7D0',
-                                color: '#15803D',
-                                fontSize: '0.75rem',
-                                padding: '0.25rem 0.65rem',
-                                borderRadius: 6,
-                                display: 'inline-flex',
-                                alignItems: 'center',
-                                gap: '0.35rem',
-                                fontWeight: 750,
-                                cursor: 'pointer',
-                                whiteSpace: 'nowrap'
-                              }}
-                              title="Inspect Doctor Prescription"
-                            >
-                              <FileText size={13} style={{ color: '#059669' }} />
-                              <span>View Rx</span>
-                            </button>
-                          ) : (
-                            <span style={{ color: '#DC2626', fontSize: '0.75rem', fontWeight: 600, whiteSpace: 'nowrap' }}>⚠️ Needs Consult</span>
-                          )}
-                        </td>
-                        <td style={{ whiteSpace: 'nowrap' }}>
-                          <div style={{ display: 'flex', gap: '0.4rem', alignItems: 'center', flexWrap: 'wrap' }}>
-                            {nurses
-                              .filter((n) => n.serviceArea === b.area && n.certificateVerified)
-                              .map((matchingNurse) => (
-                                <button
-                                  key={matchingNurse.id}
-                                  onClick={() =>
+                            {b.fullAddress && (
+                              <div style={{ fontSize: '0.72rem', color: '#64748B', maxWidth: 200, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }} title={b.fullAddress}>
+                                {b.fullAddress}
+                              </div>
+                            )}
+                          </td>
+                          <td style={{ whiteSpace: 'nowrap' }}>
+                            {b.hasPrescription || b.prescriptionFileName || b.prescriptionUrl ? (
+                              <button
+                                type="button"
+                                onClick={() => handleViewPrescription(b)}
+                                className="btn btn-sm"
+                                style={{
+                                  background: '#F0FDF4',
+                                  border: '1px solid #BBF7D0',
+                                  color: '#15803D',
+                                  fontSize: '0.75rem',
+                                  padding: '0.25rem 0.65rem',
+                                  borderRadius: 6,
+                                  display: 'inline-flex',
+                                  alignItems: 'center',
+                                  gap: '0.35rem',
+                                  fontWeight: 750,
+                                  cursor: 'pointer',
+                                  whiteSpace: 'nowrap'
+                                }}
+                                title="Inspect Doctor Prescription"
+                              >
+                                <FileText size={13} style={{ color: '#059669' }} />
+                                <span>View Rx</span>
+                              </button>
+                            ) : (
+                              <span style={{ color: '#DC2626', fontSize: '0.75rem', fontWeight: 600, whiteSpace: 'nowrap' }}>⚠️ Needs Consult</span>
+                            )}
+                          </td>
+                          <td style={{ whiteSpace: 'nowrap' }}>
+                            <div style={{ display: 'flex', gap: '0.4rem', alignItems: 'center', flexWrap: 'wrap' }}>
+                              {nurses
+                                .filter((n) => n.serviceArea === b.area && n.certificateVerified)
+                                .map((matchingNurse) => (
+                                  <button
+                                    key={matchingNurse.id}
+                                    onClick={() =>
+                                      onAssignOrder(
+                                        b.id,
+                                        matchingNurse.id,
+                                        `Rule 2 Matched: Verified ${b.area} Area Nurse (${matchingNurse.name})`
+                                      )
+                                    }
+                                    className="btn btn-primary btn-sm"
+                                    title={`Route to verified ${matchingNurse.name} (${b.area})`}
+                                    style={{ padding: '0.35rem 0.65rem', fontSize: '0.8rem', whiteSpace: 'nowrap' }}
+                                  >
+                                    <span>Assign to {matchingNurse.name.split(' ')[0]} RN</span>
+                                    <ArrowRight size={13} />
+                                  </button>
+                                ))}
+
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setSearchAssignBooking(b);
+                                  setNurseSearchQuery('');
+                                  setNurseSearchFilterArea(b.area || 'all');
+                                }}
+                                className="btn btn-outline btn-sm"
+                                style={{
+                                  padding: '0.35rem 0.65rem',
+                                  fontSize: '0.8rem',
+                                  whiteSpace: 'nowrap',
+                                  borderColor: '#0284C7',
+                                  color: '#0284C7',
+                                  background: '#F0F9FF',
+                                  fontWeight: 750,
+                                  display: 'inline-flex',
+                                  alignItems: 'center',
+                                  gap: '0.35rem'
+                                }}
+                                title={`Search nurse roster and assign Order #${b.id}`}
+                              >
+                                <Search size={13} />
+                                <span>Search Nurse & Assign</span>
+                              </button>
+
+                              <select
+                                className="form-control"
+                                style={{ padding: '0.35rem 0.5rem', fontSize: '0.8rem', width: 'auto', minWidth: '150px' }}
+                                value=""
+                                onChange={(e) => {
+                                  if (e.target.value) {
+                                    const selectedNurse = nurses.find((n) => n.id === e.target.value);
+                                    if (!selectedNurse?.certificateVerified) {
+                                      alert('Cannot assign booking: Nurse certificate is not verified. Unverified nurses can only refer fellow nurses.');
+                                      return;
+                                    }
                                     onAssignOrder(
                                       b.id,
-                                      matchingNurse.id,
-                                      `Rule 2 Matched: Verified ${b.area} Area Nurse (${matchingNurse.name})`
-                                    )
+                                      e.target.value,
+                                      `Manual Dispatch by Admin to ${selectedNurse?.name || e.target.value}`
+                                    );
                                   }
-                                  className="btn btn-primary btn-sm"
-                                  title={`Route to verified ${matchingNurse.name} (${b.area})`}
-                                  style={{ padding: '0.35rem 0.65rem', fontSize: '0.8rem', whiteSpace: 'nowrap' }}
-                                >
-                                  <span>Assign to {matchingNurse.name.split(' ')[0]} RN</span>
-                                  <ArrowRight size={13} />
-                                </button>
-                              ))}
+                                }}
+                              >
+                                <option value="" disabled>Or Assign Verified Nurse...</option>
+                                {nurses.map((n) => (
+                                  <option key={n.id} value={n.id} disabled={!n.certificateVerified}>
+                                    {n.name} ({n.serviceArea}) {n.certificateVerified ? '✓ Verified' : '⚠️ No Certificate (Refer Only)'}
+                                  </option>
+                                ))}
+                              </select>
 
-                            <button
-                              type="button"
-                              onClick={() => {
-                                setSearchAssignBooking(b);
-                                setNurseSearchQuery('');
-                                setNurseSearchFilterArea(b.area || 'all');
-                              }}
-                              className="btn btn-outline btn-sm"
-                              style={{
-                                padding: '0.35rem 0.65rem',
-                                fontSize: '0.8rem',
-                                whiteSpace: 'nowrap',
-                                borderColor: '#0284C7',
-                                color: '#0284C7',
-                                background: '#F0F9FF',
-                                fontWeight: 750,
-                                display: 'inline-flex',
-                                alignItems: 'center',
-                                gap: '0.35rem'
-                              }}
-                              title={`Search nurse roster and assign Order #${b.id}`}
-                            >
-                              <Search size={13} />
-                              <span>Search Nurse & Assign</span>
-                            </button>
+                              <button
+                                type="button"
+                                onClick={() => handleViewBookingInvoice(b)}
+                                className="btn btn-outline btn-sm"
+                                style={{
+                                  fontSize: '0.75rem',
+                                  padding: '0.35rem 0.55rem',
+                                  display: 'inline-flex',
+                                  alignItems: 'center',
+                                  gap: '0.25rem',
+                                  color: '#0284C7',
+                                  borderColor: '#BAE6FD',
+                                  background: '#F0F9FF',
+                                  fontWeight: 700
+                                }}
+                                title="Issue and preview official invoice"
+                              >
+                                <Receipt size={13} />
+                                <span>Invoice</span>
+                              </button>
 
-                            <select
-                              className="form-control"
-                              style={{ padding: '0.35rem 0.5rem', fontSize: '0.8rem', width: 'auto', minWidth: '150px' }}
-                              value=""
-                              onChange={(e) => {
-                                if (e.target.value) {
-                                  const selectedNurse = nurses.find((n) => n.id === e.target.value);
-                                  if (!selectedNurse?.certificateVerified) {
-                                    alert('Cannot assign booking: Nurse certificate is not verified. Unverified nurses can only refer fellow nurses.');
-                                    return;
-                                  }
-                                  onAssignOrder(
-                                    b.id,
-                                    e.target.value,
-                                    `Manual Dispatch by Admin to ${selectedNurse?.name || e.target.value}`
-                                  );
-                                }
-                              }}
-                            >
-                              <option value="" disabled>Or Assign Verified Nurse...</option>
-                              {nurses.map((n) => (
-                                <option key={n.id} value={n.id} disabled={!n.certificateVerified}>
-                                  {n.name} ({n.serviceArea}) {n.certificateVerified ? '✓ Verified' : '⚠️ No Certificate (Refer Only)'}
-                                </option>
-                              ))}
-                            </select>
-
-                            <button
-                              type="button"
-                              onClick={() => handleViewBookingInvoice(b)}
-                              className="btn btn-outline btn-sm"
-                              style={{
-                                fontSize: '0.75rem',
-                                padding: '0.35rem 0.55rem',
-                                display: 'inline-flex',
-                                alignItems: 'center',
-                                gap: '0.25rem',
-                                color: '#0284C7',
-                                borderColor: '#BAE6FD',
-                                background: '#F0F9FF',
-                                fontWeight: 700
-                              }}
-                              title="Issue and preview official invoice"
-                            >
-                              <Receipt size={13} />
-                              <span>Invoice</span>
-                            </button>
-
-                            <button
-                              type="button"
-                              onClick={() => handleDeleteBookingClick(b)}
-                              className="btn btn-sm"
-                              style={{
-                                fontSize: '0.75rem',
-                                padding: '0.35rem 0.55rem',
-                                display: 'inline-flex',
-                                alignItems: 'center',
-                                gap: '0.25rem',
-                                color: '#E11D48',
-                                borderColor: '#FECDD3',
-                                background: '#FFF1F2',
-                                fontWeight: 700,
-                                cursor: 'pointer'
-                              }}
-                              title={`Delete pending booking #${b.id} from Supabase`}
-                            >
-                              <Trash2 size={13} />
-                              <span>Delete</span>
-                            </button>
-                          </div>
-                        </td>
-                      </tr>
-                    );
-                  })
-                )}
-              </tbody>
+                              <button
+                                type="button"
+                                onClick={() => handleDeleteBookingClick(b)}
+                                className="btn btn-sm"
+                                style={{
+                                  fontSize: '0.75rem',
+                                  padding: '0.35rem 0.55rem',
+                                  display: 'inline-flex',
+                                  alignItems: 'center',
+                                  gap: '0.25rem',
+                                  color: '#E11D48',
+                                  borderColor: '#FECDD3',
+                                  background: '#FFF1F2',
+                                  fontWeight: 700,
+                                  cursor: 'pointer'
+                                }}
+                                title={`Delete pending booking #${b.id} from Supabase`}
+                              >
+                                <Trash2 size={13} />
+                                <span>Delete</span>
+                              </button>
+                            </div>
+                          </td>
+                        </tr>
+                      );
+                    })
+                  )}
+                </tbody>
               </table>
             </div>
           </div>
@@ -2727,349 +2765,348 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                             </div>
                           </td>
                           <td style={{ whiteSpace: 'nowrap' }}>
-                        {(b.bookingType?.toLowerCase() === 'scheduled' || (b.preferredTime && !b.preferredTime.toLowerCase().includes('immediate') && !b.preferredTime.toLowerCase().includes('asap') && !b.preferredTime.toLowerCase().includes('instant'))) ? (
-                          <div style={{ display: 'inline-flex', alignItems: 'center', gap: '0.35rem', whiteSpace: 'nowrap' }}>
-                            <span style={{ fontSize: '0.74rem', background: '#F0FDF4', color: '#166534', padding: '2px 8px', borderRadius: 9999, fontWeight: 750, border: '1px solid #BBF7D0', whiteSpace: 'nowrap' }}>
-                              📅 Scheduled
-                            </span>
-                            <span style={{ fontSize: '0.74rem', color: '#475569', fontWeight: 600, whiteSpace: 'nowrap' }}>
-                              {b.preferredDate ? `${b.preferredDate} | ${b.preferredTime || b.scheduledSlot || 'Standard Slot'}` : (b.scheduledSlot || 'Standard Slot')}
-                            </span>
-                          </div>
-                        ) : (
-                          <div style={{ display: 'inline-flex', alignItems: 'center', gap: '0.35rem', whiteSpace: 'nowrap' }}>
-                            <span style={{ fontSize: '0.74rem', background: '#EFF6FF', color: '#1D4ED8', padding: '2px 8px', borderRadius: 9999, fontWeight: 750, border: '1px solid #BFDBFE', whiteSpace: 'nowrap' }}>
-                              ⚡ Instant (ASAP)
-                            </span>
-                            <span style={{ fontSize: '0.72rem', color: '#64748B', fontWeight: 600, whiteSpace: 'nowrap' }}>
-                              Emergency
-                            </span>
-                          </div>
-                        )}
-                      </td>
-                      <td style={{ whiteSpace: 'nowrap' }}>
-                        <div style={{ fontWeight: 750, color: 'var(--primary-navy-950)', whiteSpace: 'nowrap' }}>{b.patientName}</div>
-                        {b.status === 'Cancelled' || b.status === 'Rejected' ? (
-                          <span style={{ fontSize: '0.74rem', color: '#94A3B8', fontWeight: 600 }}>✕ Contact Hidden (Rejected)</span>
-                        ) : (
-                          <div style={{ fontSize: '0.76rem', color: '#64748B', fontFamily: 'monospace', whiteSpace: 'nowrap' }}>{b.patientPhone}</div>
-                        )}
-                        {b.referringNurseId && (
-                          <div style={{ marginTop: '0.2rem' }}>
-                            <span style={{ fontSize: '0.7rem', background: '#FEF3C7', color: '#92400E', padding: '2px 7px', borderRadius: 9999, fontWeight: 700, border: '1px solid #FDE68A', display: 'inline-flex', alignItems: 'center', gap: '3px', whiteSpace: 'nowrap' }}>
-                              ⭐ Nurse Referral ({b.referringNurseName || 'Nurse'})
-                            </span>
-                          </div>
-                        )}
-                      </td>
-                      <td style={{ whiteSpace: 'nowrap' }}>
-                        <span style={{ fontWeight: 650, color: '#1E293B', whiteSpace: 'nowrap' }}>{b.serviceTitle}</span>
-                      </td>
-                      <td style={{ whiteSpace: 'nowrap' }}>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '0.3rem', whiteSpace: 'nowrap' }}>
-                          <MapPin size={13} style={{ color: '#0284C7', flexShrink: 0 }} />
-                          <strong style={{ fontSize: '0.82rem', color: '#0F172A', whiteSpace: 'nowrap' }}>{resolveRealArea(b.area, b.fullAddress)}</strong>
-                        </div>
-                        {b.fullAddress && (
-                          <div style={{ fontSize: '0.72rem', color: '#64748B', maxWidth: 220, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }} title={b.fullAddress}>
-                            {b.fullAddress}
-                          </div>
-                        )}
-                      </td>
-                      <td style={{ whiteSpace: 'nowrap' }}>
-                        {b.assignedNurseName ? (() => {
-                          const assignedNurse = nurses.find((n) => n.id === b.assignedNurseId || n.name === b.assignedNurseName);
-                          const phoneNum = assignedNurse?.phone;
-                          return (
-                            <div style={{ whiteSpace: 'nowrap' }}>
-                              <div style={{ fontWeight: 750, color: '#0F172A', whiteSpace: 'nowrap', display: 'flex', alignItems: 'center', gap: '0.35rem' }}>
-                                <span>{b.assignedNurseName}</span>
-                                {phoneNum && b.status !== 'Cancelled' && b.status !== 'Rejected' && (
-                                  <a
-                                    href={`tel:${phoneNum.replace(/\s+/g, '')}`}
-                                    style={{ color: '#059669', display: 'inline-flex', alignItems: 'center' }}
-                                    title={`Call ${b.assignedNurseName} (${phoneNum})`}
-                                  >
-                                    <Phone size={12} />
-                                  </a>
-                                )}
+                            {(b.bookingType?.toLowerCase() === 'scheduled' || (b.preferredTime && !b.preferredTime.toLowerCase().includes('immediate') && !b.preferredTime.toLowerCase().includes('asap') && !b.preferredTime.toLowerCase().includes('instant'))) ? (
+                              <div style={{ display: 'inline-flex', alignItems: 'center', gap: '0.35rem', whiteSpace: 'nowrap' }}>
+                                <span style={{ fontSize: '0.74rem', background: '#F0FDF4', color: '#166534', padding: '2px 8px', borderRadius: 9999, fontWeight: 750, border: '1px solid #BBF7D0', whiteSpace: 'nowrap' }}>
+                                  📅 Scheduled
+                                </span>
+                                <span style={{ fontSize: '0.74rem', color: '#475569', fontWeight: 600, whiteSpace: 'nowrap' }}>
+                                  {b.preferredDate ? `${b.preferredDate} | ${b.preferredTime || b.scheduledSlot || 'Standard Slot'}` : (b.scheduledSlot || 'Standard Slot')}
+                                </span>
                               </div>
-                              <div style={{ fontSize: '0.72rem', color: '#64748B', whiteSpace: 'nowrap', marginTop: '1px' }}>
-                                {b.referringNurseName
-                                  ? `⚡ Referred by: ${b.referringNurseName}`
-                                  : (b.referringNurseId ? 'Rule 1 (Referral Match)' : 'Rule 2 (Area Matched)')}
-                              </div>
-                            </div>
-                          );
-                        })() : (
-                          <span style={{ color: '#E11D48', fontWeight: 700, fontSize: '0.78rem', whiteSpace: 'nowrap' }}>Unassigned</span>
-                        )}
-                      </td>
-                      <td style={{ whiteSpace: 'nowrap' }}>
-                        {b.prescriptionFileName || b.prescriptionUrl || b.hasPrescription ? (
-                          <button
-                            type="button"
-                            onClick={() => handleViewPrescription(b)}
-                            className="btn btn-sm"
-                            style={{
-                              background: '#F0FDF4',
-                              border: '1px solid #BBF7D0',
-                              color: '#15803D',
-                              fontSize: '0.75rem',
-                              padding: '0.25rem 0.65rem',
-                              borderRadius: 6,
-                              display: 'inline-flex',
-                              alignItems: 'center',
-                              gap: '0.35rem',
-                              fontWeight: 750,
-                              cursor: 'pointer',
-                              whiteSpace: 'nowrap'
-                            }}
-                            title="Inspect Doctor Prescription"
-                          >
-                            <FileText size={13} style={{ color: '#059669' }} />
-                            <span>View Rx</span>
-                          </button>
-                        ) : (
-                          <span style={{ color: '#94A3B8', fontSize: '0.75rem', fontWeight: 600, whiteSpace: 'nowrap' }}>No Rx Needed</span>
-                        )}
-                      </td>
-                      <td style={{ whiteSpace: 'nowrap' }}>
-                        {b.status === 'Cancelled' || b.status === 'Rejected' ? (
-                          <span style={{ color: '#94A3B8', fontSize: '0.84rem', fontWeight: 600 }}>
-                            ₹0 <small style={{ color: '#DC2626' }}>(Rejected)</small>
-                          </span>
-                        ) : (
-                          <div style={{ display: 'flex', flexDirection: 'column' }}>
-                            <strong style={{ color: 'var(--primary-navy-900)', fontSize: '0.88rem' }}>
-                              ₹{b.finalFee !== undefined ? b.finalFee : b.estimatedFee}
-                            </strong>
-                            {b.promoCode && (
-                              <div style={{ fontSize: '0.72rem', color: '#10B981', fontWeight: 700, marginTop: '2px', background: '#ECFDF5', padding: '2px 6px', borderRadius: 4, display: 'inline-block', border: '1px solid #A7F3D0' }}>
-                                🎉 {b.promoCode} (-₹{b.discountRupees})
+                            ) : (
+                              <div style={{ display: 'inline-flex', alignItems: 'center', gap: '0.35rem', whiteSpace: 'nowrap' }}>
+                                <span style={{ fontSize: '0.74rem', background: '#EFF6FF', color: '#1D4ED8', padding: '2px 8px', borderRadius: 9999, fontWeight: 750, border: '1px solid #BFDBFE', whiteSpace: 'nowrap' }}>
+                                  ⚡ Instant (ASAP)
+                                </span>
+                                <span style={{ fontSize: '0.72rem', color: '#64748B', fontWeight: 600, whiteSpace: 'nowrap' }}>
+                                  Emergency
+                                </span>
                               </div>
                             )}
-                          </div>
-                        )}
-                      </td>
-                      <td style={{ whiteSpace: 'nowrap' }}>
-                        {(() => {
-                          const isDeclinedByNurse = b.rejectedBy === 'Nurse' || b.nurseAcceptanceStatus === 'Rejected' || (b.status === 'Rejected' && b.rejectionReason?.toLowerCase().includes('nurse'));
-                          const isAcceptedByNurse = b.nurseAcceptanceStatus === 'Accepted' || (b.status === 'In-Progress' && !isDeclinedByNurse);
-                          const isAwaitingNurse = !isAcceptedByNurse && !isDeclinedByNurse && b.status === 'Assigned';
-
-                          if (isDeclinedByNurse) {
-                            return (
-                              <div>
-                                <span className="status-pill danger" style={{ background: '#FFF1F2', color: '#BE123C', border: '1px solid #FECDD3', display: 'inline-flex', alignItems: 'center', gap: '0.25rem', fontWeight: 800 }}>
-                                  ⚠️ Nurse Declined (Referral Needed)
+                          </td>
+                          <td style={{ whiteSpace: 'nowrap' }}>
+                            <div style={{ fontWeight: 750, color: 'var(--primary-navy-950)', whiteSpace: 'nowrap' }}>{b.patientName}</div>
+                            {b.status === 'Cancelled' || b.status === 'Rejected' ? (
+                              <span style={{ fontSize: '0.74rem', color: '#94A3B8', fontWeight: 600 }}>✕ Contact Hidden (Rejected)</span>
+                            ) : (
+                              <div style={{ fontSize: '0.76rem', color: '#64748B', fontFamily: 'monospace', whiteSpace: 'nowrap' }}>{b.patientPhone}</div>
+                            )}
+                            {b.referringNurseId && (
+                              <div style={{ marginTop: '0.2rem' }}>
+                                <span style={{ fontSize: '0.7rem', background: '#FEF3C7', color: '#92400E', padding: '2px 7px', borderRadius: 9999, fontWeight: 700, border: '1px solid #FDE68A', display: 'inline-flex', alignItems: 'center', gap: '3px', whiteSpace: 'nowrap' }}>
+                                  ⭐ Nurse Referral ({b.referringNurseName || 'Nurse'})
                                 </span>
-                                {b.rejectionReason && (
-                                  <div style={{ fontSize: '0.72rem', color: '#9F1239', marginTop: '3px', background: '#FFE4E6', padding: '3px 6px', borderRadius: 4, whiteSpace: 'normal', maxWidth: 220, border: '1px solid #FECDD3', fontWeight: 600 }}>
-                                    {b.rejectionReason}
-                                  </div>
-                                )}
                               </div>
-                            );
-                          }
-
-                          if (isAcceptedByNurse) {
-                            return (
-                              <span className="status-pill success" style={{ display: 'inline-flex', alignItems: 'center', gap: '0.25rem', fontWeight: 750 }}>
-                                ✓ Nurse Accepted
-                              </span>
-                            );
-                          }
-
-                          if (isAwaitingNurse) {
-                            return (
-                              <span className="status-pill warning" style={{ display: 'inline-flex', alignItems: 'center', gap: '0.25rem', fontWeight: 750 }}>
-                                ⏳ Awaiting Nurse Approval
-                              </span>
-                            );
-                          }
-
-                          return (
-                            <div>
-                              <span className={`status-pill ${
-                                b.status === 'Completed' ? 'success' :
-                                b.status === 'Pending' ? 'warning' :
-                                b.status === 'Rejected' || b.status === 'Cancelled' ? 'danger' : 'neutral'
-                              }`} style={{ whiteSpace: 'nowrap' }}>
-                                {b.status === 'Rejected' ? '✕ Rejected by Admin' : b.status === 'Cancelled' ? '✕ Cancelled' : b.status}
-                              </span>
-                              {b.rejectionReason && (
-                                <div style={{ fontSize: '0.72rem', color: '#DC2626', marginTop: '3px', background: '#FEF2F2', padding: '3px 6px', borderRadius: 4, whiteSpace: 'normal', maxWidth: 220, border: '1px solid #FECDD3' }}>
-                                  <strong>Reason:</strong> {b.rejectionReason}
-                                </div>
-                              )}
+                            )}
+                          </td>
+                          <td style={{ whiteSpace: 'nowrap' }}>
+                            <span style={{ fontWeight: 650, color: '#1E293B', whiteSpace: 'nowrap' }}>{b.serviceTitle}</span>
+                          </td>
+                          <td style={{ whiteSpace: 'nowrap' }}>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '0.3rem', whiteSpace: 'nowrap' }}>
+                              <MapPin size={13} style={{ color: '#0284C7', flexShrink: 0 }} />
+                              <strong style={{ fontSize: '0.82rem', color: '#0F172A', whiteSpace: 'nowrap' }}>{resolveRealArea(b.area, b.fullAddress)}</strong>
                             </div>
-                          );
-                        })()}
-                      </td>
-                      <td style={{ textAlign: 'right' }}>
-                        {(() => {
-                          const isDeclinedByNurse = b.rejectedBy === 'Nurse' || b.nurseAcceptanceStatus === 'Rejected' || (b.status === 'Rejected' && b.rejectionReason?.toLowerCase().includes('nurse'));
-
-                          return (
-                            <div style={{ display: 'flex', flexWrap: 'wrap', justifyContent: 'flex-end', alignItems: 'center', gap: '0.35rem' }}>
-                              {isDeclinedByNurse && (
-                                <>
-                                  <button
-                                    type="button"
-                                    onClick={() => {
-                                      setSearchAssignBooking(b);
-                                      setNurseSearchQuery('');
-                                      setNurseSearchFilterArea(b.area || 'all');
-                                    }}
-                                    className="btn btn-sm"
-                                    style={{
-                                      background: '#0284C7',
-                                      border: '1px solid #0284C7',
-                                      color: '#FFFFFF',
-                                      fontWeight: 800,
-                                      padding: '0.3rem 0.65rem',
-                                      borderRadius: 6,
-                                      display: 'inline-flex',
-                                      alignItems: 'center',
-                                      gap: '0.35rem',
-                                      fontSize: '0.75rem',
-                                      cursor: 'pointer',
-                                      boxShadow: '0 1px 3px rgba(2, 132, 199, 0.3)'
-                                    }}
-                                    title="Search verified nurse roster and refer order"
-                                  >
-                                    <Search size={13} />
-                                    <span>Search Nurse to Refer</span>
-                                  </button>
-                                  <button
-                                    type="button"
-                                    onClick={() => {
-                                      setAdminReassignBooking(b);
-                                      const recommended = nurses.find((n) => n.id !== b.assignedNurseId && n.serviceArea === b.area && n.certificateVerified) || nurses.find((n) => n.id !== b.assignedNurseId && n.certificateVerified);
-                                      setSelectedReferralNurseId(recommended?.id || '');
-                                      setReferralRuleNote(`Referred following decline by ${b.assignedNurseName || 'previous nurse'}`);
-                                    }}
-                                    className="btn btn-sm"
-                                    style={{
-                                      background: '#FEF3C7',
-                                      border: '1px solid #F59E0B',
-                                      color: '#92400E',
-                                      fontWeight: 800,
-                                      padding: '0.3rem 0.65rem',
-                                      borderRadius: 6,
-                                      display: 'inline-flex',
-                                      alignItems: 'center',
-                                      gap: '0.3rem',
-                                      fontSize: '0.75rem',
-                                      cursor: 'pointer',
-                                      boxShadow: '0 1px 3px rgba(245, 158, 11, 0.25)'
-                                    }}
-                                    title="Refer and reassign this order to another certified nurse"
-                                  >
-                                    <RefreshCw size={13} />
-                                    <span>Refer to Other Nurse</span>
-                                  </button>
-                                </>
-                              )}
+                            {b.fullAddress && (
+                              <div style={{ fontSize: '0.72rem', color: '#64748B', maxWidth: 220, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }} title={b.fullAddress}>
+                                {b.fullAddress}
+                              </div>
+                            )}
+                          </td>
+                          <td style={{ whiteSpace: 'nowrap' }}>
+                            {b.assignedNurseName ? (() => {
+                              const assignedNurse = nurses.find((n) => n.id === b.assignedNurseId || n.name === b.assignedNurseName);
+                              const phoneNum = assignedNurse?.phone;
+                              return (
+                                <div style={{ whiteSpace: 'nowrap' }}>
+                                  <div style={{ fontWeight: 750, color: '#0F172A', whiteSpace: 'nowrap', display: 'flex', alignItems: 'center', gap: '0.35rem' }}>
+                                    <span>{b.assignedNurseName}</span>
+                                    {phoneNum && b.status !== 'Cancelled' && b.status !== 'Rejected' && (
+                                      <a
+                                        href={`tel:${phoneNum.replace(/\s+/g, '')}`}
+                                        style={{ color: '#059669', display: 'inline-flex', alignItems: 'center' }}
+                                        title={`Call ${b.assignedNurseName} (${phoneNum})`}
+                                      >
+                                        <Phone size={12} />
+                                      </a>
+                                    )}
+                                  </div>
+                                  <div style={{ fontSize: '0.72rem', color: '#64748B', whiteSpace: 'nowrap', marginTop: '1px' }}>
+                                    {b.referringNurseName
+                                      ? `⚡ Referred by: ${b.referringNurseName}`
+                                      : (b.referringNurseId ? 'Rule 1 (Referral Match)' : 'Rule 2 (Area Matched)')}
+                                  </div>
+                                </div>
+                              );
+                            })() : (
+                              <span style={{ color: '#E11D48', fontWeight: 700, fontSize: '0.78rem', whiteSpace: 'nowrap' }}>Unassigned</span>
+                            )}
+                          </td>
+                          <td style={{ whiteSpace: 'nowrap' }}>
+                            {b.prescriptionFileName || b.prescriptionUrl || b.hasPrescription ? (
                               <button
                                 type="button"
-                                onClick={() => handleViewBookingInvoice(b)}
-                                title="Issue Official Invoice (Save to Cloudflare R2)"
+                                onClick={() => handleViewPrescription(b)}
+                                className="btn btn-sm"
                                 style={{
                                   background: '#F0FDF4',
                                   border: '1px solid #BBF7D0',
                                   color: '#15803D',
-                                  padding: '0.3rem 0.55rem',
+                                  fontSize: '0.75rem',
+                                  padding: '0.25rem 0.65rem',
                                   borderRadius: 6,
-                                  cursor: 'pointer',
                                   display: 'inline-flex',
                                   alignItems: 'center',
-                                  gap: '0.25rem',
-                                  fontSize: '0.75rem',
-                                  fontWeight: 700
-                                }}
-                              >
-                                <Receipt size={13} />
-                                <span>Invoice</span>
-                              </button>
-                              <button
-                                type="button"
-                                onClick={() => handleOpenEditBookingModal(b)}
-                                title="Edit Booking in Supabase"
-                                style={{
-                                  background: '#EFF6FF',
-                                  border: '1px solid #BFDBFE',
-                                  color: '#1D4ED8',
-                                  padding: '0.3rem 0.45rem',
-                                  borderRadius: 6,
+                                  gap: '0.35rem',
+                                  fontWeight: 750,
                                   cursor: 'pointer',
-                                  display: 'flex',
-                                  alignItems: 'center'
+                                  whiteSpace: 'nowrap'
                                 }}
+                                title="Inspect Doctor Prescription"
                               >
-                                <Edit2 size={13} />
+                                <FileText size={13} style={{ color: '#059669' }} />
+                                <span>View Rx</span>
                               </button>
-                              {b.status !== 'Cancelled' && b.status !== 'Rejected' && (
-                                <button
-                                  type="button"
-                                  onClick={async () => {
-                                    const reason = window.prompt(`Reject order/payment for ${b.patientName}?\n\nEnter reason for rejection (e.g. Ineligible Clinical Case, Invalid Prescription, Area Out of Jurisdiction):`, 'Ineligible Clinical Case');
-                                    if (reason !== null && reason.trim()) {
-                                      await onUpdateBooking?.(b.id, {
-                                        status: 'Rejected',
-                                        rejectionReason: reason.trim(),
-                                        rejectedBy: 'Admin'
-                                      });
-                                      showToast(`Order ${b.id} marked as Rejected by Admin. Nurse payout set to ₹0.`);
-                                    }
-                                  }}
-                                  title="Reject Order (Sets nurse payout to ₹0 immediately)"
-                              style={{
-                                background: '#FEF2F2',
-                                border: '1px solid #FECDD3',
-                                color: '#DC2626',
-                                padding: '0.3rem 0.45rem',
-                                borderRadius: 6,
-                                cursor: 'pointer',
-                                display: 'inline-flex',
-                                alignItems: 'center',
-                                gap: '0.2rem',
-                                fontSize: '0.72rem',
-                                fontWeight: 700
-                              }}
-                            >
-                              <X size={13} />
-                              <span>Reject</span>
-                            </button>
-                          )}
-                          <button
-                            type="button"
-                            onClick={() => handleDeleteBookingClick(b)}
-                            title="Delete Booking from Supabase"
-                            style={{
-                              background: '#FEF2F2',
-                              border: '1px solid #FECDD3',
-                              color: '#E11D48',
-                              padding: '0.3rem 0.45rem',
-                              borderRadius: 6,
-                              cursor: 'pointer',
-                              display: 'flex',
-                              alignItems: 'center'
-                            }}
-                          >
-                            <Trash2 size={13} />
-                          </button>
-                        </div>
+                            ) : (
+                              <span style={{ color: '#94A3B8', fontSize: '0.75rem', fontWeight: 600, whiteSpace: 'nowrap' }}>No Rx Needed</span>
+                            )}
+                          </td>
+                          <td style={{ whiteSpace: 'nowrap' }}>
+                            {b.status === 'Cancelled' || b.status === 'Rejected' ? (
+                              <span style={{ color: '#94A3B8', fontSize: '0.84rem', fontWeight: 600 }}>
+                                ₹0 <small style={{ color: '#DC2626' }}>(Rejected)</small>
+                              </span>
+                            ) : (
+                              <div style={{ display: 'flex', flexDirection: 'column' }}>
+                                <strong style={{ color: 'var(--primary-navy-900)', fontSize: '0.88rem' }}>
+                                  ₹{b.finalFee !== undefined ? b.finalFee : b.estimatedFee}
+                                </strong>
+                                {b.promoCode && (
+                                  <div style={{ fontSize: '0.72rem', color: '#10B981', fontWeight: 700, marginTop: '2px', background: '#ECFDF5', padding: '2px 6px', borderRadius: 4, display: 'inline-block', border: '1px solid #A7F3D0' }}>
+                                    🎉 {b.promoCode} (-₹{b.discountRupees})
+                                  </div>
+                                )}
+                              </div>
+                            )}
+                          </td>
+                          <td style={{ whiteSpace: 'nowrap' }}>
+                            {(() => {
+                              const isDeclinedByNurse = b.rejectedBy === 'Nurse' || b.nurseAcceptanceStatus === 'Rejected' || (b.status === 'Rejected' && b.rejectionReason?.toLowerCase().includes('nurse'));
+                              const isAcceptedByNurse = b.nurseAcceptanceStatus === 'Accepted' || (b.status === 'In-Progress' && !isDeclinedByNurse);
+                              const isAwaitingNurse = !isAcceptedByNurse && !isDeclinedByNurse && b.status === 'Assigned';
+
+                              if (isDeclinedByNurse) {
+                                return (
+                                  <div>
+                                    <span className="status-pill danger" style={{ background: '#FFF1F2', color: '#BE123C', border: '1px solid #FECDD3', display: 'inline-flex', alignItems: 'center', gap: '0.25rem', fontWeight: 800 }}>
+                                      ⚠️ Nurse Declined (Referral Needed)
+                                    </span>
+                                    {b.rejectionReason && (
+                                      <div style={{ fontSize: '0.72rem', color: '#9F1239', marginTop: '3px', background: '#FFE4E6', padding: '3px 6px', borderRadius: 4, whiteSpace: 'normal', maxWidth: 220, border: '1px solid #FECDD3', fontWeight: 600 }}>
+                                        {b.rejectionReason}
+                                      </div>
+                                    )}
+                                  </div>
+                                );
+                              }
+
+                              if (isAcceptedByNurse) {
+                                return (
+                                  <span className="status-pill success" style={{ display: 'inline-flex', alignItems: 'center', gap: '0.25rem', fontWeight: 750 }}>
+                                    ✓ Nurse Accepted
+                                  </span>
+                                );
+                              }
+
+                              if (isAwaitingNurse) {
+                                return (
+                                  <span className="status-pill warning" style={{ display: 'inline-flex', alignItems: 'center', gap: '0.25rem', fontWeight: 750 }}>
+                                    ⏳ Awaiting Nurse Approval
+                                  </span>
+                                );
+                              }
+
+                              return (
+                                <div>
+                                  <span className={`status-pill ${b.status === 'Completed' ? 'success' :
+                                      b.status === 'Pending' ? 'warning' :
+                                        b.status === 'Rejected' || b.status === 'Cancelled' ? 'danger' : 'neutral'
+                                    }`} style={{ whiteSpace: 'nowrap' }}>
+                                    {b.status === 'Rejected' ? '✕ Rejected by Admin' : b.status === 'Cancelled' ? '✕ Cancelled' : b.status}
+                                  </span>
+                                  {b.rejectionReason && (
+                                    <div style={{ fontSize: '0.72rem', color: '#DC2626', marginTop: '3px', background: '#FEF2F2', padding: '3px 6px', borderRadius: 4, whiteSpace: 'normal', maxWidth: 220, border: '1px solid #FECDD3' }}>
+                                      <strong>Reason:</strong> {b.rejectionReason}
+                                    </div>
+                                  )}
+                                </div>
+                              );
+                            })()}
+                          </td>
+                          <td style={{ textAlign: 'right' }}>
+                            {(() => {
+                              const isDeclinedByNurse = b.rejectedBy === 'Nurse' || b.nurseAcceptanceStatus === 'Rejected' || (b.status === 'Rejected' && b.rejectionReason?.toLowerCase().includes('nurse'));
+
+                              return (
+                                <div style={{ display: 'flex', flexWrap: 'wrap', justifyContent: 'flex-end', alignItems: 'center', gap: '0.35rem' }}>
+                                  {isDeclinedByNurse && (
+                                    <>
+                                      <button
+                                        type="button"
+                                        onClick={() => {
+                                          setSearchAssignBooking(b);
+                                          setNurseSearchQuery('');
+                                          setNurseSearchFilterArea(b.area || 'all');
+                                        }}
+                                        className="btn btn-sm"
+                                        style={{
+                                          background: '#0284C7',
+                                          border: '1px solid #0284C7',
+                                          color: '#FFFFFF',
+                                          fontWeight: 800,
+                                          padding: '0.3rem 0.65rem',
+                                          borderRadius: 6,
+                                          display: 'inline-flex',
+                                          alignItems: 'center',
+                                          gap: '0.35rem',
+                                          fontSize: '0.75rem',
+                                          cursor: 'pointer',
+                                          boxShadow: '0 1px 3px rgba(2, 132, 199, 0.3)'
+                                        }}
+                                        title="Search verified nurse roster and refer order"
+                                      >
+                                        <Search size={13} />
+                                        <span>Search Nurse to Refer</span>
+                                      </button>
+                                      <button
+                                        type="button"
+                                        onClick={() => {
+                                          setAdminReassignBooking(b);
+                                          const recommended = nurses.find((n) => n.id !== b.assignedNurseId && n.serviceArea === b.area && n.certificateVerified) || nurses.find((n) => n.id !== b.assignedNurseId && n.certificateVerified);
+                                          setSelectedReferralNurseId(recommended?.id || '');
+                                          setReferralRuleNote(`Referred following decline by ${b.assignedNurseName || 'previous nurse'}`);
+                                        }}
+                                        className="btn btn-sm"
+                                        style={{
+                                          background: '#FEF3C7',
+                                          border: '1px solid #F59E0B',
+                                          color: '#92400E',
+                                          fontWeight: 800,
+                                          padding: '0.3rem 0.65rem',
+                                          borderRadius: 6,
+                                          display: 'inline-flex',
+                                          alignItems: 'center',
+                                          gap: '0.3rem',
+                                          fontSize: '0.75rem',
+                                          cursor: 'pointer',
+                                          boxShadow: '0 1px 3px rgba(245, 158, 11, 0.25)'
+                                        }}
+                                        title="Refer and reassign this order to another certified nurse"
+                                      >
+                                        <RefreshCw size={13} />
+                                        <span>Refer to Other Nurse</span>
+                                      </button>
+                                    </>
+                                  )}
+                                  <button
+                                    type="button"
+                                    onClick={() => handleViewBookingInvoice(b)}
+                                    title="Issue Official Invoice (Save to Cloudflare R2)"
+                                    style={{
+                                      background: '#F0FDF4',
+                                      border: '1px solid #BBF7D0',
+                                      color: '#15803D',
+                                      padding: '0.3rem 0.55rem',
+                                      borderRadius: 6,
+                                      cursor: 'pointer',
+                                      display: 'inline-flex',
+                                      alignItems: 'center',
+                                      gap: '0.25rem',
+                                      fontSize: '0.75rem',
+                                      fontWeight: 700
+                                    }}
+                                  >
+                                    <Receipt size={13} />
+                                    <span>Invoice</span>
+                                  </button>
+                                  <button
+                                    type="button"
+                                    onClick={() => handleOpenEditBookingModal(b)}
+                                    title="Edit Booking in Supabase"
+                                    style={{
+                                      background: '#EFF6FF',
+                                      border: '1px solid #BFDBFE',
+                                      color: '#1D4ED8',
+                                      padding: '0.3rem 0.45rem',
+                                      borderRadius: 6,
+                                      cursor: 'pointer',
+                                      display: 'flex',
+                                      alignItems: 'center'
+                                    }}
+                                  >
+                                    <Edit2 size={13} />
+                                  </button>
+                                  {b.status !== 'Cancelled' && b.status !== 'Rejected' && (
+                                    <button
+                                      type="button"
+                                      onClick={async () => {
+                                        const reason = window.prompt(`Reject order/payment for ${b.patientName}?\n\nEnter reason for rejection (e.g. Ineligible Clinical Case, Invalid Prescription, Area Out of Jurisdiction):`, 'Ineligible Clinical Case');
+                                        if (reason !== null && reason.trim()) {
+                                          await onUpdateBooking?.(b.id, {
+                                            status: 'Rejected',
+                                            rejectionReason: reason.trim(),
+                                            rejectedBy: 'Admin'
+                                          });
+                                          showToast(`Order ${b.id} marked as Rejected by Admin. Nurse payout set to ₹0.`);
+                                        }
+                                      }}
+                                      title="Reject Order (Sets nurse payout to ₹0 immediately)"
+                                      style={{
+                                        background: '#FEF2F2',
+                                        border: '1px solid #FECDD3',
+                                        color: '#DC2626',
+                                        padding: '0.3rem 0.45rem',
+                                        borderRadius: 6,
+                                        cursor: 'pointer',
+                                        display: 'inline-flex',
+                                        alignItems: 'center',
+                                        gap: '0.2rem',
+                                        fontSize: '0.72rem',
+                                        fontWeight: 700
+                                      }}
+                                    >
+                                      <X size={13} />
+                                      <span>Reject</span>
+                                    </button>
+                                  )}
+                                  <button
+                                    type="button"
+                                    onClick={() => handleDeleteBookingClick(b)}
+                                    title="Delete Booking from Supabase"
+                                    style={{
+                                      background: '#FEF2F2',
+                                      border: '1px solid #FECDD3',
+                                      color: '#E11D48',
+                                      padding: '0.3rem 0.45rem',
+                                      borderRadius: 6,
+                                      cursor: 'pointer',
+                                      display: 'flex',
+                                      alignItems: 'center'
+                                    }}
+                                  >
+                                    <Trash2 size={13} />
+                                  </button>
+                                </div>
+                              );
+                            })()}
+                          </td>
+                        </tr>
                       );
-                    })()}
-                  </td>
-                    </tr>
-                  );
-                })}
-                </tbody>
-              </table>
-            </div>
+                    })}
+                  </tbody>
+                </table>
+              </div>
             </>
           )}
         </div>
@@ -3091,546 +3128,546 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
         const expUnder5Count = nurses.filter((n) => (n.experienceYears || (parseInt(n.experience || '0', 10) || 0)) < 5).length;
 
         return (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
-          <div className="card">
-            <div className="card-header" style={{ flexWrap: 'wrap', gap: '0.75rem' }}>
-              <div>
-                <h3 className="card-title">Registered Nursing Fleet & Service Zones</h3>
-                <p style={{ fontSize: '0.82rem', color: 'var(--neutral-500)', margin: 0 }}>
-                  Total: {totalNursesCount} nurses | {referredNursesCount} via referrals | {directNursesCount} direct registrations | {verifiedNursesCount} verified
-                </p>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
+            <div className="card">
+              <div className="card-header" style={{ flexWrap: 'wrap', gap: '0.75rem' }}>
+                <div>
+                  <h3 className="card-title">Registered Nursing Fleet & Service Zones</h3>
+                  <p style={{ fontSize: '0.82rem', color: 'var(--neutral-500)', margin: 0 }}>
+                    Total: {totalNursesCount} nurses | {referredNursesCount} via referrals | {directNursesCount} direct registrations | {verifiedNursesCount} verified
+                  </p>
+                </div>
+                <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center', flexWrap: 'wrap' }}>
+                  <button
+                    onClick={exportNursesToCSV}
+                    className="btn btn-outline btn-sm"
+                    style={{ borderRadius: 9999, fontWeight: 700, gap: '0.4rem', borderColor: '#10B981', color: '#059669', background: '#ECFDF5' }}
+                    title="Download complete nurse roster spreadsheet (CSV/Excel)"
+                  >
+                    <Download size={15} />
+                    <span>Export Fleet (Excel/CSV)</span>
+                  </button>
+                  <button
+                    onClick={handleOpenCreateNurseModal}
+                    className="btn btn-danger btn-sm"
+                    style={{ borderRadius: 9999, fontWeight: 700, gap: '0.4rem' }}
+                  >
+                    <Plus size={16} />
+                    <span>Add New Nurse</span>
+                  </button>
+                </div>
               </div>
-              <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center', flexWrap: 'wrap' }}>
-                <button
-                  onClick={exportNursesToCSV}
-                  className="btn btn-outline btn-sm"
-                  style={{ borderRadius: 9999, fontWeight: 700, gap: '0.4rem', borderColor: '#10B981', color: '#059669', background: '#ECFDF5' }}
-                  title="Download complete nurse roster spreadsheet (CSV/Excel)"
-                >
-                  <Download size={15} />
-                  <span>Export Fleet (Excel/CSV)</span>
-                </button>
-                <button
-                  onClick={handleOpenCreateNurseModal}
-                  className="btn btn-danger btn-sm"
-                  style={{ borderRadius: 9999, fontWeight: 700, gap: '0.4rem' }}
-                >
-                  <Plus size={16} />
-                  <span>Add New Nurse</span>
-                </button>
-              </div>
-            </div>
 
-            {/* Filter & Search Toolbar */}
-            <div style={{ padding: '0.85rem 1.25rem', borderBottom: '1px solid var(--neutral-200)', background: '#FAFAFA', display: 'flex', gap: '0.75rem', flexWrap: 'wrap', alignItems: 'center', justifyContent: 'space-between' }}>
-              <div style={{ position: 'relative', minWidth: 260, flex: 1 }}>
-                <input
-                  type="text"
-                  placeholder="Search nurse by name, phone, email, qualification, referral code..."
-                  value={nurseSearch}
-                  onChange={(e) => setNurseSearch(e.target.value)}
-                  style={{
-                    width: '100%',
-                    padding: '0.45rem 0.75rem 0.45rem 2rem',
-                    fontSize: '0.85rem',
-                    borderRadius: 8,
-                    border: '1px solid #CBD5E1'
-                  }}
+              {/* Filter & Search Toolbar */}
+              <div style={{ padding: '0.85rem 1.25rem', borderBottom: '1px solid var(--neutral-200)', background: '#FAFAFA', display: 'flex', gap: '0.75rem', flexWrap: 'wrap', alignItems: 'center', justifyContent: 'space-between' }}>
+                <div style={{ position: 'relative', minWidth: 260, flex: 1 }}>
+                  <input
+                    type="text"
+                    placeholder="Search nurse by name, phone, email, qualification, referral code..."
+                    value={nurseSearch}
+                    onChange={(e) => setNurseSearch(e.target.value)}
+                    style={{
+                      width: '100%',
+                      padding: '0.45rem 0.75rem 0.45rem 2rem',
+                      fontSize: '0.85rem',
+                      borderRadius: 8,
+                      border: '1px solid #CBD5E1'
+                    }}
+                  />
+                  <Search size={14} style={{ position: 'absolute', left: 8, top: '50%', transform: 'translateY(-50%)', color: 'var(--neutral-400)' }} />
+                </div>
+
+                {/* Origin Filter (Referred vs Direct) */}
+                <div style={{ display: 'flex', gap: '0.35rem', alignItems: 'center', flexWrap: 'wrap' }}>
+                  <span style={{ fontSize: '0.78rem', color: 'var(--neutral-600)', fontWeight: 700 }}>Origin:</span>
+                  <button
+                    type="button"
+                    onClick={() => setNurseOriginFilter('all')}
+                    className={`btn btn-sm ${nurseOriginFilter === 'all' ? 'btn-primary' : 'btn-outline'}`}
+                    style={{ padding: '0.25rem 0.55rem', fontSize: '0.74rem', borderRadius: 9999 }}
+                  >
+                    All ({totalNursesCount})
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setNurseOriginFilter('referred')}
+                    className={`btn btn-sm ${nurseOriginFilter === 'referred' ? 'btn-primary' : 'btn-outline'}`}
+                    style={{ padding: '0.25rem 0.55rem', fontSize: '0.74rem', borderRadius: 9999 }}
+                  >
+                    ⚡ Referred ({referredNursesCount})
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setNurseOriginFilter('direct')}
+                    className={`btn btn-sm ${nurseOriginFilter === 'direct' ? 'btn-primary' : 'btn-outline'}`}
+                    style={{ padding: '0.25rem 0.55rem', fontSize: '0.74rem', borderRadius: 9999 }}
+                  >
+                    Direct ({directNursesCount})
+                  </button>
+                </div>
+
+                {/* Experience Categories */}
+                <div style={{ display: 'flex', gap: '0.35rem', alignItems: 'center', flexWrap: 'wrap' }}>
+                  <span style={{ fontSize: '0.78rem', color: 'var(--neutral-600)', fontWeight: 700 }}>Exp:</span>
+                  <button
+                    type="button"
+                    onClick={() => setNurseExpFilter('all')}
+                    className={`btn btn-sm ${nurseExpFilter === 'all' ? 'btn-primary' : 'btn-outline'}`}
+                    style={{ padding: '0.25rem 0.55rem', fontSize: '0.74rem', borderRadius: 9999 }}
+                  >
+                    All
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setNurseExpFilter('>10')}
+                    className={`btn btn-sm ${nurseExpFilter === '>10' ? 'btn-primary' : 'btn-outline'}`}
+                    style={{ padding: '0.25rem 0.55rem', fontSize: '0.74rem', borderRadius: 9999 }}
+                  >
+                    &gt;10 Yrs ({expOver10Count})
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setNurseExpFilter('5-10')}
+                    className={`btn btn-sm ${nurseExpFilter === '5-10' ? 'btn-primary' : 'btn-outline'}`}
+                    style={{ padding: '0.25rem 0.55rem', fontSize: '0.74rem', borderRadius: 9999 }}
+                  >
+                    5-10 Yrs ({exp5to10Count})
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setNurseExpFilter('<5')}
+                    className={`btn btn-sm ${nurseExpFilter === '<5' ? 'btn-primary' : 'btn-outline'}`}
+                    style={{ padding: '0.25rem 0.55rem', fontSize: '0.74rem', borderRadius: 9999 }}
+                  >
+                    &lt;5 Yrs ({expUnder5Count})
+                  </button>
+                </div>
+              </div>
+
+              {filteredNurses.length === 0 ? (
+                <EmptyState
+                  title="No Nurses Found"
+                  description={nurseSearch || nurseOriginFilter !== 'all' ? 'No nurses matched your search criteria or origin filter.' : 'No registered nurses are currently stationed in the fleet directory.'}
                 />
-                <Search size={14} style={{ position: 'absolute', left: 8, top: '50%', transform: 'translateY(-50%)', color: 'var(--neutral-400)' }} />
-              </div>
-
-              {/* Origin Filter (Referred vs Direct) */}
-              <div style={{ display: 'flex', gap: '0.35rem', alignItems: 'center', flexWrap: 'wrap' }}>
-                <span style={{ fontSize: '0.78rem', color: 'var(--neutral-600)', fontWeight: 700 }}>Origin:</span>
-                <button
-                  type="button"
-                  onClick={() => setNurseOriginFilter('all')}
-                  className={`btn btn-sm ${nurseOriginFilter === 'all' ? 'btn-primary' : 'btn-outline'}`}
-                  style={{ padding: '0.25rem 0.55rem', fontSize: '0.74rem', borderRadius: 9999 }}
-                >
-                  All ({totalNursesCount})
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setNurseOriginFilter('referred')}
-                  className={`btn btn-sm ${nurseOriginFilter === 'referred' ? 'btn-primary' : 'btn-outline'}`}
-                  style={{ padding: '0.25rem 0.55rem', fontSize: '0.74rem', borderRadius: 9999 }}
-                >
-                  ⚡ Referred ({referredNursesCount})
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setNurseOriginFilter('direct')}
-                  className={`btn btn-sm ${nurseOriginFilter === 'direct' ? 'btn-primary' : 'btn-outline'}`}
-                  style={{ padding: '0.25rem 0.55rem', fontSize: '0.74rem', borderRadius: 9999 }}
-                >
-                  Direct ({directNursesCount})
-                </button>
-              </div>
-
-              {/* Experience Categories */}
-              <div style={{ display: 'flex', gap: '0.35rem', alignItems: 'center', flexWrap: 'wrap' }}>
-                <span style={{ fontSize: '0.78rem', color: 'var(--neutral-600)', fontWeight: 700 }}>Exp:</span>
-                <button
-                  type="button"
-                  onClick={() => setNurseExpFilter('all')}
-                  className={`btn btn-sm ${nurseExpFilter === 'all' ? 'btn-primary' : 'btn-outline'}`}
-                  style={{ padding: '0.25rem 0.55rem', fontSize: '0.74rem', borderRadius: 9999 }}
-                >
-                  All
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setNurseExpFilter('>10')}
-                  className={`btn btn-sm ${nurseExpFilter === '>10' ? 'btn-primary' : 'btn-outline'}`}
-                  style={{ padding: '0.25rem 0.55rem', fontSize: '0.74rem', borderRadius: 9999 }}
-                >
-                  &gt;10 Yrs ({expOver10Count})
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setNurseExpFilter('5-10')}
-                  className={`btn btn-sm ${nurseExpFilter === '5-10' ? 'btn-primary' : 'btn-outline'}`}
-                  style={{ padding: '0.25rem 0.55rem', fontSize: '0.74rem', borderRadius: 9999 }}
-                >
-                  5-10 Yrs ({exp5to10Count})
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setNurseExpFilter('<5')}
-                  className={`btn btn-sm ${nurseExpFilter === '<5' ? 'btn-primary' : 'btn-outline'}`}
-                  style={{ padding: '0.25rem 0.55rem', fontSize: '0.74rem', borderRadius: 9999 }}
-                >
-                  &lt;5 Yrs ({expUnder5Count})
-                </button>
-              </div>
-            </div>
-
-          {filteredNurses.length === 0 ? (
-            <EmptyState
-              title="No Nurses Found"
-              description={nurseSearch || nurseOriginFilter !== 'all' ? 'No nurses matched your search criteria or origin filter.' : 'No registered nurses are currently stationed in the fleet directory.'}
-            />
-          ) : (
-            <>
-              {renderBulkActionBar({
-                entityName: 'Nurses',
-                filteredIds: filteredNurses.map((n) => n.id),
-                selectedSet: selectedNurseIds,
-                setSelectedSet: setSelectedNurseIds,
-                onDeleteMultiple: onDeleteMultipleNurses
-              })}
-              <div className="table-responsive">
-                <table className="data-table">
-                  <thead>
-                    <tr>
-                      <th style={{ width: 40, textAlign: 'center' }}>
-                        <input
-                          type="checkbox"
-                          checked={filteredNurses.length > 0 && filteredNurses.every((n) => selectedNurseIds.has(n.id))}
-                          onChange={() => toggleSelectAll(filteredNurses.map((n) => n.id), selectedNurseIds, setSelectedNurseIds)}
-                          style={{ cursor: 'pointer', accentColor: '#E11D48', width: 16, height: 16 }}
-                          title="Select / Deselect All Nurses"
-                        />
-                      </th>
-                      <th>Nurse</th>
-                      <th>Signup Origin</th>
-                      <th>Referral Code</th>
-                      <th>
-                        <div style={{ display: 'inline-flex', alignItems: 'center', gap: '0.35rem' }}>
-                          <span>Login PIN & Access</span>
-                          <button
-                            type="button"
-                            onClick={() => setShowAllPins(!showAllPins)}
-                            title={showAllPins ? 'Hide All PINs' : 'Reveal All PINs'}
-                            style={{
-                              background: 'transparent',
-                              border: 'none',
-                              cursor: 'pointer',
-                              padding: 2,
-                              color: showAllPins ? '#0284C7' : 'var(--neutral-400)',
-                              display: 'inline-flex',
-                              alignItems: 'center'
-                            }}
-                          >
-                            {showAllPins ? <EyeOff size={13} /> : <Eye size={13} />}
-                          </button>
-                        </div>
-                      </th>
-                      <th>Service Area (Rule 2)</th>
-                      <th>Qualification</th>
-                      <th>Experience</th>
-                      <th>Leads & Referrals</th>
-                      <th>Points</th>
-                      <th>Earnings (10%)</th>
-                      <th>Verification</th>
-                      <th style={{ textAlign: 'right' }}>Actions</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {filteredNurses.map((n) => {
-                      const nursePhoneDigits = (n.phone || '').replace(/\D/g, '');
-                      const nurseLast10 = nursePhoneDigits.length >= 10 ? nursePhoneDigits.slice(-10) : nursePhoneDigits;
-                      const userObj = appUsers.find((u) => {
-                        const uPhoneDigits = (u.phone || '').replace(/\D/g, '');
-                        const uLast10 = uPhoneDigits.length >= 10 ? uPhoneDigits.slice(-10) : uPhoneDigits;
-                        const uNameDigits = (u.name || '').replace(/\D/g, '');
-                        return (
-                          u.id === n.id ||
-                          (nurseLast10 && uLast10 && nurseLast10 === uLast10) ||
-                          (nursePhoneDigits && uPhoneDigits && (nursePhoneDigits === uPhoneDigits || nursePhoneDigits.endsWith(uPhoneDigits) || uPhoneDigits.endsWith(nursePhoneDigits))) ||
-                          (nurseLast10 && uNameDigits && uNameDigits === nurseLast10) ||
-                          (u.email && n.email && u.email.toLowerCase().trim() === n.email.toLowerCase().trim()) ||
-                          (u.identifier && n.email && u.identifier.toLowerCase().trim() === n.email.toLowerCase().trim()) ||
-                          (u.identifier && nurseLast10 && u.identifier.includes(nurseLast10)) ||
-                          (u.name && n.name && u.name.toLowerCase().trim() === n.name.toLowerCase().trim())
-                        );
-                      });
-                      const userPin = (n.pin && n.pin !== '••••' && n.pin.trim() !== '')
-                        ? n.pin.trim()
-                        : ((userObj?.pin && userObj.pin !== '••••' && userObj.pin.trim() !== '')
-                          ? userObj.pin.trim()
-                          : '••••');
-                      const isRevealed = showAllPins || revealedPinIds[n.id] || (userObj && revealedPinIds[userObj.id]);
-                      const nurseCode = n.referralCode || generateNurseReferralCode(n.name, n.id, n.phone);
-                      const isCopiedCode = copiedRefCodeId === n.id;
-                      const isSelected = selectedNurseIds.has(n.id);
-
-                      return (
-                        <tr key={n.id} style={{ background: isSelected ? '#FFF1F2' : undefined }}>
-                          <td style={{ textAlign: 'center', width: 40 }}>
+              ) : (
+                <>
+                  {renderBulkActionBar({
+                    entityName: 'Nurses',
+                    filteredIds: filteredNurses.map((n) => n.id),
+                    selectedSet: selectedNurseIds,
+                    setSelectedSet: setSelectedNurseIds,
+                    onDeleteMultiple: onDeleteMultipleNurses
+                  })}
+                  <div className="table-responsive">
+                    <table className="data-table">
+                      <thead>
+                        <tr>
+                          <th style={{ width: 40, textAlign: 'center' }}>
                             <input
                               type="checkbox"
-                              checked={isSelected}
-                              onChange={() => toggleItemSelection(n.id, setSelectedNurseIds)}
+                              checked={filteredNurses.length > 0 && filteredNurses.every((n) => selectedNurseIds.has(n.id))}
+                              onChange={() => toggleSelectAll(filteredNurses.map((n) => n.id), selectedNurseIds, setSelectedNurseIds)}
                               style={{ cursor: 'pointer', accentColor: '#E11D48', width: 16, height: 16 }}
+                              title="Select / Deselect All Nurses"
                             />
-                          </td>
-                          <td>
-                          <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
-                            <div style={{ width: 38, height: 38, borderRadius: '50%', background: '#F1F5F9', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#64748B' }}>
-                              <User size={20} />
-                            </div>
-                            <div>
-                              <strong>{n.name}</strong>
-                              <div style={{ fontSize: '0.78rem', color: 'var(--neutral-500)' }}>{n.phone}</div>
-                            </div>
-                          </div>
-                        </td>
-
-                        {/* Origin (Referred vs Direct) */}
-                        <td>
-                          {n.referredByNurseId ? (() => {
-                            const refNurse = nurses.find((rn) => rn.id === n.referredByNurseId);
-                            const refName = refNurse?.name || n.referredByNurseName || n.referredByNurseId;
-                            return (
-                              <div>
-                                <span style={{
-                                  display: 'inline-flex',
-                                  alignItems: 'center',
-                                  gap: '0.3rem',
-                                  background: '#EFF6FF',
-                                  color: '#1D4ED8',
-                                  border: '1px solid #BFDBFE',
-                                  borderRadius: 9999,
-                                  padding: '2px 8px',
-                                  fontSize: '0.72rem',
-                                  fontWeight: 800,
-                                  whiteSpace: 'nowrap'
-                                }}>
-                                  ⚡ Referred by {refName}
-                                </span>
-                                <div style={{ fontSize: '0.7rem', color: n.certificateVerified ? '#059669' : '#D97706', fontWeight: 700, marginTop: '2px' }}>
-                                  Bonus: 50 points {n.certificateVerified ? '✓ Credited' : '⏳ Pending'}
-                                </div>
-                              </div>
-                            );
-                          })() : (
-                            <span style={{
-                              display: 'inline-flex',
-                              alignItems: 'center',
-                              background: '#F1F5F9',
-                              color: '#475569',
-                              border: '1px solid #E2E8F0',
-                              borderRadius: 9999,
-                              padding: '2px 8px',
-                              fontSize: '0.72rem',
-                              fontWeight: 700,
-                              whiteSpace: 'nowrap'
-                            }}>
-                              Individual / Direct
-                            </span>
-                          )}
-                        </td>
-
-                        {/* Referral Code */}
-                        <td>
-                          <div style={{ display: 'inline-flex', alignItems: 'center', gap: '0.35rem' }}>
-                            <span style={{
-                              fontFamily: 'monospace',
-                              fontWeight: 800,
-                              fontSize: '0.76rem',
-                              background: '#F0F9FF',
-                              color: '#0369A1',
-                              border: '1px solid #BAE6FD',
-                              borderRadius: 5,
-                              padding: '2px 6px'
-                            }}>
-                              {nurseCode}
-                            </span>
-                            <button
-                              type="button"
-                              onClick={() => {
-                                navigator.clipboard.writeText(nurseCode);
-                                setCopiedRefCodeId(n.id);
-                                setTimeout(() => setCopiedRefCodeId(null), 2000);
-                              }}
-                              title="Copy Referral Code"
-                              style={{ background: 'transparent', border: 'none', cursor: 'pointer', padding: 2, color: isCopiedCode ? '#059669' : '#64748B' }}
-                            >
-                              {isCopiedCode ? <Check size={12} /> : <Copy size={12} />}
-                            </button>
-                          </div>
-                        </td>
-
-                        <td>
-                          <div>
+                          </th>
+                          <th>Nurse</th>
+                          <th>Signup Origin</th>
+                          <th>Referral Code</th>
+                          <th>
                             <div style={{ display: 'inline-flex', alignItems: 'center', gap: '0.35rem' }}>
-                              <span className="pin-badge" style={{ fontSize: '0.84rem', padding: '0.18rem 0.45rem' }}>
-                                <Lock size={11} style={{ color: '#0284C7' }} />
-                                <span>{isRevealed ? userPin : '••••'}</span>
-                              </span>
+                              <span>Login PIN & Access</span>
                               <button
                                 type="button"
-                                onClick={() => togglePinVisibility(n.id)}
-                                title={isRevealed ? 'Hide PIN' : 'Reveal PIN'}
-                                style={{ background: 'transparent', border: 'none', cursor: 'pointer', padding: 2, color: 'var(--neutral-400)' }}
-                              >
-                                {isRevealed ? <EyeOff size={13} /> : <Eye size={13} />}
-                              </button>
-                              <button
-                                type="button"
-                                onClick={() => {
-                                  navigator.clipboard.writeText(userPin);
-                                  setCopiedPinUserId(n.id);
-                                  setTimeout(() => setCopiedPinUserId(null), 2000);
-                                }}
-                                title="Copy 4-digit PIN"
-                                style={{ background: 'transparent', border: 'none', cursor: 'pointer', padding: 2, color: copiedPinUserId === n.id ? '#059669' : 'var(--neutral-400)' }}
-                              >
-                                {copiedPinUserId === n.id ? <Check size={13} /> : <Copy size={13} />}
-                              </button>
-                            </div>
-                            <div style={{ fontSize: '0.72rem', color: 'var(--neutral-500)', marginTop: '0.2rem' }}>
-                              {userObj?.email || n.phone}
-                            </div>
-                          </div>
-                        </td>
-                        <td>
-                          <span className="status-pill info">
-                            <MapPin size={12} />
-                            <span>{n.serviceArea}</span>
-                          </span>
-                        </td>
-                        <td>{n.qualification}</td>
-                        <td>{n.experienceYears} Years</td>
-                        <td>
-                          <div>Leads: {n.totalLeads}</div>
-                          <div style={{ fontSize: '0.78rem', color: 'var(--neutral-500)' }}>Ref: {n.totalReferrals || 0}</div>
-                        </td>
-                        <td>
-                          <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
-                            <strong>{n.pointsEarned} pts</strong>
-                            <button
-                              type="button"
-                              onClick={async (e) => {
-                                e.stopPropagation();
-                                const added = prompt(`Adjust points for ${n.name} (enter number, e.g. 50, 100, or -50):`, '50');
-                                if (added !== null) {
-                                  const num = parseInt(added, 10);
-                                  if (!isNaN(num) && num !== 0) {
-                                    const nextPoints = Math.max(0, (n.pointsEarned || 0) + num);
-                                    await onUpdateNurseRecord?.(n.id, { pointsEarned: nextPoints });
-                                    showToast(`Updated ${n.name}'s points to ${nextPoints} pts!`);
-                                  }
-                                }
-                              }}
-                              title="Quick Adjust Points"
-                              style={{
-                                background: '#FEF3C7',
-                                border: '1px solid #FDE68A',
-                                color: '#D97706',
-                                borderRadius: 4,
-                                padding: '2px 6px',
-                                fontSize: '0.68rem',
-                                fontWeight: 800,
-                                cursor: 'pointer'
-                              }}
-                            >
-                              +pts
-                            </button>
-                          </div>
-                        </td>
-                        <td>
-                          <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
-                            <strong style={{ color: '#059669' }}>₹{n.referralEarningsRupees}</strong>
-                            <button
-                              type="button"
-                              onClick={async (e) => {
-                                e.stopPropagation();
-                                const added = prompt(`Adjust referral cash for ${n.name} (enter ₹ amount, e.g. 100, 500, or -100):`, '100');
-                                if (added !== null) {
-                                  const num = parseInt(added, 10);
-                                  if (!isNaN(num) && num !== 0) {
-                                    const nextCash = Math.max(0, (n.referralEarningsRupees || 0) + num);
-                                    await onUpdateNurseRecord?.(n.id, { referralEarningsRupees: nextCash });
-                                    showToast(`Updated ${n.name}'s referral cash to ₹${nextCash}!`);
-                                  }
-                                }
-                              }}
-                              title="Quick Adjust Referral Cash"
-                              style={{
-                                background: '#ECFDF5',
-                                border: '1px solid #A7F3D0',
-                                color: '#059669',
-                                borderRadius: 4,
-                                padding: '2px 6px',
-                                fontSize: '0.68rem',
-                                fontWeight: 800,
-                                cursor: 'pointer'
-                              }}
-                            >
-                              +₹
-                            </button>
-                          </div>
-                        </td>
-                        <td>
-                          <div style={{ display: 'flex', flexDirection: 'column', gap: '0.35rem', alignItems: 'flex-start' }}>
-                            {n.certificateVerified ? (
-                              <span className="status-pill success" style={{ fontSize: '0.72rem', padding: '2px 8px' }}>
-                                ✓ Verified Certificate
-                              </span>
-                            ) : (
-                              <span className="status-pill warning" style={{ fontSize: '0.72rem', padding: '2px 8px' }}>
-                                ⏳ Pending Review
-                              </span>
-                            )}
-
-                            {/* View Certificate Button - works for any nurse with a certificateUrl */}
-                            {n.certificateUrl ? (
-                              <button 
-                                type="button"
-                                onClick={() => {
-                                  setAdminCertModalNurse(n);
-                                  setAdminCertModalOpen(true);
-                                }} 
-                                className="btn btn-sm" 
-                                style={{ 
-                                  fontSize: '0.72rem', 
-                                  padding: '0.22rem 0.55rem', 
-                                  background: '#EFF6FF', 
-                                  border: '1px solid #BFDBFE', 
-                                  color: '#1D4ED8', 
-                                  borderRadius: 5, 
-                                  display: 'inline-flex', 
-                                  alignItems: 'center', 
-                                  gap: '0.3rem',
-                                  fontWeight: 700,
-                                  cursor: 'pointer'
+                                onClick={() => setShowAllPins(!showAllPins)}
+                                title={showAllPins ? 'Hide All PINs' : 'Reveal All PINs'}
+                                style={{
+                                  background: 'transparent',
+                                  border: 'none',
+                                  cursor: 'pointer',
+                                  padding: 2,
+                                  color: showAllPins ? '#0284C7' : 'var(--neutral-400)',
+                                  display: 'inline-flex',
+                                  alignItems: 'center'
                                 }}
                               >
-                                <Eye size={12} />
-                                <span>View Certificate</span>
+                                {showAllPins ? <EyeOff size={13} /> : <Eye size={13} />}
                               </button>
-                            ) : (
-                              <span style={{ fontSize: '0.7rem', color: '#94A3B8' }}>No doc uploaded</span>
-                            )}
+                            </div>
+                          </th>
+                          <th>Service Area (Rule 2)</th>
+                          <th>Qualification</th>
+                          <th>Experience</th>
+                          <th>Leads & Referrals</th>
+                          <th>Points</th>
+                          <th>Earnings (10%)</th>
+                          <th>Verification</th>
+                          <th style={{ textAlign: 'right' }}>Actions</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {filteredNurses.map((n) => {
+                          const nursePhoneDigits = (n.phone || '').replace(/\D/g, '');
+                          const nurseLast10 = nursePhoneDigits.length >= 10 ? nursePhoneDigits.slice(-10) : nursePhoneDigits;
+                          const userObj = appUsers.find((u) => {
+                            const uPhoneDigits = (u.phone || '').replace(/\D/g, '');
+                            const uLast10 = uPhoneDigits.length >= 10 ? uPhoneDigits.slice(-10) : uPhoneDigits;
+                            const uNameDigits = (u.name || '').replace(/\D/g, '');
+                            return (
+                              u.id === n.id ||
+                              (nurseLast10 && uLast10 && nurseLast10 === uLast10) ||
+                              (nursePhoneDigits && uPhoneDigits && (nursePhoneDigits === uPhoneDigits || nursePhoneDigits.endsWith(uPhoneDigits) || uPhoneDigits.endsWith(nursePhoneDigits))) ||
+                              (nurseLast10 && uNameDigits && uNameDigits === nurseLast10) ||
+                              (u.email && n.email && u.email.toLowerCase().trim() === n.email.toLowerCase().trim()) ||
+                              (u.identifier && n.email && u.identifier.toLowerCase().trim() === n.email.toLowerCase().trim()) ||
+                              (u.identifier && nurseLast10 && u.identifier.includes(nurseLast10)) ||
+                              (u.name && n.name && u.name.toLowerCase().trim() === n.name.toLowerCase().trim())
+                            );
+                          });
+                          const userPin = (n.pin && n.pin !== '••••' && n.pin.trim() !== '')
+                            ? n.pin.trim()
+                            : ((userObj?.pin && userObj.pin !== '••••' && userObj.pin.trim() !== '')
+                              ? userObj.pin.trim()
+                              : '••••');
+                          const isRevealed = showAllPins || revealedPinIds[n.id] || (userObj && revealedPinIds[userObj.id]);
+                          const nurseCode = n.referralCode || generateNurseReferralCode(n.name, n.id, n.phone);
+                          const isCopiedCode = copiedRefCodeId === n.id;
+                          const isSelected = selectedNurseIds.has(n.id);
 
-                            {!n.certificateVerified && (
-                              <button 
-                                type="button"
-                                onClick={async () => {
-                                  await onUpdateNurseRecord?.(n.id, { certificateVerified: true, status: 'Active' });
-                                  showToast(`Nurse "${n.name}" verified and approved!`);
+                          return (
+                            <tr key={n.id} style={{ background: isSelected ? '#FFF1F2' : undefined }}>
+                              <td style={{ textAlign: 'center', width: 40 }}>
+                                <input
+                                  type="checkbox"
+                                  checked={isSelected}
+                                  onChange={() => toggleItemSelection(n.id, setSelectedNurseIds)}
+                                  style={{ cursor: 'pointer', accentColor: '#E11D48', width: 16, height: 16 }}
+                                />
+                              </td>
+                              <td>
+                                <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+                                  <div style={{ width: 38, height: 38, borderRadius: '50%', background: '#F1F5F9', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#64748B' }}>
+                                    <User size={20} />
+                                  </div>
+                                  <div>
+                                    <strong>{n.name}</strong>
+                                    <div style={{ fontSize: '0.78rem', color: 'var(--neutral-500)' }}>{n.phone}</div>
+                                  </div>
+                                </div>
+                              </td>
 
-                                      // If nurse was referred by an existing nurse, credit 50 points referral reward to the referrer (strictly once upon approval)
-                                      if (n.referredByNurseId) {
-                                        const referrer = nurses.find((rn) => rn.id === n.referredByNurseId);
-                                        if (referrer) {
-                                          const matchLead = leads.find((l) => l.nurseId === referrer.id && (l.referredNursePhone === n.phone || l.patientPhone === n.phone || l.referredNurseName === n.name));
-                                          if (matchLead && onApproveLead) {
-                                            await onApproveLead(matchLead.id, 50, 50, `Referred nurse ${n.name} certificate verified by Admin`);
-                                          } else if (onUpdateNurseRecord) {
-                                            const newPoints = (referrer.pointsEarned || 0) + 50;
-                                            await onUpdateNurseRecord(referrer.id, {
-                                              pointsEarned: newPoints,
-                                              convertedLeads: (referrer.convertedLeads || 0) + 1
-                                            });
-                                          }
+                              {/* Origin (Referred vs Direct) */}
+                              <td>
+                                {n.referredByNurseId ? (() => {
+                                  const refNurse = nurses.find((rn) => rn.id === n.referredByNurseId);
+                                  const refName = refNurse?.name || n.referredByNurseName || n.referredByNurseId;
+                                  return (
+                                    <div>
+                                      <span style={{
+                                        display: 'inline-flex',
+                                        alignItems: 'center',
+                                        gap: '0.3rem',
+                                        background: '#EFF6FF',
+                                        color: '#1D4ED8',
+                                        border: '1px solid #BFDBFE',
+                                        borderRadius: 9999,
+                                        padding: '2px 8px',
+                                        fontSize: '0.72rem',
+                                        fontWeight: 800,
+                                        whiteSpace: 'nowrap'
+                                      }}>
+                                        ⚡ Referred by {refName}
+                                      </span>
+                                      <div style={{ fontSize: '0.7rem', color: n.certificateVerified ? '#059669' : '#D97706', fontWeight: 700, marginTop: '2px' }}>
+                                        Bonus: 50 points {n.certificateVerified ? '✓ Credited' : '⏳ Pending'}
+                                      </div>
+                                    </div>
+                                  );
+                                })() : (
+                                  <span style={{
+                                    display: 'inline-flex',
+                                    alignItems: 'center',
+                                    background: '#F1F5F9',
+                                    color: '#475569',
+                                    border: '1px solid #E2E8F0',
+                                    borderRadius: 9999,
+                                    padding: '2px 8px',
+                                    fontSize: '0.72rem',
+                                    fontWeight: 700,
+                                    whiteSpace: 'nowrap'
+                                  }}>
+                                    Individual / Direct
+                                  </span>
+                                )}
+                              </td>
 
-                                          showToast(`Nurse ${n.name} approved! 50 referral reward points credited to ${referrer.name}.`);
-                                          return;
+                              {/* Referral Code */}
+                              <td>
+                                <div style={{ display: 'inline-flex', alignItems: 'center', gap: '0.35rem' }}>
+                                  <span style={{
+                                    fontFamily: 'monospace',
+                                    fontWeight: 800,
+                                    fontSize: '0.76rem',
+                                    background: '#F0F9FF',
+                                    color: '#0369A1',
+                                    border: '1px solid #BAE6FD',
+                                    borderRadius: 5,
+                                    padding: '2px 6px'
+                                  }}>
+                                    {nurseCode}
+                                  </span>
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      navigator.clipboard.writeText(nurseCode);
+                                      setCopiedRefCodeId(n.id);
+                                      setTimeout(() => setCopiedRefCodeId(null), 2000);
+                                    }}
+                                    title="Copy Referral Code"
+                                    style={{ background: 'transparent', border: 'none', cursor: 'pointer', padding: 2, color: isCopiedCode ? '#059669' : '#64748B' }}
+                                  >
+                                    {isCopiedCode ? <Check size={12} /> : <Copy size={12} />}
+                                  </button>
+                                </div>
+                              </td>
+
+                              <td>
+                                <div>
+                                  <div style={{ display: 'inline-flex', alignItems: 'center', gap: '0.35rem' }}>
+                                    <span className="pin-badge" style={{ fontSize: '0.84rem', padding: '0.18rem 0.45rem' }}>
+                                      <Lock size={11} style={{ color: '#0284C7' }} />
+                                      <span>{isRevealed ? userPin : '••••'}</span>
+                                    </span>
+                                    <button
+                                      type="button"
+                                      onClick={() => togglePinVisibility(n.id)}
+                                      title={isRevealed ? 'Hide PIN' : 'Reveal PIN'}
+                                      style={{ background: 'transparent', border: 'none', cursor: 'pointer', padding: 2, color: 'var(--neutral-400)' }}
+                                    >
+                                      {isRevealed ? <EyeOff size={13} /> : <Eye size={13} />}
+                                    </button>
+                                    <button
+                                      type="button"
+                                      onClick={() => {
+                                        navigator.clipboard.writeText(userPin);
+                                        setCopiedPinUserId(n.id);
+                                        setTimeout(() => setCopiedPinUserId(null), 2000);
+                                      }}
+                                      title="Copy 4-digit PIN"
+                                      style={{ background: 'transparent', border: 'none', cursor: 'pointer', padding: 2, color: copiedPinUserId === n.id ? '#059669' : 'var(--neutral-400)' }}
+                                    >
+                                      {copiedPinUserId === n.id ? <Check size={13} /> : <Copy size={13} />}
+                                    </button>
+                                  </div>
+                                  <div style={{ fontSize: '0.72rem', color: 'var(--neutral-500)', marginTop: '0.2rem' }}>
+                                    {userObj?.email || n.phone}
+                                  </div>
+                                </div>
+                              </td>
+                              <td>
+                                <span className="status-pill info">
+                                  <MapPin size={12} />
+                                  <span>{n.serviceArea}</span>
+                                </span>
+                              </td>
+                              <td>{n.qualification}</td>
+                              <td>{n.experienceYears} Years</td>
+                              <td>
+                                <div>Leads: {n.totalLeads}</div>
+                                <div style={{ fontSize: '0.78rem', color: 'var(--neutral-500)' }}>Ref: {n.totalReferrals || 0}</div>
+                              </td>
+                              <td>
+                                <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
+                                  <strong>{n.pointsEarned} pts</strong>
+                                  <button
+                                    type="button"
+                                    onClick={async (e) => {
+                                      e.stopPropagation();
+                                      const added = prompt(`Adjust points for ${n.name} (enter number, e.g. 50, 100, or -50):`, '50');
+                                      if (added !== null) {
+                                        const num = parseInt(added, 10);
+                                        if (!isNaN(num) && num !== 0) {
+                                          const nextPoints = Math.max(0, (n.pointsEarned || 0) + num);
+                                          await onUpdateNurseRecord?.(n.id, { pointsEarned: nextPoints });
+                                          showToast(`Updated ${n.name}'s points to ${nextPoints} pts!`);
                                         }
                                       }
-                                    showToast(`Nurse ${n.name} approved and activated.`);
-                                }}
-                                className="btn btn-sm btn-primary" 
-                                style={{ fontSize: '0.7rem', padding: '0.2rem 0.55rem', background: '#0284C7', color: 'white', border: 'none', borderRadius: 4, cursor: 'pointer', fontWeight: 700 }}
-                              >
-                                Approve Nurse
-                              </button>
-                            )}
-                          </div>
-                        </td>
-                        <td style={{ textAlign: 'right' }}>
-                          <div style={{ display: 'inline-flex', alignItems: 'center', gap: '0.35rem' }}>
-                            <button
-                              type="button"
-                              onClick={() => handleOpenEditNurseModal(n)}
-                              title="Edit Nurse details in Supabase"
-                              style={{
-                                background: '#EFF6FF',
-                                border: '1px solid #BFDBFE',
-                                color: '#1D4ED8',
-                                padding: '0.3rem 0.45rem',
-                                borderRadius: 6,
-                                cursor: 'pointer',
-                                display: 'flex',
-                                alignItems: 'center'
-                              }}
-                            >
-                              <Edit2 size={13} />
-                            </button>
-                            <button
-                              type="button"
-                              onClick={() => handleDeleteNurseClick(n)}
-                              title="Delete Nurse from Supabase"
-                              style={{
-                                background: '#FEF2F2',
-                                border: '1px solid #FECDD3',
-                                color: '#E11D48',
-                                padding: '0.3rem 0.45rem',
-                                borderRadius: 6,
-                                cursor: 'pointer',
-                                display: 'flex',
-                                alignItems: 'center'
-                              }}
-                            >
-                              <Trash2 size={13} />
-                            </button>
-                          </div>
-                        </td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
+                                    }}
+                                    title="Quick Adjust Points"
+                                    style={{
+                                      background: '#FEF3C7',
+                                      border: '1px solid #FDE68A',
+                                      color: '#D97706',
+                                      borderRadius: 4,
+                                      padding: '2px 6px',
+                                      fontSize: '0.68rem',
+                                      fontWeight: 800,
+                                      cursor: 'pointer'
+                                    }}
+                                  >
+                                    +pts
+                                  </button>
+                                </div>
+                              </td>
+                              <td>
+                                <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
+                                  <strong style={{ color: '#059669' }}>₹{n.referralEarningsRupees}</strong>
+                                  <button
+                                    type="button"
+                                    onClick={async (e) => {
+                                      e.stopPropagation();
+                                      const added = prompt(`Adjust referral cash for ${n.name} (enter ₹ amount, e.g. 100, 500, or -100):`, '100');
+                                      if (added !== null) {
+                                        const num = parseInt(added, 10);
+                                        if (!isNaN(num) && num !== 0) {
+                                          const nextCash = Math.max(0, (n.referralEarningsRupees || 0) + num);
+                                          await onUpdateNurseRecord?.(n.id, { referralEarningsRupees: nextCash });
+                                          showToast(`Updated ${n.name}'s referral cash to ₹${nextCash}!`);
+                                        }
+                                      }
+                                    }}
+                                    title="Quick Adjust Referral Cash"
+                                    style={{
+                                      background: '#ECFDF5',
+                                      border: '1px solid #A7F3D0',
+                                      color: '#059669',
+                                      borderRadius: 4,
+                                      padding: '2px 6px',
+                                      fontSize: '0.68rem',
+                                      fontWeight: 800,
+                                      cursor: 'pointer'
+                                    }}
+                                  >
+                                    +₹
+                                  </button>
+                                </div>
+                              </td>
+                              <td>
+                                <div style={{ display: 'flex', flexDirection: 'column', gap: '0.35rem', alignItems: 'flex-start' }}>
+                                  {n.certificateVerified ? (
+                                    <span className="status-pill success" style={{ fontSize: '0.72rem', padding: '2px 8px' }}>
+                                      ✓ Verified Certificate
+                                    </span>
+                                  ) : (
+                                    <span className="status-pill warning" style={{ fontSize: '0.72rem', padding: '2px 8px' }}>
+                                      ⏳ Pending Review
+                                    </span>
+                                  )}
+
+                                  {/* View Certificate Button - works for any nurse with a certificateUrl */}
+                                  {n.certificateUrl ? (
+                                    <button
+                                      type="button"
+                                      onClick={() => {
+                                        setAdminCertModalNurse(n);
+                                        setAdminCertModalOpen(true);
+                                      }}
+                                      className="btn btn-sm"
+                                      style={{
+                                        fontSize: '0.72rem',
+                                        padding: '0.22rem 0.55rem',
+                                        background: '#EFF6FF',
+                                        border: '1px solid #BFDBFE',
+                                        color: '#1D4ED8',
+                                        borderRadius: 5,
+                                        display: 'inline-flex',
+                                        alignItems: 'center',
+                                        gap: '0.3rem',
+                                        fontWeight: 700,
+                                        cursor: 'pointer'
+                                      }}
+                                    >
+                                      <Eye size={12} />
+                                      <span>View Certificate</span>
+                                    </button>
+                                  ) : (
+                                    <span style={{ fontSize: '0.7rem', color: '#94A3B8' }}>No doc uploaded</span>
+                                  )}
+
+                                  {!n.certificateVerified && (
+                                    <button
+                                      type="button"
+                                      onClick={async () => {
+                                        await onUpdateNurseRecord?.(n.id, { certificateVerified: true, status: 'Active' });
+                                        showToast(`Nurse "${n.name}" verified and approved!`);
+
+                                        // If nurse was referred by an existing nurse, credit 50 points referral reward to the referrer (strictly once upon approval)
+                                        if (n.referredByNurseId) {
+                                          const referrer = nurses.find((rn) => rn.id === n.referredByNurseId);
+                                          if (referrer) {
+                                            const matchLead = leads.find((l) => l.nurseId === referrer.id && (l.referredNursePhone === n.phone || l.patientPhone === n.phone || l.referredNurseName === n.name));
+                                            if (matchLead && onApproveLead) {
+                                              await onApproveLead(matchLead.id, 50, 50, `Referred nurse ${n.name} certificate verified by Admin`);
+                                            } else if (onUpdateNurseRecord) {
+                                              const newPoints = (referrer.pointsEarned || 0) + 50;
+                                              await onUpdateNurseRecord(referrer.id, {
+                                                pointsEarned: newPoints,
+                                                convertedLeads: (referrer.convertedLeads || 0) + 1
+                                              });
+                                            }
+
+                                            showToast(`Nurse ${n.name} approved! 50 referral reward points credited to ${referrer.name}.`);
+                                            return;
+                                          }
+                                        }
+                                        showToast(`Nurse ${n.name} approved and activated.`);
+                                      }}
+                                      className="btn btn-sm btn-primary"
+                                      style={{ fontSize: '0.7rem', padding: '0.2rem 0.55rem', background: '#0284C7', color: 'white', border: 'none', borderRadius: 4, cursor: 'pointer', fontWeight: 700 }}
+                                    >
+                                      Approve Nurse
+                                    </button>
+                                  )}
+                                </div>
+                              </td>
+                              <td style={{ textAlign: 'right' }}>
+                                <div style={{ display: 'inline-flex', alignItems: 'center', gap: '0.35rem' }}>
+                                  <button
+                                    type="button"
+                                    onClick={() => handleOpenEditNurseModal(n)}
+                                    title="Edit Nurse details in Supabase"
+                                    style={{
+                                      background: '#EFF6FF',
+                                      border: '1px solid #BFDBFE',
+                                      color: '#1D4ED8',
+                                      padding: '0.3rem 0.45rem',
+                                      borderRadius: 6,
+                                      cursor: 'pointer',
+                                      display: 'flex',
+                                      alignItems: 'center'
+                                    }}
+                                  >
+                                    <Edit2 size={13} />
+                                  </button>
+                                  <button
+                                    type="button"
+                                    onClick={() => handleDeleteNurseClick(n)}
+                                    title="Delete Nurse from Supabase"
+                                    style={{
+                                      background: '#FEF2F2',
+                                      border: '1px solid #FECDD3',
+                                      color: '#E11D48',
+                                      padding: '0.3rem 0.45rem',
+                                      borderRadius: 6,
+                                      cursor: 'pointer',
+                                      display: 'flex',
+                                      alignItems: 'center'
+                                    }}
+                                  >
+                                    <Trash2 size={13} />
+                                  </button>
+                                </div>
+                              </td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
+                </>
+              )}
             </div>
-            </>
-          )}
-        </div>
-        </div>
+          </div>
         );
       })()}
 
@@ -3728,112 +3765,112 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                             </td>
                             <td>
                               <div><strong>{s.title}</strong></div>
-                          <div style={{ fontSize: '0.75rem', color: 'var(--neutral-500)', fontFamily: 'monospace' }}>{s.id}</div>
-                          {s.subtitle && <div style={{ fontSize: '0.74rem', color: 'var(--neutral-600)' }}>{s.subtitle}</div>}
-                        </td>
-                        <td>
-                          <div style={{ fontWeight: 800, color: 'var(--primary-navy-950)', fontSize: '0.95rem' }}>
-                            ₹{s.priceNumber}
-                          </div>
-                          <div style={{ fontSize: '0.72rem', color: 'var(--neutral-500)' }}>per home visit</div>
-                        </td>
-                        <td>
-                          <div style={{ fontWeight: 700, color: '#059669', fontSize: '0.88rem' }}>
-                            ₹{s.multiVisitPrice || s.priceNumber}
-                          </div>
-                          <div style={{ fontSize: '0.72rem', color: 'var(--neutral-500)' }}>per visit package</div>
-                        </td>
-                        <td>
-                          <div style={{ fontSize: '0.84rem', fontWeight: 600, color: '#D97706' }}>
-                            +₹{s.nightSurcharge || 399}
-                          </div>
-                          <div style={{ fontSize: '0.72rem', color: 'var(--neutral-500)' }}>after 8:00 PM</div>
-                        </td>
-                        <td>
-                          <button
-                            type="button"
-                            onClick={async () => {
-                              if (onUpdateService) {
-                                await onUpdateService(s.id, { prescriptionRequired: !s.prescriptionRequired });
-                                showToast(`Updated ${s.title}: Rx is now ${!s.prescriptionRequired ? 'Mandatory' : 'Optional'}`);
-                              }
-                            }}
-                            style={{
-                              border: 'none',
-                              background: 'transparent',
-                              padding: 0,
-                              cursor: 'pointer',
-                              display: 'inline-flex'
-                            }}
-                            title="Click to toggle Mandatory Prescription on/off"
-                          >
-                            {s.prescriptionRequired ? (
-                              <span className="status-pill danger" style={{ fontSize: '0.74rem', cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: '0.25rem' }}>
-                                <span>⚠️ Mandatory Rx</span>
-                                <span style={{ fontSize: '0.66rem', opacity: 0.85 }}>(Toggle)</span>
-                              </span>
-                            ) : (
-                              <span className="status-pill success" style={{ fontSize: '0.74rem', cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: '0.25rem' }}>
-                                <span>✓ No Rx Needed</span>
-                                <span style={{ fontSize: '0.66rem', opacity: 0.85 }}>(Toggle)</span>
-                              </span>
-                            )}
-                          </button>
-                        </td>
-                        <td>
-                          <span style={{ fontSize: '0.82rem', color: 'var(--neutral-600)' }}>{s.duration || '45 - 60 mins'}</span>
-                        </td>
-                        <td>
-                          {s.badge ? (
-                            <span className="status-pill info" style={{ fontSize: '0.75rem' }}>{s.badge}</span>
-                          ) : (
-                            <span style={{ fontSize: '0.75rem', color: 'var(--neutral-400)' }}>—</span>
-                          )}
-                        </td>
-                        <td style={{ textAlign: 'right' }}>
-                          <div style={{ display: 'inline-flex', alignItems: 'center', gap: '0.35rem' }}>
-                            <button
-                              type="button"
-                              onClick={() => handleOpenEditServiceModal(s)}
-                              title="Edit Procedure in Supabase"
-                              style={{
-                                background: '#EFF6FF',
-                                border: '1px solid #BFDBFE',
-                                color: '#1D4ED8',
-                                padding: '0.3rem 0.45rem',
-                                borderRadius: 6,
-                                cursor: 'pointer',
-                                display: 'flex',
-                                alignItems: 'center'
-                              }}
-                            >
-                              <Edit2 size={13} />
-                            </button>
-                            <button
-                              type="button"
-                              onClick={() => handleDeleteServiceClick(s)}
-                              title="Delete Procedure from Supabase"
-                              style={{
-                                background: '#FEF2F2',
-                                border: '1px solid #FECDD3',
-                                color: '#E11D48',
-                                padding: '0.3rem 0.45rem',
-                                borderRadius: 6,
-                                cursor: 'pointer',
-                                display: 'flex',
-                                alignItems: 'center'
-                              }}
-                            >
-                              <Trash2 size={13} />
-                            </button>
-                          </div>
-                        </td>
-                      </tr>
-                    );
-                  })}
-                  </tbody>
-                </table>
-              </div>
+                              <div style={{ fontSize: '0.75rem', color: 'var(--neutral-500)', fontFamily: 'monospace' }}>{s.id}</div>
+                              {s.subtitle && <div style={{ fontSize: '0.74rem', color: 'var(--neutral-600)' }}>{s.subtitle}</div>}
+                            </td>
+                            <td>
+                              <div style={{ fontWeight: 800, color: 'var(--primary-navy-950)', fontSize: '0.95rem' }}>
+                                ₹{s.priceNumber}
+                              </div>
+                              <div style={{ fontSize: '0.72rem', color: 'var(--neutral-500)' }}>per home visit</div>
+                            </td>
+                            <td>
+                              <div style={{ fontWeight: 700, color: '#059669', fontSize: '0.88rem' }}>
+                                ₹{s.multiVisitPrice || s.priceNumber}
+                              </div>
+                              <div style={{ fontSize: '0.72rem', color: 'var(--neutral-500)' }}>per visit package</div>
+                            </td>
+                            <td>
+                              <div style={{ fontSize: '0.84rem', fontWeight: 600, color: '#D97706' }}>
+                                +₹{s.nightSurcharge || 399}
+                              </div>
+                              <div style={{ fontSize: '0.72rem', color: 'var(--neutral-500)' }}>after 8:00 PM</div>
+                            </td>
+                            <td>
+                              <button
+                                type="button"
+                                onClick={async () => {
+                                  if (onUpdateService) {
+                                    await onUpdateService(s.id, { prescriptionRequired: !s.prescriptionRequired });
+                                    showToast(`Updated ${s.title}: Rx is now ${!s.prescriptionRequired ? 'Mandatory' : 'Optional'}`);
+                                  }
+                                }}
+                                style={{
+                                  border: 'none',
+                                  background: 'transparent',
+                                  padding: 0,
+                                  cursor: 'pointer',
+                                  display: 'inline-flex'
+                                }}
+                                title="Click to toggle Mandatory Prescription on/off"
+                              >
+                                {s.prescriptionRequired ? (
+                                  <span className="status-pill danger" style={{ fontSize: '0.74rem', cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: '0.25rem' }}>
+                                    <span>⚠️ Mandatory Rx</span>
+                                    <span style={{ fontSize: '0.66rem', opacity: 0.85 }}>(Toggle)</span>
+                                  </span>
+                                ) : (
+                                  <span className="status-pill success" style={{ fontSize: '0.74rem', cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: '0.25rem' }}>
+                                    <span>✓ No Rx Needed</span>
+                                    <span style={{ fontSize: '0.66rem', opacity: 0.85 }}>(Toggle)</span>
+                                  </span>
+                                )}
+                              </button>
+                            </td>
+                            <td>
+                              <span style={{ fontSize: '0.82rem', color: 'var(--neutral-600)' }}>{s.duration || '45 - 60 mins'}</span>
+                            </td>
+                            <td>
+                              {s.badge ? (
+                                <span className="status-pill info" style={{ fontSize: '0.75rem' }}>{s.badge}</span>
+                              ) : (
+                                <span style={{ fontSize: '0.75rem', color: 'var(--neutral-400)' }}>—</span>
+                              )}
+                            </td>
+                            <td style={{ textAlign: 'right' }}>
+                              <div style={{ display: 'inline-flex', alignItems: 'center', gap: '0.35rem' }}>
+                                <button
+                                  type="button"
+                                  onClick={() => handleOpenEditServiceModal(s)}
+                                  title="Edit Procedure in Supabase"
+                                  style={{
+                                    background: '#EFF6FF',
+                                    border: '1px solid #BFDBFE',
+                                    color: '#1D4ED8',
+                                    padding: '0.3rem 0.45rem',
+                                    borderRadius: 6,
+                                    cursor: 'pointer',
+                                    display: 'flex',
+                                    alignItems: 'center'
+                                  }}
+                                >
+                                  <Edit2 size={13} />
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => handleDeleteServiceClick(s)}
+                                  title="Delete Procedure from Supabase"
+                                  style={{
+                                    background: '#FEF2F2',
+                                    border: '1px solid #FECDD3',
+                                    color: '#E11D48',
+                                    padding: '0.3rem 0.45rem',
+                                    borderRadius: 6,
+                                    cursor: 'pointer',
+                                    display: 'flex',
+                                    alignItems: 'center'
+                                  }}
+                                >
+                                  <Trash2 size={13} />
+                                </button>
+                              </div>
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
               </>
             )}
           </div>
@@ -4058,11 +4095,11 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                       const isSelected = selectedLeadIds.has(l.id);
 
                       return (
-                        <tr 
-                          key={l.id} 
-                          style={{ 
+                        <tr
+                          key={l.id}
+                          style={{
                             background: isSelected ? '#FFF1F2' : (isPending ? '#FFFDF5' : undefined),
-                            borderLeft: isSelected ? '4px solid #E11D48' : (isPending ? '4px solid #F59E0B' : undefined) 
+                            borderLeft: isSelected ? '4px solid #E11D48' : (isPending ? '4px solid #F59E0B' : undefined)
                           }}
                         >
                           <td style={{ textAlign: 'center', width: 40 }}>
@@ -4074,239 +4111,238 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                             />
                           </td>
                           <td>
-                          <strong style={{ fontFamily: 'monospace' }}>{l.id}</strong>
-                          <div style={{ fontSize: '0.75rem', color: 'var(--neutral-500)', marginTop: '0.2rem' }}>
-                            {l.submittedAt && l.submittedAt.includes('T') ? (
-                              <>
-                                <div>{new Date(l.submittedAt).toLocaleDateString()}</div>
-                                <div style={{ fontSize: '0.68rem', color: 'var(--neutral-400)' }}>
-                                  {new Date(l.submittedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-                                </div>
-                              </>
+                            <strong style={{ fontFamily: 'monospace' }}>{l.id}</strong>
+                            <div style={{ fontSize: '0.75rem', color: 'var(--neutral-500)', marginTop: '0.2rem' }}>
+                              {l.submittedAt && l.submittedAt.includes('T') ? (
+                                <>
+                                  <div>{new Date(l.submittedAt).toLocaleDateString()}</div>
+                                  <div style={{ fontSize: '0.68rem', color: 'var(--neutral-400)' }}>
+                                    {new Date(l.submittedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                                  </div>
+                                </>
+                              ) : (
+                                l.submittedAt || 'Recent'
+                              )}
+                            </div>
+                          </td>
+                          <td>
+                            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.2rem' }}>
+                              <div style={{ fontWeight: 600 }}>{l.referralType === 'nurse' || l.referredNursePhone ? l.referredNurseName || l.patientName : l.patientName}</div>
+                              <span style={{
+                                fontSize: '0.65rem',
+                                fontWeight: 800,
+                                textTransform: 'uppercase',
+                                padding: '2px 6px',
+                                borderRadius: 4,
+                                display: 'inline-block',
+                                width: 'fit-content',
+                                background: l.referralType === 'nurse' || l.referredNursePhone ? '#EDE9FE' : '#E0F2FE',
+                                color: l.referralType === 'nurse' || l.referredNursePhone ? '#6D28D9' : '#0369A1'
+                              }}>
+                                {l.referralType === 'nurse' || l.referredNursePhone ? 'Nurse Referral' : 'Patient Referral'}
+                              </span>
+                            </div>
+                          </td>
+                          <td>
+                            {isRejected ? (
+                              <span style={{ color: '#94A3B8', fontSize: '0.74rem' }}>✕ Contact Hidden (Rejected)</span>
                             ) : (
-                              l.submittedAt || 'Recent'
+                              l.patientPhone
                             )}
-                          </div>
-                        </td>
-                        <td>
-                          <div style={{ display: 'flex', flexDirection: 'column', gap: '0.2rem' }}>
-                            <div style={{ fontWeight: 600 }}>{l.referralType === 'nurse' || l.referredNursePhone ? l.referredNurseName || l.patientName : l.patientName}</div>
-                            <span style={{ 
-                              fontSize: '0.65rem', 
-                              fontWeight: 800, 
-                              textTransform: 'uppercase', 
-                              padding: '2px 6px', 
-                              borderRadius: 4, 
-                              display: 'inline-block',
-                              width: 'fit-content',
-                              background: l.referralType === 'nurse' || l.referredNursePhone ? '#EDE9FE' : '#E0F2FE', 
-                              color: l.referralType === 'nurse' || l.referredNursePhone ? '#6D28D9' : '#0369A1' 
-                            }}>
-                              {l.referralType === 'nurse' || l.referredNursePhone ? 'Nurse Referral' : 'Patient Referral'}
-                            </span>
-                          </div>
-                        </td>
-                        <td>
-                          {isRejected ? (
-                            <span style={{ color: '#94A3B8', fontSize: '0.74rem' }}>✕ Contact Hidden (Rejected)</span>
-                          ) : (
-                            l.patientPhone
-                          )}
-                        </td>
-                        <td>
-                          <div style={{ fontWeight: 500 }}>{l.serviceId}</div>
-                          <div style={{ fontSize: '0.72rem', color: 'var(--neutral-500)' }}>Value: ₹{l.leadValueRupees || 800}</div>
-                        </td>
-                        <td>
-                          {(() => {
-                            const refCandidate = (l.referralType === 'nurse' || l.referredNursePhone)
-                              ? nurses.find((n) => 
+                          </td>
+                          <td>
+                            <div style={{ fontWeight: 500 }}>{l.serviceId}</div>
+                            <div style={{ fontSize: '0.72rem', color: 'var(--neutral-500)' }}>Value: ₹{l.leadValueRupees || 800}</div>
+                          </td>
+                          <td>
+                            {(() => {
+                              const refCandidate = (l.referralType === 'nurse' || l.referredNursePhone)
+                                ? nurses.find((n) =>
                                   (l.referredNursePhone && n.phone && n.phone.replace(/\D/g, '') === l.referredNursePhone.replace(/\D/g, '')) ||
                                   (l.referredNurseName && n.name.toLowerCase() === l.referredNurseName.toLowerCase()) ||
                                   (l.patientName && n.name.toLowerCase() === l.patientName.toLowerCase())
                                 )
-                              : null;
-                            const displayArea = (refCandidate?.serviceArea && refCandidate.serviceArea !== 'Hyderabad Central')
-                              ? refCandidate.serviceArea
-                              : (l.area && l.area !== 'Hyderabad Central' ? l.area : (refCandidate?.serviceArea || l.area || 'Gachibowli'));
+                                : null;
+                              const displayArea = (refCandidate?.serviceArea && refCandidate.serviceArea !== 'Hyderabad Central')
+                                ? refCandidate.serviceArea
+                                : (l.area && l.area !== 'Hyderabad Central' ? l.area : (refCandidate?.serviceArea || l.area || 'Gachibowli'));
 
-                            return (
-                              <div style={{ display: 'flex', alignItems: 'center', gap: '0.3rem' }}>
-                                <MapPin size={13} style={{ color: 'var(--neutral-500)' }} />
-                                <span>{displayArea}</span>
+                              return (
+                                <div style={{ display: 'flex', alignItems: 'center', gap: '0.3rem' }}>
+                                  <MapPin size={13} style={{ color: 'var(--neutral-500)' }} />
+                                  <span>{displayArea}</span>
+                                </div>
+                              );
+                            })()}
+                            {l.fullAddress && (
+                              <div style={{ fontSize: '0.72rem', color: 'var(--neutral-500)', marginTop: '0.15rem' }}>
+                                {l.fullAddress}
                               </div>
-                            );
-                          })()}
-                          {l.fullAddress && (
-                            <div style={{ fontSize: '0.72rem', color: 'var(--neutral-500)', marginTop: '0.15rem' }}>
-                              {l.fullAddress}
-                            </div>
-                          )}
-                          {l.notes && (
-                            <div style={{ fontSize: '0.7rem', color: '#0369A1', background: '#F0F9FF', padding: '3px 6px', borderRadius: 4, marginTop: '0.3rem', fontStyle: 'italic', maxWidth: 180 }}>
-                              "{l.notes.length > 50 ? l.notes.substring(0, 50) + '...' : l.notes}"
-                            </div>
-                          )}
-                        </td>
-                        <td>
-                          <div style={{ fontWeight: 600 }}>{referringNurse ? referringNurse.name : l.nurseId}</div>
-                          {referringNurse && (
-                            <div style={{ fontSize: '0.72rem', color: 'var(--neutral-500)' }}>
-                              Station: {referringNurse.serviceArea}
-                            </div>
-                          )}
-                        </td>
-                        <td>
-                          {isRejected ? (
-                            <span style={{ color: 'var(--neutral-400)', fontSize: '0.8rem' }}>0 pts</span>
-                          ) : (
-                            <strong style={{ color: '#059669', fontSize: '0.9rem' }}>
-                              +50 pts
-                            </strong>
-                          )}
-                        </td>
-                        <td>
-                          <span className={`status-pill ${
-                            isApproved ? 'success' :
-                            isPending ? 'warning' :
-                            isRejected ? 'danger' :
-                            l.status === 'Submitted' ? 'info' : 'neutral'
-                          }`}>
-                            {isPending ? '⏳ Waiting Approval' : 
-                             l.status === 'Converted' ? '✓ Completed (+50 Pts & 10% Paid)' :
-                             (isApproved && (l.referralType !== 'nurse' && !l.referredNursePhone)) ? '✓ Approved (Booking Queued)' :
-                             isApproved ? '✓ Approved (+50 Pts)' :
-                             isRejected ? '✕ Rejected' : l.status}
-                          </span>
-                          {isRejected && (l.rejectionReason || l.adminNotes) && (
-                            <div style={{ fontSize: '0.72rem', color: '#B91C1C', background: '#FEF2F2', border: '1px solid #FECACA', padding: '3px 6px', borderRadius: 4, marginTop: '0.35rem', maxWidth: 220 }}>
-                              <strong>Reason:</strong> {l.rejectionReason || l.adminNotes}
-                            </div>
-                          )}
-                          {!isRejected && l.adminNotes && (
-                            <div style={{ fontSize: '0.7rem', color: 'var(--neutral-500)', marginTop: '0.2rem', maxWidth: 160 }} title={l.adminNotes}>
-                              Note: {l.adminNotes.length > 28 ? l.adminNotes.slice(0, 25) + '...' : l.adminNotes}
-                            </div>
-                          )}
-                        </td>
-                        <td style={{ textAlign: 'right' }}>
-                          <div style={{ display: 'inline-flex', alignItems: 'center', gap: '0.35rem' }}>
-                            {isPending && (
-                              <button
-                                type="button"
-                                onClick={() => handleOpenApproveModal(l)}
-                                style={{
-                                  background: 'linear-gradient(135deg, #059669 0%, #047857 100%)',
-                                  color: '#FFFFFF',
-                                  border: 'none',
-                                  borderRadius: 8,
-                                  padding: '0.35rem 0.75rem',
-                                  fontWeight: 700,
-                                  fontSize: '0.78rem',
-                                  cursor: 'pointer',
-                                  display: 'inline-flex',
-                                  alignItems: 'center',
-                                  gap: '0.3rem',
-                                  boxShadow: '0 2px 5px rgba(5,150,105,0.25)'
-                                }}
-                                title="Approve Referral (+50 Points)"
-                              >
-                                <CheckCircle size={13} />
-                                <span>Approve (+50 Pts)</span>
-                              </button>
                             )}
+                            {l.notes && (
+                              <div style={{ fontSize: '0.7rem', color: '#0369A1', background: '#F0F9FF', padding: '3px 6px', borderRadius: 4, marginTop: '0.3rem', fontStyle: 'italic', maxWidth: 180 }}>
+                                "{l.notes.length > 50 ? l.notes.substring(0, 50) + '...' : l.notes}"
+                              </div>
+                            )}
+                          </td>
+                          <td>
+                            <div style={{ fontWeight: 600 }}>{referringNurse ? referringNurse.name : l.nurseId}</div>
+                            {referringNurse && (
+                              <div style={{ fontSize: '0.72rem', color: 'var(--neutral-500)' }}>
+                                Station: {referringNurse.serviceArea}
+                              </div>
+                            )}
+                          </td>
+                          <td>
+                            {isRejected ? (
+                              <span style={{ color: 'var(--neutral-400)', fontSize: '0.8rem' }}>0 pts</span>
+                            ) : (
+                              <strong style={{ color: '#059669', fontSize: '0.9rem' }}>
+                                +50 pts
+                              </strong>
+                            )}
+                          </td>
+                          <td>
+                            <span className={`status-pill ${isApproved ? 'success' :
+                                isPending ? 'warning' :
+                                  isRejected ? 'danger' :
+                                    l.status === 'Submitted' ? 'info' : 'neutral'
+                              }`}>
+                              {isPending ? '⏳ Waiting Approval' :
+                                l.status === 'Converted' ? '✓ Completed (+50 Pts & 10% Paid)' :
+                                  (isApproved && (l.referralType !== 'nurse' && !l.referredNursePhone)) ? '✓ Approved (Booking Queued)' :
+                                    isApproved ? '✓ Approved (+50 Pts)' :
+                                      isRejected ? '✕ Rejected' : l.status}
+                            </span>
+                            {isRejected && (l.rejectionReason || l.adminNotes) && (
+                              <div style={{ fontSize: '0.72rem', color: '#B91C1C', background: '#FEF2F2', border: '1px solid #FECACA', padding: '3px 6px', borderRadius: 4, marginTop: '0.35rem', maxWidth: 220 }}>
+                                <strong>Reason:</strong> {l.rejectionReason || l.adminNotes}
+                              </div>
+                            )}
+                            {!isRejected && l.adminNotes && (
+                              <div style={{ fontSize: '0.7rem', color: 'var(--neutral-500)', marginTop: '0.2rem', maxWidth: 160 }} title={l.adminNotes}>
+                                Note: {l.adminNotes.length > 28 ? l.adminNotes.slice(0, 25) + '...' : l.adminNotes}
+                              </div>
+                            )}
+                          </td>
+                          <td style={{ textAlign: 'right' }}>
+                            <div style={{ display: 'inline-flex', alignItems: 'center', gap: '0.35rem' }}>
+                              {isPending && (
+                                <button
+                                  type="button"
+                                  onClick={() => handleOpenApproveModal(l)}
+                                  style={{
+                                    background: 'linear-gradient(135deg, #059669 0%, #047857 100%)',
+                                    color: '#FFFFFF',
+                                    border: 'none',
+                                    borderRadius: 8,
+                                    padding: '0.35rem 0.75rem',
+                                    fontWeight: 700,
+                                    fontSize: '0.78rem',
+                                    cursor: 'pointer',
+                                    display: 'inline-flex',
+                                    alignItems: 'center',
+                                    gap: '0.3rem',
+                                    boxShadow: '0 2px 5px rgba(5,150,105,0.25)'
+                                  }}
+                                  title="Approve Referral (+50 Points)"
+                                >
+                                  <CheckCircle size={13} />
+                                  <span>Approve (+50 Pts)</span>
+                                </button>
+                              )}
 
-                            {isApproved && (
+                              {isApproved && (
+                                <button
+                                  type="button"
+                                  onClick={() => handleOpenApproveModal(l)}
+                                  style={{
+                                    background: '#F0FDF4',
+                                    border: '1px solid #BBF7D0',
+                                    color: '#166534',
+                                    borderRadius: 6,
+                                    padding: '0.28rem 0.55rem',
+                                    fontWeight: 700,
+                                    fontSize: '0.72rem',
+                                    cursor: 'pointer',
+                                    display: 'inline-flex',
+                                    alignItems: 'center',
+                                    gap: '0.25rem'
+                                  }}
+                                  title="Edit Referral"
+                                >
+                                  <Award size={12} />
+                                  <span>Edit</span>
+                                </button>
+                              )}
+
+                              {l.referralType !== 'nurse' && !l.referredNursePhone && !isRejected && (
+                                <button
+                                  type="button"
+                                  onClick={() => handleQuickAssignLead(l)}
+                                  style={{
+                                    background: '#0284C7',
+                                    color: '#FFFFFF',
+                                    border: 'none',
+                                    borderRadius: 6,
+                                    padding: '0.3rem 0.65rem',
+                                    fontWeight: 700,
+                                    fontSize: '0.74rem',
+                                    cursor: 'pointer',
+                                    display: 'inline-flex',
+                                    alignItems: 'center',
+                                    gap: '0.3rem',
+                                    boxShadow: '0 2px 5px rgba(2,132,199,0.25)'
+                                  }}
+                                  title="Dispatch / Assign Local Nurse to this Patient"
+                                >
+                                  <Shuffle size={12} />
+                                  <span>🚗 Assign Nurse</span>
+                                </button>
+                              )}
+
                               <button
                                 type="button"
-                                onClick={() => handleOpenApproveModal(l)}
+                                onClick={() => handleOpenEditLeadModal(l)}
+                                title="Edit Lead in Supabase"
                                 style={{
-                                  background: '#F0FDF4',
-                                  border: '1px solid #BBF7D0',
-                                  color: '#166534',
+                                  background: '#EFF6FF',
+                                  border: '1px solid #BFDBFE',
+                                  color: '#1D4ED8',
+                                  padding: '0.3rem 0.45rem',
                                   borderRadius: 6,
-                                  padding: '0.28rem 0.55rem',
-                                  fontWeight: 700,
-                                  fontSize: '0.72rem',
                                   cursor: 'pointer',
-                                  display: 'inline-flex',
-                                  alignItems: 'center',
-                                  gap: '0.25rem'
+                                  display: 'flex',
+                                  alignItems: 'center'
                                 }}
-                                title="Edit Referral"
                               >
-                                <Award size={12} />
-                                <span>Edit</span>
+                                <Edit2 size={13} />
                               </button>
-                            )}
-
-                            {l.referralType !== 'nurse' && !l.referredNursePhone && !isRejected && (
                               <button
                                 type="button"
-                                onClick={() => handleQuickAssignLead(l)}
+                                onClick={() => handleDeleteLeadClick(l)}
+                                title="Delete Lead from Supabase"
                                 style={{
-                                  background: '#0284C7',
-                                  color: '#FFFFFF',
-                                  border: 'none',
+                                  background: '#FEF2F2',
+                                  border: '1px solid #FECDD3',
+                                  color: '#E11D48',
+                                  padding: '0.3rem 0.45rem',
                                   borderRadius: 6,
-                                  padding: '0.3rem 0.65rem',
-                                  fontWeight: 700,
-                                  fontSize: '0.74rem',
                                   cursor: 'pointer',
-                                  display: 'inline-flex',
-                                  alignItems: 'center',
-                                  gap: '0.3rem',
-                                  boxShadow: '0 2px 5px rgba(2,132,199,0.25)'
+                                  display: 'flex',
+                                  alignItems: 'center'
                                 }}
-                                title="Dispatch / Assign Local Nurse to this Patient"
                               >
-                                <Shuffle size={12} />
-                                <span>🚗 Assign Nurse</span>
+                                <Trash2 size={13} />
                               </button>
-                            )}
-
-                            <button
-                              type="button"
-                              onClick={() => handleOpenEditLeadModal(l)}
-                              title="Edit Lead in Supabase"
-                              style={{
-                                background: '#EFF6FF',
-                                border: '1px solid #BFDBFE',
-                                color: '#1D4ED8',
-                                padding: '0.3rem 0.45rem',
-                                borderRadius: 6,
-                                cursor: 'pointer',
-                                display: 'flex',
-                                alignItems: 'center'
-                              }}
-                            >
-                              <Edit2 size={13} />
-                            </button>
-                            <button
-                              type="button"
-                              onClick={() => handleDeleteLeadClick(l)}
-                              title="Delete Lead from Supabase"
-                              style={{
-                                background: '#FEF2F2',
-                                border: '1px solid #FECDD3',
-                                color: '#E11D48',
-                                padding: '0.3rem 0.45rem',
-                                borderRadius: 6,
-                                cursor: 'pointer',
-                                display: 'flex',
-                                alignItems: 'center'
-                              }}
-                            >
-                              <Trash2 size={13} />
-                            </button>
-                          </div>
-                        </td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
-            </div>
+                            </div>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
             </>
           )}
         </div>
@@ -4438,132 +4474,131 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                               />
                             </td>
                             <td><strong style={{ fontFamily: 'monospace' }}>{c.id}</strong></td>
-                        <td>
-                          <div><strong>{c.patientName}</strong></div>
-                          <div style={{ fontSize: '0.75rem', color: 'var(--neutral-500)' }}>Age: {c.patientAge || '—'}</div>
-                        </td>
-                        <td>{c.patientPhone}</td>
-                        <td style={{ maxWidth: 220 }}>
-                          <div style={{ fontSize: '0.82rem', color: 'var(--neutral-700)', lineHeight: 1.4 }}>
-                            {c.symptoms}
-                          </div>
-                        </td>
-                        <td>
-                          <div style={{ display: 'flex', alignItems: 'center', gap: '0.3rem' }}>
-                            <MapPin size={13} style={{ color: 'var(--neutral-500)' }} />
-                            <span>{c.area}</span>
-                          </div>
-                        </td>
-                        <td>
-                          {c.prescriptionIssued ? (
-                            <button
-                              type="button"
-                              onClick={() => handleViewConsultPrescription(c)}
-                              title="Click to inspect doctor prescription"
-                              style={{
-                                background: '#ECFDF5',
-                                border: '1px solid #A7F3D0',
-                                padding: '0.35rem 0.65rem',
-                                borderRadius: 8,
-                                textAlign: 'left',
-                                cursor: 'pointer',
-                                display: 'block',
-                                width: '100%',
-                                transition: 'all 0.15s ease'
-                              }}
-                            >
-                              <div style={{ display: 'flex', alignItems: 'center', gap: '0.35rem' }}>
-                                <span className="status-pill success" style={{ fontSize: '0.74rem', padding: '1px 6px' }}>✓ Rx Issued</span>
-                                <Eye size={12} style={{ color: '#059669' }} />
+                            <td>
+                              <div><strong>{c.patientName}</strong></div>
+                              <div style={{ fontSize: '0.75rem', color: 'var(--neutral-500)' }}>Age: {c.patientAge || '—'}</div>
+                            </td>
+                            <td>{c.patientPhone}</td>
+                            <td style={{ maxWidth: 220 }}>
+                              <div style={{ fontSize: '0.82rem', color: 'var(--neutral-700)', lineHeight: 1.4 }}>
+                                {c.symptoms}
                               </div>
-                              {c.prescriptionText && (
-                                <div style={{ fontSize: '0.72rem', color: '#065F46', marginTop: '0.25rem', maxWidth: 170, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', fontWeight: 600 }}>
-                                  {c.prescriptionText}
-                                </div>
+                            </td>
+                            <td>
+                              <div style={{ display: 'flex', alignItems: 'center', gap: '0.3rem' }}>
+                                <MapPin size={13} style={{ color: 'var(--neutral-500)' }} />
+                                <span>{c.area}</span>
+                              </div>
+                            </td>
+                            <td>
+                              {c.prescriptionIssued ? (
+                                <button
+                                  type="button"
+                                  onClick={() => handleViewConsultPrescription(c)}
+                                  title="Click to inspect doctor prescription"
+                                  style={{
+                                    background: '#ECFDF5',
+                                    border: '1px solid #A7F3D0',
+                                    padding: '0.35rem 0.65rem',
+                                    borderRadius: 8,
+                                    textAlign: 'left',
+                                    cursor: 'pointer',
+                                    display: 'block',
+                                    width: '100%',
+                                    transition: 'all 0.15s ease'
+                                  }}
+                                >
+                                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.35rem' }}>
+                                    <span className="status-pill success" style={{ fontSize: '0.74rem', padding: '1px 6px' }}>✓ Rx Issued</span>
+                                    <Eye size={12} style={{ color: '#059669' }} />
+                                  </div>
+                                  {c.prescriptionText && (
+                                    <div style={{ fontSize: '0.72rem', color: '#065F46', marginTop: '0.25rem', maxWidth: 170, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', fontWeight: 600 }}>
+                                      {c.prescriptionText}
+                                    </div>
+                                  )}
+                                </button>
+                              ) : (
+                                <span className="status-pill warning" style={{ fontSize: '0.75rem' }}>Pending Rx</span>
                               )}
-                            </button>
-                          ) : (
-                            <span className="status-pill warning" style={{ fontSize: '0.75rem' }}>Pending Rx</span>
-                          )}
-                        </td>
-                        <td>
-                          <span style={{ fontSize: '0.82rem', fontWeight: 600 }}>{c.recommendedService || 'saline-infusion'}</span>
-                        </td>
-                        <td>
-                          <span className={`status-pill ${
-                            c.status === 'Completed' ? 'success' :
-                            c.status === 'Awaiting Call' ? 'danger' : 'neutral'
-                          }`}>
-                            {c.status}
-                          </span>
-                        </td>
-                        <td style={{ textAlign: 'right' }}>
-                          <div style={{ display: 'inline-flex', alignItems: 'center', gap: '0.35rem' }}>
-                            {c.prescriptionIssued && (
-                              <button
-                                type="button"
-                                onClick={() => handleViewConsultPrescription(c)}
-                                title="Inspect Prescribed Clinical Orders & Dosage"
-                                style={{
-                                  background: '#ECFDF5',
-                                  border: '1px solid #A7F3D0',
-                                  color: '#065F46',
-                                  padding: '0.3rem 0.55rem',
-                                  borderRadius: 6,
-                                  cursor: 'pointer',
-                                  display: 'inline-flex',
-                                  alignItems: 'center',
-                                  gap: '0.25rem',
-                                  fontWeight: 700,
-                                  fontSize: '0.74rem'
-                                }}
-                              >
-                                <FileText size={13} />
-                                <span>View Rx</span>
-                              </button>
-                            )}
-                            <button
-                              type="button"
-                              onClick={() => handleOpenEditConsultModal(c)}
-                              title="Edit Consultation in Supabase"
-                              style={{
-                                background: '#EFF6FF',
-                                border: '1px solid #BFDBFE',
-                                color: '#1D4ED8',
-                                padding: '0.3rem 0.45rem',
-                                borderRadius: 6,
-                                cursor: 'pointer',
-                                display: 'flex',
-                                alignItems: 'center'
-                              }}
-                            >
-                              <Edit2 size={13} />
-                            </button>
-                            <button
-                              type="button"
-                              onClick={() => handleDeleteConsultClick(c)}
-                              title="Delete Consultation from Supabase"
-                              style={{
-                                background: '#FEF2F2',
-                                border: '1px solid #FECDD3',
-                                color: '#E11D48',
-                                padding: '0.3rem 0.45rem',
-                                borderRadius: 6,
-                                cursor: 'pointer',
-                                display: 'flex',
-                                alignItems: 'center'
-                              }}
-                            >
-                              <Trash2 size={13} />
-                            </button>
-                          </div>
-                        </td>
-                      </tr>
-                    );
-                  })}
-                  </tbody>
-                </table>
-              </div>
+                            </td>
+                            <td>
+                              <span style={{ fontSize: '0.82rem', fontWeight: 600 }}>{c.recommendedService || 'saline-infusion'}</span>
+                            </td>
+                            <td>
+                              <span className={`status-pill ${c.status === 'Completed' ? 'success' :
+                                  c.status === 'Awaiting Call' ? 'danger' : 'neutral'
+                                }`}>
+                                {c.status}
+                              </span>
+                            </td>
+                            <td style={{ textAlign: 'right' }}>
+                              <div style={{ display: 'inline-flex', alignItems: 'center', gap: '0.35rem' }}>
+                                {c.prescriptionIssued && (
+                                  <button
+                                    type="button"
+                                    onClick={() => handleViewConsultPrescription(c)}
+                                    title="Inspect Prescribed Clinical Orders & Dosage"
+                                    style={{
+                                      background: '#ECFDF5',
+                                      border: '1px solid #A7F3D0',
+                                      color: '#065F46',
+                                      padding: '0.3rem 0.55rem',
+                                      borderRadius: 6,
+                                      cursor: 'pointer',
+                                      display: 'inline-flex',
+                                      alignItems: 'center',
+                                      gap: '0.25rem',
+                                      fontWeight: 700,
+                                      fontSize: '0.74rem'
+                                    }}
+                                  >
+                                    <FileText size={13} />
+                                    <span>View Rx</span>
+                                  </button>
+                                )}
+                                <button
+                                  type="button"
+                                  onClick={() => handleOpenEditConsultModal(c)}
+                                  title="Edit Consultation in Supabase"
+                                  style={{
+                                    background: '#EFF6FF',
+                                    border: '1px solid #BFDBFE',
+                                    color: '#1D4ED8',
+                                    padding: '0.3rem 0.45rem',
+                                    borderRadius: 6,
+                                    cursor: 'pointer',
+                                    display: 'flex',
+                                    alignItems: 'center'
+                                  }}
+                                >
+                                  <Edit2 size={13} />
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => handleDeleteConsultClick(c)}
+                                  title="Delete Consultation from Supabase"
+                                  style={{
+                                    background: '#FEF2F2',
+                                    border: '1px solid #FECDD3',
+                                    color: '#E11D48',
+                                    padding: '0.3rem 0.45rem',
+                                    borderRadius: 6,
+                                    cursor: 'pointer',
+                                    display: 'flex',
+                                    alignItems: 'center'
+                                  }}
+                                >
+                                  <Trash2 size={13} />
+                                </button>
+                              </div>
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
               </>
             )}
           </div>
@@ -4573,7 +4608,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
       {/* COUPONS & PROMO ENGINE TAB (FULL SUPABASE CRUD) */}
       {activeTab === 'coupons' && (
         <div style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
-          
+
           {/* Feedback Toast Banner */}
           {couponFeedback && (
             <div style={{
@@ -4604,8 +4639,8 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                 </p>
               </div>
 
-              <button 
-                onClick={handleOpenCreateModal} 
+              <button
+                onClick={handleOpenCreateModal}
                 className="btn btn-danger btn-sm"
                 style={{ borderRadius: 9999, fontWeight: 700, gap: '0.4rem' }}
               >
@@ -4711,163 +4746,162 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                             </td>
                             {/* Code */}
                             <td>
-                            <div style={{ display: 'flex', alignItems: 'center', gap: '0.45rem' }}>
-                              <span style={{
-                                fontFamily: 'monospace',
-                                fontWeight: 800,
-                                fontSize: '0.92rem',
-                                color: 'var(--primary-navy-950)',
-                                background: '#F1F5F9',
-                                border: '1px solid #CBD5E1',
-                                padding: '0.2rem 0.55rem',
-                                borderRadius: 6,
-                                letterSpacing: '0.04em'
-                              }}>
-                                {c.code}
+                              <div style={{ display: 'flex', alignItems: 'center', gap: '0.45rem' }}>
+                                <span style={{
+                                  fontFamily: 'monospace',
+                                  fontWeight: 800,
+                                  fontSize: '0.92rem',
+                                  color: 'var(--primary-navy-950)',
+                                  background: '#F1F5F9',
+                                  border: '1px solid #CBD5E1',
+                                  padding: '0.2rem 0.55rem',
+                                  borderRadius: 6,
+                                  letterSpacing: '0.04em'
+                                }}>
+                                  {c.code}
+                                </span>
+                                <button
+                                  type="button"
+                                  onClick={() => handleCopyCode(c.code)}
+                                  title="Copy code"
+                                  style={{
+                                    background: 'transparent',
+                                    border: 'none',
+                                    cursor: 'pointer',
+                                    color: copiedCode === c.code ? '#059669' : 'var(--neutral-400)',
+                                    padding: '0.2rem'
+                                  }}
+                                >
+                                  {copiedCode === c.code ? <Check size={14} /> : <Copy size={14} />}
+                                </button>
+                              </div>
+                            </td>
+
+                            {/* Discount Value */}
+                            <td>
+                              <div style={{ fontWeight: 800, color: c.discountType === 'flat' ? '#059669' : '#0284C7', fontSize: '0.92rem' }}>
+                                {c.discountType === 'flat' ? `Flat ₹${c.discountValue}` : `${c.discountValue}% OFF`}
+                              </div>
+                              <div style={{ fontSize: '0.72rem', color: 'var(--neutral-500)', textTransform: 'capitalize' }}>
+                                {c.discountType} discount
+                              </div>
+                            </td>
+
+                            {/* Min Order & Max Cap */}
+                            <td>
+                              <div style={{ fontSize: '0.82rem', fontWeight: 600 }}>
+                                Min: ₹{c.minOrderAmount || 0}
+                              </div>
+                              {c.maxDiscount ? (
+                                <div style={{ fontSize: '0.72rem', color: 'var(--neutral-500)' }}>
+                                  Cap: ₹{c.maxDiscount}
+                                </div>
+                              ) : (
+                                <div style={{ fontSize: '0.72rem', color: 'var(--neutral-400)' }}>
+                                  No cap
+                                </div>
+                              )}
+                            </td>
+
+                            {/* Description */}
+                            <td style={{ maxWidth: 220 }}>
+                              <div style={{ fontSize: '0.82rem', color: 'var(--neutral-700)', lineHeight: 1.4 }}>
+                                {c.description}
+                              </div>
+                              {c.validUntil && (
+                                <div style={{ fontSize: '0.72rem', color: isExpired ? '#DC2626' : 'var(--neutral-500)', marginTop: '0.2rem' }}>
+                                  Valid till: {new Date(c.validUntil).toLocaleDateString([], { month: 'short', day: 'numeric', year: 'numeric' })}
+                                </div>
+                              )}
+                            </td>
+
+                            {/* Redemptions */}
+                            <td style={{ minWidth: 120 }}>
+                              <div style={{ fontSize: '0.82rem', fontWeight: 700, color: 'var(--primary-navy-950)' }}>
+                                {c.timesUsed || 0} {c.usageLimit ? `/ ${c.usageLimit}` : 'used'}
+                              </div>
+                              {usagePct !== null && (
+                                <div style={{ width: '100%', height: 4, background: '#E2E8F0', borderRadius: 9999, marginTop: '0.25rem', overflow: 'hidden' }}>
+                                  <div style={{ width: `${usagePct}%`, height: '100%', background: usagePct >= 90 ? '#DC2626' : '#059669', borderRadius: 9999 }} />
+                                </div>
+                              )}
+                            </td>
+
+                            {/* Status */}
+                            <td>
+                              <span className={`status-pill ${displayStatus === 'Active' ? 'success' : displayStatus === 'Expired' ? 'danger' : 'neutral'
+                                }`}>
+                                {displayStatus}
                               </span>
-                              <button
-                                type="button"
-                                onClick={() => handleCopyCode(c.code)}
-                                title="Copy code"
-                                style={{
-                                  background: 'transparent',
-                                  border: 'none',
-                                  cursor: 'pointer',
-                                  color: copiedCode === c.code ? '#059669' : 'var(--neutral-400)',
-                                  padding: '0.2rem'
-                                }}
-                              >
-                                {copiedCode === c.code ? <Check size={14} /> : <Copy size={14} />}
-                              </button>
-                            </div>
-                          </td>
+                            </td>
 
-                          {/* Discount Value */}
-                          <td>
-                            <div style={{ fontWeight: 800, color: c.discountType === 'flat' ? '#059669' : '#0284C7', fontSize: '0.92rem' }}>
-                              {c.discountType === 'flat' ? `Flat ₹${c.discountValue}` : `${c.discountValue}% OFF`}
-                            </div>
-                            <div style={{ fontSize: '0.72rem', color: 'var(--neutral-500)', textTransform: 'capitalize' }}>
-                              {c.discountType} discount
-                            </div>
-                          </td>
+                            {/* Actions */}
+                            <td style={{ textAlign: 'right' }}>
+                              <div style={{ display: 'inline-flex', alignItems: 'center', gap: '0.35rem' }}>
+                                {/* Quick Toggle Status */}
+                                <button
+                                  type="button"
+                                  onClick={() => handleToggleCouponStatus(c)}
+                                  title={c.status === 'Active' ? 'Click to Deactivate' : 'Click to Activate'}
+                                  style={{
+                                    background: c.status === 'Active' ? '#ECFDF5' : '#F1F5F9',
+                                    border: `1px solid ${c.status === 'Active' ? '#A7F3D0' : '#CBD5E1'}`,
+                                    color: c.status === 'Active' ? '#059669' : '#64748B',
+                                    padding: '0.25rem 0.5rem',
+                                    borderRadius: 6,
+                                    fontSize: '0.74rem',
+                                    fontWeight: 700,
+                                    cursor: 'pointer'
+                                  }}
+                                >
+                                  {c.status === 'Active' ? 'Active' : 'Enable'}
+                                </button>
 
-                          {/* Min Order & Max Cap */}
-                          <td>
-                            <div style={{ fontSize: '0.82rem', fontWeight: 600 }}>
-                              Min: ₹{c.minOrderAmount || 0}
-                            </div>
-                            {c.maxDiscount ? (
-                              <div style={{ fontSize: '0.72rem', color: 'var(--neutral-500)' }}>
-                                Cap: ₹{c.maxDiscount}
+                                {/* Edit Button */}
+                                <button
+                                  type="button"
+                                  onClick={() => handleOpenEditModal(c)}
+                                  title="Edit Coupon"
+                                  style={{
+                                    background: '#EFF6FF',
+                                    border: '1px solid #BFDBFE',
+                                    color: '#1D4ED8',
+                                    padding: '0.3rem 0.45rem',
+                                    borderRadius: 6,
+                                    cursor: 'pointer',
+                                    display: 'flex',
+                                    alignItems: 'center'
+                                  }}
+                                >
+                                  <Edit2 size={13} />
+                                </button>
+
+                                {/* Delete Button */}
+                                <button
+                                  type="button"
+                                  onClick={() => handleDeleteCouponClick(c)}
+                                  title="Delete Coupon"
+                                  style={{
+                                    background: '#FEF2F2',
+                                    border: '1px solid #FECDD3',
+                                    color: '#E11D48',
+                                    padding: '0.3rem 0.45rem',
+                                    borderRadius: 6,
+                                    cursor: 'pointer',
+                                    display: 'flex',
+                                    alignItems: 'center'
+                                  }}
+                                >
+                                  <Trash2 size={13} />
+                                </button>
                               </div>
-                            ) : (
-                              <div style={{ fontSize: '0.72rem', color: 'var(--neutral-400)' }}>
-                                No cap
-                              </div>
-                            )}
-                          </td>
-
-                          {/* Description */}
-                          <td style={{ maxWidth: 220 }}>
-                            <div style={{ fontSize: '0.82rem', color: 'var(--neutral-700)', lineHeight: 1.4 }}>
-                              {c.description}
-                            </div>
-                            {c.validUntil && (
-                              <div style={{ fontSize: '0.72rem', color: isExpired ? '#DC2626' : 'var(--neutral-500)', marginTop: '0.2rem' }}>
-                                Valid till: {new Date(c.validUntil).toLocaleDateString([], { month: 'short', day: 'numeric', year: 'numeric' })}
-                              </div>
-                            )}
-                          </td>
-
-                          {/* Redemptions */}
-                          <td style={{ minWidth: 120 }}>
-                            <div style={{ fontSize: '0.82rem', fontWeight: 700, color: 'var(--primary-navy-950)' }}>
-                              {c.timesUsed || 0} {c.usageLimit ? `/ ${c.usageLimit}` : 'used'}
-                            </div>
-                            {usagePct !== null && (
-                              <div style={{ width: '100%', height: 4, background: '#E2E8F0', borderRadius: 9999, marginTop: '0.25rem', overflow: 'hidden' }}>
-                                <div style={{ width: `${usagePct}%`, height: '100%', background: usagePct >= 90 ? '#DC2626' : '#059669', borderRadius: 9999 }} />
-                              </div>
-                            )}
-                          </td>
-
-                          {/* Status */}
-                          <td>
-                            <span className={`status-pill ${
-                              displayStatus === 'Active' ? 'success' : displayStatus === 'Expired' ? 'danger' : 'neutral'
-                            }`}>
-                              {displayStatus}
-                            </span>
-                          </td>
-
-                          {/* Actions */}
-                          <td style={{ textAlign: 'right' }}>
-                            <div style={{ display: 'inline-flex', alignItems: 'center', gap: '0.35rem' }}>
-                              {/* Quick Toggle Status */}
-                              <button
-                                type="button"
-                                onClick={() => handleToggleCouponStatus(c)}
-                                title={c.status === 'Active' ? 'Click to Deactivate' : 'Click to Activate'}
-                                style={{
-                                  background: c.status === 'Active' ? '#ECFDF5' : '#F1F5F9',
-                                  border: `1px solid ${c.status === 'Active' ? '#A7F3D0' : '#CBD5E1'}`,
-                                  color: c.status === 'Active' ? '#059669' : '#64748B',
-                                  padding: '0.25rem 0.5rem',
-                                  borderRadius: 6,
-                                  fontSize: '0.74rem',
-                                  fontWeight: 700,
-                                  cursor: 'pointer'
-                                }}
-                              >
-                                {c.status === 'Active' ? 'Active' : 'Enable'}
-                              </button>
-
-                              {/* Edit Button */}
-                              <button
-                                type="button"
-                                onClick={() => handleOpenEditModal(c)}
-                                title="Edit Coupon"
-                                style={{
-                                  background: '#EFF6FF',
-                                  border: '1px solid #BFDBFE',
-                                  color: '#1D4ED8',
-                                  padding: '0.3rem 0.45rem',
-                                  borderRadius: 6,
-                                  cursor: 'pointer',
-                                  display: 'flex',
-                                  alignItems: 'center'
-                                }}
-                              >
-                                <Edit2 size={13} />
-                              </button>
-
-                              {/* Delete Button */}
-                              <button
-                                type="button"
-                                onClick={() => handleDeleteCouponClick(c)}
-                                title="Delete Coupon"
-                                style={{
-                                  background: '#FEF2F2',
-                                  border: '1px solid #FECDD3',
-                                  color: '#E11D48',
-                                  padding: '0.3rem 0.45rem',
-                                  borderRadius: 6,
-                                  cursor: 'pointer',
-                                  display: 'flex',
-                                  alignItems: 'center'
-                                }}
-                              >
-                                <Trash2 size={13} />
-                              </button>
-                            </div>
-                          </td>
-                        </tr>
-                      );
-                    })}
-                  </tbody>
-                </table>
-              </div>
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
               </>
             )}
           </div>
@@ -4982,10 +5016,10 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                         const displayPin = (u.pin && u.pin !== '••••' && u.pin.trim() !== '')
                           ? u.pin.trim()
                           : (u.role === 'admin' ? '2026' : u.role === 'doctor' ? '4321' : '••••');
-                        const roleBadgeClass = 
+                        const roleBadgeClass =
                           u.role === 'admin' ? 'admin' :
-                          u.role === 'doctor' ? 'doctor' :
-                          u.role === 'nurse' ? 'nurse' : 'patient';
+                            u.role === 'doctor' ? 'doctor' :
+                              u.role === 'nurse' ? 'nurse' : 'patient';
                         const isSelected = selectedUserIds.has(u.id);
 
                         return (
@@ -5000,165 +5034,165 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                             </td>
                             {/* Name & Designation */}
                             <td>
-                            <div style={{ display: 'flex', alignItems: 'center', gap: '0.65rem' }}>
-                              <div style={{
-                                width: 36,
-                                height: 36,
-                                borderRadius: '50%',
-                                background: u.role === 'admin' ? '#EDE9FE' : u.role === 'doctor' ? '#E0F2FE' : u.role === 'nurse' ? '#ECFDF5' : '#FEF3C7',
-                                color: u.role === 'admin' ? '#7C3AED' : u.role === 'doctor' ? '#0284C7' : u.role === 'nurse' ? '#059669' : '#D97706',
-                                display: 'flex',
-                                alignItems: 'center',
-                                justifyContent: 'center',
-                                fontWeight: 800,
-                                fontSize: '0.85rem'
-                              }}>
-                                {u.name.split(' ').map((n) => n[0]).slice(0, 2).join('')}
+                              <div style={{ display: 'flex', alignItems: 'center', gap: '0.65rem' }}>
+                                <div style={{
+                                  width: 36,
+                                  height: 36,
+                                  borderRadius: '50%',
+                                  background: u.role === 'admin' ? '#EDE9FE' : u.role === 'doctor' ? '#E0F2FE' : u.role === 'nurse' ? '#ECFDF5' : '#FEF3C7',
+                                  color: u.role === 'admin' ? '#7C3AED' : u.role === 'doctor' ? '#0284C7' : u.role === 'nurse' ? '#059669' : '#D97706',
+                                  display: 'flex',
+                                  alignItems: 'center',
+                                  justifyContent: 'center',
+                                  fontWeight: 800,
+                                  fontSize: '0.85rem'
+                                }}>
+                                  {u.name.split(' ').map((n) => n[0]).slice(0, 2).join('')}
+                                </div>
+                                <div>
+                                  <div style={{ fontWeight: 700, color: 'var(--primary-navy-950)' }}>{u.name}</div>
+                                  <div style={{ fontSize: '0.75rem', color: 'var(--neutral-500)' }}>{u.designation || u.role}</div>
+                                </div>
                               </div>
-                              <div>
-                                <div style={{ fontWeight: 700, color: 'var(--primary-navy-950)' }}>{u.name}</div>
-                                <div style={{ fontSize: '0.75rem', color: 'var(--neutral-500)' }}>{u.designation || u.role}</div>
-                              </div>
-                            </div>
-                          </td>
+                            </td>
 
-                          {/* Role Badge */}
-                          <td>
-                            <span className={`role-badge ${roleBadgeClass}`}>
-                              {u.role}
-                            </span>
-                          </td>
-
-                          {/* Login Identifier */}
-                          <td>
-                            <div style={{ display: 'flex', alignItems: 'center', gap: '0.35rem' }}>
-                              {u.email ? <Mail size={13} style={{ color: 'var(--neutral-400)' }} /> : <Phone size={13} style={{ color: 'var(--neutral-400)' }} />}
-                              <span style={{ fontWeight: 600, fontSize: '0.84rem' }}>{u.identifier || u.email || u.phone}</span>
-                            </div>
-                            {u.phone && u.email && (
-                              <div style={{ fontSize: '0.72rem', color: 'var(--neutral-500)', marginTop: '0.15rem' }}>
-                                Mobile: {u.phone}
-                              </div>
-                            )}
-                          </td>
-
-                          {/* 4-Digit Security PIN */}
-                          <td>
-                            <div style={{ display: 'inline-flex', alignItems: 'center', gap: '0.35rem' }}>
-                              <span className="pin-badge" style={{ fontSize: '0.92rem' }}>
-                                <Lock size={12} style={{ color: '#0284C7' }} />
-                                <span>{isRevealed ? displayPin : '••••'}</span>
+                            {/* Role Badge */}
+                            <td>
+                              <span className={`role-badge ${roleBadgeClass}`}>
+                                {u.role}
                               </span>
-                              <button
-                                type="button"
-                                onClick={() => togglePinVisibility(u.id)}
-                                title={isRevealed ? 'Hide PIN' : 'Reveal PIN'}
-                                style={{ background: 'transparent', border: 'none', cursor: 'pointer', padding: 3, color: 'var(--neutral-400)' }}
-                              >
-                                {isRevealed ? <EyeOff size={14} /> : <Eye size={14} />}
-                              </button>
-                              <button
-                                type="button"
-                                onClick={() => {
-                                  navigator.clipboard.writeText(displayPin);
-                                  setCopiedPinUserId(u.id);
-                                  setTimeout(() => setCopiedPinUserId(null), 2000);
-                                }}
-                                title="Copy PIN"
-                                style={{ background: 'transparent', border: 'none', cursor: 'pointer', padding: 3, color: copiedPinUserId === u.id ? '#059669' : 'var(--neutral-400)' }}
-                              >
-                                {copiedPinUserId === u.id ? <Check size={14} /> : <Copy size={14} />}
-                              </button>
-                            </div>
-                          </td>
+                            </td>
 
-                          {/* Service Area */}
-                          <td>
-                            <div style={{ display: 'flex', alignItems: 'center', gap: '0.3rem', fontSize: '0.82rem' }}>
-                              <MapPin size={13} style={{ color: 'var(--neutral-500)' }} />
-                              <span>{u.serviceArea || 'Hyderabad Multi-Zone'}</span>
-                            </div>
-                          </td>
+                            {/* Login Identifier */}
+                            <td>
+                              <div style={{ display: 'flex', alignItems: 'center', gap: '0.35rem' }}>
+                                {u.email ? <Mail size={13} style={{ color: 'var(--neutral-400)' }} /> : <Phone size={13} style={{ color: 'var(--neutral-400)' }} />}
+                                <span style={{ fontWeight: 600, fontSize: '0.84rem' }}>{u.identifier || u.email || u.phone}</span>
+                              </div>
+                              {u.phone && u.email && (
+                                <div style={{ fontSize: '0.72rem', color: 'var(--neutral-500)', marginTop: '0.15rem' }}>
+                                  Mobile: {u.phone}
+                                </div>
+                              )}
+                            </td>
 
-                          {/* Status */}
-                          <td>
-                            <span className="status-pill success">
-                              <ShieldCheck size={12} />
-                              <span>Authorized</span>
-                            </span>
-                          </td>
+                            {/* 4-Digit Security PIN */}
+                            <td>
+                              <div style={{ display: 'inline-flex', alignItems: 'center', gap: '0.35rem' }}>
+                                <span className="pin-badge" style={{ fontSize: '0.92rem' }}>
+                                  <Lock size={12} style={{ color: '#0284C7' }} />
+                                  <span>{isRevealed ? displayPin : '••••'}</span>
+                                </span>
+                                <button
+                                  type="button"
+                                  onClick={() => togglePinVisibility(u.id)}
+                                  title={isRevealed ? 'Hide PIN' : 'Reveal PIN'}
+                                  style={{ background: 'transparent', border: 'none', cursor: 'pointer', padding: 3, color: 'var(--neutral-400)' }}
+                                >
+                                  {isRevealed ? <EyeOff size={14} /> : <Eye size={14} />}
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    navigator.clipboard.writeText(displayPin);
+                                    setCopiedPinUserId(u.id);
+                                    setTimeout(() => setCopiedPinUserId(null), 2000);
+                                  }}
+                                  title="Copy PIN"
+                                  style={{ background: 'transparent', border: 'none', cursor: 'pointer', padding: 3, color: copiedPinUserId === u.id ? '#059669' : 'var(--neutral-400)' }}
+                                >
+                                  {copiedPinUserId === u.id ? <Check size={14} /> : <Copy size={14} />}
+                                </button>
+                              </div>
+                            </td>
 
-                          {/* Actions */}
-                          <td style={{ textAlign: 'right' }}>
-                            <div style={{ display: 'inline-flex', alignItems: 'center', gap: '0.35rem' }}>
-                              <button
-                                type="button"
-                                onClick={() => {
-                                  const details = `Role: ${u.role}\nIdentifier: ${u.identifier || u.email || u.phone}\nPIN: ${u.pin}`;
-                                  navigator.clipboard.writeText(details);
-                                  setCopiedPinUserId(u.id);
-                                  setTimeout(() => setCopiedPinUserId(null), 2000);
-                                }}
-                                className="btn btn-outline btn-sm"
-                                style={{ fontSize: '0.75rem', padding: '0.3rem 0.5rem' }}
-                                title="Copy full login credentials (Identifier & PIN)"
-                              >
-                                {copiedPinUserId === u.id ? (
-                                  <>
-                                    <Check size={12} style={{ color: '#059669' }} />
-                                    <span style={{ color: '#059669' }}>Copied!</span>
-                                  </>
-                                ) : (
-                                  <>
-                                    <Copy size={12} />
-                                    <span>Copy</span>
-                                  </>
-                                )}
-                              </button>
+                            {/* Service Area */}
+                            <td>
+                              <div style={{ display: 'flex', alignItems: 'center', gap: '0.3rem', fontSize: '0.82rem' }}>
+                                <MapPin size={13} style={{ color: 'var(--neutral-500)' }} />
+                                <span>{u.serviceArea || 'Hyderabad Multi-Zone'}</span>
+                              </div>
+                            </td>
 
-                              <button
-                                type="button"
-                                onClick={() => handleOpenEditUserModal(u)}
-                                title="Edit User Credentials in Supabase"
-                                style={{
-                                  background: '#EFF6FF',
-                                  border: '1px solid #BFDBFE',
-                                  color: '#1D4ED8',
-                                  padding: '0.3rem 0.45rem',
-                                  borderRadius: 6,
-                                  cursor: 'pointer',
-                                  display: 'flex',
-                                  alignItems: 'center'
-                                }}
-                              >
-                                <Edit2 size={13} />
-                              </button>
+                            {/* Status */}
+                            <td>
+                              <span className="status-pill success">
+                                <ShieldCheck size={12} />
+                                <span>Authorized</span>
+                              </span>
+                            </td>
 
-                              <button
-                                type="button"
-                                onClick={() => handleDeleteUserClick(u)}
-                                title="Delete User from Supabase"
-                                style={{
-                                  background: '#FEF2F2',
-                                  border: '1px solid #FECDD3',
-                                  color: '#E11D48',
-                                  padding: '0.3rem 0.45rem',
-                                  borderRadius: 6,
-                                  cursor: 'pointer',
-                                  display: 'flex',
-                                  alignItems: 'center'
-                                }}
-                              >
-                                <Trash2 size={13} />
-                              </button>
-                            </div>
-                          </td>
-                        </tr>
-                      );
-                    })}
-                  </tbody>
-                </table>
-              </div>
+                            {/* Actions */}
+                            <td style={{ textAlign: 'right' }}>
+                              <div style={{ display: 'inline-flex', alignItems: 'center', gap: '0.35rem' }}>
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    const details = `Role: ${u.role}\nIdentifier: ${u.identifier || u.email || u.phone}\nPIN: ${u.pin}`;
+                                    navigator.clipboard.writeText(details);
+                                    setCopiedPinUserId(u.id);
+                                    setTimeout(() => setCopiedPinUserId(null), 2000);
+                                  }}
+                                  className="btn btn-outline btn-sm"
+                                  style={{ fontSize: '0.75rem', padding: '0.3rem 0.5rem' }}
+                                  title="Copy full login credentials (Identifier & PIN)"
+                                >
+                                  {copiedPinUserId === u.id ? (
+                                    <>
+                                      <Check size={12} style={{ color: '#059669' }} />
+                                      <span style={{ color: '#059669' }}>Copied!</span>
+                                    </>
+                                  ) : (
+                                    <>
+                                      <Copy size={12} />
+                                      <span>Copy</span>
+                                    </>
+                                  )}
+                                </button>
+
+                                <button
+                                  type="button"
+                                  onClick={() => handleOpenEditUserModal(u)}
+                                  title="Edit User Credentials in Supabase"
+                                  style={{
+                                    background: '#EFF6FF',
+                                    border: '1px solid #BFDBFE',
+                                    color: '#1D4ED8',
+                                    padding: '0.3rem 0.45rem',
+                                    borderRadius: 6,
+                                    cursor: 'pointer',
+                                    display: 'flex',
+                                    alignItems: 'center'
+                                  }}
+                                >
+                                  <Edit2 size={13} />
+                                </button>
+
+                                <button
+                                  type="button"
+                                  onClick={() => handleDeleteUserClick(u)}
+                                  title="Delete User from Supabase"
+                                  style={{
+                                    background: '#FEF2F2',
+                                    border: '1px solid #FECDD3',
+                                    color: '#E11D48',
+                                    padding: '0.3rem 0.45rem',
+                                    borderRadius: 6,
+                                    cursor: 'pointer',
+                                    display: 'flex',
+                                    alignItems: 'center'
+                                  }}
+                                >
+                                  <Trash2 size={13} />
+                                </button>
+                              </div>
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
               </>
             )}
           </div>
@@ -5370,219 +5404,219 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                                 style={{ cursor: 'pointer', accentColor: '#E11D48', width: 16, height: 16 }}
                               />
                             </td>
-                          {/* Object Key */}
-                          <td>
-                            <div style={{ display: 'flex', alignItems: 'center', gap: '0.55rem' }}>
-                              <div style={{
-                                width: 34,
-                                height: 34,
-                                borderRadius: 8,
-                                background: isPrescription ? '#ECFDF5' : isInvoice ? '#FFFBEB' : '#F1F5F9',
-                                color: isPrescription ? '#059669' : isInvoice ? '#D97706' : '#475569',
-                                display: 'flex',
-                                alignItems: 'center',
-                                justifyContent: 'center',
-                                flexShrink: 0
-                              }}>
-                                {isPrescription ? <FileText size={17} /> : isInvoice ? <Receipt size={17} /> : <Cloud size={17} />}
-                              </div>
-                              <div style={{ minWidth: 0 }}>
-                                <div style={{ fontWeight: 700, fontSize: '0.84rem', color: 'var(--primary-navy-950)' }}>
-                                  {obj.fileName}
+                            {/* Object Key */}
+                            <td>
+                              <div style={{ display: 'flex', alignItems: 'center', gap: '0.55rem' }}>
+                                <div style={{
+                                  width: 34,
+                                  height: 34,
+                                  borderRadius: 8,
+                                  background: isPrescription ? '#ECFDF5' : isInvoice ? '#FFFBEB' : '#F1F5F9',
+                                  color: isPrescription ? '#059669' : isInvoice ? '#D97706' : '#475569',
+                                  display: 'flex',
+                                  alignItems: 'center',
+                                  justifyContent: 'center',
+                                  flexShrink: 0
+                                }}>
+                                  {isPrescription ? <FileText size={17} /> : isInvoice ? <Receipt size={17} /> : <Cloud size={17} />}
                                 </div>
-                                <div style={{ fontSize: '0.72rem', color: '#64748B', fontFamily: 'monospace' }}>
-                                  {obj.key}
-                                </div>
-                              </div>
-                            </div>
-                          </td>
-
-                          {/* Category Badge */}
-                          <td>
-                            <span style={{
-                              display: 'inline-flex',
-                              alignItems: 'center',
-                              gap: '0.25rem',
-                              padding: '2px 8px',
-                              borderRadius: 9999,
-                              fontSize: '0.72rem',
-                              fontWeight: 700,
-                              background: isPrescription ? '#ECFDF5' : isInvoice ? '#FFFBEB' : '#EFF6FF',
-                              color: isPrescription ? '#059669' : isInvoice ? '#D97706' : '#1D4ED8',
-                              border: `1px solid ${isPrescription ? '#A7F3D0' : isInvoice ? '#FDE68A' : '#BFDBFE'}`
-                            }}>
-                              {isPrescription ? 'Rx Mandatory' : obj.category.toUpperCase()}
-                            </span>
-                          </td>
-
-                          {/* Metadata */}
-                          <td>
-                            {obj.category === 'certificates' ? (
-                              (() => {
-                                const matchedNurse = nurses.find((n) =>
-                                  n.id === obj.metadata?.nurseId ||
-                                  n.id === obj.metadata?.bookingId ||
-                                  obj.key.toLowerCase().includes(n.id.toLowerCase()) ||
-                                  (obj.metadata?.patientName && n.name.toLowerCase() === obj.metadata.patientName.toLowerCase()) ||
-                                  obj.fileName.toLowerCase().includes(n.name.toLowerCase().split(' ')[0] || '')
-                                );
-                                const nurseName = matchedNurse?.name || obj.metadata?.patientName || 'Registered Nurse';
-                                const nurseArea = matchedNurse?.serviceArea || 'Hyderabad Zone';
-                                const certVerified = matchedNurse?.certificateVerified;
-                                return (
-                                  <div>
-                                    <div style={{ fontSize: '0.84rem', fontWeight: 700, color: 'var(--primary-navy-950)', display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
-                                      <span>{nurseName}</span>
-                                      {certVerified ? (
-                                        <span style={{ fontSize: '0.68rem', padding: '1px 6px', background: '#DCFCE7', color: '#166534', borderRadius: 9999, fontWeight: 700 }}>
-                                          ✓ Verified RN
-                                        </span>
-                                      ) : (
-                                        <span style={{ fontSize: '0.68rem', padding: '1px 6px', background: '#FEF3C7', color: '#92400E', borderRadius: 9999, fontWeight: 700 }}>
-                                          ⏳ Pending Review
-                                        </span>
-                                      )}
-                                    </div>
-                                    <div style={{ fontSize: '0.74rem', color: '#64748B', marginTop: '2px' }}>
-                                      {matchedNurse ? `${matchedNurse.qualification} • ${nurseArea} • ${matchedNurse.phone}` : (obj.metadata?.description || 'Nursing Council Reg Certificate')}
-                                    </div>
+                                <div style={{ minWidth: 0 }}>
+                                  <div style={{ fontWeight: 700, fontSize: '0.84rem', color: 'var(--primary-navy-950)' }}>
+                                    {obj.fileName}
                                   </div>
-                                );
-                              })()
-                            ) : obj.category === 'invoices' ? (
-                              <div>
-                                <div style={{ fontSize: '0.82rem', fontWeight: 600, color: 'var(--primary-navy-900)' }}>
-                                  Patient: {obj.metadata?.patientName || 'Direct Billing'}
-                                </div>
-                                <div style={{ fontSize: '0.72rem', color: '#64748B' }}>
-                                  Ref: {obj.metadata?.bookingId || 'Direct'}
+                                  <div style={{ fontSize: '0.72rem', color: '#64748B', fontFamily: 'monospace' }}>
+                                    {obj.key}
+                                  </div>
                                 </div>
                               </div>
-                            ) : obj.metadata?.patientName ? (
-                              <div>
-                                <div style={{ fontSize: '0.82rem', fontWeight: 600, color: 'var(--primary-navy-900)' }}>
-                                  {obj.metadata.patientName}
-                                </div>
-                                <div style={{ fontSize: '0.72rem', color: '#64748B' }}>
-                                  Ref: {obj.metadata.bookingId || 'Direct Upload'}
-                                </div>
-                              </div>
-                            ) : (
-                              <span style={{ fontSize: '0.76rem', color: '#94A3B8' }}>{obj.metadata?.description || 'System asset'}</span>
-                            )}
-                          </td>
+                            </td>
 
-                          {/* Size */}
-                          <td>
-                            <span style={{ fontSize: '0.82rem', color: 'var(--neutral-700)', fontWeight: 600 }}>
-                              {(obj.sizeBytes / 1024).toFixed(0)} KB
-                            </span>
-                          </td>
+                            {/* Category Badge */}
+                            <td>
+                              <span style={{
+                                display: 'inline-flex',
+                                alignItems: 'center',
+                                gap: '0.25rem',
+                                padding: '2px 8px',
+                                borderRadius: 9999,
+                                fontSize: '0.72rem',
+                                fontWeight: 700,
+                                background: isPrescription ? '#ECFDF5' : isInvoice ? '#FFFBEB' : '#EFF6FF',
+                                color: isPrescription ? '#059669' : isInvoice ? '#D97706' : '#1D4ED8',
+                                border: `1px solid ${isPrescription ? '#A7F3D0' : isInvoice ? '#FDE68A' : '#BFDBFE'}`
+                              }}>
+                                {isPrescription ? 'Rx Mandatory' : obj.category.toUpperCase()}
+                              </span>
+                            </td>
 
-                          {/* Upload Date */}
-                          <td>
-                            <span style={{ fontSize: '0.78rem', color: 'var(--neutral-500)' }}>
-                              {new Date(obj.uploadedAt).toLocaleDateString('en-IN', {
-                                day: '2-digit',
-                                month: 'short',
-                                hour: '2-digit',
-                                minute: '2-digit'
-                              })}
-                            </span>
-                          </td>
-
-                          {/* Actions */}
-                          <td style={{ textAlign: 'right' }}>
-                            <div style={{ display: 'inline-flex', alignItems: 'center', gap: '0.35rem' }}>
-                              {obj.category === 'certificates' && (() => {
-                                const matchedNurse = nurses.find((n) =>
-                                  n.id === obj.metadata?.nurseId ||
-                                  n.id === obj.metadata?.bookingId ||
-                                  obj.key.toLowerCase().includes(n.id.toLowerCase()) ||
-                                  (obj.metadata?.patientName && n.name.toLowerCase() === obj.metadata.patientName.toLowerCase()) ||
-                                  obj.fileName.toLowerCase().includes(n.name.toLowerCase().split(' ')[0] || '')
-                                );
-                                if (matchedNurse && !matchedNurse.certificateVerified && onUpdateNurseRecord) {
-                                  return (
-                                    <button
-                                      type="button"
-                                      onClick={async () => {
-                                        await onUpdateNurseRecord(matchedNurse.id, { certificateVerified: true });
-                                        showToast(`Verified & Approved Certificate for ${matchedNurse.name}!`);
-                                      }}
-                                      className="btn btn-sm"
-                                      style={{
-                                        background: '#ECFDF5',
-                                        border: '1px solid #A7F3D0',
-                                        color: '#059669',
-                                        padding: '0.25rem 0.55rem',
-                                        borderRadius: 6,
-                                        fontSize: '0.72rem',
-                                        fontWeight: 700,
-                                        cursor: 'pointer'
-                                      }}
-                                      title="Approve and verify this nurse certificate"
-                                    >
-                                      ✓ Approve RN
-                                    </button>
+                            {/* Metadata */}
+                            <td>
+                              {obj.category === 'certificates' ? (
+                                (() => {
+                                  const matchedNurse = nurses.find((n) =>
+                                    n.id === obj.metadata?.nurseId ||
+                                    n.id === obj.metadata?.bookingId ||
+                                    obj.key.toLowerCase().includes(n.id.toLowerCase()) ||
+                                    (obj.metadata?.patientName && n.name.toLowerCase() === obj.metadata.patientName.toLowerCase()) ||
+                                    obj.fileName.toLowerCase().includes(n.name.toLowerCase().split(' ')[0] || '')
                                   );
-                                }
-                                return null;
-                              })()}
-
-                              {isPrescription && (
-                                <button
-                                  type="button"
-                                  onClick={() => handleViewStorageObjectPrescription(obj)}
-                                  className="btn btn-sm"
-                                  style={{
-                                    background: '#ECFDF5',
-                                    border: '1px solid #A7F3D0',
-                                    color: '#059669',
-                                    padding: '0.25rem 0.55rem',
-                                    borderRadius: 6,
-                                    fontSize: '0.74rem',
-                                    fontWeight: 700,
-                                    display: 'inline-flex',
-                                    alignItems: 'center',
-                                    gap: '0.25rem'
-                                  }}
-                                  title="Inspect Prescription Document"
-                                >
-                                  <Eye size={12} />
-                                  <span>View Rx</span>
-                                </button>
+                                  const nurseName = matchedNurse?.name || obj.metadata?.patientName || 'Registered Nurse';
+                                  const nurseArea = matchedNurse?.serviceArea || 'Hyderabad Zone';
+                                  const certVerified = matchedNurse?.certificateVerified;
+                                  return (
+                                    <div>
+                                      <div style={{ fontSize: '0.84rem', fontWeight: 700, color: 'var(--primary-navy-950)', display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
+                                        <span>{nurseName}</span>
+                                        {certVerified ? (
+                                          <span style={{ fontSize: '0.68rem', padding: '1px 6px', background: '#DCFCE7', color: '#166534', borderRadius: 9999, fontWeight: 700 }}>
+                                            ✓ Verified RN
+                                          </span>
+                                        ) : (
+                                          <span style={{ fontSize: '0.68rem', padding: '1px 6px', background: '#FEF3C7', color: '#92400E', borderRadius: 9999, fontWeight: 700 }}>
+                                            ⏳ Pending Review
+                                          </span>
+                                        )}
+                                      </div>
+                                      <div style={{ fontSize: '0.74rem', color: '#64748B', marginTop: '2px' }}>
+                                        {matchedNurse ? `${matchedNurse.qualification} • ${nurseArea} • ${matchedNurse.phone}` : (obj.metadata?.description || 'Nursing Council Reg Certificate')}
+                                      </div>
+                                    </div>
+                                  );
+                                })()
+                              ) : obj.category === 'invoices' ? (
+                                <div>
+                                  <div style={{ fontSize: '0.82rem', fontWeight: 600, color: 'var(--primary-navy-900)' }}>
+                                    Patient: {obj.metadata?.patientName || 'Direct Billing'}
+                                  </div>
+                                  <div style={{ fontSize: '0.72rem', color: '#64748B' }}>
+                                    Ref: {obj.metadata?.bookingId || 'Direct'}
+                                  </div>
+                                </div>
+                              ) : obj.metadata?.patientName ? (
+                                <div>
+                                  <div style={{ fontSize: '0.82rem', fontWeight: 600, color: 'var(--primary-navy-900)' }}>
+                                    {obj.metadata.patientName}
+                                  </div>
+                                  <div style={{ fontSize: '0.72rem', color: '#64748B' }}>
+                                    Ref: {obj.metadata.bookingId || 'Direct Upload'}
+                                  </div>
+                                </div>
+                              ) : (
+                                <span style={{ fontSize: '0.76rem', color: '#94A3B8' }}>{obj.metadata?.description || 'System asset'}</span>
                               )}
+                            </td>
 
-                              {isInvoice && (
-                                <button
-                                  type="button"
-                                  onClick={() => {
-                                    const matchingBooking = bookings.find((b) => b.id === obj.metadata?.bookingId);
-                                    if (matchingBooking) {
-                                      handleViewBookingInvoice(matchingBooking);
-                                    } else {
-                                      window.open(obj.dataUrl || obj.publicUrl, '_blank');
-                                    }
-                                  }}
-                                  className="btn btn-sm"
-                                  style={{
-                                    background: '#FFFBEB',
-                                    border: '1px solid #FDE68A',
-                                    color: '#B45309',
-                                    padding: '0.25rem 0.55rem',
-                                    borderRadius: 6,
-                                    fontSize: '0.74rem',
-                                    fontWeight: 700,
-                                    display: 'inline-flex',
-                                    alignItems: 'center',
-                                    gap: '0.25rem'
-                                  }}
-                                  title="View Invoice"
-                                >
-                                  <Receipt size={12} />
-                                  <span>Invoice</span>
-                                </button>
+                            {/* Size */}
+                            <td>
+                              <span style={{ fontSize: '0.82rem', color: 'var(--neutral-700)', fontWeight: 600 }}>
+                                {(obj.sizeBytes / 1024).toFixed(0)} KB
+                              </span>
+                            </td>
+
+                            {/* Upload Date */}
+                            <td>
+                              <span style={{ fontSize: '0.78rem', color: 'var(--neutral-500)' }}>
+                                {new Date(obj.uploadedAt).toLocaleDateString('en-IN', {
+                                  day: '2-digit',
+                                  month: 'short',
+                                  hour: '2-digit',
+                                  minute: '2-digit'
+                                })}
+                              </span>
+                            </td>
+
+                            {/* Actions */}
+                            <td style={{ textAlign: 'right' }}>
+                              <div style={{ display: 'inline-flex', alignItems: 'center', gap: '0.35rem' }}>
+                                {obj.category === 'certificates' && (() => {
+                                  const matchedNurse = nurses.find((n) =>
+                                    n.id === obj.metadata?.nurseId ||
+                                    n.id === obj.metadata?.bookingId ||
+                                    obj.key.toLowerCase().includes(n.id.toLowerCase()) ||
+                                    (obj.metadata?.patientName && n.name.toLowerCase() === obj.metadata.patientName.toLowerCase()) ||
+                                    obj.fileName.toLowerCase().includes(n.name.toLowerCase().split(' ')[0] || '')
+                                  );
+                                  if (matchedNurse && !matchedNurse.certificateVerified && onUpdateNurseRecord) {
+                                    return (
+                                      <button
+                                        type="button"
+                                        onClick={async () => {
+                                          await onUpdateNurseRecord(matchedNurse.id, { certificateVerified: true });
+                                          showToast(`Verified & Approved Certificate for ${matchedNurse.name}!`);
+                                        }}
+                                        className="btn btn-sm"
+                                        style={{
+                                          background: '#ECFDF5',
+                                          border: '1px solid #A7F3D0',
+                                          color: '#059669',
+                                          padding: '0.25rem 0.55rem',
+                                          borderRadius: 6,
+                                          fontSize: '0.72rem',
+                                          fontWeight: 700,
+                                          cursor: 'pointer'
+                                        }}
+                                        title="Approve and verify this nurse certificate"
+                                      >
+                                        ✓ Approve RN
+                                      </button>
+                                    );
+                                  }
+                                  return null;
+                                })()}
+
+                                {isPrescription && (
+                                  <button
+                                    type="button"
+                                    onClick={() => handleViewStorageObjectPrescription(obj)}
+                                    className="btn btn-sm"
+                                    style={{
+                                      background: '#ECFDF5',
+                                      border: '1px solid #A7F3D0',
+                                      color: '#059669',
+                                      padding: '0.25rem 0.55rem',
+                                      borderRadius: 6,
+                                      fontSize: '0.74rem',
+                                      fontWeight: 700,
+                                      display: 'inline-flex',
+                                      alignItems: 'center',
+                                      gap: '0.25rem'
+                                    }}
+                                    title="Inspect Prescription Document"
+                                  >
+                                    <Eye size={12} />
+                                    <span>View Rx</span>
+                                  </button>
+                                )}
+
+                                {isInvoice && (
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      const matchingBooking = bookings.find((b) => b.id === obj.metadata?.bookingId);
+                                      if (matchingBooking) {
+                                        handleViewBookingInvoice(matchingBooking);
+                                      } else {
+                                        window.open(obj.dataUrl || obj.publicUrl, '_blank');
+                                      }
+                                    }}
+                                    className="btn btn-sm"
+                                    style={{
+                                      background: '#FFFBEB',
+                                      border: '1px solid #FDE68A',
+                                      color: '#B45309',
+                                      padding: '0.25rem 0.55rem',
+                                      borderRadius: 6,
+                                      fontSize: '0.74rem',
+                                      fontWeight: 700,
+                                      display: 'inline-flex',
+                                      alignItems: 'center',
+                                      gap: '0.25rem'
+                                    }}
+                                    title="View Invoice"
+                                  >
+                                    <Receipt size={12} />
+                                    <span>Invoice</span>
+                                  </button>
                                 )}
 
                                 <a
@@ -5608,49 +5642,49 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                                   <ExternalLink size={12} />
                                   <span>View File</span>
                                 </a>
-                              <button
-                                type="button"
-                                onClick={() => handleCopyPublicUrl(obj.publicUrl)}
-                                style={{
-                                  background: '#F1F5F9',
-                                  border: '1px solid #CBD5E1',
-                                  color: '#334155',
-                                  padding: '0.28rem 0.45rem',
-                                  borderRadius: 6,
-                                  cursor: 'pointer',
-                                  display: 'flex',
-                                  alignItems: 'center'
-                                }}
-                                title="Copy Cloudflare Public URL"
-                              >
-                                <Copy size={13} />
-                              </button>
+                                <button
+                                  type="button"
+                                  onClick={() => handleCopyPublicUrl(obj.publicUrl)}
+                                  style={{
+                                    background: '#F1F5F9',
+                                    border: '1px solid #CBD5E1',
+                                    color: '#334155',
+                                    padding: '0.28rem 0.45rem',
+                                    borderRadius: 6,
+                                    cursor: 'pointer',
+                                    display: 'flex',
+                                    alignItems: 'center'
+                                  }}
+                                  title="Copy Cloudflare Public URL"
+                                >
+                                  <Copy size={13} />
+                                </button>
 
-                              <button
-                                type="button"
-                                onClick={() => handleDeleteObjectClick(obj)}
-                                style={{
-                                  background: '#FEF2F2',
-                                  border: '1px solid #FECDD3',
-                                  color: '#E11D48',
-                                  padding: '0.28rem 0.45rem',
-                                  borderRadius: 6,
-                                  cursor: 'pointer',
-                                  display: 'flex',
-                                  alignItems: 'center'
-                                }}
-                                title="Delete from Storage Bucket"
-                              >
-                                <Trash2 size={13} />
-                              </button>
-                            </div>
-                          </td>
-                        </tr>
-                      );
-                    })}
-                  </tbody>
-                </table>
-              </div>
+                                <button
+                                  type="button"
+                                  onClick={() => handleDeleteObjectClick(obj)}
+                                  style={{
+                                    background: '#FEF2F2',
+                                    border: '1px solid #FECDD3',
+                                    color: '#E11D48',
+                                    padding: '0.28rem 0.45rem',
+                                    borderRadius: 6,
+                                    cursor: 'pointer',
+                                    display: 'flex',
+                                    alignItems: 'center'
+                                  }}
+                                  title="Delete from Storage Bucket"
+                                >
+                                  <Trash2 size={13} />
+                                </button>
+                              </div>
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
               </>
             )}
           </div>
@@ -5659,14 +5693,14 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
 
       {/* CREATE / EDIT COUPON MODAL */}
       {isCouponModalOpen && (
-        <div 
-          className="modal-overlay" 
+        <div
+          className="modal-overlay"
           onClick={() => setIsCouponModalOpen(false)}
           style={{ zIndex: 99999, pointerEvents: 'auto' }}
         >
-          <div 
-            className="modal-box" 
-            onClick={(e) => e.stopPropagation()} 
+          <div
+            className="modal-box"
+            onClick={(e) => e.stopPropagation()}
             style={{ maxWidth: 540, borderRadius: 20, pointerEvents: 'auto' }}
           >
             {/* Modal Header */}
@@ -5921,15 +5955,15 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
       {/* 0. ADMIN REASSIGN / REFER TO OTHER NURSE MODAL */}
       {/* ========================================================================= */}
       {adminReassignBooking && (
-        <div 
-          className="modal-overlay" 
+        <div
+          className="modal-overlay"
           data-lenis-prevent="true"
           onClick={() => setAdminReassignBooking(null)}
           style={{ zIndex: 99999, pointerEvents: 'auto' }}
         >
-          <div 
-            className="modal-box" 
-            onClick={(e) => e.stopPropagation()} 
+          <div
+            className="modal-box"
+            onClick={(e) => e.stopPropagation()}
             style={{ maxWidth: 540, borderRadius: 20, pointerEvents: 'auto', maxHeight: '90vh', overflowY: 'auto' }}
           >
             <div className="modal-header" style={{ padding: '1.25rem 1.5rem', background: '#FEF3C7', borderBottom: '1px solid #FDE68A' }}>
@@ -5946,8 +5980,8 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                   </div>
                 </div>
               </div>
-              <button 
-                type="button" 
+              <button
+                type="button"
                 onClick={() => setAdminReassignBooking(null)}
                 style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#92400E', display: 'flex' }}
               >
@@ -6014,9 +6048,9 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                     const isSameArea = n.serviceArea === adminReassignBooking.area;
                     const isPreviousNurse = n.id === adminReassignBooking.assignedNurseId;
                     return (
-                      <option 
-                        key={n.id} 
-                        value={n.id} 
+                      <option
+                        key={n.id}
+                        value={n.id}
                         disabled={!n.certificateVerified || isPreviousNurse}
                       >
                         {n.name} — Station: {n.serviceArea} {isSameArea ? '★ (Same Area Match)' : ''} {isPreviousNurse ? '(Previously Declined)' : n.certificateVerified ? '✓ Verified' : '⚠️ Unverified'}
@@ -6090,15 +6124,15 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
       {/* SEARCH NURSE & ASSIGN MODAL (SMART ROUTING) */}
       {/* ========================================================================= */}
       {searchAssignBooking && (
-        <div 
-          className="modal-overlay" 
+        <div
+          className="modal-overlay"
           data-lenis-prevent="true"
           onClick={() => setSearchAssignBooking(null)}
           style={{ zIndex: 99999, pointerEvents: 'auto' }}
         >
-          <div 
-            className="modal-box" 
-            onClick={(e) => e.stopPropagation()} 
+          <div
+            className="modal-box"
+            onClick={(e) => e.stopPropagation()}
             style={{ maxWidth: 640, borderRadius: 20, pointerEvents: 'auto', maxHeight: '90vh', overflowY: 'auto' }}
           >
             <div className="modal-header" style={{ padding: '1.25rem 1.5rem', background: '#F0F9FF', borderBottom: '1px solid #BAE6FD' }}>
@@ -6115,8 +6149,8 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                   </div>
                 </div>
               </div>
-              <button 
-                type="button" 
+              <button
+                type="button"
                 onClick={() => setSearchAssignBooking(null)}
                 style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#0369A1', display: 'flex' }}
               >
@@ -6185,9 +6219,9 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                     type="button"
                     onClick={() => setNurseSearchFilterArea(searchAssignBooking.area)}
                     className={`btn btn-sm ${nurseSearchFilterArea === searchAssignBooking.area ? 'btn-primary' : 'btn-outline'}`}
-                    style={{ 
-                      fontSize: '0.72rem', 
-                      padding: '0.2rem 0.55rem', 
+                    style={{
+                      fontSize: '0.72rem',
+                      padding: '0.2rem 0.55rem',
                       background: nurseSearchFilterArea === searchAssignBooking.area ? '#059669' : undefined,
                       borderColor: '#059669',
                       color: nurseSearchFilterArea === searchAssignBooking.area ? '#FFF' : '#059669',
@@ -6350,15 +6384,15 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
       {/* 1. CREATE / EDIT BOOKING MODAL */}
       {/* ========================================================================= */}
       {isBookingModalOpen && (
-        <div 
-          className="modal-overlay" 
+        <div
+          className="modal-overlay"
           data-lenis-prevent="true"
           onClick={() => setIsBookingModalOpen(false)}
           style={{ zIndex: 99999, pointerEvents: 'auto' }}
         >
-          <div 
-            className="modal-box" 
-            onClick={(e) => e.stopPropagation()} 
+          <div
+            className="modal-box"
+            onClick={(e) => e.stopPropagation()}
             style={{ maxWidth: 580, borderRadius: 20, pointerEvents: 'auto', maxHeight: '90vh', overflowY: 'auto' }}
           >
             <div className="modal-header" style={{ padding: '1.25rem 1.5rem', background: '#FAFAFA', borderBottom: '1px solid var(--neutral-200)' }}>
@@ -6654,15 +6688,15 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
       {/* 2. CREATE / EDIT NURSE MODAL */}
       {/* ========================================================================= */}
       {isNurseModalOpen && (
-        <div 
-          className="modal-overlay" 
+        <div
+          className="modal-overlay"
           data-lenis-prevent="true"
           onClick={() => setIsNurseModalOpen(false)}
           style={{ zIndex: 99999, pointerEvents: 'auto' }}
         >
-          <div 
-            className="modal-box" 
-            onClick={(e) => e.stopPropagation()} 
+          <div
+            className="modal-box"
+            onClick={(e) => e.stopPropagation()}
             style={{ maxWidth: 580, borderRadius: 20, pointerEvents: 'auto', maxHeight: '90vh', overflowY: 'auto' }}
           >
             <div className="modal-header" style={{ padding: '1.25rem 1.5rem', background: '#FAFAFA', borderBottom: '1px solid var(--neutral-200)' }}>
@@ -6694,16 +6728,16 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                 </label>
                 <div style={{ display: 'flex', gap: '1rem', alignItems: 'center' }}>
                   {nurseForm.avatarUrl && (
-                    <img 
-                      src={nurseForm.avatarUrl} 
-                      alt="Avatar preview" 
-                      style={{ width: 64, height: 64, objectFit: 'cover', borderRadius: '50%', border: '2px solid #E2E8F0' }} 
+                    <img
+                      src={nurseForm.avatarUrl}
+                      alt="Avatar preview"
+                      style={{ width: 64, height: 64, objectFit: 'cover', borderRadius: '50%', border: '2px solid #E2E8F0' }}
                     />
                   )}
                   <div style={{ flex: 1 }}>
                     <div style={{ position: 'relative' }}>
-                      <input 
-                        type="file" 
+                      <input
+                        type="file"
                         accept="image/*"
                         onChange={handleNurseAvatarUpload}
                         disabled={isUploadingNurseAvatar}
@@ -6932,15 +6966,15 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
       {/* 3. CREATE / EDIT SERVICE MODAL */}
       {/* ========================================================================= */}
       {isServiceModalOpen && (
-        <div 
-          className="modal-overlay" 
+        <div
+          className="modal-overlay"
           data-lenis-prevent="true"
           onClick={() => setIsServiceModalOpen(false)}
           style={{ zIndex: 99999, pointerEvents: 'auto' }}
         >
-          <div 
-            className="modal-box" 
-            onClick={(e) => e.stopPropagation()} 
+          <div
+            className="modal-box"
+            onClick={(e) => e.stopPropagation()}
             style={{ maxWidth: 580, borderRadius: 20, pointerEvents: 'auto', maxHeight: '90vh', overflowY: 'auto' }}
           >
             <div className="modal-header" style={{ padding: '1.25rem 1.5rem', background: '#FAFAFA', borderBottom: '1px solid var(--neutral-200)' }}>
@@ -7077,10 +7111,10 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                 </label>
                 <div style={{ display: 'flex', gap: '1rem', alignItems: 'center' }}>
                   {serviceForm.imageUrl && (
-                    <img 
-                      src={serviceForm.imageUrl} 
-                      alt="Main image preview" 
-                      style={{ width: 64, height: 64, objectFit: 'cover', borderRadius: 8, border: '1px solid #E2E8F0' }} 
+                    <img
+                      src={serviceForm.imageUrl}
+                      alt="Main image preview"
+                      style={{ width: 64, height: 64, objectFit: 'cover', borderRadius: 8, border: '1px solid #E2E8F0' }}
                     />
                   )}
                   <div style={{ flex: 1 }}>
@@ -7113,10 +7147,10 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                 </label>
                 <div style={{ display: 'flex', gap: '1rem', alignItems: 'center' }}>
                   {serviceForm.thumbnailUrl && (
-                    <img 
-                      src={serviceForm.thumbnailUrl} 
-                      alt="Thumbnail preview" 
-                      style={{ width: 64, height: 64, objectFit: 'cover', borderRadius: 8, border: '1px solid #E2E8F0' }} 
+                    <img
+                      src={serviceForm.thumbnailUrl}
+                      alt="Thumbnail preview"
+                      style={{ width: 64, height: 64, objectFit: 'cover', borderRadius: 8, border: '1px solid #E2E8F0' }}
                     />
                   )}
                   <div style={{ flex: 1 }}>
@@ -7197,15 +7231,15 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
       {/* 4. CREATE / EDIT LEAD MODAL */}
       {/* ========================================================================= */}
       {isLeadModalOpen && (
-        <div 
-          className="modal-overlay" 
+        <div
+          className="modal-overlay"
           data-lenis-prevent="true"
           onClick={() => setIsLeadModalOpen(false)}
           style={{ zIndex: 99999, pointerEvents: 'auto' }}
         >
-          <div 
-            className="modal-box" 
-            onClick={(e) => e.stopPropagation()} 
+          <div
+            className="modal-box"
+            onClick={(e) => e.stopPropagation()}
             style={{ maxWidth: 540, borderRadius: 20, pointerEvents: 'auto' }}
           >
             <div className="modal-header" style={{ padding: '1.25rem 1.5rem', background: '#FAFAFA', borderBottom: '1px solid var(--neutral-200)' }}>
@@ -7371,15 +7405,15 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
       {/* 4B. ADMIN LEAD REWARD & APPROVAL DECISION MODAL */}
       {/* ========================================================================= */}
       {approvalModalLead && (
-        <div 
-          className="modal-overlay" 
+        <div
+          className="modal-overlay"
           data-lenis-prevent="true"
           onClick={() => setApprovalModalLead(null)}
           style={{ zIndex: 99999, pointerEvents: 'auto' }}
         >
-          <div 
-            className="modal-box" 
-            onClick={(e) => e.stopPropagation()} 
+          <div
+            className="modal-box"
+            onClick={(e) => e.stopPropagation()}
             style={{ maxWidth: 580, borderRadius: 20, pointerEvents: 'auto', maxHeight: '90vh', overflowY: 'auto' }}
           >
             {/* Modal Header */}
@@ -7434,11 +7468,11 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                           </div>
                           {(() => {
                             const refCandidate = (approvalModalLead.referralType === 'nurse' || approvalModalLead.referredNursePhone)
-                              ? nurses.find((n) => 
-                                  (approvalModalLead.referredNursePhone && n.phone && n.phone.replace(/\D/g, '') === approvalModalLead.referredNursePhone.replace(/\D/g, '')) ||
-                                  (approvalModalLead.referredNurseName && n.name.toLowerCase() === approvalModalLead.referredNurseName.toLowerCase()) ||
-                                  (approvalModalLead.patientName && n.name.toLowerCase() === approvalModalLead.patientName.toLowerCase())
-                                )
+                              ? nurses.find((n) =>
+                                (approvalModalLead.referredNursePhone && n.phone && n.phone.replace(/\D/g, '') === approvalModalLead.referredNursePhone.replace(/\D/g, '')) ||
+                                (approvalModalLead.referredNurseName && n.name.toLowerCase() === approvalModalLead.referredNurseName.toLowerCase()) ||
+                                (approvalModalLead.patientName && n.name.toLowerCase() === approvalModalLead.patientName.toLowerCase())
+                              )
                               : null;
                             const modalArea = (refCandidate?.serviceArea && refCandidate.serviceArea !== 'Hyderabad Central')
                               ? refCandidate.serviceArea
@@ -7483,11 +7517,14 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                             {referringNurse?.name || approvalModalLead.nurseId} ({referringNurse?.serviceArea || 'Stationed'})
                           </strong>
                         </div>
-                        {referringNurse && (
-                          <div style={{ fontSize: '0.75rem', color: 'var(--neutral-600)' }}>
-                            Current Balance: <strong style={{ color: '#059669' }}>{referringNurse.pointsEarned || 0} pts</strong> | <strong style={{ color: '#059669' }}>₹{referringNurse.referralEarningsRupees || 0}</strong>
-                          </div>
-                        )}
+                        {referringNurse && (() => {
+                          const refM = calculateNurseMetrics(referringNurse, bookings, leads, services);
+                          return (
+                            <div style={{ fontSize: '0.75rem', color: 'var(--neutral-600)' }}>
+                              Current Balance: <strong style={{ color: '#059669' }}>⭐ {refM.totalPoints} pts</strong> | <strong style={{ color: '#059669' }}>₹{refM.totalMoney}</strong>
+                            </div>
+                          );
+                        })()}
                       </div>
                     </div>
 
@@ -7677,8 +7714,8 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                             {isProcessingApproval
                               ? 'Approving...'
                               : approvalAssignNurseId
-                              ? `✓ Approve & Assign to ${nurses.find(n => n.id === approvalAssignNurseId)?.name.split(' ')[0] || 'Nurse'}`
-                              : '✓ Approve & Go to Assign Nurse'}
+                                ? `✓ Approve & Assign to ${nurses.find(n => n.id === approvalAssignNurseId)?.name.split(' ')[0] || 'Nurse'}`
+                                : '✓ Approve & Go to Assign Nurse'}
                           </span>
                         </button>
                       </div>
@@ -7691,15 +7728,15 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
         </div>
       )}
       {isConsultModalOpen && (
-        <div 
-          className="modal-overlay" 
+        <div
+          className="modal-overlay"
           data-lenis-prevent="true"
           onClick={() => setIsConsultModalOpen(false)}
           style={{ zIndex: 99999, pointerEvents: 'auto' }}
         >
-          <div 
-            className="modal-box" 
-            onClick={(e) => e.stopPropagation()} 
+          <div
+            className="modal-box"
+            onClick={(e) => e.stopPropagation()}
             style={{ maxWidth: 580, borderRadius: 20, pointerEvents: 'auto', maxHeight: '90vh', overflowY: 'auto' }}
           >
             <div className="modal-header" style={{ padding: '1.25rem 1.5rem', background: '#FAFAFA', borderBottom: '1px solid var(--neutral-200)' }}>
@@ -7875,15 +7912,15 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
       {/* 6. CREATE / EDIT APP USER & CREDENTIALS MODAL */}
       {/* ========================================================================= */}
       {isUserModalOpen && (
-        <div 
-          className="modal-overlay" 
+        <div
+          className="modal-overlay"
           data-lenis-prevent="true"
           onClick={() => setIsUserModalOpen(false)}
           style={{ zIndex: 99999, pointerEvents: 'auto' }}
         >
-          <div 
-            className="modal-box" 
-            onClick={(e) => e.stopPropagation()} 
+          <div
+            className="modal-box"
+            onClick={(e) => e.stopPropagation()}
             style={{ maxWidth: 540, borderRadius: 20, pointerEvents: 'auto' }}
           >
             <div className="modal-header" style={{ padding: '1.25rem 1.5rem', background: '#FAFAFA', borderBottom: '1px solid var(--neutral-200)' }}>
@@ -8047,14 +8084,14 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
 
       {/* 1. CLOUDFLARE R2 PRESCRIPTION VIEWER MODAL */}
       {isPrescriptionModalOpen && (
-        <div 
-          className="modal-overlay" 
+        <div
+          className="modal-overlay"
           onClick={() => setIsPrescriptionModalOpen(false)}
           style={{ zIndex: 999999, pointerEvents: 'auto' }}
         >
-          <div 
-            className="modal-box" 
-            onClick={(e) => e.stopPropagation()} 
+          <div
+            className="modal-box"
+            onClick={(e) => e.stopPropagation()}
             style={{ maxWidth: 680, borderRadius: 20, pointerEvents: 'auto', maxHeight: '92vh', overflowY: 'auto' }}
           >
             {/* Header */}
@@ -8070,19 +8107,19 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                   <div style={{ fontSize: '0.76rem', color: '#0284C7', fontWeight: 600, display: 'inline-flex', alignItems: 'center', gap: '0.3rem' }}>
                     <Cloud size={12} />
                     <span>
-                      {previewPrescriptionConsultation 
+                      {previewPrescriptionConsultation
                         ? `Consultation: ${previewPrescriptionConsultation.id} • Issued by Dr. Vikramaditya, MD`
                         : `Bucket: ${r2Config.bucketName} • Category: prescriptions`}
                     </span>
                   </div>
                 </div>
               </div>
-              <button 
-                type="button" 
+              <button
+                type="button"
                 onClick={() => {
                   setIsPrescriptionModalOpen(false);
                   setPreviewPrescriptionConsultation(null);
-                }} 
+                }}
                 className="modal-close-btn"
                 style={{ background: '#F1F5F9', border: 'none', borderRadius: '50%', width: 32, height: 32, display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer' }}
               >
@@ -8152,148 +8189,148 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
               }}>
                 {(() => {
                   const srcUrl = previewPrescriptionObject?.dataUrl || previewPrescriptionObject?.publicUrl || previewPrescriptionBooking?.prescriptionUrl;
-                  const isImage = previewPrescriptionObject?.contentType?.startsWith('image/') || 
-                                  (previewPrescriptionObject?.fileName && previewPrescriptionObject.fileName.toLowerCase().match(/\.(jpg|jpeg|png|gif|webp)$/)) ||
-                                  (srcUrl && typeof srcUrl === 'string' && srcUrl.toLowerCase().match(/\.(jpg|jpeg|png|gif|webp)(\?.*)?$/));
-                  
+                  const isImage = previewPrescriptionObject?.contentType?.startsWith('image/') ||
+                    (previewPrescriptionObject?.fileName && previewPrescriptionObject.fileName.toLowerCase().match(/\.(jpg|jpeg|png|gif|webp)$/)) ||
+                    (srcUrl && typeof srcUrl === 'string' && srcUrl.toLowerCase().match(/\.(jpg|jpeg|png|gif|webp)(\?.*)?$/));
+
                   const safeSrcUrl = typeof srcUrl === 'string' ? encodeURI(srcUrl) : srcUrl;
-                  
+
                   if (srcUrl && safeSrcUrl) {
                     return isImage ? (
                       <div style={{ padding: '1rem', textAlign: 'center', background: '#F8FAFC' }}>
-                        <img 
-                          src={safeSrcUrl} 
-                          alt="Prescription Document" 
-                          style={{ maxWidth: '100%', maxHeight: 420, borderRadius: 8, objectFit: 'contain', boxShadow: '0 2px 10px rgba(0,0,0,0.1)' }} 
+                        <img
+                          src={safeSrcUrl}
+                          alt="Prescription Document"
+                          style={{ maxWidth: '100%', maxHeight: 420, borderRadius: 8, objectFit: 'contain', boxShadow: '0 2px 10px rgba(0,0,0,0.1)' }}
                         />
                       </div>
                     ) : (
                       <div style={{ height: 420 }}>
-                        <iframe 
-                          src={safeSrcUrl} 
-                          title="Prescription PDF" 
-                          style={{ width: '100%', height: '100%', border: 'none' }} 
+                        <iframe
+                          src={safeSrcUrl}
+                          title="Prescription PDF"
+                          style={{ width: '100%', height: '100%', border: 'none' }}
                         />
                       </div>
                     );
                   }
-                  
+
                   return (
-                  /* Formal Rx Document Layout (High Medical Fidelity) */
-                  <div style={{ padding: '2rem 1.75rem', background: '#FFFFFF', position: 'relative' }}>
-                    {/* Watermark */}
-                    <div style={{
-                      position: 'absolute',
-                      top: '50%',
-                      left: '50%',
-                      transform: 'translate(-50%, -50%) rotate(-25deg)',
-                      fontSize: '3.5rem',
-                      fontWeight: 900,
-                      color: 'rgba(2, 132, 199, 0.05)',
-                      pointerEvents: 'none',
-                      whiteSpace: 'nowrap'
-                    }}>
-                      {previewPrescriptionConsultation ? 'DOCTOR TELECONSULTATION RX' : 'CLOUDFLARE R2 VERIFIED'}
-                    </div>
+                    /* Formal Rx Document Layout (High Medical Fidelity) */
+                    <div style={{ padding: '2rem 1.75rem', background: '#FFFFFF', position: 'relative' }}>
+                      {/* Watermark */}
+                      <div style={{
+                        position: 'absolute',
+                        top: '50%',
+                        left: '50%',
+                        transform: 'translate(-50%, -50%) rotate(-25deg)',
+                        fontSize: '3.5rem',
+                        fontWeight: 900,
+                        color: 'rgba(2, 132, 199, 0.05)',
+                        pointerEvents: 'none',
+                        whiteSpace: 'nowrap'
+                      }}>
+                        {previewPrescriptionConsultation ? 'DOCTOR TELECONSULTATION RX' : 'CLOUDFLARE R2 VERIFIED'}
+                      </div>
 
-                    {/* Prescription Document Header */}
-                    <div style={{ display: 'flex', justifyContent: 'space-between', borderBottom: '2px solid #0A192F', paddingBottom: '1rem', marginBottom: '1.25rem' }}>
-                      <div>
-                        <div style={{ fontSize: '1.25rem', fontWeight: 900, color: 'var(--primary-navy-950)' }}>
-                          MEDICAL PRESCRIPTION & CLINICAL ORDERS
+                      {/* Prescription Document Header */}
+                      <div style={{ display: 'flex', justifyContent: 'space-between', borderBottom: '2px solid #0A192F', paddingBottom: '1rem', marginBottom: '1.25rem' }}>
+                        <div>
+                          <div style={{ fontSize: '1.25rem', fontWeight: 900, color: 'var(--primary-navy-950)' }}>
+                            MEDICAL PRESCRIPTION & CLINICAL ORDERS
+                          </div>
+                          <div style={{ fontSize: '0.8rem', color: '#0284C7', fontWeight: 700 }}>
+                            TELANGANA STATE HEALTH SERVICES COMPLIANT
+                          </div>
+                          <div style={{ fontSize: '0.74rem', color: '#64748B', marginTop: '0.2rem' }}>
+                            Verified Doorstep Nursing Execution Protocol • Dr. Vikramaditya, MD
+                          </div>
                         </div>
-                        <div style={{ fontSize: '0.8rem', color: '#0284C7', fontWeight: 700 }}>
-                          TELANGANA STATE HEALTH SERVICES COMPLIANT
-                        </div>
-                        <div style={{ fontSize: '0.74rem', color: '#64748B', marginTop: '0.2rem' }}>
-                          Verified Doorstep Nursing Execution Protocol • Dr. Vikramaditya, MD
+                        <div style={{ textAlign: 'right' }}>
+                          <span style={{
+                            background: '#ECFDF5',
+                            border: '1px solid #A7F3D0',
+                            color: '#059669',
+                            fontWeight: 800,
+                            fontSize: '0.74rem',
+                            padding: '3px 9px',
+                            borderRadius: 9999,
+                            textTransform: 'uppercase'
+                          }}>
+                            ✓ Valid Clinical Rx
+                          </span>
+                          <div style={{ fontSize: '0.72rem', color: '#64748B', marginTop: '0.35rem' }}>
+                            Issued: {new Date(previewPrescriptionConsultation?.requestedAt || previewPrescriptionObject?.uploadedAt || Date.now()).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' })}
+                          </div>
                         </div>
                       </div>
-                      <div style={{ textAlign: 'right' }}>
-                        <span style={{
-                          background: '#ECFDF5',
-                          border: '1px solid #A7F3D0',
-                          color: '#059669',
-                          fontWeight: 800,
-                          fontSize: '0.74rem',
-                          padding: '3px 9px',
-                          borderRadius: 9999,
-                          textTransform: 'uppercase'
-                        }}>
-                          ✓ Valid Clinical Rx
-                        </span>
-                        <div style={{ fontSize: '0.72rem', color: '#64748B', marginTop: '0.35rem' }}>
-                          Issued: {new Date(previewPrescriptionConsultation?.requestedAt || previewPrescriptionObject?.uploadedAt || Date.now()).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' })}
-                        </div>
-                      </div>
-                    </div>
 
-                    {/* Actual Uploaded File or Mock Text */}
-                    {(() => {
-                      const srcUrl = previewPrescriptionObject?.dataUrl || previewPrescriptionObject?.publicUrl || previewPrescriptionBooking?.prescriptionUrl;
-                      const isImage = previewPrescriptionObject?.contentType?.startsWith('image/') || 
-                                      (previewPrescriptionObject?.fileName && previewPrescriptionObject.fileName.toLowerCase().match(/\.(jpg|jpeg|png|gif|webp)$/)) ||
-                                      (srcUrl && typeof srcUrl === 'string' && srcUrl.toLowerCase().match(/\.(jpg|jpeg|png|gif|webp)(\?.*)?$/));
-                      const safeSrcUrl = typeof srcUrl === 'string' ? encodeURI(srcUrl) : srcUrl;
-                      
-                      if (srcUrl && safeSrcUrl) {
+                      {/* Actual Uploaded File or Mock Text */}
+                      {(() => {
+                        const srcUrl = previewPrescriptionObject?.dataUrl || previewPrescriptionObject?.publicUrl || previewPrescriptionBooking?.prescriptionUrl;
+                        const isImage = previewPrescriptionObject?.contentType?.startsWith('image/') ||
+                          (previewPrescriptionObject?.fileName && previewPrescriptionObject.fileName.toLowerCase().match(/\.(jpg|jpeg|png|gif|webp)$/)) ||
+                          (srcUrl && typeof srcUrl === 'string' && srcUrl.toLowerCase().match(/\.(jpg|jpeg|png|gif|webp)(\?.*)?$/));
+                        const safeSrcUrl = typeof srcUrl === 'string' ? encodeURI(srcUrl) : srcUrl;
+
+                        if (srcUrl && safeSrcUrl) {
+                          return (
+                            <div style={{ marginBottom: '1.5rem', textAlign: 'center' }}>
+                              {isImage ? (
+                                <img src={safeSrcUrl} alt="Prescription" style={{ maxWidth: '100%', maxHeight: '50vh', borderRadius: 8, border: '1px solid #CBD5E1', objectFit: 'contain' }} />
+                              ) : (
+                                <iframe src={safeSrcUrl} style={{ width: '100%', height: '50vh', borderRadius: 8, border: '1px solid #CBD5E1' }} title="Prescription Document" />
+                              )}
+                            </div>
+                          );
+                        }
                         return (
-                          <div style={{ marginBottom: '1.5rem', textAlign: 'center' }}>
-                            {isImage ? (
-                              <img src={safeSrcUrl} alt="Prescription" style={{ maxWidth: '100%', maxHeight: '50vh', borderRadius: 8, border: '1px solid #CBD5E1', objectFit: 'contain' }} />
-                            ) : (
-                              <iframe src={safeSrcUrl} style={{ width: '100%', height: '50vh', borderRadius: 8, border: '1px solid #CBD5E1' }} title="Prescription Document" />
-                            )}
+                          <div style={{ marginBottom: '1.5rem' }}>
+                            <div style={{ fontSize: '2rem', fontWeight: 900, color: '#E11D48', fontFamily: 'serif', lineHeight: 1, marginBottom: '0.5rem' }}>
+                              ℞
+                            </div>
+                            <div style={{ background: '#F8FAFC', padding: '1.15rem', borderRadius: 10, border: '1px solid #E2E8F0' }}>
+                              <div style={{ fontSize: '0.84rem', fontWeight: 700, color: 'var(--primary-navy-900)', marginBottom: '0.35rem' }}>
+                                Approved Clinical Procedure: {previewPrescriptionConsultation ? previewPrescriptionConsultation.recommendedService : (previewPrescriptionBooking?.serviceTitle || previewPrescriptionObject?.metadata?.serviceTitle || 'Home Clinical Nursing Visit')}
+                              </div>
+                              {previewPrescriptionConsultation?.symptoms && (
+                                <div style={{ fontSize: '0.82rem', color: '#64748B', marginBottom: '0.65rem' }}>
+                                  <strong>Reported Symptoms / Triage:</strong> "{previewPrescriptionConsultation.symptoms}"
+                                </div>
+                              )}
+                              <div style={{ fontSize: '0.74rem', color: '#475569', textTransform: 'uppercase', fontWeight: 700, letterSpacing: '0.04em', marginBottom: '0.35rem' }}>
+                                Doctor Clinical Orders & Instructions:
+                              </div>
+                              <p style={{ fontSize: '0.92rem', color: '#0F172A', lineHeight: 1.6, margin: 0, fontWeight: 600, whiteSpace: 'pre-wrap', background: '#FFFFFF', padding: '0.85rem 1rem', borderRadius: 8, border: '1px solid #CBD5E1' }}>
+                                {previewPrescriptionConsultation?.prescriptionText || 'Administer sterile doorstep nursing care in strict compliance with attending physician orders. Ensure vitals evaluation (BP, Pulse, SpO2, Temperature) prior to procedure initiation and secure cannula/aseptic dressing upon conclusion.'}
+                              </p>
+                            </div>
                           </div>
                         );
-                      }
-                      return (
-                      <div style={{ marginBottom: '1.5rem' }}>
-                        <div style={{ fontSize: '2rem', fontWeight: 900, color: '#E11D48', fontFamily: 'serif', lineHeight: 1, marginBottom: '0.5rem' }}>
-                          ℞
-                        </div>
-                        <div style={{ background: '#F8FAFC', padding: '1.15rem', borderRadius: 10, border: '1px solid #E2E8F0' }}>
-                          <div style={{ fontSize: '0.84rem', fontWeight: 700, color: 'var(--primary-navy-900)', marginBottom: '0.35rem' }}>
-                            Approved Clinical Procedure: {previewPrescriptionConsultation ? previewPrescriptionConsultation.recommendedService : (previewPrescriptionBooking?.serviceTitle || previewPrescriptionObject?.metadata?.serviceTitle || 'Home Clinical Nursing Visit')}
-                          </div>
-                          {previewPrescriptionConsultation?.symptoms && (
-                            <div style={{ fontSize: '0.82rem', color: '#64748B', marginBottom: '0.65rem' }}>
-                              <strong>Reported Symptoms / Triage:</strong> "{previewPrescriptionConsultation.symptoms}"
-                            </div>
-                          )}
-                          <div style={{ fontSize: '0.74rem', color: '#475569', textTransform: 'uppercase', fontWeight: 700, letterSpacing: '0.04em', marginBottom: '0.35rem' }}>
-                            Doctor Clinical Orders & Instructions:
-                          </div>
-                          <p style={{ fontSize: '0.92rem', color: '#0F172A', lineHeight: 1.6, margin: 0, fontWeight: 600, whiteSpace: 'pre-wrap', background: '#FFFFFF', padding: '0.85rem 1rem', borderRadius: 8, border: '1px solid #CBD5E1' }}>
-                            {previewPrescriptionConsultation?.prescriptionText || 'Administer sterile doorstep nursing care in strict compliance with attending physician orders. Ensure vitals evaluation (BP, Pulse, SpO2, Temperature) prior to procedure initiation and secure cannula/aseptic dressing upon conclusion.'}
-                          </p>
-                        </div>
-                        </div>
-                      );
-                    })()}
+                      })()}
 
-                    {/* Attending RN & R2 Cloud Verification Tag */}
-                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end', paddingTop: '1rem', borderTop: '1px dashed #CBD5E1' }}>
-                      <div>
-                        <div style={{ fontSize: '0.72rem', color: '#64748B' }}>
-                          {previewPrescriptionConsultation ? 'Attending Physician:' : 'Cloudflare R2 Object Location:'}
+                      {/* Attending RN & R2 Cloud Verification Tag */}
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end', paddingTop: '1rem', borderTop: '1px dashed #CBD5E1' }}>
+                        <div>
+                          <div style={{ fontSize: '0.72rem', color: '#64748B' }}>
+                            {previewPrescriptionConsultation ? 'Attending Physician:' : 'Cloudflare R2 Object Location:'}
+                          </div>
+                          <code style={{ fontSize: '0.74rem', background: '#F1F5F9', color: '#0284C7', padding: '2px 6px', borderRadius: 4 }}>
+                            {previewPrescriptionConsultation
+                              ? 'Dr. Vikramaditya, MD (Internal Medicine) • Reg: TSMC/2016/9421'
+                              : (previewPrescriptionObject?.key || `prescriptions/${previewPrescriptionBooking?.prescriptionFileName || 'Rx_Verified.pdf'}`)}
+                          </code>
                         </div>
-                        <code style={{ fontSize: '0.74rem', background: '#F1F5F9', color: '#0284C7', padding: '2px 6px', borderRadius: 4 }}>
-                          {previewPrescriptionConsultation
-                            ? 'Dr. Vikramaditya, MD (Internal Medicine) • Reg: TSMC/2016/9421'
-                            : (previewPrescriptionObject?.key || `prescriptions/${previewPrescriptionBooking?.prescriptionFileName || 'Rx_Verified.pdf'}`)}
-                        </code>
-                      </div>
-                      <div style={{ textAlign: 'right' }}>
-                        <div style={{ fontSize: '0.82rem', fontWeight: 800, color: 'var(--primary-navy-900)' }}>
-                          Xpress Nurse Medical Command Center
-                        </div>
-                        <div style={{ fontSize: '0.72rem', color: '#059669', fontWeight: 700 }}>
-                          ✓ Digital Signature Verified
+                        <div style={{ textAlign: 'right' }}>
+                          <div style={{ fontSize: '0.82rem', fontWeight: 800, color: 'var(--primary-navy-900)' }}>
+                            Xpress Nurse Medical Command Center
+                          </div>
+                          <div style={{ fontSize: '0.72rem', color: '#059669', fontWeight: 700 }}>
+                            ✓ Digital Signature Verified
+                          </div>
                         </div>
                       </div>
                     </div>
-                  </div>
                   );
                 })()}
               </div>
@@ -8390,14 +8427,14 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
 
       {/* 2. CLOUDFLARE R2 INVOICE PREVIEW MODAL */}
       {isInvoicePreviewModalOpen && previewInvoice && (
-        <div 
-          className="modal-overlay" 
+        <div
+          className="modal-overlay"
           onClick={() => setIsInvoicePreviewModalOpen(false)}
           style={{ zIndex: 999999, pointerEvents: 'auto' }}
         >
-          <div 
-            className="modal-box" 
-            onClick={(e) => e.stopPropagation()} 
+          <div
+            className="modal-box"
+            onClick={(e) => e.stopPropagation()}
             style={{ maxWidth: 720, borderRadius: 20, pointerEvents: 'auto', maxHeight: '92vh', overflowY: 'auto' }}
           >
             <div className="modal-header" style={{ padding: '1.25rem 1.5rem', background: '#FAFAFA', borderBottom: '1px solid var(--neutral-200)' }}>
@@ -8412,9 +8449,9 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
 
                 </div>
               </div>
-              <button 
-                type="button" 
-                onClick={() => setIsInvoicePreviewModalOpen(false)} 
+              <button
+                type="button"
+                onClick={() => setIsInvoicePreviewModalOpen(false)}
                 className="modal-close-btn"
                 style={{ background: '#F1F5F9', border: 'none', borderRadius: '50%', width: 32, height: 32, display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer' }}
               >
@@ -8425,40 +8462,40 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
             <div style={{ padding: '1rem 1.5rem', background: '#F8FAFC', borderBottom: '1px solid #E2E8F0', display: 'flex', gap: '1rem', flexWrap: 'wrap' }}>
               <div style={{ flex: 1, minWidth: 200 }}>
                 <label style={{ fontSize: '0.72rem', fontWeight: 700, color: '#64748B', display: 'block', marginBottom: '4px' }}>Custom Dates</label>
-                <input 
-                  type="text" 
-                  value={previewInvoice.serviceDate || ''} 
-                  onChange={(e) => setPreviewInvoice({ ...previewInvoice, serviceDate: e.target.value })} 
-                  placeholder="e.g. 12 Oct to 15 Oct" 
-                  className="form-control" 
+                <input
+                  type="text"
+                  value={previewInvoice.serviceDate || ''}
+                  onChange={(e) => setPreviewInvoice({ ...previewInvoice, serviceDate: e.target.value })}
+                  placeholder="e.g. 12 Oct to 15 Oct"
+                  className="form-control"
                 />
               </div>
               <div style={{ flex: 1, minWidth: 200 }}>
                 <label style={{ fontSize: '0.72rem', fontWeight: 700, color: '#64748B', display: 'block', marginBottom: '4px' }}>Custom Slots</label>
-                <input 
-                  type="text" 
-                  value={previewInvoice.timeSlot || ''} 
-                  onChange={(e) => setPreviewInvoice({ ...previewInvoice, timeSlot: e.target.value })} 
-                  placeholder="e.g. Morning & Evening" 
-                  className="form-control" 
+                <input
+                  type="text"
+                  value={previewInvoice.timeSlot || ''}
+                  onChange={(e) => setPreviewInvoice({ ...previewInvoice, timeSlot: e.target.value })}
+                  placeholder="e.g. Morning & Evening"
+                  className="form-control"
                 />
               </div>
               <div style={{ flex: 1, minWidth: 200 }}>
                 <label style={{ fontSize: '0.72rem', fontWeight: 700, color: '#64748B', display: 'block', marginBottom: '4px' }}>Staff Name Override</label>
-                <input 
-                  type="text" 
-                  value={previewInvoice.assignedNurseName || ''} 
-                  onChange={(e) => setPreviewInvoice({ ...previewInvoice, assignedNurseName: e.target.value })} 
-                  placeholder="Attending Staff" 
-                  className="form-control" 
+                <input
+                  type="text"
+                  value={previewInvoice.assignedNurseName || ''}
+                  onChange={(e) => setPreviewInvoice({ ...previewInvoice, assignedNurseName: e.target.value })}
+                  placeholder="Attending Staff"
+                  className="form-control"
                 />
               </div>
               <div style={{ flex: 0.5, minWidth: 100 }}>
                 <label style={{ fontSize: '0.72rem', fontWeight: 700, color: '#64748B', display: 'block', marginBottom: '4px' }}>Total Slots</label>
-                <input 
-                  type="number" 
+                <input
+                  type="number"
                   min="1"
-                  value={previewInvoice.numberOfVisits || 1} 
+                  value={previewInvoice.numberOfVisits || 1}
                   onChange={(e) => {
                     const visits = parseInt(e.target.value) || 1;
                     const baseAmount = previewInvoice.baseAmount;
@@ -8467,7 +8504,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                     const totalAmount = (baseAmount * visits) + surcharge - discount;
                     setPreviewInvoice({ ...previewInvoice, numberOfVisits: visits, totalAmount });
                   }}
-                  className="form-control" 
+                  className="form-control"
                 />
               </div>
             </div>
@@ -8502,43 +8539,43 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
 
               <div className="table-responsive" style={{ marginBottom: '1.25rem' }}>
                 <table className="data-table">
-                <thead>
-                  <tr>
-                    <th style={{ width: 40, textAlign: 'center' }}>S.No</th>
-                    <th>Procedure</th>
-                    <th>Date</th>
-                    <th>Slot No</th>
-                    <th style={{ textAlign: 'right' }}>Amount (₹)</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  <tr>
-                    <td style={{ textAlign: 'center' }}>1</td>
-                    <td><strong>{previewInvoice.serviceTitle}</strong></td>
-                    <td>{previewInvoice.serviceDate || '-'}</td>
-                    <td>{previewInvoice.timeSlot || '-'}</td>
-                    <td style={{ textAlign: 'right' }}>₹{previewInvoice.baseAmount * (previewInvoice.numberOfVisits || 1)}</td>
-                  </tr>
-                  {Boolean(previewInvoice.nightSurcharge && previewInvoice.nightSurcharge > 0) && (
+                  <thead>
                     <tr>
-                      <td style={{ textAlign: 'center' }}>2</td>
-                      <td><strong>Night Emergency Surcharge</strong></td>
-                      <td>-</td>
-                      <td>-</td>
-                      <td style={{ textAlign: 'right' }}>₹{previewInvoice.nightSurcharge}</td>
+                      <th style={{ width: 40, textAlign: 'center' }}>S.No</th>
+                      <th>Procedure</th>
+                      <th>Date</th>
+                      <th>Slot No</th>
+                      <th style={{ textAlign: 'right' }}>Amount (₹)</th>
                     </tr>
-                  )}
-                  {Boolean(previewInvoice.discountRupees && previewInvoice.discountRupees > 0) && (
+                  </thead>
+                  <tbody>
                     <tr>
-                      <td style={{ textAlign: 'center' }}>{previewInvoice.nightSurcharge && previewInvoice.nightSurcharge > 0 ? '3' : '2'}</td>
-                      <td style={{ color: '#059669' }}>Coupon Discount</td>
-                      <td>-</td>
-                      <td>-</td>
-                      <td style={{ textAlign: 'right', color: '#059669' }}>-₹{previewInvoice.discountRupees}</td>
+                      <td style={{ textAlign: 'center' }}>1</td>
+                      <td><strong>{previewInvoice.serviceTitle}</strong></td>
+                      <td>{previewInvoice.serviceDate || '-'}</td>
+                      <td>{previewInvoice.timeSlot || '-'}</td>
+                      <td style={{ textAlign: 'right' }}>₹{previewInvoice.baseAmount * (previewInvoice.numberOfVisits || 1)}</td>
                     </tr>
-                  )}
-                </tbody>
-              </table>
+                    {Boolean(previewInvoice.nightSurcharge && previewInvoice.nightSurcharge > 0) && (
+                      <tr>
+                        <td style={{ textAlign: 'center' }}>2</td>
+                        <td><strong>Night Emergency Surcharge</strong></td>
+                        <td>-</td>
+                        <td>-</td>
+                        <td style={{ textAlign: 'right' }}>₹{previewInvoice.nightSurcharge}</td>
+                      </tr>
+                    )}
+                    {Boolean(previewInvoice.discountRupees && previewInvoice.discountRupees > 0) && (
+                      <tr>
+                        <td style={{ textAlign: 'center' }}>{previewInvoice.nightSurcharge && previewInvoice.nightSurcharge > 0 ? '3' : '2'}</td>
+                        <td style={{ color: '#059669' }}>Coupon Discount</td>
+                        <td>-</td>
+                        <td>-</td>
+                        <td style={{ textAlign: 'right', color: '#059669' }}>-₹{previewInvoice.discountRupees}</td>
+                      </tr>
+                    )}
+                  </tbody>
+                </table>
               </div>
 
               <div style={{ width: 280, marginLeft: 'auto', marginBottom: '1.25rem' }}>
@@ -8609,14 +8646,14 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
 
       {/* 3. CLOUDFLARE R2 BUCKET CONFIGURATION MODAL */}
       {isR2ConfigModalOpen && (
-        <div 
-          className="modal-overlay" 
+        <div
+          className="modal-overlay"
           onClick={() => setIsR2ConfigModalOpen(false)}
           style={{ zIndex: 999999, pointerEvents: 'auto' }}
         >
-          <div 
-            className="modal-box" 
-            onClick={(e) => e.stopPropagation()} 
+          <div
+            className="modal-box"
+            onClick={(e) => e.stopPropagation()}
             style={{ maxWidth: 540, borderRadius: 20, pointerEvents: 'auto' }}
           >
             <div className="modal-header" style={{ padding: '1.25rem 1.5rem', background: '#FAFAFA', borderBottom: '1px solid var(--neutral-200)' }}>
@@ -8633,9 +8670,9 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                   </div>
                 </div>
               </div>
-              <button 
-                type="button" 
-                onClick={() => setIsR2ConfigModalOpen(false)} 
+              <button
+                type="button"
+                onClick={() => setIsR2ConfigModalOpen(false)}
                 className="modal-close-btn"
                 style={{ background: '#F1F5F9', border: 'none', borderRadius: '50%', width: 32, height: 32, display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer' }}
               >
@@ -8722,14 +8759,14 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
 
       {/* 4. CLOUDFLARE DOCUMENT UPLOAD MODAL */}
       {isUploadModalOpen && (
-        <div 
-          className="modal-overlay" 
+        <div
+          className="modal-overlay"
           onClick={() => setIsUploadModalOpen(false)}
           style={{ zIndex: 999999, pointerEvents: 'auto' }}
         >
-          <div 
-            className="modal-box" 
-            onClick={(e) => e.stopPropagation()} 
+          <div
+            className="modal-box"
+            onClick={(e) => e.stopPropagation()}
             style={{ maxWidth: 500, borderRadius: 20, pointerEvents: 'auto' }}
           >
             <div className="modal-header" style={{ padding: '1.25rem 1.5rem', background: '#FAFAFA', borderBottom: '1px solid var(--neutral-200)' }}>
@@ -8746,9 +8783,9 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                   </div>
                 </div>
               </div>
-              <button 
-                type="button" 
-                onClick={() => setIsUploadModalOpen(false)} 
+              <button
+                type="button"
+                onClick={() => setIsUploadModalOpen(false)}
                 className="modal-close-btn"
                 style={{ background: '#F1F5F9', border: 'none', borderRadius: '50%', width: 32, height: 32, display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer' }}
               >
@@ -8783,8 +8820,8 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                     if (file) {
                       const reader = new FileReader();
                       reader.onload = () => {
-                        setUploadForm(prev => ({ 
-                          ...prev, 
+                        setUploadForm(prev => ({
+                          ...prev,
                           fileDataUrl: reader.result as string,
                           fileSize: file.size,
                           fileType: file.type || 'application/pdf',
@@ -8876,9 +8913,9 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                   </div>
                 </div>
               </div>
-              <button 
+              <button
                 type="button"
-                onClick={() => setAdminCertModalOpen(false)} 
+                onClick={() => setAdminCertModalOpen(false)}
                 style={{ background: '#F1F5F9', border: 'none', borderRadius: '50%', width: 32, height: 32, display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer' }}
               >
                 <X size={16} />
@@ -8888,16 +8925,16 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
             <div style={{ padding: '1.5rem', background: '#0F172A', display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: 400 }}>
               {adminCertModalNurse.certificateUrl ? (
                 adminCertModalNurse.certificateUrl.startsWith('data:application/pdf') || adminCertModalNurse.certificateUrl.toLowerCase().split('?')[0].endsWith('.pdf') ? (
-                  <iframe 
-                    src={getSafeBlobUrl(adminCertModalNurse.certificateUrl)} 
-                    style={{ width: '100%', height: '65vh', border: 'none', borderRadius: 8, background: '#FFFFFF' }} 
+                  <iframe
+                    src={getSafeBlobUrl(adminCertModalNurse.certificateUrl)}
+                    style={{ width: '100%', height: '65vh', border: 'none', borderRadius: 8, background: '#FFFFFF' }}
                     title="Nurse PDF Certificate"
                   />
                 ) : (
-                  <img 
-                    src={adminCertModalNurse.certificateUrl} 
-                    alt="Nurse Certificate" 
-                    style={{ maxWidth: '100%', maxHeight: '68vh', objectFit: 'contain', borderRadius: 8, boxShadow: '0 10px 25px rgba(0,0,0,0.5)' }} 
+                  <img
+                    src={adminCertModalNurse.certificateUrl}
+                    alt="Nurse Certificate"
+                    style={{ maxWidth: '100%', maxHeight: '68vh', objectFit: 'contain', borderRadius: 8, boxShadow: '0 10px 25px rgba(0,0,0,0.5)' }}
                     onError={(e) => {
                       (e.target as HTMLImageElement).style.display = 'none';
                       const parent = (e.target as HTMLImageElement).parentElement;
