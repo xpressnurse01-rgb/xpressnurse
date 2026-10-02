@@ -36,7 +36,8 @@ import {
   Coins,
   ShieldCheck,
   ExternalLink,
-  ChevronRight
+  ChevronRight,
+  PhoneCall
 } from 'lucide-react';
 import confetti from 'canvas-confetti';
 import { EmptyState } from './EmptyState';
@@ -44,7 +45,8 @@ import {
   generateInvoiceDetails, 
   openPrintableInvoiceWindow, 
   saveInvoiceToCloudflareBucket,
-  getPrescriptionStorageObject
+  getPrescriptionStorageObject,
+  uploadCertificateToCloudflareBucket
 } from '../lib/cloudflareStorage';
 import { generateNurseReferralCode } from '../lib/supabase';
 
@@ -162,11 +164,14 @@ export const NurseDashboard: React.FC<NurseDashboardProps> = ({
   const [isInvoiceModalOpen, setIsInvoiceModalOpen] = useState(false);
   const [certModalOpen, setCertModalOpen] = useState(false);
   const [certUploadSuccess, setCertUploadSuccess] = useState('');
+  const [certUploading, setCertUploading] = useState(false);
+  const [isHistoryModalOpen, setIsHistoryModalOpen] = useState(false);
 
   // Profile Name & Experience Edit State
   const [isEditingProfile, setIsEditingProfile] = useState(false);
   const [editedName, setEditedName] = useState(nurse.name);
   const [editedExp, setEditedExp] = useState(String(nurse.experienceYears || 4));
+  const [editedServiceArea, setEditedServiceArea] = useState(nurse.serviceArea || 'Gachibowli');
   const [profileUpdateMsg, setProfileUpdateMsg] = useState('');
 
   // Keep editedName and editedExp in sync with external nurse updates when not in edit mode
@@ -174,6 +179,7 @@ export const NurseDashboard: React.FC<NurseDashboardProps> = ({
     if (!isEditingProfile) {
       setEditedName(nurse.name);
       setEditedExp(String(nurse.experienceYears || 4));
+      setEditedServiceArea(nurse.serviceArea || 'Gachibowli');
     }
   }, [nurse.name, nurse.experienceYears, isEditingProfile]);
 
@@ -200,9 +206,19 @@ export const NurseDashboard: React.FC<NurseDashboardProps> = ({
 
   // Calculate earnings — strictly prioritize live nurse profile points & rupees set by Admin/system
   const referralCode = nurse.referralCode || generateNurseReferralCode(nurse.name, nurse.id, nurse.phone || '');
-  const totalMoney = (nurse.referralEarningsRupees !== undefined && nurse.referralEarningsRupees !== null && !isNaN(Number(nurse.referralEarningsRupees)))
+  let calculatedMoney = 0;
+  myConvertedLeads.forEach(lead => {
+    if (lead.referralType === 'nurse' || lead.referredNursePhone) {
+      calculatedMoney += lead.referralCommissionRupees || 50;
+    } else {
+      const procedure = services.find(s => s.id === lead.serviceId);
+      calculatedMoney += lead.referralCommissionRupees || (procedure ? Math.round((procedure.priceNumber || 800) * 0.10) : 0);
+    }
+  });
+
+  const totalMoney = (nurse.referralEarningsRupees && Number(nurse.referralEarningsRupees) > 0)
     ? Number(nurse.referralEarningsRupees)
-    : (myConvertedLeads.length * 100);
+    : calculatedMoney;
   const totalPoints = (nurse.pointsEarned !== undefined && nurse.pointsEarned !== null && !isNaN(Number(nurse.pointsEarned)))
     ? Number(nurse.pointsEarned)
     : (myConvertedLeads.length * 50);
@@ -217,6 +233,18 @@ export const NurseDashboard: React.FC<NurseDashboardProps> = ({
       try {
         confetti({ particleCount: 40, spread: 50, origin: { y: 0.6 } });
       } catch {}
+    }
+  };
+
+  const handleRejectVisit = async (booking: Booking) => {
+    if (onUpdateBooking) {
+      if (window.confirm("Are you sure you want to reject this assigned visit?")) {
+        await onUpdateBooking(booking.id, {
+          nurseAcceptanceStatus: 'Rejected',
+          status: 'Rejected',
+          rejectionReason: 'Rejected by Nurse via App'
+        });
+      }
     }
   };
 
@@ -399,6 +427,27 @@ export const NurseDashboard: React.FC<NurseDashboardProps> = ({
               <div style={{ fontSize: '0.7rem', color: '#1E40AF', fontWeight: 600 }}>Active Visits</div>
               <div style={{ fontSize: '1.1rem', fontWeight: 900, color: '#1D4ED8' }}>{activeVisits.length}</div>
             </div>
+            <a 
+              href="tel:18001234567"
+              className="btn btn-outline"
+              style={{
+                display: 'flex',
+                flexDirection: 'column',
+                alignItems: 'center',
+                justifyContent: 'center',
+                padding: '0.45rem 0.9rem',
+                borderRadius: 12,
+                border: '1px solid #CBD5E1',
+                color: '#0F172A',
+                textDecoration: 'none',
+                background: '#F8FAFC',
+                gap: '0.1rem'
+              }}
+              title="Call XpressNurse Helpline"
+            >
+              <PhoneCall size={18} style={{ color: '#E11D48' }} />
+              <span style={{ fontSize: '0.65rem', fontWeight: 700 }}>Helpline</span>
+            </a>
           </div>
         </div>
 
@@ -697,22 +746,40 @@ export const NurseDashboard: React.FC<NurseDashboardProps> = ({
                       <MessageCircle size={13} /> WhatsApp
                     </a>
                     {activeVisits[0].status === 'Assigned' && (
-                      <button
-                        type="button"
-                        onClick={() => handleAcceptVisit(activeVisits[0])}
-                        style={{
-                          background: '#16A34A',
-                          color: '#FFFFFF',
-                          border: 'none',
-                          borderRadius: 8,
-                          padding: '0.45rem 0.9rem',
-                          fontSize: '0.8rem',
-                          fontWeight: 700,
-                          cursor: 'pointer'
-                        }}
-                      >
-                        ✓ Accept Job
-                      </button>
+                      <>
+                        <button
+                          type="button"
+                          onClick={() => handleAcceptVisit(activeVisits[0])}
+                          style={{
+                            background: '#16A34A',
+                            color: '#FFFFFF',
+                            border: 'none',
+                            borderRadius: 8,
+                            padding: '0.45rem 0.9rem',
+                            fontSize: '0.8rem',
+                            fontWeight: 700,
+                            cursor: 'pointer'
+                          }}
+                        >
+                          ✓ Accept Job
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => handleRejectVisit(activeVisits[0])}
+                          style={{
+                            background: 'transparent',
+                            color: '#EF4444',
+                            border: '1px solid #EF4444',
+                            borderRadius: 8,
+                            padding: '0.45rem 0.9rem',
+                            fontSize: '0.8rem',
+                            fontWeight: 700,
+                            cursor: 'pointer'
+                          }}
+                        >
+                          ✕ Reject
+                        </button>
+                      </>
                     )}
                     {activeVisits[0].status === 'In-Progress' && (
                       <button
@@ -883,9 +950,12 @@ export const NurseDashboard: React.FC<NurseDashboardProps> = ({
                           {(visit.scheduledSlot || visit.preferredTime) && (
                             <div style={{ fontSize: '0.82rem', color: '#64748B', marginTop: '0.2rem', display: 'flex', alignItems: 'center', gap: '0.35rem' }}>
                               <Clock size={13} style={{ color: '#0284C7', flexShrink: 0 }} />
-                              <span>Time: {visit.scheduledSlot || visit.preferredTime} ({visit.preferredDate || 'Today'})</span>
+                              <span>Scheduled: {visit.preferredDate || 'Today'} | {visit.scheduledSlot || visit.preferredTime}</span>
                             </div>
                           )}
+                          <div style={{ fontSize: '0.78rem', color: '#94A3B8', marginTop: '0.2rem' }}>
+                            Received: {visit.createdAt ? new Date(visit.createdAt).toLocaleString() : 'Unknown'}
+                          </div>
                         </div>
 
                         {/* Direct Action Buttons */}
@@ -1018,26 +1088,48 @@ export const NurseDashboard: React.FC<NurseDashboardProps> = ({
                         {/* State Change Buttons */}
                         <div>
                           {isAssigned && (
-                            <button
-                              type="button"
-                              onClick={() => handleAcceptVisit(visit)}
-                              style={{
-                                background: '#16A34A',
-                                color: '#FFFFFF',
-                                border: 'none',
-                                padding: '0.5rem 1.1rem',
-                                borderRadius: 8,
-                                fontSize: '0.84rem',
-                                fontWeight: 800,
-                                cursor: 'pointer',
-                                display: 'inline-flex',
-                                alignItems: 'center',
-                                gap: '0.35rem'
-                              }}
-                            >
-                              <CheckCircle2 size={15} />
-                              <span>Accept Job</span>
-                            </button>
+                            <>
+                              <button
+                                type="button"
+                                onClick={() => handleAcceptVisit(visit)}
+                                style={{
+                                  background: '#16A34A',
+                                  color: '#FFFFFF',
+                                  border: 'none',
+                                  padding: '0.5rem 1.1rem',
+                                  borderRadius: 8,
+                                  fontSize: '0.84rem',
+                                  fontWeight: 800,
+                                  cursor: 'pointer',
+                                  display: 'inline-flex',
+                                  alignItems: 'center',
+                                  gap: '0.35rem'
+                                }}
+                              >
+                                <CheckCircle2 size={15} />
+                                <span>Accept Job</span>
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => handleRejectVisit(visit)}
+                                style={{
+                                  background: 'transparent',
+                                  color: '#EF4444',
+                                  border: '1px solid #EF4444',
+                                  padding: '0.5rem 1.1rem',
+                                  borderRadius: 8,
+                                  fontSize: '0.84rem',
+                                  fontWeight: 800,
+                                  cursor: 'pointer',
+                                  display: 'inline-flex',
+                                  alignItems: 'center',
+                                  gap: '0.35rem',
+                                  marginLeft: '0.5rem'
+                                }}
+                              >
+                                ✕ Reject
+                              </button>
+                            </>
                           )}
 
                           {isInProgress && (
@@ -1240,16 +1332,12 @@ export const NurseDashboard: React.FC<NurseDashboardProps> = ({
                 <label style={{ display: 'block', fontSize: '0.84rem', fontWeight: 700, color: '#334155', marginBottom: '0.3rem' }}>
                   Patient Locality / Area in Hyderabad *
                 </label>
-                <select
+                <input list="hyderabad-areas" placeholder="Select or enter area"
                   value={area}
                   onChange={(e) => setArea(e.target.value as HyderabadArea)}
                   className="form-control"
                   style={{ width: '100%', height: 42, borderRadius: 8, fontSize: '0.9rem' }}
-                >
-                  {HYDERABAD_AREAS.map((a) => (
-                    <option key={a} value={a}>{a}</option>
-                  ))}
-                </select>
+                />
               </div>
 
               <div>
@@ -1370,6 +1458,28 @@ export const NurseDashboard: React.FC<NurseDashboardProps> = ({
               </div>
             </div>
 
+            <button
+              onClick={() => setIsHistoryModalOpen(true)}
+              className="btn"
+              style={{
+                width: '100%',
+                background: '#FFFFFF',
+                border: '1px solid #E2E8F0',
+                color: '#1E293B',
+                fontWeight: 700,
+                padding: '0.85rem',
+                borderRadius: 12,
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                gap: '0.5rem',
+                cursor: 'pointer'
+              }}
+            >
+              <Clock size={16} style={{ color: '#059669' }} />
+              View Transaction History
+            </button>
+
             {/* List of Referred Patients */}
             <div style={{
               background: '#FFFFFF',
@@ -1379,7 +1489,7 @@ export const NurseDashboard: React.FC<NurseDashboardProps> = ({
             }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
                 <h4 style={{ margin: 0, fontSize: '1.1rem', fontWeight: 800, color: '#0F172A' }}>
-                  Patients You Referred ({myLeads.length})
+                  Patients You Referred ({myLeads.filter(l => l.referralType !== 'nurse' && !l.referredNursePhone).length})
                 </h4>
                 <button
                   type="button"
@@ -1405,7 +1515,7 @@ export const NurseDashboard: React.FC<NurseDashboardProps> = ({
                 </div>
               ) : (
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '0.6rem' }}>
-                  {myLeads.map((lead) => {
+                  {myLeads.filter(l => l.referralType !== 'nurse' && !l.referredNursePhone).map((lead) => {
                     const isConverted = lead.status === 'Converted' || lead.status === 'Approved';
                     return (
                       <div
@@ -1481,6 +1591,7 @@ export const NurseDashboard: React.FC<NurseDashboardProps> = ({
                   onClick={() => {
                     setEditedName(nurse.name);
                     setEditedExp(String(nurse.experienceYears || 4));
+                    setEditedServiceArea(nurse.serviceArea || 'Gachibowli');
                     setIsEditingProfile(true);
                   }}
                   className="btn btn-outline"
@@ -1523,7 +1634,8 @@ export const NurseDashboard: React.FC<NurseDashboardProps> = ({
                   onUpdateNurse({
                     ...nurse,
                     name: editedName.trim(),
-                    experienceYears: Number(editedExp) || 4
+                    experienceYears: Number(editedExp) || 4,
+                    serviceArea: editedServiceArea.trim() || nurse.serviceArea
                   });
                   setIsEditingProfile(false);
                   setProfileUpdateMsg('✓ Profile name and experience updated successfully!');
@@ -1540,6 +1652,26 @@ export const NurseDashboard: React.FC<NurseDashboardProps> = ({
                     required
                     value={editedName}
                     onChange={(e) => setEditedName(e.target.value)}
+                    style={{
+                      width: '100%',
+                      padding: '0.55rem 0.85rem',
+                      borderRadius: 8,
+                      border: '1px solid #CBD5E1',
+                      fontSize: '0.92rem'
+                    }}
+                  />
+                </div>
+
+                <div>
+                  <label style={{ fontSize: '0.8rem', fontWeight: 700, color: '#334155', display: 'block', marginBottom: '0.35rem' }}>
+                    Service Area in Hyderabad *
+                  </label>
+                  <input
+                    list="hyderabad-areas"
+                    required
+                    placeholder="e.g. Madhapur"
+                    value={editedServiceArea}
+                    onChange={(e) => setEditedServiceArea(e.target.value)}
                     style={{
                       width: '100%',
                       padding: '0.55rem 0.85rem',
@@ -1725,6 +1857,99 @@ export const NurseDashboard: React.FC<NurseDashboardProps> = ({
       )}
 
       {/* Invoice Modal */}
+      {/* Transaction History Modal */}
+      {isHistoryModalOpen && (
+        <div style={{
+          position: 'fixed',
+          top: 0, left: 0, right: 0, bottom: 0,
+          background: 'rgba(15, 23, 42, 0.65)',
+          backdropFilter: 'blur(4px)',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          zIndex: 9999,
+          padding: '1rem'
+        }}>
+          <div style={{
+            background: '#FFFFFF',
+            borderRadius: 24,
+            width: '100%',
+            maxWidth: 600,
+            maxHeight: '85vh',
+            overflowY: 'auto',
+            boxShadow: '0 25px 50px -12px rgba(0,0,0,0.25)',
+            display: 'flex',
+            flexDirection: 'column'
+          }}>
+            <div style={{ padding: '1.25rem 1.5rem', background: '#FAFAFA', borderBottom: '1px solid #E2E8F0', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <div>
+                <h3 style={{ margin: 0, fontSize: '1.25rem', fontWeight: 800, color: '#0F172A', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                  <Clock size={20} style={{ color: '#059669' }} />
+                  Transaction History
+                </h3>
+              </div>
+              <button onClick={() => setIsHistoryModalOpen(false)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#64748B' }}>
+                <X size={20} />
+              </button>
+            </div>
+            
+            <div style={{ padding: '1.5rem', display: 'flex', flexDirection: 'column', gap: '0.8rem' }}>
+              {myConvertedLeads.filter(l => l.referralType !== 'nurse' && !l.referredNursePhone).map(lead => {
+                const procedure = services.find(s => s.id === lead.serviceId);
+                const fallbackEarnings = procedure ? Math.round((procedure.priceNumber || 800) * 0.10) : 0;
+                return (
+                  <div key={lead.id} style={{ display: 'flex', justifyContent: 'space-between', padding: '1rem', border: '1px solid #E2E8F0', borderRadius: 12 }}>
+                    <div>
+                      <div style={{ fontWeight: 700, color: '#1E293B' }}>Patient Referral: {lead.patientName}</div>
+                      <div style={{ fontSize: '0.8rem', color: '#64748B' }}>Status: {lead.status}</div>
+                    </div>
+                    <div style={{ textAlign: 'right' }}>
+                      <div style={{ fontWeight: 800, color: '#059669' }}>+₹{lead.referralCommissionRupees || fallbackEarnings} (10%)</div>
+                      <div style={{ fontSize: '0.8rem', color: '#16A34A', fontWeight: 600 }}>+{lead.pointsAwarded || 50} pts</div>
+                    </div>
+                  </div>
+                );
+              })}
+              
+              {myConvertedLeads.filter(l => l.referralType === 'nurse' || l.referredNursePhone).map(lead => (
+                <div key={lead.id} style={{ display: 'flex', justifyContent: 'space-between', padding: '1rem', border: '1px solid #E2E8F0', borderRadius: 12 }}>
+                  <div>
+                    <div style={{ fontWeight: 700, color: '#1E293B' }}>Nurse Referral: {lead.referredNurseName || lead.patientName}</div>
+                    <div style={{ fontSize: '0.8rem', color: '#64748B' }}>Status: {lead.status}</div>
+                  </div>
+                  <div style={{ textAlign: 'right' }}>
+                    <div style={{ fontWeight: 800, color: '#059669' }}>+₹{lead.referralCommissionRupees || 50}</div>
+                    <div style={{ fontSize: '0.8rem', color: '#16A34A', fontWeight: 600 }}>+{lead.pointsAwarded || 50} pts</div>
+                  </div>
+                </div>
+              ))}
+
+              {completedVisits.map(visit => {
+                const procedure = services.find(s => s.id === visit.serviceId);
+                const earnings = procedure ? Math.round((procedure.priceNumber || 800) * 0.70) : 0;
+                return (
+                  <div key={visit.id} style={{ display: 'flex', justifyContent: 'space-between', padding: '1rem', border: '1px solid #E2E8F0', borderRadius: 12 }}>
+                    <div>
+                      <div style={{ fontWeight: 700, color: '#1E293B' }}>Assigned Visit: {visit.patientName}</div>
+                      <div style={{ fontSize: '0.8rem', color: '#64748B' }}>Service: {visit.serviceId}</div>
+                    </div>
+                    <div style={{ textAlign: 'right' }}>
+                      <div style={{ fontWeight: 800, color: '#059669' }}>+₹{earnings} (70%)</div>
+                    </div>
+                  </div>
+                );
+              })}
+
+              {myConvertedLeads.length === 0 && completedVisits.length === 0 && (
+                <div style={{ textAlign: 'center', padding: '2rem', color: '#64748B' }}>
+                  No transactions yet.
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
       {isInvoiceModalOpen && previewInvoice && (
         <div style={{
           position: 'fixed',
@@ -1765,8 +1990,12 @@ export const NurseDashboard: React.FC<NurseDashboardProps> = ({
               <div style={{ fontSize: '0.8rem', color: '#64748B' }}>{previewInvoice.fullAddress || previewInvoice.area}</div>
               <div style={{ borderTop: '1px dashed #CBD5E1', margin: '0.75rem 0', paddingTop: '0.75rem' }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.85rem', color: '#334155' }}>
-                  <span>{previewInvoice.serviceTitle}</span>
-                  <strong>₹{previewInvoice.baseAmount}</strong>
+                  <span>
+                    {previewInvoice.serviceTitle}
+                    {previewInvoice.serviceDate && <span style={{display:'block', fontSize:'0.75rem', color:'#64748B'}}>Date: {previewInvoice.serviceDate}</span>}
+                    {previewInvoice.timeSlot && <span style={{display:'block', fontSize:'0.75rem', color:'#64748B'}}>Slot: {previewInvoice.timeSlot}</span>}
+                  </span>
+                  <strong>₹{previewInvoice.baseAmount * (previewInvoice.numberOfVisits || 1)}</strong>
                 </div>
                 {Boolean(previewInvoice.discountRupees && previewInvoice.discountRupees > 0) && (
                   <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.85rem', color: '#059669', marginTop: '4px' }}>
@@ -1846,6 +2075,44 @@ export const NurseDashboard: React.FC<NurseDashboardProps> = ({
                 Status: {nurse.certificateVerified ? '✓ Verified by Admin' : 'Pending Verification'}
               </div>
             </div>
+            {nurse.certificateUrl ? (
+              <div style={{ textAlign: 'center', marginBottom: '1rem' }}>
+                <img src={nurse.certificateUrl} alt="Certificate" style={{ maxWidth: '100%', borderRadius: 8, border: '1px solid #E2E8F0', objectFit: 'contain', maxHeight: '400px' }} onError={(e) => { e.currentTarget.style.display = 'none'; }} />
+                <div style={{ marginTop: '0.75rem' }}>
+                  <a href={nurse.certificateUrl} target="_blank" rel="noreferrer" className="btn btn-outline" style={{ display: 'inline-flex', alignItems: 'center', gap: '0.5rem', fontWeight: 700, fontSize: '0.8rem' }}>
+                    <ExternalLink size={16} /> Open Full Size / PDF
+                  </a>
+                </div>
+              </div>
+            ) : (
+              <div style={{ marginBottom: '1.5rem', padding: '1rem', background: '#F1F5F9', borderRadius: 10, textAlign: 'center' }}>
+                <label className="form-label" style={{ fontWeight: 700, fontSize: '0.85rem' }}>Upload Certificate (PDF/JPG/PNG)</label>
+                <input 
+                  type="file" 
+                  accept=".pdf,image/*" 
+                  style={{ display: 'block', width: '100%', marginBottom: '0.5rem', fontSize: '0.85rem' }} 
+                  onChange={async (e) => {
+                    const file = e.target.files?.[0];
+                    if (!file) return;
+                    setCertUploading(true);
+                    setCertUploadSuccess('');
+                    try {
+                      const uploaded = await uploadCertificateToCloudflareBucket({ file, nurseId: nurse.id, nurseName: nurse.name });
+                      if (onUpdateNurse) {
+                        await onUpdateNurse({ ...nurse, certificateUrl: uploaded.publicUrl });
+                      }
+                      setCertUploadSuccess('Certificate uploaded successfully! Awaiting Admin verification.');
+                    } catch (err: any) {
+                      alert('Failed to upload: ' + err.message);
+                    } finally {
+                      setCertUploading(false);
+                    }
+                  }}
+                />
+                {certUploading && <div style={{ fontSize: '0.8rem', color: '#0284C7', fontWeight: 600 }}>Uploading...</div>}
+                {certUploadSuccess && <div style={{ fontSize: '0.8rem', color: '#059669', fontWeight: 600 }}>{certUploadSuccess}</div>}
+              </div>
+            )}
 
             <div style={{ textAlign: 'right' }}>
               <button

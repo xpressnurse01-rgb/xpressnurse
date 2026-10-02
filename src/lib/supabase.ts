@@ -109,7 +109,7 @@ export const BASELINE_NURSES: NurseProfile[] = [
     pointsEarned: 1650,
     referralEarningsRupees: 3800,
     rating: 4.90,
-    avatarUrl: 'https://images.unsplash.com/photo-1594824813589-9a25b42d768a?w=150&auto=format&fit=crop&q=80',
+    avatarUrl: undefined,
     certificateVerified: true,
     referralCode: 'XN-PRIYA101'
   },
@@ -128,7 +128,7 @@ export const BASELINE_NURSES: NurseProfile[] = [
     pointsEarned: 2200,
     referralEarningsRupees: 5400,
     rating: 4.95,
-    avatarUrl: 'https://images.unsplash.com/photo-1622253692010-333f2da6031d?w=150&auto=format&fit=crop&q=80',
+    avatarUrl: undefined,
     certificateVerified: true,
     referralCode: 'XN-RAJESH102'
   },
@@ -147,7 +147,7 @@ export const BASELINE_NURSES: NurseProfile[] = [
     pointsEarned: 1250,
     referralEarningsRupees: 2900,
     rating: 4.88,
-    avatarUrl: 'https://images.unsplash.com/photo-1559839734-2b71ea197ec2?w=150&auto=format&fit=crop&q=80',
+    avatarUrl: undefined,
     certificateVerified: true,
     referralCode: 'XN-ANJALI103'
   },
@@ -166,7 +166,7 @@ export const BASELINE_NURSES: NurseProfile[] = [
     pointsEarned: 2800,
     referralEarningsRupees: 6700,
     rating: 5.00,
-    avatarUrl: 'https://images.unsplash.com/photo-1582750433449-648ed127bb54?w=150&auto=format&fit=crop&q=80',
+    avatarUrl: undefined,
     certificateVerified: true,
     referralCode: 'XN-SUNITA104'
   }
@@ -282,7 +282,7 @@ export const BASELINE_COUPONS: Coupon[] = [
   {
     id: 'coup-1',
     code: 'WELCOME50',
-    description: 'Flat ₹50 OFF on your first home clinical care visit in Hyderabad',
+    description: 'Flat ₹50 OFF on your first home clinical care visit in Hyderabad [SHOW_IN_MODAL]',
     discountType: 'flat',
     discountValue: 50,
     minOrderAmount: 499,
@@ -292,7 +292,7 @@ export const BASELINE_COUPONS: Coupon[] = [
   {
     id: 'coup-2',
     code: 'HEALTH20',
-    description: '20% OFF on advanced home nursing procedures (up to ₹200)',
+    description: '20% OFF on advanced home nursing procedures (up to ₹200) [SHOW_IN_MODAL]',
     discountType: 'percent',
     discountValue: 20,
     maxDiscount: 200,
@@ -303,7 +303,7 @@ export const BASELINE_COUPONS: Coupon[] = [
   {
     id: 'coup-3',
     code: 'FLAT100',
-    description: 'Flat ₹100 discount for elderly geriatric care visits',
+    description: 'Flat ₹100 discount for elderly geriatric care visits [SHOW_IN_MODAL]',
     discountType: 'flat',
     discountValue: 100,
     minOrderAmount: 800,
@@ -547,7 +547,7 @@ export async function dbFetchNurses(): Promise<NurseProfile[] | null> {
       pointsEarned: n.points_earned != null && !isNaN(Number(n.points_earned)) ? Math.max(0, Math.round(Number(n.points_earned))) : 0,
       referralEarningsRupees: n.referral_earnings_rupees != null && !isNaN(Number(n.referral_earnings_rupees)) ? Math.max(0, Number(n.referral_earnings_rupees)) : 0,
       rating: Number(n.rating) || 4.90,
-      avatarUrl: n.avatar_url || 'https://images.unsplash.com/photo-1594824813589-9a25b42d768a?w=150&auto=format&fit=crop&q=80',
+      avatarUrl: n.avatar_url || undefined,
       certificateVerified: Boolean(n.certificate_verified),
       certificateUrl: n.certificate_url || undefined,
       createdAt: n.created_at,
@@ -616,7 +616,7 @@ export async function dbInsertNurse(n: NurseProfile): Promise<boolean> {
       points_earned: n.pointsEarned != null && !isNaN(Number(n.pointsEarned)) ? Math.max(0, Math.round(Number(n.pointsEarned))) : 0,
       referral_earnings_rupees: n.referralEarningsRupees != null && !isNaN(Number(n.referralEarningsRupees)) ? Math.max(0, Number(n.referralEarningsRupees)) : 0,
       rating: Number(n.rating) || 4.90,
-      avatar_url: n.avatarUrl || 'https://images.unsplash.com/photo-1594824813589-9a25b42d768a?w=150&auto=format&fit=crop&q=80',
+      avatar_url: n.avatarUrl || null,
       certificate_verified: Boolean(n.certificateVerified ?? true),
       certificate_url: n.certificateUrl || null,
       referred_by_nurse_id: n.referredByNurseId || null,
@@ -772,7 +772,13 @@ export async function dbFetchBookings(): Promise<Booking[] | null> {
     rejectedBy: b.rejected_by || (b.status === 'Rejected' ? (b.rejection_reason?.toLowerCase().includes('nurse') || b.notes?.toLowerCase().includes('declined by nurse') ? 'Nurse' : 'Admin') : undefined),
     rejectedNurseId: b.rejected_nurse_id || undefined,
     rejectedNurseName: b.rejected_nurse_name || undefined,
-    rejectedAt: b.rejected_at || undefined
+    rejectedAt: b.rejected_at || undefined,
+    promoCode: b.promo_code || undefined,
+    discountRupees: Number(b.discount_rupees) || 0,
+    finalFee: b.final_fee != null ? Number(b.final_fee) : undefined,
+    numberOfVisits: b.number_of_visits != null ? Number(b.number_of_visits) : undefined,
+    invoiceNumber: b.invoice_number || undefined,
+    invoiceUrl: b.invoice_url || undefined
   }));
 }
 
@@ -821,7 +827,13 @@ export async function dbSaveBooking(b: Booking): Promise<boolean> {
       night_surcharge: Number(b.nightSurcharge) || 0.00,
       referral_bonus_rupees: Number(b.referralBonusRupees) || 0.00,
       notes: b.notes || null,
-      rejection_reason: b.rejectionReason || null
+      rejection_reason: b.rejectionReason || null,
+      promo_code: b.promoCode || null,
+      discount_rupees: b.discountRupees || 0,
+      final_fee: b.finalFee || null,
+      number_of_visits: b.numberOfVisits || null,
+      invoice_number: b.invoiceNumber || null,
+      invoice_url: b.invoiceUrl || null
     };
 
     const { error } = await supabase.from('bookings').upsert(payload);
@@ -835,6 +847,7 @@ export async function dbSaveBooking(b: Booking): Promise<boolean> {
         }
         delete fallbackPayload.booking_type;
         delete fallbackPayload.scheduled_slot;
+        delete fallbackPayload.number_of_visits;
         const retry = await supabase.from('bookings').upsert(fallbackPayload);
         if (!retry.error) return true;
         console.error('[DB] Supabase bookings save retry error:', retry.error.message);
@@ -871,6 +884,12 @@ export async function dbUpdateBooking(id: string, updates: Partial<Booking>): Pr
   if (updates.preferredTime !== undefined) payload.preferred_time = updates.preferredTime || null;
   if (updates.status !== undefined) payload.status = updates.status;
   if (updates.rejectionReason !== undefined) payload.rejection_reason = updates.rejectionReason || null;
+  if (updates.promoCode !== undefined) payload.promo_code = updates.promoCode || null;
+  if (updates.discountRupees !== undefined) payload.discount_rupees = updates.discountRupees;
+  if (updates.finalFee !== undefined) payload.final_fee = updates.finalFee || null;
+  if (updates.numberOfVisits !== undefined) payload.number_of_visits = updates.numberOfVisits || null;
+  if (updates.invoiceNumber !== undefined) payload.invoice_number = updates.invoiceNumber || null;
+  if (updates.invoiceUrl !== undefined) payload.invoice_url = updates.invoiceUrl || null;
   if (updates.nurseAcceptanceStatus !== undefined) payload.nurse_acceptance_status = updates.nurseAcceptanceStatus;
   if (updates.hasPrescription !== undefined) payload.has_prescription = Boolean(updates.hasPrescription);
   if (updates.prescriptionFileName !== undefined) payload.prescription_file_name = updates.prescriptionFileName || null;
@@ -958,19 +977,20 @@ export async function dbFetchLeads(): Promise<NurseLead[] | null> {
   return data.map((l: any) => ({
     id: l.id,
     nurseId: l.nurse_id,
-    patientName: l.patient_name || l.referred_nurse_name,
-    patientPhone: l.patient_phone || l.referred_nurse_phone,
+    patientName: l.patient_name || undefined,
+    patientPhone: l.patient_phone || undefined,
     serviceId: l.service_id,
     area: l.area,
     submittedAt: l.submitted_at,
+    referralType: l.referral_type,
     status: l.status || 'Converted',
     assignedNurseId: l.assigned_nurse_id,
     leadValueRupees: Number(l.lead_value_rupees) || 1000.00,
     pointsAwarded: l.points_awarded != null && !isNaN(Number(l.points_awarded)) ? Math.round(Number(l.points_awarded)) : 50,
     referralCommissionRupees: Number(l.referral_commission_rupees) || 100.00,
     referralRupees: Number(l.referral_commission_rupees) || 100.00,
-    referredNurseName: l.referred_nurse_name || l.patient_name || undefined,
-    referredNursePhone: l.referred_nurse_phone || l.patient_phone || undefined,
+    referredNurseName: l.referred_nurse_name || undefined,
+    referredNursePhone: l.referred_nurse_phone || undefined,
     qualification: l.qualification || undefined,
     experienceYears: Number(l.experience_years) || 3,
     rejectionReason: l.rejection_reason || undefined
@@ -990,18 +1010,19 @@ export async function dbSaveLead(lead: NurseLead): Promise<boolean> {
     const payload: any = {
       id: lead.id,
       nurse_id: cleanNurseId,
-      patient_name: lead.patientName || lead.referredNurseName || null,
-      patient_phone: lead.patientPhone || lead.referredNursePhone || null,
+      patient_name: lead.patientName || null,
+      patient_phone: lead.patientPhone || null,
       service_id: lead.serviceId || null,
       area: lead.area || (lead as any).serviceArea || 'Hyderabad Central',
       submitted_at: isoSubmittedAt,
+      referral_type: lead.referralType || null,
       status: lead.status || 'Pending Approval',
       assigned_nurse_id: cleanAssignedNurseId,
       lead_value_rupees: Number(lead.leadValueRupees) || 1000.00,
       points_awarded: lead.pointsAwarded != null && !isNaN(Number(lead.pointsAwarded)) ? Math.round(Number(lead.pointsAwarded)) : 50,
       referral_commission_rupees: Number(lead.referralCommissionRupees) || 100.00,
-      referred_nurse_name: lead.referredNurseName || lead.patientName || null,
-      referred_nurse_phone: lead.referredNursePhone || lead.patientPhone || null,
+      referred_nurse_name: lead.referredNurseName || null,
+      referred_nurse_phone: lead.referredNursePhone || null,
       qualification: lead.qualification || null,
       experience_years: !isNaN(Number(lead.experienceYears)) ? Math.max(0, Math.round(Number(lead.experienceYears))) : 3,
       rejection_reason: lead.rejectionReason || null
@@ -1029,6 +1050,7 @@ export async function dbSaveLead(lead: NurseLead): Promise<boolean> {
           service_id: payload.service_id,
           area: payload.area || 'Hyderabad Central',
           submitted_at: payload.submitted_at,
+          referral_type: payload.referral_type,
           status: payload.status,
           assigned_nurse_id: null,
           lead_value_rupees: payload.lead_value_rupees,
@@ -1058,6 +1080,7 @@ export async function dbUpdateLeadById(id: string, updates: Partial<NurseLead>):
   if (updates.patientPhone !== undefined) payload.patient_phone = updates.patientPhone;
   if (updates.serviceId !== undefined) payload.service_id = updates.serviceId;
   if (updates.area !== undefined) payload.area = updates.area;
+  if (updates.referralType !== undefined) payload.referral_type = updates.referralType;
   if (updates.status !== undefined) payload.status = updates.status;
   if (updates.nurseId !== undefined) {
     payload.nurse_id = (updates.nurseId && updates.nurseId.trim() !== '' && updates.nurseId !== 'none') ? updates.nurseId.trim() : null;

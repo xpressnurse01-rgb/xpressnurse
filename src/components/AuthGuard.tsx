@@ -152,12 +152,7 @@ export const AuthGuard: React.FC<AuthGuardProps> = ({
 
           <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
             <button
-              onClick={() => {
-                try {
-                  localStorage.removeItem('xn_auth_user');
-                } catch {}
-                onNavigate(`/login?portal=${requiredRole}`);
-              }}
+              onClick={() => onNavigate(`/${user.role}`)}
               style={{
                 display: 'inline-flex',
                 alignItems: 'center',
@@ -174,7 +169,34 @@ export const AuthGuard: React.FC<AuthGuardProps> = ({
                 cursor: 'pointer'
               }}
             >
-              <span>Switch Account</span>
+              <Home size={18} />
+              <span>Return to My Dashboard</span>
+            </button>
+
+            <button
+              onClick={() => {
+                try {
+                  localStorage.removeItem('xn_auth_user');
+                } catch {}
+                onNavigate(`/login?portal=${requiredRole}`);
+              }}
+              style={{
+                display: 'inline-flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                gap: '0.5rem',
+                width: '100%',
+                padding: '0.75rem 1.5rem',
+                background: 'transparent',
+                color: '#ef4444',
+                border: '1px solid #fecaca',
+                borderRadius: '10px',
+                fontWeight: 600,
+                fontSize: '0.95rem',
+                cursor: 'pointer'
+              }}
+            >
+              <span>Log Out & Switch Account</span>
               <ArrowRight size={18} />
             </button>
 

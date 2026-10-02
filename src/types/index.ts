@@ -62,8 +62,10 @@ export interface Booking {
   referringNurseId?: string;
   referringNurseName?: string;
   estimatedFee: number;
+  numberOfVisits?: number;
   nightSurcharge?: number;
   referralBonusRupees?: number;
+  nursePayoutRupees?: number;
   notes?: string;
   promoCode?: string;
   discountRupees?: number;
@@ -148,6 +150,7 @@ export interface NurseLead {
   leadValueRupees?: number;
   pointsAwarded?: number;
   referralCommissionRupees?: number;
+  referralType?: 'patient' | 'nurse';
   approvedAt?: string;
   approvedBy?: string;
   adminNotes?: string;
@@ -171,6 +174,11 @@ export interface DoctorConsultation {
   doctorName?: string;
   doctorNotes?: string;
   rejectionReason?: string;
+  bookingId?: string;
+  urgency?: string;
+  prescriptionFileUrl?: string;
+  nurseComments?: string;
+  adminNotes?: string;
 }
 
 export interface AppUser {
@@ -198,6 +206,7 @@ export interface Coupon {
   usageLimit?: number;
   timesUsed: number;
   validUntil?: string;
+  showInBookingModal?: boolean;
   createdAt?: string;
   updatedAt?: string;
 }
@@ -208,7 +217,9 @@ export type StorageCategory =
   | 'certificates' 
   | 'teleconsult-rx' 
   | 'receipts' 
-  | 'lab-reports';
+  | 'images'
+  | 'lab-reports'
+  | 'images';
 
 export interface CloudflareStorageObject {
   id: string;
@@ -250,6 +261,9 @@ export interface InvoiceDetails {
   fullAddress: string;
   area: string;
   serviceTitle: string;
+  serviceDate?: string;
+  numberOfVisits?: number;
+  timeSlot?: string;
   serviceId: string;
   assignedNurseName?: string;
   baseAmount: number;

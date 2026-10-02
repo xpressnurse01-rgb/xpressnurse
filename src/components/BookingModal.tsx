@@ -108,6 +108,7 @@ export const BookingModal: React.FC<BookingModalProps> = ({
     description: string;
   } | null>(null);
   const [promoError, setPromoError] = useState('');
+  const [showCoupons, setShowCoupons] = useState(false);
 
   // States
   const [isDetectingLocation, setIsDetectingLocation] = useState(false);
@@ -179,7 +180,7 @@ export const BookingModal: React.FC<BookingModalProps> = ({
     setAppliedPromo({
       code: promo.code,
       discountRupees: calculatedDiscount,
-      description: promo.description
+      description: promo.description.replace('[SHOW_IN_MODAL]', '').trim()
     });
     setPromoInput(promo.code);
     setPromoError('');
@@ -1269,31 +1270,40 @@ export const BookingModal: React.FC<BookingModalProps> = ({
                     </div>
                   )}
 
-                  {/* 1-Tap Quick Apply Coupon Chips (Dynamically synced from Supabase) */}
-                  <div style={{ display: 'flex', gap: '0.4rem', flexWrap: 'wrap', alignItems: 'center' }}>
-                    <span style={{ fontSize: '0.7rem', color: 'var(--neutral-500)', fontWeight: 500 }}>Try:</span>
-                    {couponList
-                      .filter((c) => c.status === 'Active')
-                      .slice(0, 4)
-                      .map((cpn) => (
-                        <button
-                          key={cpn.id}
-                          type="button"
-                          onClick={() => handleApplyPromo(cpn.code)}
-                          style={{
-                            padding: '0.18rem 0.5rem',
-                            fontSize: '0.7rem',
-                            fontWeight: 700,
-                            background: '#EFF6FF',
-                            color: '#1D4ED8',
-                            border: '1px solid #BFDBFE',
-                            borderRadius: 6,
-                            cursor: 'pointer'
-                          }}
-                        >
-                          {cpn.code} ({cpn.discountType === 'flat' ? `₹${cpn.discountValue} OFF` : `${cpn.discountValue}% OFF`})
-                        </button>
-                      ))}
+                  <div style={{ marginTop: '0.75rem' }}>
+                    <button
+                      type="button"
+                      onClick={() => setShowCoupons(!showCoupons)}
+                      className="btn btn-outline btn-sm"
+                      style={{ width: '100%', borderRadius: 8, fontSize: '0.8rem', padding: '0.4rem', border: '1px dashed #94A3B8' }}
+                    >
+                      {showCoupons ? 'Hide Coupons' : 'View Available Coupons'}
+                    </button>
+                    {showCoupons && (
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem', marginTop: '0.75rem' }}>
+                        {couponList
+                          .filter((c) => c.status === 'Active' && c.description.includes('[SHOW_IN_MODAL]'))
+                          .map((cpn) => (
+                            <div key={cpn.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: '#F8FAFC', padding: '0.5rem 0.75rem', borderRadius: 8, border: '1px solid #E2E8F0' }}>
+                              <div>
+                                <div style={{ fontSize: '0.85rem', fontWeight: 800, color: '#0F172A' }}>{cpn.code}</div>
+                                <div style={{ fontSize: '0.7rem', color: '#64748B' }}>{cpn.description.replace('[SHOW_IN_MODAL]', '').trim()}</div>
+                              </div>
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  handleApplyPromo(cpn.code);
+                                  setShowCoupons(false);
+                                }}
+                                className="btn btn-sm"
+                                style={{ background: '#EFF6FF', color: '#1D4ED8', border: '1px solid #BFDBFE', padding: '0.2rem 0.6rem', fontSize: '0.75rem', borderRadius: 9999 }}
+                              >
+                                Apply
+                              </button>
+                            </div>
+                          ))}
+                      </div>
+                    )}
                   </div>
                 </>
               )}

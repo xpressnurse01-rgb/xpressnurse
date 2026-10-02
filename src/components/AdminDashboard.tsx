@@ -62,7 +62,8 @@ import {
   RefreshCw,
   UserCheck,
   AlertTriangle,
-  LogOut
+  LogOut,
+  User
 } from 'lucide-react';
 import { EmptyState } from './EmptyState';
 import { SEED_APP_USERS, generateNurseReferralCode, dbLogAuditEvent } from '../lib/supabase';
@@ -247,9 +248,6 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
     const inv = generateInvoiceDetails(booking);
     setPreviewInvoice(inv);
     setIsInvoicePreviewModalOpen(true);
-    // Sync into storage objects list
-    await saveInvoiceToCloudflareBucket(booking);
-    setStorageObjects(getCloudflareObjects());
   };
 
   const handlePrintCurrentInvoice = () => {
@@ -259,12 +257,9 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
   };
 
   const handleSyncAllInvoicesToCloudflare = async () => {
-    for (const b of bookings) {
-      await saveInvoiceToCloudflareBucket(b);
-    }
     const synced = syncDatabaseRecordsToStorage(bookings, nurses, getCloudflareObjects());
     setStorageObjects(synced);
-    showToast(`Synced ${synced.length} documents, invoices & certificates to Cloudflare R2 bucket!`);
+    showToast(`Synced documents and certificates to Cloudflare R2 bucket!`);
   };
 
   const handleSaveR2ConfigSubmit = (e: React.FormEvent) => {
@@ -282,6 +277,8 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
       return;
     }
     const cleanFileName = uploadForm.fileName.endsWith('.pdf') ? uploadForm.fileName : `${uploadForm.fileName}.pdf`;
+    const relatedBooking = bookings.find(b => b.id === uploadForm.bookingId);
+    
     await uploadToCloudflareStorage({
       fileName: cleanFileName,
       category: uploadForm.category,
@@ -289,7 +286,11 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
       sizeBytes: Math.floor(110000 + Math.random() * 200000),
       metadata: {
         bookingId: uploadForm.bookingId || undefined,
-        patientName: uploadForm.patientName || undefined,
+        patientName: relatedBooking ? relatedBooking.patientName : (uploadForm.patientName || undefined),
+        patientPhone: relatedBooking ? relatedBooking.patientPhone : undefined,
+        assignedNurseId: relatedBooking ? relatedBooking.assignedNurseId : undefined,
+        serviceId: relatedBooking ? relatedBooking.serviceId : undefined,
+        estimatedFee: relatedBooking ? relatedBooking.estimatedFee : undefined,
         description: uploadForm.description || `Uploaded document to ${uploadForm.category}`
       }
     });
@@ -648,7 +649,8 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
     description: '',
     status: 'Active' as 'Active' | 'Inactive',
     usageLimit: '',
-    validUntil: ''
+    validUntil: '',
+    showInBookingModal: true
   });
   const [couponFormError, setCouponFormError] = useState('');
 
@@ -666,7 +668,8 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
       description: '',
       status: 'Active',
       usageLimit: '1000',
-      validUntil: '2026-12-31'
+      validUntil: '2026-12-31',
+      showInBookingModal: true
     });
     setCouponFormError('');
     setIsCouponModalOpen(true);
@@ -681,10 +684,11 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
       discountValue: coupon.discountValue,
       maxDiscount: coupon.maxDiscount ? String(coupon.maxDiscount) : '',
       minOrderAmount: coupon.minOrderAmount || 0,
-      description: coupon.description,
+      description: coupon.description.replace('[SHOW_IN_MODAL]', '').trim(),
       status: coupon.status === 'Expired' ? 'Inactive' : coupon.status,
       usageLimit: coupon.usageLimit ? String(coupon.usageLimit) : '',
-      validUntil: coupon.validUntil ? coupon.validUntil.split('T')[0] : ''
+      validUntil: coupon.validUntil ? coupon.validUntil.split('T')[0] : '',
+      showInBookingModal: coupon.description.includes('[SHOW_IN_MODAL]')
     });
     setCouponFormError('');
     setIsCouponModalOpen(true);
@@ -716,7 +720,9 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
         discountValue: Number(couponForm.discountValue),
         maxDiscount: couponForm.maxDiscount ? Number(couponForm.maxDiscount) : undefined,
         minOrderAmount: Number(couponForm.minOrderAmount) || 0,
-        description: couponForm.description.trim(),
+        description: couponForm.showInBookingModal 
+          ? `${couponForm.description.trim()} [SHOW_IN_MODAL]`
+          : couponForm.description.trim().replace('[SHOW_IN_MODAL]', '').trim(),
         status: couponForm.status,
         usageLimit: couponForm.usageLimit ? Number(couponForm.usageLimit) : undefined,
         validUntil: couponForm.validUntil ? new Date(couponForm.validUntil).toISOString() : undefined
@@ -1007,7 +1013,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
     const rows = bookings.map((b) => [
       sanitizeCsvCell(b.id),
       sanitizeCsvCell(b.createdAt ? new Date(b.createdAt).toLocaleDateString('en-IN') : 'N/A'),
-      sanitizeCsvCell(b.bookingType === 'scheduled' ? 'Scheduled Slot' : 'Instant (ASAP)'),
+      sanitizeCsvCell(b.bookingType?.toLowerCase() === 'scheduled' ? 'Scheduled Slot' : 'Instant (ASAP)'),
       sanitizeCsvCell(b.scheduledSlot || 'Immediate'),
       sanitizeCsvCell(b.patientName),
       sanitizeCsvCell(b.patientPhone),
@@ -1105,6 +1111,71 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
     dbLogAuditEvent('DATA_EXPORT', 'nurses', 'all', { count: nurses.length });
   };
 
+  // Export Leads to CSV / Excel
+  const exportLeadsToCSV = () => {
+    const sanitizeCsvCell = (val: any): string => {
+      if (val === null || val === undefined) return '""';
+      const strVal = String(val).replace(/"/g, '""');
+      return `"${strVal}"`;
+    };
+    
+    const headers = [
+      'Lead ID', 'Submitted At', 'Patient Name', 'Patient Phone', 'Patient Age', 'Patient Gender', 
+      'Service ID', 'Area', 'Full Address', 'Status', 'Referral Type', 'Referring Nurse ID', 
+      'Referring Nurse Name', 'Referred Nurse Phone', 'Points Awarded', 'Commission (Rupees)', 'Rejection Reason', 'Admin Notes'
+    ];
+    
+    const csvContent = leads.map(l => {
+      return [
+        l.id, l.submittedAt || '', l.patientName, l.patientPhone, l.patientAge || '', l.patientGender || '',
+        l.serviceId || '', l.area || '', l.fullAddress || '', l.status, l.referralType || 'patient', l.nurseId,
+        l.referredNurseName || '', l.referredNursePhone || '', l.pointsAwarded || 0, l.referralCommissionRupees || 0, 
+        l.rejectionReason || '', l.adminNotes || ''
+      ].map(sanitizeCsvCell).join(',');
+    });
+    
+    const finalCsv = [headers.join(','), ...csvContent].join('\n');
+    const blob = new Blob([finalCsv], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `XpressNurse_Leads_Report_${new Date().toISOString().split('T')[0]}.csv`;
+    a.click();
+    URL.revokeObjectURL(url);
+    showToast('Exported leads and referrals to CSV/Excel report!');
+  };
+
+  // Export Consultations to CSV / Excel
+  const exportConsultationsToCSV = () => {
+    const sanitizeCsvCell = (val: any): string => {
+      if (val === null || val === undefined) return '""';
+      const strVal = String(val).replace(/"/g, '""');
+      return `"${strVal}"`;
+    };
+    
+    const headers = [
+      'Consult ID', 'Requested At', 'Booking ID', 'Patient Name', 'Patient Phone', 
+      'Status', 'Urgency', 'Prescription File', 'Nurse Comments', 'Admin/Doctor Notes'
+    ];
+    
+    const csvContent = consultations.map(c => {
+      return [
+        c.id, c.requestedAt, c.bookingId, c.patientName, c.patientPhone,
+        c.status, c.urgency, c.prescriptionFileUrl || '', c.nurseComments || '', c.adminNotes || ''
+      ].map(sanitizeCsvCell).join(',');
+    });
+    
+    const finalCsv = [headers.join(','), ...csvContent].join('\n');
+    const blob = new Blob([finalCsv], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `XpressNurse_Consultations_Report_${new Date().toISOString().split('T')[0]}.csv`;
+    a.click();
+    URL.revokeObjectURL(url);
+    showToast('Exported teleconsultations to CSV/Excel report!');
+  };
+
   // --------------------------------------------------------------------------
   // 2. NURSES CRUD STATE & HANDLERS
   // --------------------------------------------------------------------------
@@ -1125,6 +1196,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
     status: 'Active',
     certificateVerified: true,
     rating: 4.9,
+    avatarUrl: '',
     pin: '1001',
     pointsEarned: 300,
     referralEarningsRupees: 0,
@@ -1149,7 +1221,8 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
       pointsEarned: 300,
       referralEarningsRupees: 0,
       earningsPaid: 0,
-      earningsPending: 0
+      earningsPending: 0,
+      avatarUrl: ''
     });
     setIsNurseModalOpen(true);
   };
@@ -1213,7 +1286,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
       earningsPaid: Number(nurseForm.earningsPaid) || 0,
       earningsPending: Number(nurseForm.earningsPending) || 0,
       rating: Number(nurseForm.rating) || 4.9,
-      avatarUrl: editingNurse ? editingNurse.avatarUrl : 'https://images.unsplash.com/photo-1594824813571-638f0263614f?auto=format&fit=crop&q=80&w=400',
+      avatarUrl: nurseForm.avatarUrl || (editingNurse ? editingNurse.avatarUrl : undefined),
       certificateVerified: nurseForm.certificateVerified
     };
 
@@ -1312,8 +1385,10 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
     nightSurcharge: 399,
     prescriptionRequired: true,
     duration: '45 - 60 mins',
-    badge: ''
+    badge: '',
+    imageUrl: ''
   });
+  const [isUploadingServiceImage, setIsUploadingServiceImage] = useState(false);
 
   const handleOpenCreateServiceModal = () => {
     setEditingService(null);
@@ -1327,7 +1402,8 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
       nightSurcharge: 399,
       prescriptionRequired: true,
       duration: '45 - 60 mins',
-      badge: 'Popular'
+      badge: 'Popular',
+      imageUrl: ''
     });
     setIsServiceModalOpen(true);
   };
@@ -1344,9 +1420,92 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
       nightSurcharge: s.nightSurcharge || 399,
       prescriptionRequired: !!s.prescriptionRequired,
       duration: s.duration || '45 - 60 mins',
-      badge: s.badge || ''
+      badge: s.badge || '',
+      imageUrl: s.imageUrl || ''
     });
     setIsServiceModalOpen(true);
+  };
+
+  const [isUploadingNurseAvatar, setIsUploadingNurseAvatar] = useState(false);
+
+  const handleNurseAvatarUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    if (file.size > 5 * 1024 * 1024) {
+      showToast('Image size exceeds 5MB limit.', 'error');
+      return;
+    }
+
+    try {
+      setIsUploadingNurseAvatar(true);
+      const dataUrl = await new Promise<string>((resolve) => {
+        const reader = new FileReader();
+        reader.onload = () => resolve(reader.result as string);
+        reader.onerror = () => resolve('');
+        reader.readAsDataURL(file);
+      });
+
+      const cleanFileName = (file.name || 'avatar.jpg').replace(/[^a-zA-Z0-9._-]/g, '_');
+      const obj = await uploadToCloudflareStorage({
+        fileName: `avatar_${Date.now()}_${cleanFileName}`,
+        category: 'images',
+        contentType: file.type || 'image/jpeg',
+        sizeBytes: file.size,
+        dataUrl: dataUrl || undefined,
+        metadata: {
+          description: `Avatar for Nurse: ${nurseForm.name || 'Unknown'}`
+        }
+      });
+      
+      setNurseForm((prev) => ({ ...prev, avatarUrl: obj.publicUrl }));
+      showToast('Nurse avatar uploaded successfully!', 'success');
+    } catch (err: any) {
+      console.error('Error uploading nurse avatar:', err);
+      showToast(err.message || 'Failed to upload nurse avatar', 'error');
+    } finally {
+      setIsUploadingNurseAvatar(false);
+    }
+  };
+
+  const handleServiceImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    if (file.size > 5 * 1024 * 1024) {
+      showToast('Image size exceeds 5MB limit.', 'error');
+      return;
+    }
+
+    try {
+      setIsUploadingServiceImage(true);
+      const dataUrl = await new Promise<string>((resolve) => {
+        const reader = new FileReader();
+        reader.onload = () => resolve(reader.result as string);
+        reader.onerror = () => resolve('');
+        reader.readAsDataURL(file);
+      });
+
+      const cleanFileName = (file.name || 'service_image.jpg').replace(/[^a-zA-Z0-9._-]/g, '_');
+      const obj = await uploadToCloudflareStorage({
+        fileName: `service_${Date.now()}_${cleanFileName}`,
+        category: 'images',
+        contentType: file.type || 'image/jpeg',
+        sizeBytes: file.size,
+        dataUrl: dataUrl || undefined,
+        metadata: {
+          description: `Thumbnail for Service: ${serviceForm.title || 'Unknown Service'}`,
+        }
+      });
+      
+      setServiceForm((prev) => ({ ...prev, imageUrl: obj.publicUrl }));
+      showToast('Service image uploaded successfully!', 'success');
+    } catch (err: any) {
+      console.error('Error uploading service image:', err);
+      showToast(err.message || 'Failed to upload service image', 'error');
+    } finally {
+      setIsUploadingServiceImage(false);
+    }
   };
 
   const handleSaveServiceSubmit = async (e: React.FormEvent) => {
@@ -1369,6 +1528,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
       features: ['Doorstep clinical service across Hyderabad', 'Certified & background-verified RN attending'],
       icon: 'Activity',
       badge: serviceForm.badge.trim() || undefined,
+      imageUrl: serviceForm.imageUrl.trim() || undefined,
       procedureSteps: ['Aseptic preparation & equipment check', 'Clinical execution by RN'],
       equipmentProvided: ['Sterile gloves', 'Clinical disinfectant swab']
     };
@@ -1512,9 +1672,19 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
 
   const handleOpenApproveModal = (lead: NurseLead) => {
     setApprovalModalLead(lead);
+    
+    // Calculate 10% of procedure value if it's a patient lead, otherwise 50 rupees for nurse lead
+    let defaultRupees = 50; // Default 50 for nurse referrals
+    if (lead.referralType !== 'nurse' && !lead.referredNursePhone) {
+      const procedure = services.find(s => s.id === lead.serviceId);
+      if (procedure) {
+        defaultRupees = Math.round((procedure.priceNumber || 800) * 0.10);
+      }
+    }
+    
     setApprovalPoints(50);
-    setApprovalReferralRupees(0);
-    setApprovalNotes(lead.adminNotes || `Approved by Office (+50 points credited).`);
+    setApprovalReferralRupees(defaultRupees);
+    setApprovalNotes(lead.adminNotes || `Approved by Office (+50 points credited, ₹${defaultRupees} commission).`);
     setRejectReason('');
     setIsRejectConfirmOpen(false);
   };
@@ -1523,9 +1693,9 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
     if (!approvalModalLead || !onApproveLead) return;
     setIsProcessingApproval(true);
     try {
-      await onApproveLead(approvalModalLead.id, 50, 0, approvalNotes);
+      await onApproveLead(approvalModalLead.id, approvalPoints, approvalReferralRupees, approvalNotes);
       const referringNurse = nurses.find((n) => n.id === approvalModalLead.nurseId);
-      showToast(`Referral ${approvalModalLead.id} approved! Credited +50 points to ${referringNurse?.name || 'Nurse'}.`);
+      showToast(`Referral ${approvalModalLead.id} approved! Credited +${approvalPoints} points and ₹${approvalReferralRupees} to ${referringNurse?.name || 'Nurse'}.`);
       setApprovalModalLead(null);
     } catch {
       showToast('Error approving referral in Supabase', 'error');
@@ -1849,7 +2019,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
             onClick={() => setActiveTab('coupons')}
           >
             <Tag size={14} />
-            <span>🎟️ Discounts ({coupons.length})</span>
+            <span>🎟️ Coupons ({coupons.length})</span>
           </button>
           <button
             className={`btn btn-sm ${activeTab === 'credentials' ? 'btn-primary' : 'btn-outline'}`}
@@ -2033,7 +2203,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                           <div style={{ fontWeight: 750, color: 'var(--primary-navy-950)' }}>{b.patientName}</div>
                           <div style={{ fontSize: '0.76rem', color: '#64748B', fontFamily: 'monospace' }}>{b.patientPhone}</div>
                           <div style={{ marginTop: '0.2rem' }}>
-                            {b.bookingType === 'scheduled' ? (
+                            {b.bookingType?.toLowerCase() === 'scheduled' ? (
                               <span style={{ fontSize: '0.72rem', background: '#F0FDF4', color: '#166534', padding: '2px 7px', borderRadius: 9999, fontWeight: 700, border: '1px solid #BBF7D0', whiteSpace: 'nowrap' }}>
                                 📅 {b.scheduledSlot || 'Scheduled Slot'}
                               </span>
@@ -2245,7 +2415,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                 title="Issue and sync invoices for all bookings"
               >
                 <Receipt size={15} />
-                <span>Issue All Invoices ({bookings.length})</span>
+                <span>Invoice Generator ({bookings.length})</span>
               </button>
               <button
                 onClick={handleOpenCreateBookingModal}
@@ -2411,16 +2581,21 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                             />
                           </td>
                           <td style={{ whiteSpace: 'nowrap' }}>
-                            <strong style={{ fontFamily: 'monospace', fontSize: '0.86rem' }}>{b.id}</strong>
+                            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.2rem' }}>
+                              <strong style={{ fontFamily: 'monospace', fontSize: '0.86rem' }}>{b.id}</strong>
+                              <span style={{ fontSize: '0.7rem', color: '#64748B' }}>
+                                Received: {b.createdAt ? new Date(b.createdAt).toLocaleString() : 'Unknown'}
+                              </span>
+                            </div>
                           </td>
                           <td style={{ whiteSpace: 'nowrap' }}>
-                        {b.bookingType === 'scheduled' ? (
+                        {b.bookingType?.toLowerCase() === 'scheduled' ? (
                           <div style={{ display: 'inline-flex', alignItems: 'center', gap: '0.35rem', whiteSpace: 'nowrap' }}>
                             <span style={{ fontSize: '0.74rem', background: '#F0FDF4', color: '#166534', padding: '2px 8px', borderRadius: 9999, fontWeight: 750, border: '1px solid #BBF7D0', whiteSpace: 'nowrap' }}>
                               📅 Scheduled
                             </span>
                             <span style={{ fontSize: '0.74rem', color: '#475569', fontWeight: 600, whiteSpace: 'nowrap' }}>
-                              {b.scheduledSlot || b.preferredDate || 'Standard Slot'}
+                              {b.preferredDate ? `${b.preferredDate} | ${b.preferredTime || b.scheduledSlot || 'Standard Slot'}` : (b.scheduledSlot || 'Standard Slot')}
                             </span>
                           </div>
                         ) : (
@@ -2578,12 +2753,12 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                           );
                         })()}
                       </td>
-                      <td style={{ textAlign: 'right', whiteSpace: 'nowrap' }}>
+                      <td style={{ textAlign: 'right' }}>
                         {(() => {
                           const isDeclinedByNurse = b.rejectedBy === 'Nurse' || b.nurseAcceptanceStatus === 'Rejected' || (b.status === 'Rejected' && b.rejectionReason?.toLowerCase().includes('nurse'));
 
                           return (
-                            <div style={{ display: 'inline-flex', alignItems: 'center', gap: '0.35rem' }}>
+                            <div style={{ display: 'flex', flexWrap: 'wrap', justifyContent: 'flex-end', alignItems: 'center', gap: '0.35rem' }}>
                               {isDeclinedByNurse && (
                                 <>
                                   <button
@@ -2980,11 +3155,9 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                           </td>
                           <td>
                           <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
-                            <img
-                              src={n.avatarUrl}
-                              alt={n.name}
-                              style={{ width: 38, height: 38, borderRadius: '50%', objectFit: 'cover' }}
-                            />
+                            <div style={{ width: 38, height: 38, borderRadius: '50%', background: '#F1F5F9', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#64748B' }}>
+                              <User size={20} />
+                            </div>
                             <div>
                               <strong>{n.name}</strong>
                               <div style={{ fontSize: '0.78rem', color: 'var(--neutral-500)' }}>{n.phone}</div>
@@ -3227,29 +3400,29 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                                   await onUpdateNurseRecord?.(n.id, { certificateVerified: true, status: 'Active' });
                                   showToast(`Nurse "${n.name}" verified and approved!`);
 
-                                    // If nurse was referred by an existing nurse, credit ₹500 referral reward to the referrer
-                                    if (n.referredByNurseId && onUpdateNurseRecord) {
-                                      const referrer = nurses.find((rn) => rn.id === n.referredByNurseId);
-                                      if (referrer) {
-                                        const newPaid = (referrer.earningsPaid || 0) + 500;
-                                        const newPending = Math.max(0, (referrer.earningsPending || 0) - 500);
-                                        const newRefEarnings = (referrer.referralEarningsRupees || 0) + 500;
-                                        const newPoints = (referrer.pointsEarned || 0) + 50;
-                                        await onUpdateNurseRecord(referrer.id, {
-                                          earningsPaid: newPaid,
-                                          earningsPending: newPending,
-                                          referralEarningsRupees: newRefEarnings,
-                                          pointsEarned: newPoints,
-                                          convertedLeads: (referrer.convertedLeads || 0) + 1
-                                        });
+                                      // If nurse was referred by an existing nurse, credit ₹50 referral reward to the referrer
+                                      if (n.referredByNurseId && onUpdateNurseRecord) {
+                                        const referrer = nurses.find((rn) => rn.id === n.referredByNurseId);
+                                        if (referrer) {
+                                          const newPaid = (referrer.earningsPaid || 0) + 50;
+                                          const newPending = Math.max(0, (referrer.earningsPending || 0) - 50);
+                                          const newRefEarnings = (referrer.referralEarningsRupees || 0) + 50;
+                                          const newPoints = (referrer.pointsEarned || 0) + 50;
+                                          await onUpdateNurseRecord(referrer.id, {
+                                            earningsPaid: newPaid,
+                                            earningsPending: newPending,
+                                            referralEarningsRupees: newRefEarnings,
+                                            pointsEarned: newPoints,
+                                            convertedLeads: (referrer.convertedLeads || 0) + 1
+                                          });
 
-                                        // Also approve lead if exists
-                                        const matchLead = leads.find((l) => l.nurseId === referrer.id && (l.referredNursePhone === n.phone || l.patientPhone === n.phone || l.referredNurseName === n.name));
-                                        if (matchLead && onApproveLead) {
-                                          await onApproveLead(matchLead.id, 50, 500, `Referred nurse ${n.name} certificate verified by Admin`);
-                                        }
+                                          // Also approve lead if exists
+                                          const matchLead = leads.find((l) => l.nurseId === referrer.id && (l.referredNursePhone === n.phone || l.patientPhone === n.phone || l.referredNurseName === n.name));
+                                          if (matchLead && onApproveLead) {
+                                            await onApproveLead(matchLead.id, 50, 50, `Referred nurse ${n.name} certificate verified by Admin`);
+                                          }
 
-                                        showToast(`Nurse ${n.name} approved! ₹500 referral bonus credited to ${referrer.name}.`);
+                                        showToast(`Nurse ${n.name} approved! ₹50 referral bonus credited to ${referrer.name}.`);
                                         return;
                                       }
                                     }
@@ -3530,14 +3703,24 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                 Total: {leads.length} referrals | Every approved patient gives the nurse +50 Reward Points
               </p>
             </div>
-            <button
-              onClick={handleOpenCreateLeadModal}
-              className="btn btn-danger btn-sm"
-              style={{ borderRadius: 9999, fontWeight: 700, gap: '0.4rem' }}
-            >
-              <Plus size={16} />
-              <span>Add Patient Referral</span>
-            </button>
+            <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center', flexWrap: 'wrap' }}>
+              <button
+                onClick={exportLeadsToCSV}
+                className="btn btn-outline btn-sm"
+                style={{ borderRadius: 9999, fontWeight: 700, gap: '0.4rem', borderColor: '#10B981', color: '#059669', background: '#ECFDF5' }}
+              >
+                <Download size={16} />
+                <span>Export Referrals</span>
+              </button>
+              <button
+                onClick={handleOpenCreateLeadModal}
+                className="btn btn-danger btn-sm"
+                style={{ borderRadius: 9999, fontWeight: 700, gap: '0.4rem' }}
+              >
+                <Plus size={16} />
+                <span>Add Patient Referral</span>
+              </button>
+            </div>
           </div>
 
           {/* Pending Approvals Notice Banner */}
@@ -3710,7 +3893,22 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                           </div>
                         </td>
                         <td>
-                          <div style={{ fontWeight: 600 }}>{l.patientName}</div>
+                          <div style={{ display: 'flex', flexDirection: 'column', gap: '0.2rem' }}>
+                            <div style={{ fontWeight: 600 }}>{l.referralType === 'nurse' || l.referredNursePhone ? l.referredNurseName || l.patientName : l.patientName}</div>
+                            <span style={{ 
+                              fontSize: '0.65rem', 
+                              fontWeight: 800, 
+                              textTransform: 'uppercase', 
+                              padding: '2px 6px', 
+                              borderRadius: 4, 
+                              display: 'inline-block',
+                              width: 'fit-content',
+                              background: l.referralType === 'nurse' || l.referredNursePhone ? '#EDE9FE' : '#E0F2FE', 
+                              color: l.referralType === 'nurse' || l.referredNursePhone ? '#6D28D9' : '#0369A1' 
+                            }}>
+                              {l.referralType === 'nurse' || l.referredNursePhone ? 'Nurse Referral' : 'Patient Referral'}
+                            </span>
+                          </div>
                         </td>
                         <td>
                           {isRejected ? (
@@ -3876,14 +4074,24 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                 </p>
               </div>
 
-              <button
-                onClick={handleOpenCreateConsultModal}
-                className="btn btn-danger btn-sm"
-                style={{ borderRadius: 9999, fontWeight: 700, gap: '0.4rem' }}
-              >
-                <Plus size={16} />
-                <span>New Consultation</span>
-              </button>
+              <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center', flexWrap: 'wrap' }}>
+                <button
+                  onClick={exportConsultationsToCSV}
+                  className="btn btn-outline btn-sm"
+                  style={{ borderRadius: 9999, fontWeight: 700, gap: '0.4rem', borderColor: '#10B981', color: '#059669', background: '#ECFDF5' }}
+                >
+                  <Download size={16} />
+                  <span>Export Consults</span>
+                </button>
+                <button
+                  onClick={handleOpenCreateConsultModal}
+                  className="btn btn-danger btn-sm"
+                  style={{ borderRadius: 9999, fontWeight: 700, gap: '0.4rem' }}
+                >
+                  <Plus size={16} />
+                  <span>New Consultation</span>
+                </button>
+              </div>
             </div>
 
             {/* Filter & Search Toolbar */}
@@ -5103,7 +5311,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                                     if (matchingBooking) {
                                       handleViewBookingInvoice(matchingBooking);
                                     } else {
-                                      window.open(obj.publicUrl, '_blank');
+                                      window.open(obj.dataUrl || obj.publicUrl, '_blank');
                                     }
                                   }}
                                   className="btn btn-sm"
@@ -5124,8 +5332,31 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                                   <Receipt size={12} />
                                   <span>Invoice</span>
                                 </button>
-                              )}
+                                )}
 
+                                <a
+                                  href={obj.publicUrl}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  className="btn btn-sm"
+                                  style={{
+                                    background: '#EFF6FF',
+                                    border: '1px solid #BFDBFE',
+                                    color: '#1E3A8A',
+                                    padding: '0.25rem 0.55rem',
+                                    borderRadius: 6,
+                                    fontSize: '0.74rem',
+                                    fontWeight: 700,
+                                    display: 'inline-flex',
+                                    alignItems: 'center',
+                                    gap: '0.25rem',
+                                    textDecoration: 'none'
+                                  }}
+                                  title="Open file in new tab"
+                                >
+                                  <ExternalLink size={12} />
+                                  <span>View File</span>
+                                </a>
                               <button
                                 type="button"
                                 onClick={() => handleCopyPublicUrl(obj.publicUrl)}
@@ -5356,6 +5587,19 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                   className="form-control"
                   required
                 />
+              </div>
+
+              <div style={{ marginBottom: '1.25rem', display: 'flex', alignItems: 'center', gap: '0.6rem' }}>
+                <input
+                  type="checkbox"
+                  id="cShowModal"
+                  checked={couponForm.showInBookingModal}
+                  onChange={(e) => setCouponForm({ ...couponForm, showInBookingModal: e.target.checked })}
+                  style={{ width: 16, height: 16, cursor: 'pointer' }}
+                />
+                <label htmlFor="cShowModal" style={{ fontSize: '0.85rem', fontWeight: 600, cursor: 'pointer', margin: 0 }}>
+                  Show this coupon in the Home Screen Booking Modal
+                </label>
               </div>
 
               {/* Live Preview Card */}
@@ -6190,6 +6434,38 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
             </div>
 
             <form onSubmit={handleSaveNurseSubmit} className="modal-body" style={{ padding: '1.25rem 1.5rem' }}>
+              <div style={{ marginBottom: '1.5rem' }}>
+                <label className="form-label" style={{ fontSize: '0.78rem', fontWeight: 700, color: 'var(--primary-navy-950)' }}>
+                  NURSE PROFILE AVATAR (Optional)
+                </label>
+                <div style={{ display: 'flex', gap: '1rem', alignItems: 'center' }}>
+                  {nurseForm.avatarUrl && (
+                    <img 
+                      src={nurseForm.avatarUrl} 
+                      alt="Avatar preview" 
+                      style={{ width: 64, height: 64, objectFit: 'cover', borderRadius: '50%', border: '2px solid #E2E8F0' }} 
+                    />
+                  )}
+                  <div style={{ flex: 1 }}>
+                    <div style={{ position: 'relative' }}>
+                      <input 
+                        type="file" 
+                        accept="image/*"
+                        onChange={handleNurseAvatarUpload}
+                        disabled={isUploadingNurseAvatar}
+                        className="form-control"
+                        style={{ paddingLeft: '2.5rem' }}
+                      />
+                      <UploadCloud size={16} style={{ position: 'absolute', left: '0.75rem', top: '50%', transform: 'translateY(-50%)', color: '#64748B' }} />
+                    </div>
+                    {isUploadingNurseAvatar && (
+                      <div style={{ fontSize: '0.75rem', color: '#0284C7', marginTop: '0.25rem', fontWeight: 600 }}>
+                        Uploading avatar...
+                      </div>
+                    )}
+                  </div>
+                </div>
+              </div>
               <div style={{ display: 'grid', gridTemplateColumns: '1.3fr 1fr', gap: '0.75rem', marginBottom: '0.85rem' }}>
                 <div>
                   <label className="form-label" style={{ fontSize: '0.78rem', fontWeight: 700 }}>NURSE FULL NAME *</label>
@@ -6541,6 +6817,42 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                 />
               </div>
 
+              <div style={{ marginBottom: '1.25rem' }}>
+                <label className="form-label" style={{ fontSize: '0.78rem', fontWeight: 700, display: 'block', marginBottom: '0.5rem' }}>
+                  SERVICE THUMBNAIL IMAGE (Optional)
+                </label>
+                <div style={{ display: 'flex', gap: '1rem', alignItems: 'center' }}>
+                  {serviceForm.imageUrl && (
+                    <img 
+                      src={serviceForm.imageUrl} 
+                      alt="Thumbnail preview" 
+                      style={{ width: 64, height: 64, objectFit: 'cover', borderRadius: 8, border: '1px solid #E2E8F0' }} 
+                    />
+                  )}
+                  <div style={{ flex: 1 }}>
+                    <input
+                      type="file"
+                      accept="image/jpeg, image/png, image/webp"
+                      onChange={handleServiceImageUpload}
+                      disabled={isUploadingServiceImage}
+                      style={{
+                        width: '100%',
+                        padding: '0.45rem',
+                        border: '1px dashed #CBD5E1',
+                        borderRadius: 8,
+                        fontSize: '0.85rem',
+                        background: '#F8FAFC'
+                      }}
+                    />
+                    {isUploadingServiceImage && (
+                      <div style={{ fontSize: '0.75rem', color: '#0284C7', marginTop: '0.25rem', fontWeight: 600 }}>
+                        Uploading thumbnail...
+                      </div>
+                    )}
+                  </div>
+                </div>
+              </div>
+
               <div style={{ marginBottom: '1.25rem', display: 'flex', alignItems: 'center', gap: '0.6rem' }}>
                 <input
                   type="checkbox"
@@ -6669,17 +6981,11 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                 </div>
                 <div>
                   <label className="form-label" style={{ fontSize: '0.78rem', fontWeight: 700 }}>PATIENT AREA</label>
-                  <select
+                  <input list="hyderabad-areas" placeholder="Select or enter area"
                     className="form-control"
                     value={leadForm.area}
                     onChange={(e) => setLeadForm({ ...leadForm, area: e.target.value as HyderabadArea })}
-                  >
-                    <option value="LB Nagar">LB Nagar</option>
-                    <option value="Gachibowli">Gachibowli</option>
-                    <option value="Madhapur">Madhapur</option>
-                    <option value="Banjara Hills">Banjara Hills</option>
-                    <option value="Kukatpally">Kukatpally</option>
-                  </select>
+                  />
                 </div>
               </div>
 
@@ -7109,17 +7415,11 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                 </div>
                 <div>
                   <label className="form-label" style={{ fontSize: '0.78rem', fontWeight: 700 }}>AREA</label>
-                  <select
+                  <input list="hyderabad-areas" placeholder="Select or enter area"
                     className="form-control"
                     value={consultForm.area}
                     onChange={(e) => setConsultForm({ ...consultForm, area: e.target.value as HyderabadArea })}
-                  >
-                    <option value="Gachibowli">Gachibowli</option>
-                    <option value="LB Nagar">LB Nagar</option>
-                    <option value="Madhapur">Madhapur</option>
-                    <option value="Banjara Hills">Banjara Hills</option>
-                    <option value="Kukatpally">Kukatpally</option>
-                  </select>
+                  />
                 </div>
                 <div>
                   <label className="form-label" style={{ fontSize: '0.78rem', fontWeight: 700 }}>STATUS</label>
@@ -7501,25 +7801,33 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                 boxShadow: '0 4px 15px rgba(0,0,0,0.04)',
                 marginBottom: '1.25rem'
               }}>
-                {previewPrescriptionObject?.dataUrl ? (
-                  previewPrescriptionObject.contentType.startsWith('image/') ? (
-                    <div style={{ padding: '1rem', textAlign: 'center', background: '#F8FAFC' }}>
-                      <img 
-                        src={previewPrescriptionObject.dataUrl} 
-                        alt="Prescription Document" 
-                        style={{ maxWidth: '100%', maxHeight: 420, borderRadius: 8, objectFit: 'contain', boxShadow: '0 2px 10px rgba(0,0,0,0.1)' }} 
-                      />
-                    </div>
-                  ) : (
-                    <div style={{ height: 420 }}>
-                      <iframe 
-                        src={previewPrescriptionObject.dataUrl} 
-                        title="Prescription PDF" 
-                        style={{ width: '100%', height: '100%', border: 'none' }} 
-                      />
-                    </div>
-                  )
-                ) : (
+                {(() => {
+                  const srcUrl = previewPrescriptionObject?.dataUrl || previewPrescriptionObject?.publicUrl || previewPrescriptionBooking?.prescriptionUrl;
+                  const isImage = previewPrescriptionObject?.contentType?.startsWith('image/') || 
+                                  (previewPrescriptionObject?.fileName && previewPrescriptionObject.fileName.toLowerCase().match(/\.(jpg|jpeg|png|gif|webp)$/)) ||
+                                  (srcUrl && typeof srcUrl === 'string' && srcUrl.toLowerCase().match(/\.(jpg|jpeg|png|gif|webp)(\?.*)?$/));
+                  
+                  if (srcUrl) {
+                    return isImage ? (
+                      <div style={{ padding: '1rem', textAlign: 'center', background: '#F8FAFC' }}>
+                        <img 
+                          src={srcUrl} 
+                          alt="Prescription Document" 
+                          style={{ maxWidth: '100%', maxHeight: 420, borderRadius: 8, objectFit: 'contain', boxShadow: '0 2px 10px rgba(0,0,0,0.1)' }} 
+                        />
+                      </div>
+                    ) : (
+                      <div style={{ height: 420 }}>
+                        <iframe 
+                          src={srcUrl} 
+                          title="Prescription PDF" 
+                          style={{ width: '100%', height: '100%', border: 'none' }} 
+                        />
+                      </div>
+                    );
+                  }
+                  
+                  return (
                   /* Formal Rx Document Layout (High Medical Fidelity) */
                   <div style={{ padding: '2rem 1.75rem', background: '#FFFFFF', position: 'relative' }}>
                     {/* Watermark */}
@@ -7570,15 +7878,24 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                     </div>
 
                     {/* Actual Uploaded File or Mock Text */}
-                    {previewPrescriptionObject?.dataUrl ? (
-                      <div style={{ marginBottom: '1.5rem', textAlign: 'center' }}>
-                        {previewPrescriptionObject.contentType?.startsWith('image/') || previewPrescriptionObject.fileName.toLowerCase().match(/\.(jpg|jpeg|png|gif|webp)$/) ? (
-                          <img src={previewPrescriptionObject.dataUrl} alt="Prescription" style={{ maxWidth: '100%', maxHeight: '50vh', borderRadius: 8, border: '1px solid #CBD5E1', objectFit: 'contain' }} />
-                        ) : (
-                          <iframe src={previewPrescriptionObject.dataUrl} style={{ width: '100%', height: '50vh', borderRadius: 8, border: '1px solid #CBD5E1' }} title="Prescription Document" />
-                        )}
-                      </div>
-                    ) : (
+                    {(() => {
+                      const srcUrl = previewPrescriptionObject?.dataUrl || previewPrescriptionObject?.publicUrl || previewPrescriptionBooking?.prescriptionUrl;
+                      const isImage = previewPrescriptionObject?.contentType?.startsWith('image/') || 
+                                      (previewPrescriptionObject?.fileName && previewPrescriptionObject.fileName.toLowerCase().match(/\.(jpg|jpeg|png|gif|webp)$/)) ||
+                                      (srcUrl && typeof srcUrl === 'string' && srcUrl.toLowerCase().match(/\.(jpg|jpeg|png|gif|webp)(\?.*)?$/));
+                      
+                      if (srcUrl) {
+                        return (
+                          <div style={{ marginBottom: '1.5rem', textAlign: 'center' }}>
+                            {isImage ? (
+                              <img src={srcUrl} alt="Prescription" style={{ maxWidth: '100%', maxHeight: '50vh', borderRadius: 8, border: '1px solid #CBD5E1', objectFit: 'contain' }} />
+                            ) : (
+                              <iframe src={srcUrl} style={{ width: '100%', height: '50vh', borderRadius: 8, border: '1px solid #CBD5E1' }} title="Prescription Document" />
+                            )}
+                          </div>
+                        );
+                      }
+                      return (
                       <div style={{ marginBottom: '1.5rem' }}>
                         <div style={{ fontSize: '2rem', fontWeight: 900, color: '#E11D48', fontFamily: 'serif', lineHeight: 1, marginBottom: '0.5rem' }}>
                           ℞
@@ -7599,8 +7916,9 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                             {previewPrescriptionConsultation?.prescriptionText || 'Administer sterile doorstep nursing care in strict compliance with attending physician orders. Ensure vitals evaluation (BP, Pulse, SpO2, Temperature) prior to procedure initiation and secure cannula/aseptic dressing upon conclusion.'}
                           </p>
                         </div>
-                      </div>
-                    )}
+                        </div>
+                      );
+                    })()}
 
                     {/* Attending RN & R2 Cloud Verification Tag */}
                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end', paddingTop: '1rem', borderTop: '1px dashed #CBD5E1' }}>
@@ -7750,6 +8068,56 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
               </button>
             </div>
 
+            <div style={{ padding: '1rem 1.5rem', background: '#F8FAFC', borderBottom: '1px solid #E2E8F0', display: 'flex', gap: '1rem', flexWrap: 'wrap' }}>
+              <div style={{ flex: 1, minWidth: 200 }}>
+                <label style={{ fontSize: '0.72rem', fontWeight: 700, color: '#64748B', display: 'block', marginBottom: '4px' }}>Custom Dates</label>
+                <input 
+                  type="text" 
+                  value={previewInvoice.serviceDate || ''} 
+                  onChange={(e) => setPreviewInvoice({ ...previewInvoice, serviceDate: e.target.value })} 
+                  placeholder="e.g. 12 Oct to 15 Oct" 
+                  className="form-control" 
+                />
+              </div>
+              <div style={{ flex: 1, minWidth: 200 }}>
+                <label style={{ fontSize: '0.72rem', fontWeight: 700, color: '#64748B', display: 'block', marginBottom: '4px' }}>Custom Slots</label>
+                <input 
+                  type="text" 
+                  value={previewInvoice.timeSlot || ''} 
+                  onChange={(e) => setPreviewInvoice({ ...previewInvoice, timeSlot: e.target.value })} 
+                  placeholder="e.g. Morning & Evening" 
+                  className="form-control" 
+                />
+              </div>
+              <div style={{ flex: 1, minWidth: 200 }}>
+                <label style={{ fontSize: '0.72rem', fontWeight: 700, color: '#64748B', display: 'block', marginBottom: '4px' }}>Staff Name Override</label>
+                <input 
+                  type="text" 
+                  value={previewInvoice.assignedNurseName || ''} 
+                  onChange={(e) => setPreviewInvoice({ ...previewInvoice, assignedNurseName: e.target.value })} 
+                  placeholder="Attending Staff" 
+                  className="form-control" 
+                />
+              </div>
+              <div style={{ flex: 0.5, minWidth: 100 }}>
+                <label style={{ fontSize: '0.72rem', fontWeight: 700, color: '#64748B', display: 'block', marginBottom: '4px' }}>Total Slots</label>
+                <input 
+                  type="number" 
+                  min="1"
+                  value={previewInvoice.numberOfVisits || 1} 
+                  onChange={(e) => {
+                    const visits = parseInt(e.target.value) || 1;
+                    const baseAmount = previewInvoice.baseAmount;
+                    const surcharge = previewInvoice.nightSurcharge || 0;
+                    const discount = previewInvoice.discountRupees || 0;
+                    const totalAmount = (baseAmount * visits) + surcharge - discount;
+                    setPreviewInvoice({ ...previewInvoice, numberOfVisits: visits, totalAmount });
+                  }}
+                  className="form-control" 
+                />
+              </div>
+            </div>
+
             <div style={{ padding: '1.5rem' }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', borderBottom: '2px solid #0A192F', paddingBottom: '1rem', marginBottom: '1.25rem' }}>
                 <div>
@@ -7778,41 +8146,51 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                 </div>
               </div>
 
-              <table className="data-table" style={{ marginBottom: '1.25rem' }}>
+              <div className="table-responsive" style={{ marginBottom: '1.25rem' }}>
+                <table className="data-table">
                 <thead>
                   <tr>
-                    <th>Procedure Description</th>
-                    <th style={{ textAlign: 'right' }}>Rate (₹)</th>
+                    <th style={{ width: 40, textAlign: 'center' }}>S.No</th>
+                    <th>Procedure</th>
+                    <th>Date</th>
+                    <th>Slot No</th>
                     <th style={{ textAlign: 'right' }}>Amount (₹)</th>
                   </tr>
                 </thead>
                 <tbody>
                   <tr>
+                    <td style={{ textAlign: 'center' }}>1</td>
                     <td><strong>{previewInvoice.serviceTitle}</strong></td>
-                    <td style={{ textAlign: 'right' }}>₹{previewInvoice.baseAmount}</td>
-                    <td style={{ textAlign: 'right' }}>₹{previewInvoice.baseAmount}</td>
+                    <td>{previewInvoice.serviceDate || '-'}</td>
+                    <td>{previewInvoice.timeSlot || '-'}</td>
+                    <td style={{ textAlign: 'right' }}>₹{previewInvoice.baseAmount * (previewInvoice.numberOfVisits || 1)}</td>
                   </tr>
                   {Boolean(previewInvoice.nightSurcharge && previewInvoice.nightSurcharge > 0) && (
                     <tr>
+                      <td style={{ textAlign: 'center' }}>2</td>
                       <td><strong>Night Emergency Surcharge</strong></td>
-                      <td style={{ textAlign: 'right' }}>₹{previewInvoice.nightSurcharge}</td>
+                      <td>-</td>
+                      <td>-</td>
                       <td style={{ textAlign: 'right' }}>₹{previewInvoice.nightSurcharge}</td>
                     </tr>
                   )}
                   {Boolean(previewInvoice.discountRupees && previewInvoice.discountRupees > 0) && (
                     <tr>
+                      <td style={{ textAlign: 'center' }}>{previewInvoice.nightSurcharge && previewInvoice.nightSurcharge > 0 ? '3' : '2'}</td>
                       <td style={{ color: '#059669' }}>Coupon Discount</td>
-                      <td style={{ textAlign: 'right', color: '#059669' }}>-₹{previewInvoice.discountRupees}</td>
+                      <td>-</td>
+                      <td>-</td>
                       <td style={{ textAlign: 'right', color: '#059669' }}>-₹{previewInvoice.discountRupees}</td>
                     </tr>
                   )}
                 </tbody>
               </table>
+              </div>
 
               <div style={{ width: 280, marginLeft: 'auto', marginBottom: '1.25rem' }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', padding: '0.25rem 0', fontSize: '0.82rem' }}>
                   <span>Subtotal:</span>
-                  <strong>₹{previewInvoice.baseAmount}</strong>
+                  <strong>₹{previewInvoice.baseAmount * (previewInvoice.numberOfVisits || 1)}</strong>
                 </div>
 
                 {Boolean(previewInvoice.discountRupees && previewInvoice.discountRupees > 0) && (
@@ -7830,23 +8208,46 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
             </div>
 
             <div style={{ padding: '1rem 1.4rem', background: '#FAFAFA', borderTop: '1px solid var(--neutral-200)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-              <button
-                type="button"
-                onClick={handlePrintCurrentInvoice}
-                className="btn btn-danger"
-                style={{ borderRadius: 9999, gap: '0.35rem' }}
-              >
-                <Printer size={14} />
-                <span>Print / Save PDF</span>
-              </button>
-              <button
-                type="button"
-                onClick={() => setIsInvoicePreviewModalOpen(false)}
-                className="btn btn-outline"
-                style={{ borderRadius: 9999 }}
-              >
-                Close
-              </button>
+              <div style={{ display: 'flex', gap: '0.75rem' }}>
+                <button
+                  type="button"
+                  onClick={async () => {
+                    if (onUpdateBooking) {
+                      await onUpdateBooking(previewInvoice.bookingId, {
+                        preferredDate: previewInvoice.serviceDate,
+                        scheduledSlot: previewInvoice.timeSlot,
+                        numberOfVisits: previewInvoice.numberOfVisits,
+                        finalFee: previewInvoice.totalAmount,
+                        assignedNurseName: previewInvoice.assignedNurseName
+                      });
+                      alert('Invoice details saved and synced successfully!');
+                      setIsInvoicePreviewModalOpen(false);
+                    }
+                  }}
+                  className="btn btn-primary"
+                  style={{ borderRadius: 9999, gap: '0.35rem' }}
+                >
+                  <RefreshCw size={14} />
+                  <span>Save & Sync</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={handlePrintCurrentInvoice}
+                  className="btn btn-danger"
+                  style={{ borderRadius: 9999, gap: '0.35rem' }}
+                >
+                  <Printer size={14} />
+                  <span>Print / Save PDF</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setIsInvoicePreviewModalOpen(false)}
+                  className="btn btn-outline"
+                  style={{ borderRadius: 9999 }}
+                >
+                  Close
+                </button>
+              </div>
             </div>
           </div>
         </div>
@@ -8085,7 +8486,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
 
             <div style={{ padding: '1.5rem', background: '#0F172A', display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: 400 }}>
               {adminCertModalNurse.certificateUrl ? (
-                adminCertModalNurse.certificateUrl.startsWith('data:application/pdf') || adminCertModalNurse.certificateUrl.toLowerCase().endsWith('.pdf') ? (
+                adminCertModalNurse.certificateUrl.startsWith('data:application/pdf') || adminCertModalNurse.certificateUrl.toLowerCase().split('?')[0].endsWith('.pdf') ? (
                   <iframe 
                     src={getSafeBlobUrl(adminCertModalNurse.certificateUrl)} 
                     style={{ width: '100%', height: '65vh', border: 'none', borderRadius: 8, background: '#FFFFFF' }} 
@@ -8096,6 +8497,20 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                     src={adminCertModalNurse.certificateUrl} 
                     alt="Nurse Certificate" 
                     style={{ maxWidth: '100%', maxHeight: '68vh', objectFit: 'contain', borderRadius: 8, boxShadow: '0 10px 25px rgba(0,0,0,0.5)' }} 
+                    onError={(e) => {
+                      (e.target as HTMLImageElement).style.display = 'none';
+                      const parent = (e.target as HTMLImageElement).parentElement;
+                      if (parent) {
+                        const iframe = document.createElement('iframe');
+                        iframe.src = adminCertModalNurse.certificateUrl || '';
+                        iframe.style.width = '100%';
+                        iframe.style.height = '65vh';
+                        iframe.style.border = 'none';
+                        iframe.style.borderRadius = '8px';
+                        iframe.style.background = '#FFFFFF';
+                        parent.appendChild(iframe);
+                      }
+                    }}
                   />
                 )
               ) : (
@@ -8139,9 +8554,9 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                         const referrer = nurses.find((rn) => rn.id === adminCertModalNurse.referredByNurseId);
                         if (referrer) {
                           await onUpdateNurseRecord(referrer.id, {
-                            earningsPaid: (referrer.earningsPaid || 0) + 500,
-                            earningsPending: Math.max(0, (referrer.earningsPending || 0) - 500),
-                            referralEarningsRupees: (referrer.referralEarningsRupees || 0) + 500,
+                            earningsPaid: (referrer.earningsPaid || 0) + 50,
+                            earningsPending: Math.max(0, (referrer.earningsPending || 0) - 50),
+                            referralEarningsRupees: (referrer.referralEarningsRupees || 0) + 50,
                             pointsEarned: (referrer.pointsEarned || 0) + 50,
                             convertedLeads: (referrer.convertedLeads || 0) + 1
                           });

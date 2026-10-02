@@ -14,7 +14,7 @@ import {
 export const DEFAULT_CLOUDFLARE_CONFIG: CloudflareR2Config = {
   accountId: import.meta.env.VITE_CLOUDFLARE_R2_ACCOUNT_ID || '',
   bucketName: import.meta.env.VITE_CLOUDFLARE_R2_BUCKET_NAME || 'xpressnurse-storage',
-  publicDomain: import.meta.env.VITE_CLOUDFLARE_R2_PUBLIC_DOMAIN || '',
+  publicDomain: import.meta.env.VITE_CLOUDFLARE_R2_PUBLIC_DOMAIN || '/buckets',
   endpoint: import.meta.env.VITE_CLOUDFLARE_R2_ENDPOINT || '',
   corsEnabled: true
 };
@@ -74,7 +74,7 @@ export const getCloudflareConfig = (): CloudflareR2Config => {
           accountId: parsed.accountId || import.meta.env.VITE_CLOUDFLARE_R2_ACCOUNT_ID || '',
           bucketName: parsed.bucketName || import.meta.env.VITE_CLOUDFLARE_R2_BUCKET_NAME || 'xpressnurse-storage',
           endpoint: parsed.endpoint || import.meta.env.VITE_CLOUDFLARE_R2_ENDPOINT || '',
-          publicDomain: parsed.publicDomain || import.meta.env.VITE_CLOUDFLARE_R2_PUBLIC_DOMAIN || ''
+          publicDomain: parsed.publicDomain || import.meta.env.VITE_CLOUDFLARE_R2_PUBLIC_DOMAIN || '/buckets'
         };
         return config;
       }
@@ -199,30 +199,7 @@ export const syncDatabaseRecordsToStorage = (
     const cleanId = b.id.replace(/[^a-zA-Z0-9]/g, '');
     const cleanPatient = (b.patientName || 'Patient').replace(/[^a-zA-Z0-9]/g, '_');
 
-    // Invoice
-    const invoiceKey = `invoices/XN-INV-2026-${cleanId}.pdf`;
-    const invId = `r2-inv-${b.id}`;
-    if (!existingKeyMap.has(invoiceKey) && !deletedKeys.has(invoiceKey) && !deletedKeys.has(invId)) {
-      const publicUrl = `${config.publicDomain.replace(/\/+$/, '')}/${invoiceKey}`;
-      generated.push({
-        id: invId,
-        bucketName: config.bucketName,
-        key: invoiceKey,
-        category: 'invoices',
-        fileName: `XN-INV-2026-${cleanId}.pdf`,
-        contentType: 'application/pdf',
-        sizeBytes: 138000 + (Math.abs(cleanId.length * 2891) % 50000),
-        uploadedAt: b.createdAt || new Date().toISOString(),
-        publicUrl,
-        metadata: {
-          bookingId: b.id,
-          patientName: b.patientName,
-          serviceTitle: b.serviceTitle,
-          totalAmount: b.estimatedFee,
-          description: `Clinical Service Doorstep Invoice: ${b.serviceTitle} for ${b.patientName}`
-        }
-      });
-    }
+    // Invoices are generated dynamically in the dashboard, no need to sync to Cloudflare
 
     // Prescription (if hasPrescription or fileName or url)
     if (b.hasPrescription || b.prescriptionFileName || b.prescriptionUrl) {
@@ -293,7 +270,9 @@ export const uploadToCloudflareStorage = async (
     .replace(/[^a-zA-Z0-9._-]/g, '_');
     
   const key = `${cleanCategory}/${cleanName}`;
-  const publicUrl = `${(config.publicDomain || 'https://pub-xn-healthcare.r2.dev').replace(/\/+$/, '')}/${key}`;
+  const publicUrl = config.publicDomain 
+    ? `${config.publicDomain.replace(/\/+$/, '')}/${key}` 
+    : (typeof window !== 'undefined' ? `${window.location.origin}/buckets/${key}` : `/buckets/${key}`);
 
   // Attempt real upload to Cloudflare R2 bucket endpoint
   if (config.endpoint) {
@@ -576,6 +555,9 @@ export const generateInvoiceDetails = (booking: Booking): InvoiceDetails => {
     fullAddress: booking.fullAddress,
     area: booking.area,
     serviceTitle: booking.serviceTitle,
+    serviceDate: booking.preferredDate,
+    timeSlot: booking.scheduledSlot || booking.preferredTime,
+    numberOfVisits: booking.numberOfVisits || 1,
     serviceId: booking.serviceId,
     assignedNurseName: booking.assignedNurseName || 'Assigned Fleet RN',
     baseAmount: baseFee,
@@ -657,11 +639,6 @@ export const generatePrintableInvoiceHtml = (inv: InvoiceDetails): string => {
     <div class="header">
       <div>
         <div class="brand-title">Xpress Nurse</div>
-        <div class="brand-subtitle">Hyderabad 24/7 Clinical Home Care</div>
-        <div style="font-size: 12px; color: #475569; margin-top: 6px;">
-          Reg: TS/HYD/MED-2026/410<br>
-          Banjara Hills Road No. 12, Hyderabad, Telangana 500034
-        </div>
       </div>
       <div style="text-align: right;">
         <div style="font-size: 20px; font-weight: 800; color: #0A192F;">INVOICE</div>
@@ -697,40 +674,44 @@ export const generatePrintableInvoiceHtml = (inv: InvoiceDetails): string => {
     <table class="table">
       <thead>
         <tr>
-          <th>Description of Clinical Procedure</th>
-          <th style="text-align: center;">Qty</th>
-          <th style="text-align: right;">Rate (₹)</th>
+          <th style="width: 50px; text-align: center;">S.No</th>
+          <th>Procedure</th>
+          <th>Date</th>
+          <th style="text-align: center;">Slot No</th>
           <th style="text-align: right;">Amount (₹)</th>
         </tr>
       </thead>
       <tbody>
         <tr>
+          <td style="text-align: center;">1</td>
           <td>
             <strong>${inv.serviceTitle}</strong><br>
             <span style="font-size: 11.5px; color: #64748B;">Doorstep nursing visit with aseptic consumables, vitals check & digital report</span>
           </td>
-          <td style="text-align: center;">1</td>
-          <td style="text-align: right;">₹${inv.baseAmount}</td>
-          <td style="text-align: right;">₹${inv.baseAmount}</td>
+          <td>${inv.serviceDate || '-'}</td>
+          <td style="text-align: center;">${inv.timeSlot || '-'}</td>
+          <td style="text-align: right;">₹${inv.baseAmount * (inv.numberOfVisits || 1)}</td>
         </tr>
         ${inv.nightSurcharge && inv.nightSurcharge > 0 ? `
         <tr>
+          <td style="text-align: center;">2</td>
           <td>
             <strong>Night Visit Emergency Surcharge</strong><br>
             <span style="font-size: 11.5px; color: #64748B;">Dispatch after 8:00 PM rapid response fee</span>
           </td>
-          <td style="text-align: center;">1</td>
-          <td style="text-align: right;">₹${inv.nightSurcharge}</td>
+          <td>-</td>
+          <td style="text-align: center;">-</td>
           <td style="text-align: right;">₹${inv.nightSurcharge}</td>
         </tr>
         ` : ''}
         ${inv.discountRupees && inv.discountRupees > 0 ? `
         <tr>
+          <td style="text-align: center;">${inv.nightSurcharge && inv.nightSurcharge > 0 ? '3' : '2'}</td>
           <td>
             <strong style="color: #059669;">Promotional Coupon Discount</strong>
           </td>
-          <td style="text-align: center;">1</td>
-          <td style="text-align: right; color: #059669;">-₹${inv.discountRupees}</td>
+          <td>-</td>
+          <td style="text-align: center;">-</td>
           <td style="text-align: right; color: #059669;">-₹${inv.discountRupees}</td>
         </tr>
         ` : ''}
@@ -752,8 +733,6 @@ export const generatePrintableInvoiceHtml = (inv: InvoiceDetails): string => {
     <div class="cloud-footer">
       <div></div>
       <div style="text-align: right;">
-        <div style="font-weight: 700; color: #1E293B;">Xpress Nurse Healthcare Pvt. Ltd.</div>
-        <div>Digitally Authorized Signatory</div>
       </div>
     </div>
   </div>

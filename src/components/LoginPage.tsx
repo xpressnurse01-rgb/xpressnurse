@@ -576,33 +576,12 @@ export const LoginPage: React.FC<LoginPageProps> = ({
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem', marginBottom: '0.75rem' }}>
                 <div className="form-group">
                   <label className="form-label">Service Area (Hyderabad)</label>
-                  <select
+                  <input list="hyderabad-areas" placeholder="Select or enter area"
                     value={regServiceArea}
                     onChange={(e) => setRegServiceArea(e.target.value)}
                     className="form-control"
                     style={{ fontWeight: 600 }}
-                  >
-                    <option value="Gachibowli">Gachibowli</option>
-                    <option value="Madhapur">Madhapur</option>
-                    <option value="Hitec City">Hitec City</option>
-                    <option value="Kondapur">Kondapur</option>
-                    <option value="Jubilee Hills">Jubilee Hills</option>
-                    <option value="Banjara Hills">Banjara Hills</option>
-                    <option value="Kukatpally">Kukatpally</option>
-                    <option value="Miyapur">Miyapur</option>
-                    <option value="Secunderabad">Secunderabad</option>
-                    <option value="Ameerpet">Ameerpet</option>
-                    <option value="Begumpet">Begumpet</option>
-                    <option value="LB Nagar">LB Nagar</option>
-                    <option value="Dilsukhnagar">Dilsukhnagar</option>
-                    <option value="Malakpet">Malakpet</option>
-                    <option value="Uppal">Uppal</option>
-                    <option value="Attapur">Attapur</option>
-                    <option value="Tolichowki">Tolichowki</option>
-                    <option value="Charminar">Charminar</option>
-                    <option value="Nallagandla">Nallagandla</option>
-                    <option value="Mehdipatnam">Mehdipatnam</option>
-                  </select>
+                  />
                 </div>
                 <div className="form-group">
                   <label className="form-label">Years of Experience</label>

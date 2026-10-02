@@ -700,51 +700,46 @@ export const App: React.FC = () => {
           console.log('[Realtime DB] Live Booking update:', payload);
           if (payload.new && (payload.eventType === 'UPDATE' || payload.eventType === 'INSERT')) {
             const raw: any = payload.new;
-            setBookings((prev) => {
-              const mapped: Booking = {
-                id: raw.id,
-                createdAt: raw.created_at,
-                patientName: raw.patient_name || '',
-                patientPhone: raw.patient_phone || '',
-                patientAge: raw.patient_age ? Number(raw.patient_age) : undefined,
-                patientGender: raw.patient_gender,
-                serviceId: raw.service_id,
-                serviceTitle: raw.service_title || 'Home Visit',
-                area: raw.area || 'Hyderabad',
-                fullAddress: raw.full_address || `${raw.area}, Hyderabad`,
-                preferredDate: raw.preferred_date || 'Today',
-                preferredTime: raw.preferred_time || 'ASAP',
-                hasPrescription: Boolean(raw.has_prescription),
-                prescriptionFileName: raw.prescription_file_name,
-                prescriptionUrl: raw.prescription_url,
-                status: raw.status || 'Pending',
-                assignedNurseId: raw.assigned_nurse_id,
-                assignedNurseName: raw.assigned_nurse_name,
-                referringNurseId: raw.referring_nurse_id,
-                referringNurseName: raw.referring_nurse_name,
-                estimatedFee: Number(raw.estimated_fee) || 800,
-                nightSurcharge: Number(raw.night_surcharge) || 0,
-                referralBonusRupees: Number(raw.referral_bonus_rupees) || 0,
-                notes: raw.notes || '',
-                bookingType: raw.booking_type || 'instant',
-                scheduledSlot: raw.scheduled_slot,
-                rejectionReason: raw.rejection_reason || undefined
-              };
-              const exists = prev.some((b) => b.id === mapped.id);
-              return exists ? prev.map((b) => (b.id === mapped.id ? mapped : b)) : [mapped, ...prev];
-            });
-            const fresh = await dbFetchBookings();
-            if (fresh && fresh.length > 0) setBookings(fresh);
-          } else if (payload.eventType === 'DELETE') {
-            const delId = (payload.old as any)?.id;
-            if (delId) {
-              setBookings((prev) => prev.filter((b) => b.id !== delId));
-            } else {
-              const fresh = await dbFetchBookings();
-              if (fresh) setBookings(fresh);
+              setBookings((prev) => {
+                const mapped: Booking = {
+                  id: raw.id,
+                  createdAt: raw.created_at,
+                  patientName: raw.patient_name || '',
+                  patientPhone: raw.patient_phone || '',
+                  patientAge: raw.patient_age ? Number(raw.patient_age) : undefined,
+                  patientGender: raw.patient_gender,
+                  serviceId: raw.service_id,
+                  serviceTitle: raw.service_title || 'Home Visit',
+                  area: raw.area || 'Hyderabad',
+                  fullAddress: raw.full_address || `${raw.area}, Hyderabad`,
+                  preferredDate: raw.preferred_date || 'Today',
+                  preferredTime: raw.preferred_time || 'ASAP',
+                  hasPrescription: Boolean(raw.has_prescription),
+                  prescriptionFileName: raw.prescription_file_name,
+                  prescriptionUrl: raw.prescription_url,
+                  status: raw.status || 'Pending',
+                  assignedNurseId: raw.assigned_nurse_id,
+                  assignedNurseName: raw.assigned_nurse_name,
+                  referringNurseId: raw.referring_nurse_id,
+                  referringNurseName: raw.referring_nurse_name,
+                  estimatedFee: Number(raw.estimated_fee) || 800,
+                  nightSurcharge: Number(raw.night_surcharge) || 0,
+                  referralBonusRupees: Number(raw.referral_bonus_rupees) || 0,
+                  notes: raw.notes || '',
+                  bookingType: raw.booking_type || 'instant',
+                  scheduledSlot: raw.scheduled_slot,
+                  rejectionReason: raw.rejection_reason || undefined
+                };
+                const exists = prev.some((b) => b.id === mapped.id);
+                return exists ? prev.map((b) => (b.id === mapped.id ? mapped : b)) : [mapped, ...prev];
+              });
+            } else if (payload.eventType === 'DELETE') {
+              const delId = (payload.old as any)?.id;
+              if (delId) {
+                setBookings((prev) => prev.filter((b) => b.id !== delId));
+              }
             }
           }
-        }
       )
       .on(
         'postgres_changes',
@@ -780,15 +775,10 @@ export const App: React.FC = () => {
               const exists = prev.some((n) => n.id === mapped.id);
               return exists ? prev.map((n) => (n.id === mapped.id ? mapped : n)) : [...prev, mapped];
             });
-            const fresh = await dbFetchNurses();
-            if (fresh && fresh.length > 0) setNurses(fresh);
           } else if (payload.eventType === 'DELETE') {
             const delId = (payload.old as any)?.id;
             if (delId) {
               setNurses((prev) => prev.filter((n) => n.id !== delId));
-            } else {
-              const fresh = await dbFetchNurses();
-              if (fresh) setNurses(fresh);
             }
           }
         }
@@ -825,15 +815,10 @@ export const App: React.FC = () => {
               const exists = prev.some((l) => l.id === mapped.id);
               return exists ? prev.map((l) => (l.id === mapped.id ? mapped : l)) : [mapped, ...prev];
             });
-            const fresh = await dbFetchLeads();
-            if (fresh && fresh.length > 0) setLeads(fresh);
           } else if (payload.eventType === 'DELETE') {
             const delId = (payload.old as any)?.id;
             if (delId) {
               setLeads((prev) => prev.filter((l) => l.id !== delId));
-            } else {
-              const fresh = await dbFetchLeads();
-              if (fresh) setLeads(fresh);
             }
           }
         }
@@ -863,15 +848,10 @@ export const App: React.FC = () => {
               const exists = prev.some((c) => c.id === mapped.id);
               return exists ? prev.map((c) => (c.id === mapped.id ? mapped : c)) : [mapped, ...prev];
             });
-            const fresh = await dbFetchConsultations();
-            if (fresh && fresh.length > 0) setConsultations(fresh);
           } else if (payload.eventType === 'DELETE') {
             const delId = (payload.old as any)?.id;
             if (delId) {
               setConsultations((prev) => prev.filter((c) => c.id !== delId));
-            } else {
-              const fresh = await dbFetchConsultations();
-              if (fresh) setConsultations(fresh);
             }
           }
         }
@@ -885,13 +865,33 @@ export const App: React.FC = () => {
             const delId = (payload.old as any)?.id;
             if (delId) {
               setServices((prev) => prev.filter((s) => s.id !== delId));
-            } else {
-              const fresh = await dbFetchServices();
-              if (fresh) setServices(fresh);
             }
-          } else {
-            const fresh = await dbFetchServices();
-            if (fresh && fresh.length > 0) setServices(fresh);
+          } else if (payload.new && (payload.eventType === 'UPDATE' || payload.eventType === 'INSERT')) {
+            const raw: any = payload.new;
+            const mapped: ServiceItem = {
+              id: raw.id,
+              title: raw.title,
+              subtitle: raw.subtitle,
+              description: raw.description,
+              singleVisitPrice: raw.single_visit_price ? Number(raw.single_visit_price) : undefined,
+              multiVisitPrice: raw.multi_visit_price ? Number(raw.multi_visit_price) : undefined,
+              nightSurcharge: raw.night_surcharge ? Number(raw.night_surcharge) : undefined,
+              prescriptionRequired: Boolean(raw.prescription_required),
+              duration: raw.duration,
+              indicativePrice: raw.indicative_price,
+              priceNumber: raw.price_number ? Number(raw.price_number) : undefined,
+              features: raw.features,
+              icon: raw.icon,
+              badge: raw.badge,
+              procedureSteps: raw.procedure_steps,
+              equipmentProvided: raw.equipment_provided,
+              imageUrl: raw.image_url,
+              createdAt: raw.created_at
+            };
+            setServices((prev) => {
+              const exists = prev.some((s) => s.id === mapped.id);
+              return exists ? prev.map((s) => (s.id === mapped.id ? mapped : s)) : [...prev, mapped];
+            });
           }
         }
       )
@@ -904,13 +904,28 @@ export const App: React.FC = () => {
             const delId = (payload.old as any)?.id;
             if (delId) {
               setCoupons((prev) => prev.filter((c) => c.id !== delId));
-            } else {
-              const fresh = await dbFetchCoupons();
-              if (fresh) setCoupons(fresh);
             }
-          } else {
-            const fresh = await dbFetchCoupons();
-            if (fresh && fresh.length > 0) setCoupons(fresh);
+          } else if (payload.new && (payload.eventType === 'UPDATE' || payload.eventType === 'INSERT')) {
+            const raw: any = payload.new;
+            const mapped: Coupon = {
+              id: raw.id,
+              code: raw.code,
+              discountType: raw.discount_type,
+              discountValue: Number(raw.discount_value),
+              maxDiscount: raw.max_discount ? Number(raw.max_discount) : undefined,
+              minOrderAmount: raw.min_order_amount ? Number(raw.min_order_amount) : undefined,
+              description: raw.description,
+              status: raw.status,
+              usageLimit: raw.usage_limit ? Number(raw.usage_limit) : undefined,
+              timesUsed: Number(raw.times_used) || 0,
+              validUntil: raw.valid_until,
+              createdAt: raw.created_at,
+              updatedAt: raw.updated_at
+            };
+            setCoupons((prev) => {
+              const exists = prev.some((c) => c.id === mapped.id);
+              return exists ? prev.map((c) => (c.id === mapped.id ? mapped : c)) : [...prev, mapped];
+            });
           }
         }
       )
@@ -937,7 +952,7 @@ export const App: React.FC = () => {
   // Handler: When user books a service from public site
   const handleBookingCreated = (newBooking: Booking) => {
     // If booked via direct nurse referral link, auto-lock to referring nurse (Rule 1)
-    // Otherwise, mark as Pending so Admin can review and dispatch to nurse
+    // If booked via nurse referral or direct booking, keep status as 'Pending' so Admin explicitly approves and dispatches
     const isDirectNurseReferral = !!newBooking.referringNurseId;
     let assignedNurseId: string | undefined = undefined;
     let assignedNurseName: string | undefined = undefined;
@@ -950,9 +965,11 @@ export const App: React.FC = () => {
       }
     }
 
+    const bookingFee = Number(newBooking.estimatedFee || newBooking.finalFee || 800);
     const finalizedBooking: Booking = {
       ...newBooking,
-      status: isDirectNurseReferral ? 'Assigned' : 'Pending',
+      status: 'Pending', // Strictly Pending until Admin reviews, approves, and dispatches
+      nursePayoutRupees: newBooking.nursePayoutRupees || Math.round(bookingFee * 0.70), // 70% of booking charge by default
       assignedNurseId,
       assignedNurseName
     };
@@ -960,31 +977,59 @@ export const App: React.FC = () => {
     setBookings((prev) => [finalizedBooking, ...prev]);
     broadcastRealtimeUpdate('BOOKING_CREATE', finalizedBooking);
     dbSaveBooking(finalizedBooking);
+
+    // If booked via nurse referral link, record as Patient Referral lead in 'Pending Approval' state
+    // Patient referral gives 50 points + 10% of service charge if approved by Admin
+    if (newBooking.referringNurseId) {
+      const refNurse = nurses.find((n) => n.id === newBooking.referringNurseId);
+      const commissionRupees = Math.round(bookingFee * 0.10); // 10% of service charge
+      const bookingLead: NurseLead = {
+        id: `RP-${newBooking.id.replace(/^BK-/, '')}`,
+        nurseId: newBooking.referringNurseId,
+        nurseName: refNurse?.name || newBooking.referringNurseName,
+        patientName: newBooking.patientName,
+        patientPhone: newBooking.patientPhone,
+        serviceId: newBooking.serviceId,
+        area: newBooking.area,
+        status: 'Pending Approval',
+        leadValueRupees: bookingFee,
+        pointsAwarded: 50,
+        referralCommissionRupees: commissionRupees,
+        referralType: 'patient',
+        submittedAt: new Date().toISOString()
+      };
+      setLeads((prev) => [bookingLead, ...prev]);
+      broadcastRealtimeUpdate('LEAD_CREATE', bookingLead);
+      dbSaveLead(bookingLead);
+    }
   };
 
-  // Handler: Nurse submits a lead (Direct to Admin - NOT auto-assigned to any nurse)
+  // Handler: Nurse submits a patient referral lead (Direct to Admin - NOT auto-assigned to any nurse)
   const handleAddNewLead = (newLead: NurseLead) => {
-    // Lead enters "Pending Approval" state directly for Admin review; NOT assigned to any nurse
+    const fee = newLead.leadValueRupees || 800;
+    // Lead enters "Pending Approval" state directly for Admin review; 50 pts + 10% of service charge
     const pendingLead: NurseLead = {
       ...newLead,
+      id: newLead.id.startsWith('RP-') || newLead.id.startsWith('RN-') ? newLead.id : `RP-${Date.now().toString().slice(-6)}`,
       assignedNurseId: undefined, // Explicitly not assigned to any nurse; Admin will decide
       status: 'Pending Approval',
       pointsAwarded: 50,
-      referralCommissionRupees: 0
+      referralCommissionRupees: Math.round(fee * 0.10), // 10% of service charge
+      referralType: newLead.referralType || 'patient'
     };
 
     setLeads((prev) => [pendingLead, ...prev]);
     broadcastRealtimeUpdate('LEAD_CREATE', pendingLead);
     dbSaveLead(pendingLead);
 
-    // Increment nurse's total submitted leads / referrals counter
+    // Increment nurse's total submitted referrals counter (points are NOT awarded until Admin approves)
     const referringNurse = nurses.find((n) => n.id === newLead.nurseId);
     if (referringNurse) {
       const updatedReferringNurse: NurseProfile = {
         ...referringNurse,
         totalLeads: referringNurse.totalLeads + 1,
         totalReferrals: (referringNurse.totalReferrals || 0) + 1,
-        earningsPending: referringNurse.earningsPending || 0
+        earningsPending: (referringNurse.earningsPending || 0) + 100
       };
       setNurses((prev) => prev.map((n) => (n.id === updatedReferringNurse.id ? updatedReferringNurse : n)));
       broadcastRealtimeUpdate('NURSE_UPDATE', updatedReferringNurse);
@@ -1002,6 +1047,9 @@ export const App: React.FC = () => {
     const lead = leads.find((l) => l.id === leadId);
     if (!lead) return;
 
+    // Prevent double approval / double point crediting
+    if (lead.status === 'Approved') return;
+
     const pointsToCredit = pointsAwarded > 0 ? pointsAwarded : 50;
 
     const approvedLead: NurseLead = {
@@ -1018,19 +1066,33 @@ export const App: React.FC = () => {
     broadcastRealtimeUpdate('LEAD_UPDATE', approvedLead);
     await dbUpdateLeadById(leadId, approvedLead);
 
-    // Credit Referring Nurse with strictly 50 points
+    // If this lead corresponds to a referred nurse, activate and approve that nurse now!
     const leadNursePhone = (lead.referredNursePhone || lead.patientPhone || '').replace(/\D/g, '');
-    const referringNurse = nurses.find((n) => 
-      n.id === lead.nurseId || 
-      (leadNursePhone && n.phone && n.phone.replace(/\D/g, '') === leadNursePhone)
+    const referredNurse = nurses.find((n) =>
+      (leadNursePhone && n.phone && n.phone.replace(/\D/g, '') === leadNursePhone) ||
+      (lead.referredNurseName && n.name.toLowerCase() === lead.referredNurseName.toLowerCase()) ||
+      (lead.patientName && n.name.toLowerCase() === lead.patientName.toLowerCase())
     );
+    if (referredNurse && (!referredNurse.certificateVerified || referredNurse.status !== 'Active')) {
+      const activatedNurse: NurseProfile = {
+        ...referredNurse,
+        status: 'Active',
+        certificateVerified: true
+      };
+      setNurses((prev) => prev.map((n) => (n.id === activatedNurse.id ? activatedNurse : n)));
+      broadcastRealtimeUpdate('NURSE_UPDATE', activatedNurse);
+      await dbUpdateNurse(activatedNurse);
+    }
+
+    // Credit Referring Nurse with strictly 50 points and commission
+    const referringNurse = nurses.find((n) => n.id === lead.nurseId);
     if (referringNurse) {
       const updatedNurse: NurseProfile = {
         ...referringNurse,
         pointsEarned: (referringNurse.pointsEarned || 0) + pointsToCredit,
         referralEarningsRupees: (referringNurse.referralEarningsRupees || 0) + (referralRupees || 0),
         convertedLeads: (referringNurse.convertedLeads || 0) + 1,
-        totalReferrals: (referringNurse.totalReferrals || 0) + 1
+        totalReferrals: Math.max(referringNurse.totalReferrals || 0, (referringNurse.convertedLeads || 0) + 1)
       };
       setNurses((prev) => {
         const next = prev.map((n) => (n.id === updatedNurse.id ? updatedNurse : n));
@@ -1058,18 +1120,21 @@ export const App: React.FC = () => {
     );
   };
 
-  // Handler: Admin Rejects Lead
+  // Handler: Admin Rejects Lead — strictly removes points and commission if previously approved
   const handleAdminRejectLead = async (leadId: string, adminNotes?: string) => {
     const lead = leads.find((l) => l.id === leadId);
     if (!lead) return;
+
+    const wasApproved = lead.status === 'Approved' || lead.status === 'Converted';
+    const pointsToDeduct = lead.pointsAwarded || 50;
+    const rupeesToDeduct = lead.referralCommissionRupees || 0;
 
     const rejectedLead: NurseLead = {
       ...lead,
       status: 'Rejected',
       pointsAwarded: 0,
       referralCommissionRupees: 0,
-      approvedAt: new Date().toISOString(),
-      approvedBy: 'Admin',
+      approvedAt: undefined,
       rejectedBy: 'Admin',
       rejectionReason: adminNotes || 'Rejected by Admin review',
       adminNotes: adminNotes || 'Rejected by Admin review'
@@ -1078,6 +1143,60 @@ export const App: React.FC = () => {
     setLeads((prev) => prev.map((l) => (l.id === leadId ? rejectedLead : l)));
     broadcastRealtimeUpdate('LEAD_UPDATE', rejectedLead);
     await dbUpdateLeadById(leadId, rejectedLead);
+
+    // If this lead was for a referred nurse, mark that nurse as unapproved / pending verification
+    const leadNursePhone = (lead.referredNursePhone || lead.patientPhone || '').replace(/\D/g, '');
+    const referredNurse = nurses.find((n) =>
+      (leadNursePhone && n.phone && n.phone.replace(/\D/g, '') === leadNursePhone) ||
+      (lead.referredNurseName && n.name.toLowerCase() === lead.referredNurseName.toLowerCase())
+    );
+    if (referredNurse && (referredNurse.certificateVerified || referredNurse.status === 'Active')) {
+      const unverifiedNurse: NurseProfile = {
+        ...referredNurse,
+        status: 'Pending Verification',
+        certificateVerified: false
+      };
+      setNurses((prev) => prev.map((n) => (n.id === unverifiedNurse.id ? unverifiedNurse : n)));
+      broadcastRealtimeUpdate('NURSE_UPDATE', unverifiedNurse);
+      await dbUpdateNurse(unverifiedNurse);
+    }
+
+    // If this lead was for a booking, clear referral bonus on that booking
+    setBookings((prev) =>
+      prev.map((b) => {
+        if (b.patientPhone === lead.patientPhone || (b.referringNurseId === lead.nurseId && b.patientName === lead.patientName)) {
+          const updatedB = {
+            ...b,
+            referralBonusRupees: 0,
+            notes: `${b.notes ? b.notes + ' • ' : ''}[Referral rejected by Admin]`.trim()
+          };
+          broadcastRealtimeUpdate('BOOKING_UPDATE', updatedB);
+          return updatedB;
+        }
+        return b;
+      })
+    );
+
+    // If previously approved, reverse points & referral commission from the referring nurse
+    if (wasApproved) {
+      const referringNurse = nurses.find((n) => n.id === lead.nurseId);
+      if (referringNurse) {
+        const updatedNurse: NurseProfile = {
+          ...referringNurse,
+          pointsEarned: Math.max(0, (referringNurse.pointsEarned || 0) - pointsToDeduct),
+          referralEarningsRupees: Math.max(0, (referringNurse.referralEarningsRupees || 0) - rupeesToDeduct),
+          convertedLeads: Math.max(0, (referringNurse.convertedLeads || 0) - 1),
+          totalReferrals: Math.max(0, (referringNurse.totalReferrals || 0) - 1)
+        };
+        setNurses((prev) => {
+          const next = prev.map((n) => (n.id === updatedNurse.id ? updatedNurse : n));
+          try { localStorage.setItem('xn_cached_nurses', JSON.stringify(next)); } catch {}
+          return next;
+        });
+        broadcastRealtimeUpdate('NURSE_UPDATE', updatedNurse);
+        await dbUpdateNurse(updatedNurse);
+      }
+    }
   };
 
   // Handler: Reassign / Transfer Booking between Nurses
@@ -1147,7 +1266,7 @@ export const App: React.FC = () => {
   };
 
   // Handler: Admin assigns or reassigns order
-  const handleAdminAssignOrder = (bookingId: string, nurseId: string, ruleExplanation: string) => {
+  const handleAdminAssignOrder = (bookingId: string, nurseId: string, ruleExplanation: string, customPayout?: number) => {
     const nurseObj = nurses.find((n) => n.id === nurseId);
     setBookings((prev) =>
       prev.map((b) => {
@@ -1157,6 +1276,8 @@ export const App: React.FC = () => {
             ? `Referred & reassigned to Nurse ${nurseObj?.name || nurseId} by Admin (${ruleExplanation})`
             : undefined;
           const updatedNotes = auditMsg ? (b.notes ? `${b.notes} • ${auditMsg}` : auditMsg) : b.notes;
+          const bookingFee = Number(b.finalFee || b.estimatedFee || 899);
+          const assignedPayout = customPayout !== undefined ? customPayout : (b.nursePayoutRupees || Math.round(bookingFee * 0.70));
 
           const updated: Booking = {
             ...b,
@@ -1164,6 +1285,7 @@ export const App: React.FC = () => {
             nurseAcceptanceStatus: 'Pending',
             assignedNurseId: nurseId,
             assignedNurseName: `${nurseObj?.name || 'Nurse'} (${ruleExplanation})`,
+            nursePayoutRupees: assignedPayout,
             rejectedBy: undefined,
             rejectionReason: undefined,
             rejectedNurseId: undefined,
@@ -1351,12 +1473,121 @@ export const App: React.FC = () => {
     await dbInsertBooking(b);
   };
   const handleUpdateBooking = async (id: string, updates: Partial<Booking>) => {
+    // If booking is rejected or cancelled, reverse any awarded referral rewards and reject matching lead
+    if (updates.status === 'Cancelled' || updates.status === 'Rejected') {
+      const targetBooking = bookings.find((b) => b.id === id);
+      if (targetBooking) {
+        const matchLead = leads.find((l) =>
+          l.id === `LEAD-BK-${id}` ||
+          (targetBooking.referringNurseId && l.nurseId === targetBooking.referringNurseId &&
+            (l.patientPhone === targetBooking.patientPhone || l.patientName === targetBooking.patientName))
+        );
+        const referringNurseId = targetBooking.referringNurseId || matchLead?.nurseId;
+        if (referringNurseId) {
+          const wasApproved = matchLead ? (matchLead.status === 'Approved' || matchLead.status === 'Converted') : false;
+          const pointsToDeduct = (matchLead && matchLead.pointsAwarded) ? matchLead.pointsAwarded : (wasApproved ? 50 : 0);
+          const rupeesToDeduct = (matchLead && matchLead.referralCommissionRupees) ? matchLead.referralCommissionRupees : (wasApproved ? (targetBooking.referralBonusRupees || 0) : 0);
+
+          if (matchLead) {
+            const rejectedLead: NurseLead = {
+              ...matchLead,
+              status: 'Rejected',
+              pointsAwarded: 0,
+              referralCommissionRupees: 0,
+              rejectionReason: updates.rejectionReason || `Booking was ${updates.status.toLowerCase()}`,
+              adminNotes: `Booking ${updates.status.toLowerCase()}`
+            };
+            setLeads((prev) => prev.map((l) => (l.id === matchLead.id ? rejectedLead : l)));
+            broadcastRealtimeUpdate('LEAD_UPDATE', rejectedLead);
+            await dbUpdateLeadById(matchLead.id, rejectedLead);
+          }
+
+          if (wasApproved || pointsToDeduct > 0 || rupeesToDeduct > 0) {
+            const referringNurse = nurses.find((n) => n.id === referringNurseId);
+            if (referringNurse) {
+              const updatedNurse: NurseProfile = {
+                ...referringNurse,
+                pointsEarned: Math.max(0, (referringNurse.pointsEarned || 0) - pointsToDeduct),
+                referralEarningsRupees: Math.max(0, (referringNurse.referralEarningsRupees || 0) - rupeesToDeduct),
+                convertedLeads: Math.max(0, (referringNurse.convertedLeads || 0) - 1),
+                totalReferrals: Math.max(0, (referringNurse.totalReferrals || 0) - 1)
+              };
+              setNurses((prev) => prev.map((n) => (n.id === updatedNurse.id ? updatedNurse : n)));
+              broadcastRealtimeUpdate('NURSE_UPDATE', updatedNurse);
+              await dbUpdateNurse(updatedNurse);
+            }
+          }
+        }
+      }
+    }
+
+    const targetBooking = bookings.find((b) => b.id === id);
+    if (!targetBooking) return;
+
+    if (updates.status === 'Completed' && targetBooking.status !== 'Completed' && targetBooking.assignedNurseId) {
+      const assignedNurse = nurses.find((n) => n.id === targetBooking.assignedNurseId);
+      const procedure = services.find((s) => s.id === targetBooking.serviceId);
+      if (assignedNurse && procedure) {
+        const earningsToAdd = Math.round((procedure.priceNumber || 800) * 0.70);
+        const updatedNurse: NurseProfile = {
+          ...assignedNurse,
+          earningsPending: (assignedNurse.earningsPending || 0) + earningsToAdd
+        };
+        setNurses((prev) => prev.map((n) => (n.id === updatedNurse.id ? updatedNurse : n)));
+        broadcastRealtimeUpdate('NURSE_UPDATE', updatedNurse);
+        await dbUpdateNurse(updatedNurse);
+      }
+    }
+
     setBookings((prev) => prev.map((b) => (b.id === id ? { ...b, ...updates } : b)));
     broadcastRealtimeUpdate('BOOKING_UPDATE', { id, ...updates });
     await dbUpdateBooking(id, updates);
   };
   const handleDeleteBooking = async (id: string) => {
-    setBookings((prev) => prev.filter((b) => b.id !== id));
+    const bookingToDelete = bookings.find((b) => b.id === id);
+    if (bookingToDelete) {
+      const matchLead = leads.find((l) =>
+        l.id === `LEAD-BK-${id}` ||
+        (bookingToDelete.referringNurseId && l.nurseId === bookingToDelete.referringNurseId &&
+          (l.patientPhone === bookingToDelete.patientPhone || l.patientName === bookingToDelete.patientName))
+      );
+      const referringNurseId = bookingToDelete.referringNurseId || matchLead?.nurseId;
+      if (referringNurseId) {
+        const referringNurse = nurses.find((n) => n.id === referringNurseId);
+        const wasApproved = matchLead ? (matchLead.status === 'Approved' || matchLead.status === 'Converted') : false;
+        const pointsToDeduct = (matchLead && matchLead.pointsAwarded) ? matchLead.pointsAwarded : (wasApproved ? 50 : 0);
+        const rupeesToDeduct = (matchLead && matchLead.referralCommissionRupees) ? matchLead.referralCommissionRupees : (wasApproved ? (bookingToDelete.referralBonusRupees || 0) : 0);
+
+        if (referringNurse && (pointsToDeduct > 0 || rupeesToDeduct > 0 || wasApproved)) {
+          const updatedNurse: NurseProfile = {
+            ...referringNurse,
+            pointsEarned: Math.max(0, (referringNurse.pointsEarned || 0) - pointsToDeduct),
+            referralEarningsRupees: Math.max(0, (referringNurse.referralEarningsRupees || 0) - rupeesToDeduct),
+            convertedLeads: Math.max(0, (referringNurse.convertedLeads || 0) - 1),
+            totalReferrals: Math.max(0, (referringNurse.totalReferrals || 0) - 1)
+          };
+          setNurses((prev) => {
+            const next = prev.map((n) => (n.id === updatedNurse.id ? updatedNurse : n));
+            try { localStorage.setItem('xn_cached_nurses', JSON.stringify(next)); } catch {}
+            return next;
+          });
+          broadcastRealtimeUpdate('NURSE_UPDATE', updatedNurse);
+          await dbUpdateNurse(updatedNurse);
+        }
+
+        if (matchLead) {
+          setLeads((prev) => prev.filter((l) => l.id !== matchLead.id));
+          broadcastRealtimeUpdate('LEAD_DELETE', { id: matchLead.id });
+          await dbDeleteLead(matchLead.id);
+        }
+      }
+    }
+
+    setBookings((prev) => {
+      const next = prev.filter((b) => b.id !== id);
+      try { localStorage.setItem('xn_cached_bookings', JSON.stringify(next)); } catch {}
+      return next;
+    });
     broadcastRealtimeUpdate('BOOKING_DELETE', { id });
     await dbDeleteBooking(id);
   };
@@ -1409,6 +1640,42 @@ export const App: React.FC = () => {
     await dbUpdateNurseById(id, updates);
   };
   const handleDeleteNurse = async (id: string) => {
+    const nurseToDelete = nurses.find((n) => n.id === id);
+    if (nurseToDelete) {
+      // Find matching lead for referred nurse
+      const matchLead = leads.find((l) =>
+        (nurseToDelete.referredByNurseId && l.nurseId === nurseToDelete.referredByNurseId) ||
+        (l.referredNursePhone === nurseToDelete.phone || l.patientPhone === nurseToDelete.phone || l.referredNurseName === nurseToDelete.name)
+      );
+      const referrerId = nurseToDelete.referredByNurseId || matchLead?.nurseId;
+
+      if (referrerId) {
+        const referrer = nurses.find((rn) => rn.id === referrerId);
+        const wasApproved = nurseToDelete.certificateVerified || (matchLead && (matchLead.status === 'Approved' || matchLead.status === 'Converted'));
+        const pointsToDeduct = matchLead?.pointsAwarded || (wasApproved ? 50 : 0);
+        const rupeesToDeduct = matchLead?.referralCommissionRupees || (wasApproved ? 500 : 0);
+
+        if (referrer && (pointsToDeduct > 0 || rupeesToDeduct > 0 || wasApproved)) {
+          const updatedReferrer: NurseProfile = {
+            ...referrer,
+            pointsEarned: Math.max(0, (referrer.pointsEarned || 0) - pointsToDeduct),
+            referralEarningsRupees: Math.max(0, (referrer.referralEarningsRupees || 0) - rupeesToDeduct),
+            convertedLeads: Math.max(0, (referrer.convertedLeads || 0) - 1),
+            totalReferrals: Math.max(0, (referrer.totalReferrals || 0) - 1)
+          };
+          setNurses((prev) => prev.map((n) => (n.id === updatedReferrer.id ? updatedReferrer : n)));
+          broadcastRealtimeUpdate('NURSE_UPDATE', updatedReferrer);
+          await dbUpdateNurse(updatedReferrer);
+        }
+
+        if (matchLead) {
+          setLeads((prev) => prev.filter((l) => l.id !== matchLead.id));
+          broadcastRealtimeUpdate('LEAD_DELETE', { id: matchLead.id });
+          await dbDeleteLead(matchLead.id);
+        }
+      }
+    }
+
     setNurses((prev) => {
       const next = prev.filter((n) => n.id !== id);
       try { localStorage.setItem('xn_cached_nurses', JSON.stringify(next)); } catch {}
@@ -1435,7 +1702,36 @@ export const App: React.FC = () => {
     await dbUpdateLeadById(id, updates);
   };
   const handleDeleteLead = async (id: string) => {
-    setLeads((prev) => prev.filter((l) => l.id !== id));
+    const lead = leads.find((l) => l.id === id);
+    if (lead) {
+      const referringNurse = nurses.find((n) => n.id === lead.nurseId);
+      if (referringNurse) {
+        const wasApproved = lead.status === 'Approved' || lead.status === 'Converted' || (lead.pointsAwarded && lead.pointsAwarded > 0);
+        const pointsToDeduct = wasApproved ? (lead.pointsAwarded || 50) : 0;
+        const rupeesToDeduct = wasApproved ? (lead.referralCommissionRupees || 0) : 0;
+        
+        const updatedNurse: NurseProfile = {
+          ...referringNurse,
+          pointsEarned: Math.max(0, (referringNurse.pointsEarned || 0) - pointsToDeduct),
+          referralEarningsRupees: Math.max(0, (referringNurse.referralEarningsRupees || 0) - rupeesToDeduct),
+          convertedLeads: Math.max(0, (referringNurse.convertedLeads || 0) - (wasApproved ? 1 : 0)),
+          totalReferrals: Math.max(0, (referringNurse.totalReferrals || 0) - 1)
+        };
+        setNurses((prev) => {
+          const next = prev.map((n) => (n.id === updatedNurse.id ? updatedNurse : n));
+          try { localStorage.setItem('xn_cached_nurses', JSON.stringify(next)); } catch {}
+          return next;
+        });
+        broadcastRealtimeUpdate('NURSE_UPDATE', updatedNurse);
+        await dbUpdateNurse(updatedNurse);
+      }
+    }
+
+    setLeads((prev) => {
+      const next = prev.filter((l) => l.id !== id);
+      try { localStorage.setItem('xn_cached_leads', JSON.stringify(next)); } catch {}
+      return next;
+    });
     broadcastRealtimeUpdate('LEAD_DELETE', { id });
     await dbDeleteLead(id);
   };
@@ -1503,6 +1799,52 @@ export const App: React.FC = () => {
   // Batch Delete Handlers for Admin Dashboard Selected & Delete All
   const handleDeleteMultipleBookings = async (ids: string[]) => {
     const idSet = new Set(ids);
+    const bookingsToDelete = bookings.filter((b) => idSet.has(b.id));
+
+    const leadsToDeleteIds: string[] = [];
+    bookingsToDelete.forEach((b) => {
+      const matchLead = leads.find((l) =>
+        l.id === `LEAD-BK-${b.id}` ||
+        (b.referringNurseId && l.nurseId === b.referringNurseId &&
+          (l.patientPhone === b.patientPhone || l.patientName === b.patientName))
+      );
+      const referringNurseId = b.referringNurseId || matchLead?.nurseId;
+      if (referringNurseId) {
+        const referringNurse = nurses.find((n) => n.id === referringNurseId);
+        const wasApproved = matchLead ? (matchLead.status === 'Approved' || matchLead.status === 'Converted') : false;
+        const pointsToDeduct = (matchLead && matchLead.pointsAwarded) ? matchLead.pointsAwarded : (wasApproved ? 50 : 0);
+        const rupeesToDeduct = (matchLead && matchLead.referralCommissionRupees) ? matchLead.referralCommissionRupees : (wasApproved ? (b.referralBonusRupees || 0) : 0);
+
+        if (referringNurse && (pointsToDeduct > 0 || rupeesToDeduct > 0 || wasApproved)) {
+          const updatedNurse: NurseProfile = {
+            ...referringNurse,
+            pointsEarned: Math.max(0, (referringNurse.pointsEarned || 0) - pointsToDeduct),
+            referralEarningsRupees: Math.max(0, (referringNurse.referralEarningsRupees || 0) - rupeesToDeduct),
+            convertedLeads: Math.max(0, (referringNurse.convertedLeads || 0) - 1),
+            totalReferrals: Math.max(0, (referringNurse.totalReferrals || 0) - 1)
+          };
+          setNurses((prev) => prev.map((n) => (n.id === updatedNurse.id ? updatedNurse : n)));
+          broadcastRealtimeUpdate('NURSE_UPDATE', updatedNurse);
+          dbUpdateNurse(updatedNurse);
+        }
+
+        if (matchLead) {
+          leadsToDeleteIds.push(matchLead.id);
+        }
+      }
+    });
+
+    if (leadsToDeleteIds.length > 0) {
+      const leadIdSet = new Set(leadsToDeleteIds);
+      setLeads((prev) => {
+        const next = prev.filter((l) => !leadIdSet.has(l.id));
+        try { localStorage.setItem('xn_cached_leads', JSON.stringify(next)); } catch {}
+        return next;
+      });
+      leadsToDeleteIds.forEach((lid) => broadcastRealtimeUpdate('LEAD_DELETE', { id: lid }));
+      await dbDeleteMultipleLeads(leadsToDeleteIds);
+    }
+
     setBookings((prev) => {
       const next = prev.filter((b) => !idSet.has(b.id));
       try { localStorage.setItem('xn_cached_bookings', JSON.stringify(next)); } catch {}
@@ -1514,6 +1856,52 @@ export const App: React.FC = () => {
 
   const handleDeleteMultipleNurses = async (ids: string[]) => {
     const idSet = new Set(ids);
+    const nursesToDelete = nurses.filter((n) => idSet.has(n.id));
+
+    const leadsToDeleteIds: string[] = [];
+    nursesToDelete.forEach((nurseToDelete) => {
+      const matchLead = leads.find((l) =>
+        (nurseToDelete.referredByNurseId && l.nurseId === nurseToDelete.referredByNurseId) ||
+        (l.referredNursePhone === nurseToDelete.phone || l.patientPhone === nurseToDelete.phone || l.referredNurseName === nurseToDelete.name)
+      );
+      const referrerId = nurseToDelete.referredByNurseId || matchLead?.nurseId;
+
+      if (referrerId) {
+        const referrer = nurses.find((rn) => rn.id === referrerId);
+        const wasApproved = nurseToDelete.certificateVerified || (matchLead && (matchLead.status === 'Approved' || matchLead.status === 'Converted'));
+        const pointsToDeduct = matchLead?.pointsAwarded || (wasApproved ? 50 : 0);
+        const rupeesToDeduct = matchLead?.referralCommissionRupees || (wasApproved ? 500 : 0);
+
+        if (referrer && (pointsToDeduct > 0 || rupeesToDeduct > 0 || wasApproved)) {
+          const updatedReferrer: NurseProfile = {
+            ...referrer,
+            pointsEarned: Math.max(0, (referrer.pointsEarned || 0) - pointsToDeduct),
+            referralEarningsRupees: Math.max(0, (referrer.referralEarningsRupees || 0) - rupeesToDeduct),
+            convertedLeads: Math.max(0, (referrer.convertedLeads || 0) - 1),
+            totalReferrals: Math.max(0, (referrer.totalReferrals || 0) - 1)
+          };
+          setNurses((prev) => prev.map((n) => (n.id === updatedReferrer.id ? updatedReferrer : n)));
+          broadcastRealtimeUpdate('NURSE_UPDATE', updatedReferrer);
+          dbUpdateNurse(updatedReferrer);
+        }
+
+        if (matchLead) {
+          leadsToDeleteIds.push(matchLead.id);
+        }
+      }
+    });
+
+    if (leadsToDeleteIds.length > 0) {
+      const leadIdSet = new Set(leadsToDeleteIds);
+      setLeads((prev) => {
+        const next = prev.filter((l) => !leadIdSet.has(l.id));
+        try { localStorage.setItem('xn_cached_leads', JSON.stringify(next)); } catch {}
+        return next;
+      });
+      leadsToDeleteIds.forEach((lid) => broadcastRealtimeUpdate('LEAD_DELETE', { id: lid }));
+      await dbDeleteMultipleLeads(leadsToDeleteIds);
+    }
+
     setNurses((prev) => {
       const next = prev.filter((n) => !idSet.has(n.id));
       try { localStorage.setItem('xn_cached_nurses', JSON.stringify(next)); } catch {}
@@ -1530,6 +1918,28 @@ export const App: React.FC = () => {
 
   const handleDeleteMultipleLeads = async (ids: string[]) => {
     const idSet = new Set(ids);
+    const leadsToDelete = leads.filter((l) => idSet.has(l.id));
+
+    leadsToDelete.forEach((lead) => {
+      const referringNurse = nurses.find((n) => n.id === lead.nurseId);
+      if (referringNurse) {
+        const wasApproved = lead.status === 'Approved' || lead.status === 'Converted' || (lead.pointsAwarded && lead.pointsAwarded > 0);
+        const pointsToDeduct = wasApproved ? (lead.pointsAwarded || 50) : 0;
+        const rupeesToDeduct = wasApproved ? (lead.referralCommissionRupees || 0) : 0;
+        
+        const updatedNurse: NurseProfile = {
+          ...referringNurse,
+          pointsEarned: Math.max(0, (referringNurse.pointsEarned || 0) - pointsToDeduct),
+          referralEarningsRupees: Math.max(0, (referringNurse.referralEarningsRupees || 0) - rupeesToDeduct),
+          convertedLeads: Math.max(0, (referringNurse.convertedLeads || 0) - (wasApproved ? 1 : 0)),
+          totalReferrals: Math.max(0, (referringNurse.totalReferrals || 0) - 1)
+        };
+        setNurses((prev) => prev.map((n) => (n.id === updatedNurse.id ? updatedNurse : n)));
+        broadcastRealtimeUpdate('NURSE_UPDATE', updatedNurse);
+        dbUpdateNurse(updatedNurse);
+      }
+    });
+
     setLeads((prev) => {
       const next = prev.filter((l) => !idSet.has(l.id));
       try { localStorage.setItem('xn_cached_leads', JSON.stringify(next)); } catch {}
