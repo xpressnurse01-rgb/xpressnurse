@@ -1735,14 +1735,13 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
     let defaultRupees = 50; // Default 50 for nurse referrals
     if (lead.referralType !== 'nurse' && !lead.referredNursePhone) {
       const procedure = services.find(s => s.id === lead.serviceId);
-      if (procedure) {
-        defaultRupees = Math.round((procedure.priceNumber || 800) * 0.10);
-      }
+      const fee = Number(lead.leadValueRupees) || (procedure?.priceNumber || 800);
+      defaultRupees = Math.round(fee * 0.10);
     }
     
     setApprovalPoints(50);
     setApprovalReferralRupees(defaultRupees);
-    setApprovalNotes(lead.adminNotes || `Approved by Office (+50 points credited, ₹${defaultRupees} commission).`);
+    setApprovalNotes(lead.adminNotes || `Approved by Office (+50 points credited, ₹${defaultRupees} 10% commission).`);
     setRejectReason('');
     setIsRejectConfirmOpen(false);
   };

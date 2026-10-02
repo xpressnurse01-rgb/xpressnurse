@@ -1009,15 +1009,19 @@ export const App: React.FC = () => {
 
   // Handler: Nurse submits a patient referral lead (Direct to Admin - NOT auto-assigned to any nurse)
   const handleAddNewLead = (newLead: NurseLead) => {
-    const fee = newLead.leadValueRupees || 800;
-    // Lead enters "Pending Approval" state directly for Admin review; 50 pts + 10% of service charge
+    const procedure = services.find((s) => s.id === newLead.serviceId);
+    const fee = Number(newLead.leadValueRupees) || (procedure?.priceNumber || 800);
+    const commissionRupees = Math.round(fee * 0.10); // 10% of service charge
+
+    // Lead enters "Pending Approval" state directly for Admin review; 50 pts + 10% fee credited ONLY after Admin approval
     const pendingLead: NurseLead = {
       ...newLead,
       id: newLead.id.startsWith('RP-') || newLead.id.startsWith('RN-') ? newLead.id : `RP-${Date.now().toString().slice(-6)}`,
       assignedNurseId: undefined, // Explicitly not assigned to any nurse; Admin will decide
       status: 'Pending Approval',
       pointsAwarded: 50,
-      referralCommissionRupees: Math.round(fee * 0.10), // 10% of service charge
+      leadValueRupees: fee,
+      referralCommissionRupees: commissionRupees, // 10% of service charge
       referralType: newLead.referralType || 'patient'
     };
 
@@ -1025,14 +1029,13 @@ export const App: React.FC = () => {
     broadcastRealtimeUpdate('LEAD_CREATE', pendingLead);
     dbSaveLead(pendingLead);
 
-    // Increment nurse's total submitted referrals counter (points are NOT awarded until Admin approves)
+    // Track total submitted referrals counter ONLY. 50 points and 10% commission are strictly credited AFTER Admin approval!
     const referringNurse = nurses.find((n) => n.id === newLead.nurseId);
     if (referringNurse) {
       const updatedReferringNurse: NurseProfile = {
         ...referringNurse,
-        totalLeads: referringNurse.totalLeads + 1,
-        totalReferrals: (referringNurse.totalReferrals || 0) + 1,
-        earningsPending: (referringNurse.earningsPending || 0) + 100
+        totalLeads: (referringNurse.totalLeads || 0) + 1,
+        totalReferrals: (referringNurse.totalReferrals || 0) + 1
       };
       setNurses((prev) => prev.map((n) => (n.id === updatedReferringNurse.id ? updatedReferringNurse : n)));
       broadcastRealtimeUpdate('NURSE_UPDATE', updatedReferringNurse);
@@ -1040,7 +1043,7 @@ export const App: React.FC = () => {
     }
   };
 
-  // Handler: Admin Approves Lead & awards strictly 50 Reward Points
+  // Handler: Admin Approves Lead & awards strictly 50 Reward Points + 10% commission
   const handleAdminApproveLead = async (
     leadId: string,
     pointsAwarded: number = 50,
@@ -1054,15 +1057,22 @@ export const App: React.FC = () => {
     if (lead.status === 'Approved') return;
 
     const pointsToCredit = pointsAwarded > 0 ? pointsAwarded : 50;
+    const procedure = services.find((s) => s.id === lead.serviceId);
+    const fee = Number(lead.leadValueRupees) || (procedure?.priceNumber || 800);
+    const commissionRupees: number = referralRupees > 0
+      ? referralRupees
+      : (lead.referralCommissionRupees && lead.referralCommissionRupees > 0
+          ? lead.referralCommissionRupees
+          : (lead.referralType === 'nurse' || lead.referredNursePhone ? 50 : Math.round(fee * 0.10)));
 
     const approvedLead: NurseLead = {
       ...lead,
       status: 'Approved',
       pointsAwarded: pointsToCredit,
-      referralCommissionRupees: referralRupees || 0,
+      referralCommissionRupees: commissionRupees,
       approvedAt: new Date().toISOString(),
       approvedBy: 'Admin',
-      adminNotes: adminNotes || `Approved (+${pointsToCredit} points credited)`
+      adminNotes: adminNotes || `Approved (+${pointsToCredit} points credited, ₹${commissionRupees} 10% commission)`
     };
 
     setLeads((prev) => prev.map((l) => (l.id === leadId ? approvedLead : l)));
@@ -1087,13 +1097,13 @@ export const App: React.FC = () => {
       await dbUpdateNurse(activatedNurse);
     }
 
-    // Credit Referring Nurse with strictly 50 points and commission
+    // Credit Referring Nurse with strictly 50 points and 10% commission
     const referringNurse = nurses.find((n) => n.id === lead.nurseId);
     if (referringNurse) {
       const updatedNurse: NurseProfile = {
         ...referringNurse,
         pointsEarned: (referringNurse.pointsEarned || 0) + pointsToCredit,
-        referralEarningsRupees: (referringNurse.referralEarningsRupees || 0) + (referralRupees || 0),
+        referralEarningsRupees: (referringNurse.referralEarningsRupees || 0) + commissionRupees,
         convertedLeads: (referringNurse.convertedLeads || 0) + 1,
         totalReferrals: Math.max(referringNurse.totalReferrals || 0, (referringNurse.convertedLeads || 0) + 1)
       };
@@ -1112,8 +1122,8 @@ export const App: React.FC = () => {
     if (existingBooking) {
       const updatedB = {
         ...existingBooking,
-        referralBonusRupees: referralRupees || 0,
-        notes: `${existingBooking.notes || ''} [Approved: +${pointsToCredit} reward points credited]`.trim()
+        referralBonusRupees: commissionRupees,
+        notes: `${existingBooking.notes || ''} [Approved: +${pointsToCredit} reward points, ₹${commissionRupees} credited]`.trim()
       };
       setBookings((prev) => prev.map(b => b.id === existingBooking.id ? updatedB : b));
       broadcastRealtimeUpdate('BOOKING_UPDATE', updatedB);

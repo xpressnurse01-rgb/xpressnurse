@@ -225,7 +225,6 @@ export const NurseDashboard: React.FC<NurseDashboardProps> = ({
   const totalCalculatedRupees = calculatedMoney + completedVisitsEarnings;
   const totalMoney = Math.max(
     (Number(nurse.referralEarningsRupees) || 0),
-    (Number(nurse.earningsPaid) || 0) + (Number(nurse.earningsPending) || 0),
     totalCalculatedRupees
   );
   const totalPoints = (nurse.pointsEarned !== undefined && nurse.pointsEarned !== null && !isNaN(Number(nurse.pointsEarned)))
@@ -303,7 +302,9 @@ export const NurseDashboard: React.FC<NurseDashboardProps> = ({
       return;
     }
 
-    setIsSubmittingLead(true);
+    const procedure = services.find(s => s.id === serviceId);
+    const procFee = procedure?.priceNumber || 800;
+
     const newLead: NurseLead = {
       id: `LD-${Math.floor(1000 + Math.random() * 9000)}`,
       nurseId: nurse.id,
@@ -312,6 +313,7 @@ export const NurseDashboard: React.FC<NurseDashboardProps> = ({
       patientAge: patientAge ? parseInt(patientAge, 10) : undefined,
       patientGender,
       serviceId,
+      leadValueRupees: procFee,
       area,
       fullAddress: fullAddress.trim(),
       notes: notes.trim() || `Added by ${nurse.name}`,
@@ -321,7 +323,7 @@ export const NurseDashboard: React.FC<NurseDashboardProps> = ({
 
     onAddNewLead(newLead);
     setIsSubmittingLead(false);
-    setLeadSuccessMsg(`✓ Patient ${patientName} added successfully! Our office will call them now. You will get 50 Reward Points.`);
+    setLeadSuccessMsg(`✓ Patient ${patientName} added! You will receive 50 Reward Points + 10% commission (₹${Math.round(procFee * 0.10)}) after Admin approval.`);
     setPatientName('');
     setPatientPhone('');
     setPatientAge('');
@@ -1599,11 +1601,15 @@ export const NurseDashboard: React.FC<NurseDashboardProps> = ({
                             background: isConverted ? '#DCFCE7' : '#FEF3C7',
                             color: isConverted ? '#15803D' : '#B45309'
                           }}>
-                            {isConverted ? '✓ Approved (+50 Pts)' : '⏳ Care Desk Calling'}
+                            {isConverted ? `✓ Approved (+50 Pts, +₹${lead.referralCommissionRupees || 80})` : '⏳ Pending Approval'}
                           </span>
-                          {isConverted && (
+                          {isConverted ? (
                             <div style={{ fontSize: '0.75rem', color: '#059669', fontWeight: 700, marginTop: '2px' }}>
-                              +50 Points Added
+                              +50 Pts & 10% Fee Credited
+                            </div>
+                          ) : (
+                            <div style={{ fontSize: '0.72rem', color: '#B45309', fontWeight: 600, marginTop: '2px' }}>
+                              50 pts + 10% fee credited on approval
                             </div>
                           )}
                         </div>
