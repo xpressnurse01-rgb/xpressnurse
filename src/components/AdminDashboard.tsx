@@ -1387,9 +1387,11 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
     prescriptionRequired: true,
     duration: '45 - 60 mins',
     badge: '',
-    imageUrl: ''
+    imageUrl: '',
+    thumbnailUrl: ''
   });
   const [isUploadingServiceImage, setIsUploadingServiceImage] = useState(false);
+  const [isUploadingServiceThumbnail, setIsUploadingServiceThumbnail] = useState(false);
 
   const handleOpenCreateServiceModal = () => {
     setEditingService(null);
@@ -1404,7 +1406,8 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
       prescriptionRequired: true,
       duration: '45 - 60 mins',
       badge: 'Popular',
-      imageUrl: ''
+      imageUrl: '',
+      thumbnailUrl: ''
     });
     setIsServiceModalOpen(true);
   };
@@ -1422,7 +1425,8 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
       prescriptionRequired: !!s.prescriptionRequired,
       duration: s.duration || '45 - 60 mins',
       badge: s.badge || '',
-      imageUrl: s.imageUrl || ''
+      imageUrl: s.imageUrl || '',
+      thumbnailUrl: s.thumbnailUrl || ''
     });
     setIsServiceModalOpen(true);
   };
@@ -1509,6 +1513,46 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
     }
   };
 
+  const handleServiceThumbnailUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    if (file.size > 5 * 1024 * 1024) {
+      showToast('Image size exceeds 5MB limit.', 'error');
+      return;
+    }
+
+    try {
+      setIsUploadingServiceThumbnail(true);
+      const dataUrl = await new Promise<string>((resolve) => {
+        const reader = new FileReader();
+        reader.onload = () => resolve(reader.result as string);
+        reader.onerror = () => resolve('');
+        reader.readAsDataURL(file);
+      });
+
+      const cleanFileName = (file.name || 'service_thumbnail.jpg').replace(/[^a-zA-Z0-9._-]/g, '_');
+      const obj = await uploadToCloudflareStorage({
+        fileName: `service_thumb_${Date.now()}_${cleanFileName}`,
+        category: 'images',
+        contentType: file.type || 'image/jpeg',
+        sizeBytes: file.size,
+        dataUrl: dataUrl || undefined,
+        metadata: {
+          description: `Thumbnail for Service: ${serviceForm.title || 'Unknown Service'}`,
+        }
+      });
+      
+      setServiceForm((prev) => ({ ...prev, thumbnailUrl: obj.publicUrl }));
+      showToast('Service thumbnail uploaded successfully!', 'success');
+    } catch (err: any) {
+      console.error('Error uploading service thumbnail:', err);
+      showToast(err.message || 'Failed to upload service thumbnail', 'error');
+    } finally {
+      setIsUploadingServiceThumbnail(false);
+    }
+  };
+
   const handleSaveServiceSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!serviceForm.title.trim()) {
@@ -1530,6 +1574,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
       icon: 'Activity',
       badge: serviceForm.badge.trim() || undefined,
       imageUrl: serviceForm.imageUrl.trim() || undefined,
+      thumbnailUrl: serviceForm.thumbnailUrl?.trim() || undefined,
       procedureSteps: ['Aseptic preparation & equipment check', 'Clinical execution by RN'],
       equipmentProvided: ['Sterile gloves', 'Clinical disinfectant swab']
     };
@@ -1572,6 +1617,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
   // --------------------------------------------------------------------------
   const [leadSearch, setLeadSearch] = useState('');
   const [leadStatusFilter, setLeadStatusFilter] = useState<string>('all');
+  const [leadTypeFilter, setLeadTypeFilter] = useState<string>('all');
   const [isLeadModalOpen, setIsLeadModalOpen] = useState(false);
   const [editingLead, setEditingLead] = useState<NurseLead | null>(null);
   const [leadForm, setLeadForm] = useState({
@@ -1728,7 +1774,9 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
       pPhone.includes(leadSearch) ||
       l.area.toLowerCase().includes(leadSearch.toLowerCase());
     const matchesStatus = leadStatusFilter === 'all' ? true : l.status === leadStatusFilter;
-    return matchesSearch && matchesStatus;
+    const isNurseRef = l.referralType === 'nurse' || !!l.referredNursePhone;
+    const matchesType = leadTypeFilter === 'all' ? true : (leadTypeFilter === 'nurse' ? isNurseRef : !isNurseRef);
+    return matchesSearch && matchesStatus && matchesType;
   });
 
   // --------------------------------------------------------------------------
@@ -3797,6 +3845,46 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                 }}
               />
               <Search size={14} style={{ position: 'absolute', left: 8, top: '50%', transform: 'translateY(-50%)', color: 'var(--neutral-400)' }} />
+            </div>
+
+            <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
+              <span style={{ fontSize: '0.8rem', color: 'var(--neutral-600)', fontWeight: 600 }}>Type:</span>
+              <select
+                value={leadTypeFilter}
+                onChange={(e) => setLeadTypeFilter(e.target.value)}
+                style={{
+                  padding: '0.4rem 0.75rem',
+                  fontSize: '0.82rem',
+                  borderRadius: 8,
+                  border: '1px solid #CBD5E1',
+                  background: '#FFFFFF',
+                  fontWeight: 600
+                }}
+              >
+                <option value="all">All Referrals</option>
+                <option value="patient">Patient Referrals</option>
+                <option value="nurse">Nurse Referrals</option>
+              </select>
+            </div>
+
+            <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
+              <span style={{ fontSize: '0.8rem', color: 'var(--neutral-600)', fontWeight: 600 }}>Type:</span>
+              <select
+                value={leadTypeFilter}
+                onChange={(e) => setLeadTypeFilter(e.target.value)}
+                style={{
+                  padding: '0.4rem 0.75rem',
+                  fontSize: '0.82rem',
+                  borderRadius: 8,
+                  border: '1px solid #CBD5E1',
+                  background: '#FFFFFF',
+                  fontWeight: 600
+                }}
+              >
+                <option value="all">All Referrals</option>
+                <option value="patient">Patient Referrals</option>
+                <option value="nurse">Nurse Referrals</option>
+              </select>
             </div>
 
             <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
@@ -6820,13 +6908,13 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
 
               <div style={{ marginBottom: '1.25rem' }}>
                 <label className="form-label" style={{ fontSize: '0.78rem', fontWeight: 700, display: 'block', marginBottom: '0.5rem' }}>
-                  SERVICE THUMBNAIL IMAGE (Optional)
+                  SERVICE MAIN IMAGE (Optional)
                 </label>
                 <div style={{ display: 'flex', gap: '1rem', alignItems: 'center' }}>
                   {serviceForm.imageUrl && (
                     <img 
                       src={serviceForm.imageUrl} 
-                      alt="Thumbnail preview" 
+                      alt="Main image preview" 
                       style={{ width: 64, height: 64, objectFit: 'cover', borderRadius: 8, border: '1px solid #E2E8F0' }} 
                     />
                   )}
@@ -6846,6 +6934,42 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                       }}
                     />
                     {isUploadingServiceImage && (
+                      <div style={{ fontSize: '0.75rem', color: '#0284C7', marginTop: '0.25rem', fontWeight: 600 }}>
+                        Uploading main image...
+                      </div>
+                    )}
+                  </div>
+                </div>
+              </div>
+
+              <div style={{ marginBottom: '1.25rem' }}>
+                <label className="form-label" style={{ fontSize: '0.78rem', fontWeight: 700, display: 'block', marginBottom: '0.5rem' }}>
+                  SERVICE THUMBNAIL IMAGE (Optional)
+                </label>
+                <div style={{ display: 'flex', gap: '1rem', alignItems: 'center' }}>
+                  {serviceForm.thumbnailUrl && (
+                    <img 
+                      src={serviceForm.thumbnailUrl} 
+                      alt="Thumbnail preview" 
+                      style={{ width: 64, height: 64, objectFit: 'cover', borderRadius: 8, border: '1px solid #E2E8F0' }} 
+                    />
+                  )}
+                  <div style={{ flex: 1 }}>
+                    <input
+                      type="file"
+                      accept="image/jpeg, image/png, image/webp"
+                      onChange={handleServiceThumbnailUpload}
+                      disabled={isUploadingServiceThumbnail}
+                      style={{
+                        width: '100%',
+                        padding: '0.45rem',
+                        border: '1px dashed #CBD5E1',
+                        borderRadius: 8,
+                        fontSize: '0.85rem',
+                        background: '#F8FAFC'
+                      }}
+                    />
+                    {isUploadingServiceThumbnail && (
                       <div style={{ fontSize: '0.75rem', color: '#0284C7', marginTop: '0.25rem', fontWeight: 600 }}>
                         Uploading thumbnail...
                       </div>

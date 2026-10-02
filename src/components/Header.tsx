@@ -96,10 +96,11 @@ export const Header: React.FC<HeaderProps> = ({
           {!isPortalRoute && (
             <div className="nav-actions-group">
               <a
-                href="tel:+917569657371"
+                href="https://wa.me/917569657371"
+                target="_blank" rel="noreferrer"
                 className="header-phone-quick-link mobile-only-cta"
-                aria-label="Direct Clinical Call 24/7"
-                title="Call 24/7 Helpline"
+                aria-label="Direct Clinical WhatsApp 24/7"
+                title="WhatsApp 24/7 Helpline"
               >
                 <HeartPulse size={15} />
                 <span>24/7 Help</span>

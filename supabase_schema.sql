@@ -34,6 +34,7 @@ CREATE TABLE IF NOT EXISTS public.nurses (
   rating numeric DEFAULT 4.90,
   avatar_url text,
   certificate_verified boolean DEFAULT true,
+  certificate_url text,
   created_at timestamp with time zone DEFAULT now(),
   CONSTRAINT nurses_pkey PRIMARY KEY (id)
 );
@@ -108,6 +109,12 @@ CREATE TABLE IF NOT EXISTS public.leads (
   lead_value_rupees numeric DEFAULT 1000.00,
   points_awarded integer DEFAULT 50,
   referral_commission_rupees numeric DEFAULT 100.00,
+  referral_type text,
+  referred_nurse_name text,
+  referred_nurse_phone text,
+  qualification text,
+  experience_years integer,
+  rejection_reason text,
   CONSTRAINT leads_pkey PRIMARY KEY (id),
   CONSTRAINT leads_nurse_id_fkey FOREIGN KEY (nurse_id) REFERENCES public.nurses(id) ON DELETE SET NULL,
   CONSTRAINT leads_assigned_nurse_id_fkey FOREIGN KEY (assigned_nurse_id) REFERENCES public.nurses(id) ON DELETE SET NULL

@@ -168,14 +168,14 @@ export const LoginPage: React.FC<LoginPageProps> = ({
         qualification: regQualification.trim() || 'Registered Nurse (B.Sc)',
         serviceArea: regServiceArea || 'Gachibowli',
         pin: regPin.trim(),
-        status: 'Active',
+        status: 'Pending Verification',
         totalLeads: 0,
         convertedLeads: 0,
         totalReferrals: 0,
         pointsEarned: 300,
         referralEarningsRupees: 0,
         rating: 4.9,
-        certificateVerified: Boolean(certUrl),
+        certificateVerified: false,
         certificateUrl: certUrl,
         createdAt: new Date().toISOString(),
         referredByNurseId: matchedReferringNurse?.id || undefined,
@@ -201,7 +201,7 @@ export const LoginPage: React.FC<LoginPageProps> = ({
       // Record referral in leads table so referring nurse and admin track it in real-time
       if (matchedReferringNurse) {
         const refLead: NurseLead = {
-          id: `LEAD-REF-${Date.now().toString().slice(-6)}`,
+          id: `RN-${Date.now().toString().slice(-6)}`,
           nurseId: matchedReferringNurse.id,
           nurseName: matchedReferringNurse.name,
           patientName: regName.trim(),
@@ -212,6 +212,7 @@ export const LoginPage: React.FC<LoginPageProps> = ({
           leadValueRupees: 500,
           pointsAwarded: 50,
           referralCommissionRupees: 500,
+          referralType: 'nurse',
           referredNurseName: regName.trim(),
           referredNursePhone: regPhone.trim(),
           submittedAt: new Date().toISOString()

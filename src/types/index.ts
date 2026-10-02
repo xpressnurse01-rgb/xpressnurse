@@ -31,6 +31,7 @@ export interface ServiceItem {
   procedureSteps?: string[];
   equipmentProvided?: string[];
   imageUrl?: string;
+  thumbnailUrl?: string;
   createdAt?: string;
 }
 

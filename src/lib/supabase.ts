@@ -385,6 +385,7 @@ export async function dbFetchServices(): Promise<ServiceItem[] | null> {
       'Bio-medical waste disposal pouch'
     ],
     imageUrl: s.image_url || `/images/services/${s.id}.jpg`,
+    thumbnailUrl: s.thumbnail_url || null,
     createdAt: s.created_at
   }));
 }
@@ -403,7 +404,8 @@ export async function dbInsertService(s: ServiceItem): Promise<boolean> {
       duration: s.duration || '45 - 60 mins',
       icon: s.icon || 'Activity',
       badge: s.badge || null,
-      image_url: s.imageUrl || null
+      image_url: s.imageUrl || null,
+      thumbnail_url: s.thumbnailUrl || null
     };
 
     const { error } = await supabase.from('services').insert(payload);
@@ -428,6 +430,7 @@ export async function dbUpdateServiceById(id: string, updates: Partial<ServiceIt
   if (updates.icon !== undefined) payload.icon = updates.icon;
   if (updates.badge !== undefined) payload.badge = updates.badge;
   if (updates.imageUrl !== undefined) payload.image_url = updates.imageUrl;
+  if (updates.thumbnailUrl !== undefined) payload.thumbnail_url = updates.thumbnailUrl;
 
   try {
     const { error } = await supabase.from('services').update(payload).eq('id', id);

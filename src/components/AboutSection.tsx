@@ -146,7 +146,7 @@ export const AboutSection: React.FC<AboutSectionProps> = ({ onOpenBooking }) => 
                 </div>
                 <div className="reach-meta">
                   <div className="reach-label">Direct Clinical Help Desk</div>
-                  <a href="tel:+917569657371" className="reach-number">+91 75696 57371</a>
+                  <a href="https://wa.me/917569657371" target="_blank" rel="noreferrer" className="reach-number">+91 75696 57371</a>
                 </div>
               </div>
             </div>

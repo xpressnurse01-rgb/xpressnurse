@@ -218,9 +218,10 @@ export const AiAssistant: React.FC<AiAssistantProps> = () => {
             }}
           >
             <a
-              href="tel:+917569657371"
+              href="https://wa.me/917569657371"
+              target="_blank" rel="noreferrer"
               style={{ color: 'var(--clinical-blue-600)', fontWeight: 600 }}
-              title="Call Helpline"
+              title="WhatsApp Helpline"
             >
               Helpline: 75696 57371
             </a>

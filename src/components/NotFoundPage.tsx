@@ -109,10 +109,11 @@ export const NotFoundPage: React.FC<NotFoundPageProps> = ({
               • Nurse Staff Portal
             </a>
             <a
-              href="tel:+917569657371"
+              href="https://wa.me/917569657371"
+              target="_blank" rel="noreferrer"
               style={{ color: 'var(--accent-red-500)', fontWeight: 600 }}
             >
-              • 24/7 Helpline: 75696 57371
+              • 24/7 WhatsApp Helpline: 75696 57371
             </a>
           </div>
         </div>

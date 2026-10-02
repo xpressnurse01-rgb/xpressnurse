@@ -51,7 +51,7 @@ export const EmptyStatePage: React.FC<EmptyStatePageProps> = ({
           <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem' }}>
             <Phone size={16} style={{ color: 'var(--accent-red-500)' }} />
             <span style={{ fontSize: '0.88rem', color: 'var(--neutral-700)' }}>
-              Need urgent clinical assistance? Call 24/7 Helpline: <a href="tel:+917569657371" style={{ color: 'var(--primary-navy-900)', fontWeight: 700 }}>+91 75696 57371</a>
+              Need urgent clinical assistance? WhatsApp 24/7 Helpline: <a href="https://wa.me/917569657371" target="_blank" rel="noreferrer" style={{ color: 'var(--primary-navy-900)', fontWeight: 700 }}>+91 75696 57371</a>
             </span>
           </div>
 

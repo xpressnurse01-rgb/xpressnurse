@@ -428,7 +428,7 @@ export const NurseDashboard: React.FC<NurseDashboardProps> = ({
               <div style={{ fontSize: '1.1rem', fontWeight: 900, color: '#1D4ED8' }}>{activeVisits.length}</div>
             </div>
             <a 
-              href="tel:18001234567"
+              href="https://wa.me/917569657371"
               className="btn btn-outline"
               style={{
                 display: 'flex',
@@ -1848,6 +1848,76 @@ export const NurseDashboard: React.FC<NurseDashboardProps> = ({
                 onClick={() => setIsRxModalOpen(false)}
                 className="btn btn-primary"
                 style={{ borderRadius: 8, padding: '0.5rem 1.25rem', fontSize: '0.85rem' }}
+              >
+                Close
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Rx/Prescription Modal */}
+      {isRxModalOpen && previewRxBooking && (
+        <div style={{
+          position: 'fixed',
+          top: 0, left: 0, right: 0, bottom: 0,
+          background: 'rgba(15, 23, 42, 0.65)',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          zIndex: 9999,
+          padding: '1rem'
+        }}>
+          <div style={{
+            background: '#FFFFFF',
+            borderRadius: 16,
+            maxWidth: 480,
+            width: '100%',
+            padding: '1.5rem',
+            boxShadow: '0 20px 40px rgba(0,0,0,0.2)'
+          }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
+              <h4 style={{ margin: 0, fontSize: '1.15rem', fontWeight: 800, color: '#0F172A' }}>
+                Patient Prescription
+              </h4>
+              <button
+                type="button"
+                onClick={() => setIsRxModalOpen(false)}
+                style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#64748B' }}
+              >
+                <X size={20} />
+              </button>
+            </div>
+
+            <div style={{ textAlign: 'center', padding: '1.5rem 1rem', background: '#F8FAFC', borderRadius: 10, border: '1.5px dashed #CBD5E1', marginBottom: '1rem' }}>
+              <FileText size={36} style={{ color: '#0284C7', margin: '0 auto 0.5rem' }} />
+              <div style={{ fontSize: '0.9rem', fontWeight: 700, color: '#0F172A' }}>
+                {previewRxBooking.patientName}
+              </div>
+            </div>
+            
+            {previewRxBooking.prescriptionUrl ? (
+              <div style={{ textAlign: 'center', marginBottom: '1rem' }}>
+                <img src={previewRxBooking.prescriptionUrl} alt="Prescription" style={{ maxWidth: '100%', borderRadius: 8, border: '1px solid #E2E8F0', objectFit: 'contain', maxHeight: '400px' }} onError={(e) => { e.currentTarget.style.display = 'none'; }} />
+                <div style={{ marginTop: '0.75rem' }}>
+                  <a href={previewRxBooking.prescriptionUrl} target="_blank" rel="noreferrer" className="btn btn-outline" style={{ display: 'inline-flex', alignItems: 'center', gap: '0.5rem', fontWeight: 700, fontSize: '0.8rem' }}>
+                    <ExternalLink size={16} /> Open Full Size / PDF
+                  </a>
+                </div>
+              </div>
+            ) : (
+              <div style={{ fontSize: '0.85rem', color: '#64748B', textAlign: 'center', marginBottom: '1rem' }}>
+                No prescription file attached, or it was manually verified. 
+                {previewRxBooking.prescriptionFileName && <div>File Name: {previewRxBooking.prescriptionFileName}</div>}
+              </div>
+            )}
+
+            <div style={{ textAlign: 'right' }}>
+              <button
+                type="button"
+                onClick={() => setIsRxModalOpen(false)}
+                className="btn btn-primary"
+                style={{ borderRadius: 8, padding: '0.45rem 1.25rem', fontSize: '0.82rem' }}
               >
                 Close
               </button>

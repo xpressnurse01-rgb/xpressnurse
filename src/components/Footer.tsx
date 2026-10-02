@@ -69,8 +69,8 @@ export const Footer: React.FC<FooterProps> = ({
             </p>
 
             <div className="footer-contact-chips">
-              <a href="tel:+917569657371" className="footer-contact-chip" title="Call / WhatsApp: 75696 57371">
-                <Phone size={13} style={{ color: '#E63946' }} />
+              <a href="https://wa.me/917569657371" target="_blank" rel="noreferrer" className="footer-contact-chip" title="WhatsApp: 75696 57371">
+                <MessageCircle size={13} style={{ color: '#25D366' }} />
                 <span>+91 75696 57371</span>
               </a>
 

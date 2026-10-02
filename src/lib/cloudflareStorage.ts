@@ -394,43 +394,26 @@ export const uploadPrescriptionToCloudflareBucket = async (
   });
 
   const timestamp = Date.now();
-  // Strip path traversal and illegal characters
   const cleanFileName = file.name
     .replace(/\.\.+/g, '')
     .replace(/[^a-zA-Z0-9._-]/g, '_');
   const cleanPrefix = cleanFileName.toLowerCase().startsWith('rx_') ? '' : 'Rx_';
   const cleanBookingId = bookingId ? bookingId.replace(/[^a-zA-Z0-9]/g, '') : `TMP${Math.floor(1000 + Math.random() * 9000)}`;
-  const key = `prescriptions/${cleanPrefix}${cleanBookingId}_${cleanFileName}`;
   
-  // Use access-controlled signed token simulation for medical documents
-  const secureToken = Math.random().toString(36).slice(2, 10);
-  const secureUrl = `${config.publicDomain.replace(/\/+$/, '')}/${key}?auth_token=${secureToken}&t=${timestamp}`;
-
-  const newObj: CloudflareStorageObject = {
-    id: `r2-rx-${timestamp}-${Math.floor(Math.random() * 1000)}`,
-    bucketName: config.bucketName,
-    key,
-    category: 'prescriptions',
+  return uploadToCloudflareStorage({
     fileName: `${cleanPrefix}${cleanBookingId}_${cleanFileName}`,
+    category: 'prescriptions',
     contentType: fileType,
     sizeBytes: file.size,
-    uploadedAt: new Date().toISOString(),
-    publicUrl: secureUrl,
     dataUrl: dataUrl || undefined,
     metadata: {
       bookingId: bookingId || `BK-${cleanBookingId}`,
       patientName: patientName || 'Prescription Patient',
       patientPhone: patientPhone || '',
       serviceTitle: serviceTitle || 'Home Clinical Nursing Visit',
-      description: `Doctor prescription for ${serviceTitle || 'Home Nursing'} stored in Cloudflare R2 Bucket (${config.bucketName})`
+      description: `Doctor prescription for ${serviceTitle || 'Home Nursing'} stored in Cloudflare R2 Bucket`
     }
-  };
-
-  const existing = getCloudflareObjects();
-  const updated = [newObj, ...existing.filter((o) => o.key !== key)];
-  persistCloudflareObjects(updated);
-
-  return newObj;
+  });
 };
 
 // Helper to look up a prescription by file name, key, or URL

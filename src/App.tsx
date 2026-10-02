@@ -396,14 +396,14 @@ export const App: React.FC = () => {
       experienceYears: 5,
       qualification: authUser.designation || 'Registered Nurse',
       serviceArea: authUser.serviceArea || 'Hyderabad Central',
-      status: 'Active' as const,
+      status: 'Pending Verification' as const,
       totalLeads: 0,
       convertedLeads: 0,
       totalReferrals: 0,
       pointsEarned: 0,
       referralEarningsRupees: 0,
       rating: 4.9,
-      certificateVerified: true
+      certificateVerified: false
     } : (nurses[0] || fallbackNurse));
 
   // Modal States
