@@ -1256,7 +1256,8 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
       pointsEarned: Number(n.pointsEarned) || 0,
       referralEarningsRupees: Number(n.referralEarningsRupees) || 0,
       earningsPaid: Number(n.earningsPaid) || 0,
-      earningsPending: Number(n.earningsPending) || 0
+      earningsPending: Number(n.earningsPending) || 0,
+      avatarUrl: n.avatarUrl || ''
     });
     setIsNurseModalOpen(true);
   };
