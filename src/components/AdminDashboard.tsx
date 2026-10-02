@@ -417,6 +417,76 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
     });
   };
 
+  const parseActiveItemSlots = (slotStr: string = ''): ('M' | 'A' | 'E')[] => {
+    const s = slotStr.toUpperCase();
+    const hasM = s.includes('MORNING') || s.includes('8:00 AM') || s.includes('8 AM') || /\bM\b/.test(s);
+    const hasA = s.includes('AFTERNOON') || s.includes('2:00 PM') || s.includes('2 PM') || /\bA\b/.test(s);
+    const hasE = s.includes('EVENING') || s.includes('8:00 PM') || s.includes('8 PM') || s.includes('NIGHT') || /\bE\b/.test(s);
+    
+    const res: ('M' | 'A' | 'E')[] = [];
+    if (hasM) res.push('M');
+    if (hasA) res.push('A');
+    if (hasE) res.push('E');
+    return res.length > 0 ? res : ['M'];
+  };
+
+  const formatItemSlotsString = (activeSlots: ('M' | 'A' | 'E')[]): string => {
+    const names = {
+      M: 'Morning (8:00 AM)',
+      A: 'Afternoon (2:00 PM)',
+      E: 'Evening (8:00 PM)'
+    };
+    if (activeSlots.length === 3) return 'Morning (8 AM), Afternoon (2 PM), Evening (8 PM)';
+    if (activeSlots.length === 2) return `${names[activeSlots[0]]} & ${names[activeSlots[1]]}`;
+    if (activeSlots.length === 1) return names[activeSlots[0]];
+    return 'Morning (8:00 AM)';
+  };
+
+  const handleToggleItemSlot = (index: number, slotCode: 'M' | 'A' | 'E') => {
+    setPreviewInvoice((prev) => {
+      if (!prev || !prev.items || !prev.items[index]) return prev;
+      const current = prev.items[index];
+      let active = parseActiveItemSlots(current.slot);
+      
+      if (active.includes(slotCode)) {
+        if (active.length > 1) {
+          active = active.filter((code) => code !== slotCode);
+        }
+      } else {
+        active = [...active, slotCode];
+      }
+      
+      const order: ('M' | 'A' | 'E')[] = ['M', 'A', 'E'];
+      active.sort((a, b) => order.indexOf(a) - order.indexOf(b));
+      
+      const newSlotStr = formatItemSlotsString(active);
+      const newQuantity = active.length;
+      const rate = Number(current.rate) || 0;
+      
+      const updated = {
+        ...current,
+        slot: newSlotStr,
+        quantity: newQuantity,
+        amount: rate * newQuantity
+      };
+      
+      const updatedItems = [...prev.items];
+      updatedItems[index] = updated;
+      
+      const itemsTotal = updatedItems.reduce((acc, it) => acc + (Number(it.amount) || 0), 0);
+      const totalVisits = updatedItems.reduce((acc, it) => acc + (Number(it.quantity) || 1), 0);
+      const surcharge = Number(prev.nightSurcharge) || 0;
+      const discount = Number(prev.discountRupees) || 0;
+      
+      return {
+        ...prev,
+        items: updatedItems,
+        numberOfVisits: totalVisits,
+        totalAmount: Math.max(0, itemsTotal + surcharge - discount)
+      };
+    });
+  };
+
   const handleDuplicateItemWithNextSlot = (index: number) => {
     setPreviewInvoice((prev) => {
       if (!prev || !prev.items || !prev.items[index]) return prev;
@@ -9181,7 +9251,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                             <th style={{ padding: '0.55rem 0.65rem', width: 34, textAlign: 'center' }}>#</th>
                             <th style={{ padding: '0.55rem 0.65rem', minWidth: 200 }}>Procedure / Clinical Service</th>
                             <th style={{ padding: '0.55rem 0.65rem', width: 145 }}>Service Date</th>
-                            <th style={{ padding: '0.55rem 0.65rem', width: 190 }}>Time Slot</th>
+                            <th style={{ padding: '0.55rem 0.65rem', width: 230 }}>Time Slot (M / A / E)</th>
                             <th style={{ padding: '0.55rem 0.65rem', width: 70, textAlign: 'center' }}>Visits</th>
                             <th style={{ padding: '0.55rem 0.65rem', width: 100, textAlign: 'right' }}>Rate (₹)</th>
                             <th style={{ padding: '0.55rem 0.65rem', width: 100, textAlign: 'right' }}>Total (₹)</th>
@@ -9262,46 +9332,98 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                                   />
                                 </td>
 
-                                {/* Time Slot */}
+                                {/* Time Slot Buttons: M (Morning), A (Afternoon), E (Evening) */}
                                 <td style={{ padding: '0.55rem 0.65rem' }}>
-                                  {isCustomSlot ? (
-                                    <div style={{ display: 'flex', gap: '3px' }}>
-                                      <input
-                                        type="text"
-                                        value={item.slot}
-                                        onChange={(e) => handleUpdateItemRow(index, { slot: e.target.value })}
-                                        className="form-control"
-                                        style={{ height: 32, fontSize: '0.76rem' }}
-                                        placeholder="e.g. 10:00 AM"
-                                      />
-                                      <button
-                                        type="button"
-                                        onClick={() => handleUpdateItemRow(index, { slot: standardSlots[0] })}
-                                        style={{ border: '1px solid #CBD5E1', background: '#FFF', borderRadius: 4, padding: '0 5px', fontSize: '0.68rem', cursor: 'pointer', whiteSpace: 'nowrap' }}
-                                        title="Pick standard preset"
-                                      >
-                                        Presets
-                                      </button>
-                                    </div>
-                                  ) : (
-                                    <select
-                                      value={item.slot}
-                                      onChange={(e) => {
-                                        if (e.target.value === '__custom__') {
-                                          handleUpdateItemRow(index, { slot: '10:00 AM' });
-                                        } else {
-                                          handleUpdateItemRow(index, { slot: e.target.value });
-                                        }
-                                      }}
-                                      className="form-control"
-                                      style={{ height: 32, fontSize: '0.78rem' }}
-                                    >
-                                      {standardSlots.map((s) => (
-                                        <option key={s} value={s}>{s}</option>
-                                      ))}
-                                      <option value="__custom__">✏️ Custom Timing...</option>
-                                    </select>
-                                  )}
+                                  {(() => {
+                                    const activeSlots = parseActiveItemSlots(item.slot);
+                                    const isM = activeSlots.includes('M');
+                                    const isA = activeSlots.includes('A');
+                                    const isE = activeSlots.includes('E');
+
+                                    return (
+                                      <div style={{ display: 'flex', flexDirection: 'column', gap: '3px' }}>
+                                        <div style={{ display: 'flex', gap: '4px' }}>
+                                          <button
+                                            type="button"
+                                            onClick={() => handleToggleItemSlot(index, 'M')}
+                                            style={{
+                                              flex: 1,
+                                              padding: '4px 3px',
+                                              borderRadius: 6,
+                                              background: isM ? '#0284C7' : '#F8FAFC',
+                                              color: isM ? '#FFFFFF' : '#475569',
+                                              border: `1.5px solid ${isM ? '#0284C7' : '#CBD5E1'}`,
+                                              cursor: 'pointer',
+                                              display: 'flex',
+                                              flexDirection: 'column',
+                                              alignItems: 'center',
+                                              lineHeight: 1.15,
+                                              boxShadow: isM ? '0 2px 4px rgba(2,132,199,0.25)' : 'none',
+                                              transition: 'all 0.15s ease'
+                                            }}
+                                            title="Morning Slot (8:00 AM)"
+                                          >
+                                            <span style={{ fontSize: '0.82rem', fontWeight: 900 }}>M</span>
+                                            <span style={{ fontSize: '0.62rem', fontWeight: 700, opacity: isM ? 1 : 0.85 }}>Morning</span>
+                                          </button>
+
+                                          <button
+                                            type="button"
+                                            onClick={() => handleToggleItemSlot(index, 'A')}
+                                            style={{
+                                              flex: 1,
+                                              padding: '4px 3px',
+                                              borderRadius: 6,
+                                              background: isA ? '#D97706' : '#F8FAFC',
+                                              color: isA ? '#FFFFFF' : '#475569',
+                                              border: `1.5px solid ${isA ? '#D97706' : '#CBD5E1'}`,
+                                              cursor: 'pointer',
+                                              display: 'flex',
+                                              flexDirection: 'column',
+                                              alignItems: 'center',
+                                              lineHeight: 1.15,
+                                              boxShadow: isA ? '0 2px 4px rgba(217,119,6,0.25)' : 'none',
+                                              transition: 'all 0.15s ease'
+                                            }}
+                                            title="Afternoon Slot (2:00 PM)"
+                                          >
+                                            <span style={{ fontSize: '0.82rem', fontWeight: 900 }}>A</span>
+                                            <span style={{ fontSize: '0.62rem', fontWeight: 700, opacity: isA ? 1 : 0.85 }}>Afternoon</span>
+                                          </button>
+
+                                          <button
+                                            type="button"
+                                            onClick={() => handleToggleItemSlot(index, 'E')}
+                                            style={{
+                                              flex: 1,
+                                              padding: '4px 3px',
+                                              borderRadius: 6,
+                                              background: isE ? '#4F46E5' : '#F8FAFC',
+                                              color: isE ? '#FFFFFF' : '#475569',
+                                              border: `1.5px solid ${isE ? '#4F46E5' : '#CBD5E1'}`,
+                                              cursor: 'pointer',
+                                              display: 'flex',
+                                              flexDirection: 'column',
+                                              alignItems: 'center',
+                                              lineHeight: 1.15,
+                                              boxShadow: isE ? '0 2px 4px rgba(79,70,229,0.25)' : 'none',
+                                              transition: 'all 0.15s ease'
+                                            }}
+                                            title="Evening Slot (8:00 PM)"
+                                          >
+                                            <span style={{ fontSize: '0.82rem', fontWeight: 900 }}>E</span>
+                                            <span style={{ fontSize: '0.62rem', fontWeight: 700, opacity: isE ? 1 : 0.85 }}>Evening</span>
+                                          </button>
+                                        </div>
+
+                                        <div style={{ fontSize: '0.68rem', color: '#475569', fontWeight: 700, textAlign: 'center', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                                          {activeSlots.length === 1 && (isM ? '8:00 AM' : isA ? '2:00 PM' : '8:00 PM')}
+                                          {activeSlots.length === 2 && activeSlots.map((c) => c === 'M' ? '8 AM' : c === 'A' ? '2 PM' : '8 PM').join(' & ')}
+                                          {activeSlots.length === 3 && '8 AM, 2 PM, 8 PM (3 visits)'}
+                                        </div>
+                                      </div>
+                                    );
+                                  })()}
                                 </td>
 
                                 {/* Visits / Quantity */}
