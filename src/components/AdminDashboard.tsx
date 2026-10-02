@@ -3991,8 +3991,17 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                           </td>
                           <td>
                           <strong style={{ fontFamily: 'monospace' }}>{l.id}</strong>
-                          <div style={{ fontSize: '0.7rem', color: 'var(--neutral-400)' }}>
-                            {l.submittedAt && l.submittedAt.includes('T') ? new Date(l.submittedAt).toLocaleDateString() : l.submittedAt || 'Recent'}
+                          <div style={{ fontSize: '0.75rem', color: 'var(--neutral-500)', marginTop: '0.2rem' }}>
+                            {l.submittedAt && l.submittedAt.includes('T') ? (
+                              <>
+                                <div>{new Date(l.submittedAt).toLocaleDateString()}</div>
+                                <div style={{ fontSize: '0.68rem', color: 'var(--neutral-400)' }}>
+                                  {new Date(l.submittedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                                </div>
+                              </>
+                            ) : (
+                              l.submittedAt || 'Recent'
+                            )}
                           </div>
                         </td>
                         <td>
@@ -4029,6 +4038,16 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                             <MapPin size={13} style={{ color: 'var(--neutral-500)' }} />
                             <span>{l.area}</span>
                           </div>
+                          {l.fullAddress && (
+                            <div style={{ fontSize: '0.72rem', color: 'var(--neutral-500)', marginTop: '0.15rem' }}>
+                              {l.fullAddress}
+                            </div>
+                          )}
+                          {l.notes && (
+                            <div style={{ fontSize: '0.7rem', color: '#0369A1', background: '#F0F9FF', padding: '3px 6px', borderRadius: 4, marginTop: '0.3rem', fontStyle: 'italic', maxWidth: 180 }}>
+                              "{l.notes.length > 50 ? l.notes.substring(0, 50) + '...' : l.notes}"
+                            </div>
+                          )}
                         </td>
                         <td>
                           <div style={{ fontWeight: 600 }}>{referringNurse ? referringNurse.name : l.nurseId}</div>

@@ -1106,21 +1106,41 @@ export const App: React.FC = () => {
       await dbUpdateNurse(updatedNurse);
     }
 
-    // Update matching booking's referral bonus record
-    setBookings((prev) =>
-      prev.map((b) => {
-        if (b.patientPhone === lead.patientPhone || (b.referringNurseId === lead.nurseId && b.patientName === lead.patientName)) {
-          const updatedB = {
-            ...b,
-            referralBonusRupees: referralRupees || 0,
-            notes: `${b.notes || ''} [Approved: +${pointsToCredit} reward points credited]`.trim()
-          };
-          broadcastRealtimeUpdate('BOOKING_UPDATE', updatedB);
-          return updatedB;
-        }
-        return b;
-      })
-    );
+    // Update matching booking's referral bonus record, or create a new booking
+    const existingBooking = bookings.find((b) => b.patientPhone === lead.patientPhone || (b.referringNurseId === lead.nurseId && b.patientName === lead.patientName));
+    
+    if (existingBooking) {
+      const updatedB = {
+        ...existingBooking,
+        referralBonusRupees: referralRupees || 0,
+        notes: `${existingBooking.notes || ''} [Approved: +${pointsToCredit} reward points credited]`.trim()
+      };
+      setBookings((prev) => prev.map(b => b.id === existingBooking.id ? updatedB : b));
+      broadcastRealtimeUpdate('BOOKING_UPDATE', updatedB);
+      await dbSaveBooking(updatedB);
+    } else if (lead.referralType !== 'nurse' && lead.patientName) {
+      const newBookingId = `BK-${Date.now().toString().slice(-6)}`;
+      const newBooking: Booking = {
+        id: newBookingId,
+        patientName: lead.patientName,
+        patientPhone: lead.patientPhone || '',
+        area: lead.area || '',
+        fullAddress: lead.fullAddress || '',
+        serviceId: lead.serviceId || 'c_basic',
+        serviceTitle: services.find((s) => s.id === lead.serviceId)?.title || lead.serviceId || 'Clinical Service',
+        estimatedFee: lead.leadValueRupees || 800,
+        status: 'Pending',
+        createdAt: new Date().toISOString(),
+        hasPrescription: false,
+        referringNurseId: lead.nurseId,
+        referringNurseName: referringNurse?.name || 'Assigned Nurse',
+        referralBonusRupees: referralRupees || 0,
+        notes: `${lead.notes ? 'Description: ' + lead.notes + ' | ' : ''}Auto-created from Patient Referral. [Approved: +${pointsToCredit} reward points credited]`
+      };
+      setBookings((prev) => [newBooking, ...prev]);
+      broadcastRealtimeUpdate('BOOKING_UPDATE', newBooking);
+      await dbSaveBooking(newBooking);
+    }
   };
 
   // Handler: Admin Rejects Lead — strictly removes points and commission if previously approved

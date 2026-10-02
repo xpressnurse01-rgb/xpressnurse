@@ -297,6 +297,7 @@ export const NurseDashboard: React.FC<NurseDashboardProps> = ({
       patientGender,
       serviceId,
       area,
+      fullAddress: fullAddress.trim(),
       notes: notes.trim() || `Added by ${nurse.name}`,
       status: 'Pending Approval',
       submittedAt: new Date().toISOString()
