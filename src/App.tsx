@@ -1065,6 +1065,8 @@ export const App: React.FC = () => {
           ? lead.referralCommissionRupees
           : (lead.referralType === 'nurse' || lead.referredNursePhone ? 50 : Math.round(fee * 0.10)));
 
+    const isNurseReferral = lead.referralType === 'nurse' || Boolean(lead.referredNursePhone);
+
     const approvedLead: NurseLead = {
       ...lead,
       status: 'Approved',
@@ -1072,7 +1074,10 @@ export const App: React.FC = () => {
       referralCommissionRupees: commissionRupees,
       approvedAt: new Date().toISOString(),
       approvedBy: 'Admin',
-      adminNotes: adminNotes || `Approved (+${pointsToCredit} points credited, ₹${commissionRupees} 10% commission)`
+      adminNotes: adminNotes || (isNurseReferral 
+        ? `Referred nurse approved (+${pointsToCredit} points credited)`
+        : `Patient approved & booking queued. 50 points + 10% commission credited after assigned nurse completes visit.`
+      )
     };
 
     setLeads((prev) => prev.map((l) => (l.id === leadId ? approvedLead : l)));
@@ -1097,9 +1102,10 @@ export const App: React.FC = () => {
       await dbUpdateNurse(activatedNurse);
     }
 
-    // Credit Referring Nurse with strictly 50 points and 10% commission
+    // For Nurse Referral: credit referring nurse 50 points upon nurse verification.
+    // For Patient Referral: DO NOT credit points or rupees yet! Points + 10% commission are strictly credited when the assigned nurse completes the visit.
     const referringNurse = nurses.find((n) => n.id === lead.nurseId);
-    if (referringNurse) {
+    if (referringNurse && isNurseReferral) {
       const updatedNurse: NurseProfile = {
         ...referringNurse,
         pointsEarned: (referringNurse.pointsEarned || 0) + pointsToCredit,
@@ -1123,7 +1129,7 @@ export const App: React.FC = () => {
       const updatedB = {
         ...existingBooking,
         referralBonusRupees: commissionRupees,
-        notes: `${existingBooking.notes || ''} [Approved: +${pointsToCredit} reward points, ₹${commissionRupees} credited]`.trim()
+        notes: `${existingBooking.notes || ''} [Approved: 50 points + ₹${commissionRupees} (10%) credited upon visit completion]`.trim()
       };
       setBookings((prev) => prev.map(b => b.id === existingBooking.id ? updatedB : b));
       broadcastRealtimeUpdate('BOOKING_UPDATE', updatedB);
@@ -1144,8 +1150,8 @@ export const App: React.FC = () => {
         hasPrescription: false,
         referringNurseId: lead.nurseId,
         referringNurseName: referringNurse?.name || 'Assigned Nurse',
-        referralBonusRupees: referralRupees || 0,
-        notes: `${lead.notes ? 'Description: ' + lead.notes + ' | ' : ''}Auto-created from Patient Referral. [Approved: +${pointsToCredit} reward points credited]`
+        referralBonusRupees: commissionRupees,
+        notes: `${lead.notes ? 'Description: ' + lead.notes + ' | ' : ''}Auto-created from Patient Referral. [50 points + ₹${commissionRupees} (10%) credited upon visit completion]`
       };
       setBookings((prev) => [newBooking, ...prev]);
       broadcastRealtimeUpdate('BOOKING_UPDATE', newBooking);
@@ -1559,10 +1565,12 @@ export const App: React.FC = () => {
 
     if (updates.status === 'Completed' && targetBooking.status !== 'Completed') {
       const assignedNurseId = targetBooking.assignedNurseId || updates.assignedNurseId;
+      const procedure = services.find((s) => s.id === targetBooking.serviceId);
+      const fee = Number(targetBooking.finalFee !== undefined ? targetBooking.finalFee : (targetBooking.estimatedFee || procedure?.priceNumber || 800));
+
+      // 1. Credit 70% service charge to the assigned nurse who performed and completed the visit
       if (assignedNurseId) {
         const assignedNurse = nurses.find((n) => n.id === assignedNurseId);
-        const procedure = services.find((s) => s.id === targetBooking.serviceId);
-        const fee = Number(targetBooking.finalFee !== undefined ? targetBooking.finalFee : (targetBooking.estimatedFee || procedure?.priceNumber || 800));
         const earningsToAdd = Math.round(fee * 0.70);
         if (assignedNurse) {
           const updatedNurse: NurseProfile = {
@@ -1579,6 +1587,55 @@ export const App: React.FC = () => {
           });
           broadcastRealtimeUpdate('NURSE_UPDATE', updatedNurse);
           await dbUpdateNurse(updatedNurse);
+        }
+      }
+
+      // 2. Credit 50 points + 10% service commission to the Referring Nurse who referred this patient lead!
+      const matchLead = leads.find((l) =>
+        l.id === `LEAD-BK-${id}` ||
+        l.id === `RP-${id.replace(/^BK-/, '')}` ||
+        (targetBooking.referringNurseId && l.nurseId === targetBooking.referringNurseId &&
+          (l.patientPhone === targetBooking.patientPhone || l.patientName === targetBooking.patientName))
+      );
+      const refNurseId = targetBooking.referringNurseId || matchLead?.nurseId;
+
+      if (refNurseId && (!matchLead || matchLead.referralType !== 'nurse')) {
+        const referringNurse = nurses.find((n) => n.id === refNurseId);
+        if (referringNurse) {
+          const refCommission = Math.round(fee * 0.10);
+          const refPoints = 50;
+
+          // Prevent double awarding if booking was already completed
+          if (!matchLead || matchLead.status !== 'Converted') {
+            const updatedRefNurse: NurseProfile = {
+              ...referringNurse,
+              pointsEarned: (referringNurse.pointsEarned || 0) + refPoints,
+              referralEarningsRupees: (referringNurse.referralEarningsRupees || 0) + refCommission,
+              totalEarningsRupees: ((referringNurse.earningsPaid || 0) + (referringNurse.earningsPending || 0) + refCommission),
+              convertedLeads: (referringNurse.convertedLeads || 0) + 1
+            };
+
+            setNurses((prev) => {
+              const next = prev.map((n) => (n.id === updatedRefNurse.id ? updatedRefNurse : n));
+              try { localStorage.setItem('xn_cached_nurses', JSON.stringify(next)); } catch {}
+              return next;
+            });
+            broadcastRealtimeUpdate('NURSE_UPDATE', updatedRefNurse);
+            await dbUpdateNurse(updatedRefNurse);
+
+            if (matchLead) {
+              const convertedLead: NurseLead = {
+                ...matchLead,
+                status: 'Converted',
+                pointsAwarded: refPoints,
+                referralCommissionRupees: refCommission,
+                adminNotes: `Patient visit completed by assigned nurse. +${refPoints} points and ₹${refCommission} (10% fee) credited to referring nurse ${referringNurse.name}.`
+              };
+              setLeads((prev) => prev.map((l) => (l.id === matchLead.id ? convertedLead : l)));
+              broadcastRealtimeUpdate('LEAD_UPDATE', convertedLead);
+              await dbUpdateLeadById(matchLead.id, convertedLead);
+            }
+          }
         }
       }
     }

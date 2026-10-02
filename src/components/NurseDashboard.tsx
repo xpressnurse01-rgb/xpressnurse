@@ -202,7 +202,10 @@ export const NurseDashboard: React.FC<NurseDashboardProps> = ({
     (nursePhoneClean && l.referredNursePhone && l.referredNursePhone.replace(/\D/g, '') === nursePhoneClean) ||
     (nursePhoneClean && l.patientPhone && l.patientPhone.replace(/\D/g, '') === nursePhoneClean)
   );
-  const myConvertedLeads = myLeads.filter((l) => l.status === 'Converted' || l.status === 'Approved');
+  const myConvertedLeads = myLeads.filter((l) => 
+    l.status === 'Converted' || 
+    (l.status === 'Approved' && (l.referralType === 'nurse' || Boolean(l.referredNursePhone)))
+  );
 
   // Calculate earnings — strictly prioritize live nurse profile points & rupees set by Admin/system
   const referralCode = nurse.referralCode || generateNurseReferralCode(nurse.name, nurse.id, nurse.phone || '');
@@ -1566,7 +1569,8 @@ export const NurseDashboard: React.FC<NurseDashboardProps> = ({
               ) : (
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '0.6rem' }}>
                   {myLeads.filter(l => l.referralType !== 'nurse' && !l.referredNursePhone).map((lead) => {
-                    const isConverted = lead.status === 'Converted' || lead.status === 'Approved';
+                    const isFullyCompleted = lead.status === 'Converted';
+                    const isApprovedAwaitingVisit = lead.status === 'Approved';
                     return (
                       <div
                         key={lead.id}
@@ -1576,8 +1580,8 @@ export const NurseDashboard: React.FC<NurseDashboardProps> = ({
                           justifyContent: 'space-between',
                           padding: '0.85rem 1rem',
                           borderRadius: 10,
-                          background: isConverted ? '#F0FDF4' : '#F8FAFC',
-                          border: `1px solid ${isConverted ? '#BBF7D0' : '#E2E8F0'}`,
+                          background: isFullyCompleted ? '#F0FDF4' : (isApprovedAwaitingVisit ? '#FFFDF5' : '#F8FAFC'),
+                          border: `1px solid ${isFullyCompleted ? '#BBF7D0' : (isApprovedAwaitingVisit ? '#FDE68A' : '#E2E8F0')}`,
                           flexWrap: 'wrap',
                           gap: '0.5rem'
                         }}
@@ -1594,22 +1598,24 @@ export const NurseDashboard: React.FC<NurseDashboardProps> = ({
                         <div style={{ textAlign: 'right' }}>
                           <span style={{
                             display: 'inline-block',
-                            padding: '2px 8px',
+                            padding: '3px 8px',
                             borderRadius: 9999,
                             fontSize: '0.72rem',
                             fontWeight: 800,
-                            background: isConverted ? '#DCFCE7' : '#FEF3C7',
-                            color: isConverted ? '#15803D' : '#B45309'
+                            background: isFullyCompleted ? '#DCFCE7' : (isApprovedAwaitingVisit ? '#FEF3C7' : '#F1F5F9'),
+                            color: isFullyCompleted ? '#15803D' : (isApprovedAwaitingVisit ? '#B45309' : '#475569')
                           }}>
-                            {isConverted ? `✓ Approved (+50 Pts, +₹${lead.referralCommissionRupees || 80})` : '⏳ Pending Approval'}
+                            {isFullyCompleted 
+                              ? `✓ Visit Done (+50 Pts, +₹${lead.referralCommissionRupees || 80})` 
+                              : (isApprovedAwaitingVisit ? '⏳ Allotted • Visit in Progress' : '⏳ Office Review')}
                           </span>
-                          {isConverted ? (
+                          {isFullyCompleted ? (
                             <div style={{ fontSize: '0.75rem', color: '#059669', fontWeight: 700, marginTop: '2px' }}>
                               +50 Pts & 10% Fee Credited
                             </div>
                           ) : (
                             <div style={{ fontSize: '0.72rem', color: '#B45309', fontWeight: 600, marginTop: '2px' }}>
-                              50 pts + 10% fee credited on approval
+                              50 pts + 10% fee credited after visit
                             </div>
                           )}
                         </div>

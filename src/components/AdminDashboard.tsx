@@ -1752,7 +1752,11 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
     try {
       await onApproveLead(approvalModalLead.id, approvalPoints, approvalReferralRupees, approvalNotes);
       const referringNurse = nurses.find((n) => n.id === approvalModalLead.nurseId);
-      showToast(`Referral ${approvalModalLead.id} approved! Credited +${approvalPoints} points and ₹${approvalReferralRupees} to ${referringNurse?.name || 'Nurse'}.`);
+      const isPatient = approvalModalLead.referralType !== 'nurse' && !approvalModalLead.referredNursePhone;
+      showToast(isPatient
+        ? `Patient Referral approved & booking queued! 50 points + ₹${approvalReferralRupees} (10%) will be credited to ${referringNurse?.name || 'Nurse'} once the visit is completed.`
+        : `Nurse Referral ${approvalModalLead.id} approved! Credited +${approvalPoints} points and ₹${approvalReferralRupees} to ${referringNurse?.name || 'Nurse'}.`
+      );
       setApprovalModalLead(null);
     } catch {
       showToast('Error approving referral in Supabase', 'error');
@@ -4086,7 +4090,11 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                             isRejected ? 'danger' :
                             l.status === 'Submitted' ? 'info' : 'neutral'
                           }`}>
-                            {isPending ? '⏳ Waiting Approval' : isApproved ? '✓ Approved (+50 Pts)' : isRejected ? '✕ Rejected' : l.status}
+                            {isPending ? '⏳ Waiting Approval' : 
+                             l.status === 'Converted' ? '✓ Completed (+50 Pts & 10% Paid)' :
+                             (isApproved && (l.referralType !== 'nurse' && !l.referredNursePhone)) ? '✓ Approved (Booking Queued)' :
+                             isApproved ? '✓ Approved (+50 Pts)' :
+                             isRejected ? '✕ Rejected' : l.status}
                           </span>
                           {isRejected && (l.rejectionReason || l.adminNotes) && (
                             <div style={{ fontSize: '0.72rem', color: '#B91C1C', background: '#FEF2F2', border: '1px solid #FECACA', padding: '3px 6px', borderRadius: 4, marginTop: '0.35rem', maxWidth: 220 }}>
