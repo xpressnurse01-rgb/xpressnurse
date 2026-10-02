@@ -615,6 +615,34 @@ export const clearAllMockCloudflareStorage = (): void => {
 // INVOICE BUILDER & GENERATOR
 // ============================================================================
 
+// Formats slot code cleanly for bills: strictly 'M', 'A', 'E' or combinations like 'M E', 'M A E'
+export const formatSlotForBill = (slotStr?: string): string => {
+  if (!slotStr) return '-';
+  const trimmed = slotStr.trim();
+  if (/^[MAE\s,]+$/i.test(trimmed)) {
+    const chars = trimmed.toUpperCase().replace(/[^MAE]/g, '').split('');
+    const unique = Array.from(new Set(chars));
+    const order = ['M', 'A', 'E'];
+    unique.sort((a, b) => order.indexOf(a) - order.indexOf(b));
+    return unique.join(' ') || trimmed;
+  }
+
+  const s = trimmed.toUpperCase();
+  const hasM = s.includes('MORNING') || s.includes('8:00 AM') || s.includes('8 AM') || /\bM\b/.test(s);
+  const hasA = s.includes('AFTERNOON') || s.includes('2:00 PM') || s.includes('2 PM') || /\bA\b/.test(s);
+  const hasE = s.includes('EVENING') || s.includes('8:00 PM') || s.includes('8 PM') || s.includes('NIGHT') || /\bE\b/.test(s);
+
+  const res: ('M' | 'A' | 'E')[] = [];
+  if (hasM) res.push('M');
+  if (hasA) res.push('A');
+  if (hasE) res.push('E');
+
+  if (res.length > 0) {
+    return res.join(' ');
+  }
+  return trimmed;
+};
+
 export const generateInvoiceDetails = (booking: Booking): InvoiceDetails => {
   const config = getCloudflareConfig();
   const cleanBookingId = booking.id.replace(/[^a-zA-Z0-9]/g, '');
@@ -643,7 +671,7 @@ export const generateInvoiceDetails = (booking: Booking): InvoiceDetails => {
     area: booking.area,
     serviceTitle: booking.serviceTitle,
     serviceDate: booking.preferredDate,
-    timeSlot: booking.scheduledSlot || booking.preferredTime,
+    timeSlot: formatSlotForBill(booking.scheduledSlot || booking.preferredTime || 'M'),
     numberOfVisits: booking.numberOfVisits || 1,
     serviceId: booking.serviceId,
     assignedNurseName: booking.assignedNurseName || 'Assigned Fleet RN',
@@ -653,7 +681,7 @@ export const generateInvoiceDetails = (booking: Booking): InvoiceDetails => {
         id: 'item-1',
         description: booking.serviceTitle || 'Clinical Nursing Care',
         date: booking.preferredDate || new Date().toISOString().split('T')[0],
-        slot: booking.scheduledSlot || booking.preferredTime || '8:00 AM',
+        slot: formatSlotForBill(booking.scheduledSlot || booking.preferredTime || 'M'),
         rate: baseFee,
         quantity: booking.numberOfVisits || 1,
         amount: baseFee * (booking.numberOfVisits || 1)
@@ -775,7 +803,7 @@ export const generatePrintableInvoiceHtml = (inv: InvoiceDetails): string => {
           <th style="width: 45px; text-align: center;">#</th>
           <th>Procedure / Clinical Service</th>
           <th>Date</th>
-          <th>Time Slot</th>
+          <th style="width: 80px; text-align: center;">Slot</th>
           <th style="text-align: right;">Rate (₹)</th>
           <th style="text-align: center;">Visits</th>
           <th style="text-align: right;">Amount (₹)</th>
@@ -787,7 +815,7 @@ export const generatePrintableInvoiceHtml = (inv: InvoiceDetails): string => {
             id: '1',
             description: inv.serviceTitle,
             date: inv.serviceDate || '-',
-            slot: inv.timeSlot || '-',
+            slot: inv.timeSlot || 'M',
             rate: inv.baseAmount,
             quantity: inv.numberOfVisits || 1,
             amount: inv.baseAmount * (inv.numberOfVisits || 1)
@@ -799,7 +827,7 @@ export const generatePrintableInvoiceHtml = (inv: InvoiceDetails): string => {
               <strong style="color: #0F172A;">${item.description}</strong>
             </td>
             <td style="white-space: nowrap; font-size: 13px;">${item.date || '-'}</td>
-            <td style="font-size: 13px; color: #334155;">${item.slot || '-'}</td>
+            <td style="font-size: 13px; font-weight: 800; color: #0F172A; text-align: center; letter-spacing: 2px;">${formatSlotForBill(item.slot)}</td>
             <td style="text-align: right; color: #475569;">₹${item.rate}</td>
             <td style="text-align: center; font-weight: 600;">${item.quantity || 1}</td>
             <td style="text-align: right; font-weight: 700; color: #0F172A;">₹${item.amount}</td>

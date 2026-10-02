@@ -83,7 +83,8 @@ import {
   saveInvoiceToCloudflareBucket,
   openPrintableInvoiceWindow,
   getPrescriptionStorageObject,
-  syncDatabaseRecordsToStorage
+  syncDatabaseRecordsToStorage,
+  formatSlotForBill
 } from '../lib/cloudflareStorage';
 
 interface AdminDashboardProps {
@@ -273,7 +274,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
             id: 'item-1',
             description: booking.serviceTitle || 'Clinical Nursing Care',
             date: booking.preferredDate || new Date().toISOString().split('T')[0],
-            slot: booking.scheduledSlot || booking.preferredTime || '8:00 AM',
+            slot: formatSlotForBill(booking.scheduledSlot || booking.preferredTime || 'M'),
             rate: Number(booking.estimatedFee) || 800,
             quantity: booking.numberOfVisits || 1,
             amount: (Number(booking.estimatedFee) || 800) * (booking.numberOfVisits || 1)
@@ -289,7 +290,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
             id: 'item-1',
             description: bookings[0].serviceTitle || 'Clinical Nursing Care',
             date: bookings[0].preferredDate || new Date().toISOString().split('T')[0],
-            slot: bookings[0].scheduledSlot || bookings[0].preferredTime || '8:00 AM',
+            slot: formatSlotForBill(bookings[0].scheduledSlot || bookings[0].preferredTime || 'M'),
             rate: Number(bookings[0].estimatedFee) || 800,
             quantity: bookings[0].numberOfVisits || 1,
             amount: (Number(bookings[0].estimatedFee) || 800) * (bookings[0].numberOfVisits || 1)
@@ -315,7 +316,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
         area: 'Banjara Hills',
         serviceTitle: services[0]?.title || 'Clinical Nursing Care',
         serviceDate: new Date().toISOString().split('T')[0],
-        timeSlot: '8:00 AM',
+        timeSlot: 'M',
         numberOfVisits: 1,
         serviceId: services[0]?.id || 'general-care',
         assignedNurseName: nurses[0]?.name || 'Attending RN',
@@ -325,7 +326,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
             id: 'item-1',
             description: services[0]?.title || 'Clinical Nursing Care',
             date: new Date().toISOString().split('T')[0],
-            slot: '8:00 AM',
+            slot: 'M',
             rate: initialRate,
             quantity: 1,
             amount: initialRate
@@ -388,7 +389,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
 
       const lastItem = currentItems[currentItems.length - 1];
       const nextDate = customDate || lastItem?.date || new Date().toISOString().split('T')[0];
-      const nextSlot = customSlot || '8:00 AM';
+      const nextSlot = customSlot || 'M';
       const title = serviceTitle || lastItem?.description || prev.serviceTitle || services[0]?.title || 'Clinical Care';
       const rate = customRate !== undefined ? customRate : (lastItem?.rate || Number(prev.baseAmount) || 800);
 
@@ -431,15 +432,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
   };
 
   const formatItemSlotsString = (activeSlots: ('M' | 'A' | 'E')[]): string => {
-    const names = {
-      M: 'Morning (8:00 AM)',
-      A: 'Afternoon (2:00 PM)',
-      E: 'Evening (8:00 PM)'
-    };
-    if (activeSlots.length === 3) return 'Morning (8 AM), Afternoon (2 PM), Evening (8 PM)';
-    if (activeSlots.length === 2) return `${names[activeSlots[0]]} & ${names[activeSlots[1]]}`;
-    if (activeSlots.length === 1) return names[activeSlots[0]];
-    return 'Morning (8:00 AM)';
+    return activeSlots.join(' ');
   };
 
   const handleToggleItemSlot = (index: number, slotCode: 'M' | 'A' | 'E') => {
@@ -9416,10 +9409,8 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                                           </button>
                                         </div>
 
-                                        <div style={{ fontSize: '0.68rem', color: '#475569', fontWeight: 700, textAlign: 'center', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                                          {activeSlots.length === 1 && (isM ? '8:00 AM' : isA ? '2:00 PM' : '8:00 PM')}
-                                          {activeSlots.length === 2 && activeSlots.map((c) => c === 'M' ? '8 AM' : c === 'A' ? '2 PM' : '8 PM').join(' & ')}
-                                          {activeSlots.length === 3 && '8 AM, 2 PM, 8 PM (3 visits)'}
+                                        <div style={{ fontSize: '0.72rem', color: '#0F172A', fontWeight: 800, textAlign: 'center', letterSpacing: '2px' }}>
+                                          {activeSlots.join(' ')}
                                         </div>
                                       </div>
                                     );
@@ -9726,7 +9717,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                             <th style={{ width: 45, textAlign: 'center', padding: '0.65rem 0.6rem' }}>#</th>
                             <th style={{ padding: '0.65rem 0.8rem' }}>Procedure / Clinical Service</th>
                             <th style={{ padding: '0.65rem 0.8rem', width: 120 }}>Date</th>
-                            <th style={{ padding: '0.65rem 0.8rem', width: 180 }}>Time Slot</th>
+                            <th style={{ padding: '0.65rem 0.8rem', width: 90, textAlign: 'center' }}>Slot</th>
                             <th style={{ padding: '0.65rem 0.8rem', width: 90, textAlign: 'right' }}>Rate (₹)</th>
                             <th style={{ padding: '0.65rem 0.6rem', width: 65, textAlign: 'center' }}>Visits</th>
                             <th style={{ padding: '0.65rem 0.8rem', width: 110, textAlign: 'right' }}>Amount (₹)</th>
@@ -9738,7 +9729,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                               id: '1',
                               description: previewInvoice.serviceTitle || 'Clinical Nursing Care',
                               date: previewInvoice.serviceDate || '-',
-                              slot: previewInvoice.timeSlot || '-',
+                              slot: previewInvoice.timeSlot || 'M',
                               rate: previewInvoice.baseAmount,
                               quantity: previewInvoice.numberOfVisits || 1,
                               amount: previewInvoice.baseAmount * (previewInvoice.numberOfVisits || 1)
@@ -9750,7 +9741,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                                 <strong style={{ color: '#0F172A' }}>{it.description}</strong>
                               </td>
                               <td style={{ padding: '0.65rem 0.8rem', whiteSpace: 'nowrap' }}>{it.date || '-'}</td>
-                              <td style={{ padding: '0.65rem 0.8rem', color: '#334155' }}>{it.slot || '-'}</td>
+                              <td style={{ padding: '0.65rem 0.8rem', textAlign: 'center', fontWeight: 800, color: '#0F172A', letterSpacing: '2px' }}>{formatSlotForBill(it.slot)}</td>
                               <td style={{ textAlign: 'right', padding: '0.65rem 0.8rem', color: '#475569' }}>₹{it.rate}</td>
                               <td style={{ textAlign: 'center', fontWeight: 700, padding: '0.65rem 0.6rem' }}>{it.quantity || 1}</td>
                               <td style={{ textAlign: 'right', fontWeight: 800, padding: '0.65rem 0.8rem', color: '#0F172A' }}>₹{it.amount}</td>
