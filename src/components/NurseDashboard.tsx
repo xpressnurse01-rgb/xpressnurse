@@ -214,9 +214,20 @@ export const NurseDashboard: React.FC<NurseDashboardProps> = ({
     }
   });
 
-  const totalMoney = (nurse.referralEarningsRupees && Number(nurse.referralEarningsRupees) > 0)
-    ? Number(nurse.referralEarningsRupees)
-    : calculatedMoney;
+  // Calculate completed visit earnings (70% service charge for finished visits)
+  let completedVisitsEarnings = 0;
+  completedVisits.forEach(visit => {
+    const procedure = services.find(s => s.id === visit.serviceId);
+    const fee = Number(visit.finalFee !== undefined ? visit.finalFee : (visit.estimatedFee || (procedure ? procedure.priceNumber : 899)));
+    completedVisitsEarnings += Math.round(fee * 0.70);
+  });
+
+  const totalCalculatedRupees = calculatedMoney + completedVisitsEarnings;
+  const totalMoney = Math.max(
+    (Number(nurse.referralEarningsRupees) || 0),
+    (Number(nurse.earningsPaid) || 0) + (Number(nurse.earningsPending) || 0),
+    totalCalculatedRupees
+  );
   const totalPoints = (nurse.pointsEarned !== undefined && nurse.pointsEarned !== null && !isNaN(Number(nurse.pointsEarned)))
     ? Number(nurse.pointsEarned)
     : (myConvertedLeads.length * 50);
@@ -248,12 +259,17 @@ export const NurseDashboard: React.FC<NurseDashboardProps> = ({
 
   const handleFinishVisit = async (booking: Booking) => {
     if (onUpdateBooking) {
+      const procedure = services.find(s => s.id === booking.serviceId);
+      const fee = Number(booking.finalFee !== undefined ? booking.finalFee : (booking.estimatedFee || (procedure ? procedure.priceNumber : 899)));
+      const payoutRupees = Math.round(fee * 0.70);
+
       await onUpdateBooking(booking.id, {
         status: 'Completed'
       });
       try {
         confetti({ particleCount: 70, spread: 70, origin: { y: 0.5 } });
       } catch {}
+      alert(`Duty Completed! ₹${payoutRupees} (70% service charge) has been added to your earnings.`);
     }
   };
 
@@ -946,6 +962,26 @@ export const NurseDashboard: React.FC<NurseDashboardProps> = ({
                               </span>
                             )}
                           </div>
+                          <div style={{ marginTop: '0.35rem', display: 'flex', alignItems: 'center', gap: '0.4rem', flexWrap: 'wrap' }}>
+                            <span style={{
+                              fontSize: '0.76rem',
+                              fontWeight: 800,
+                              background: '#ECFDF5',
+                              color: '#059669',
+                              border: '1px solid #A7F3D0',
+                              padding: '2px 8px',
+                              borderRadius: 6,
+                              display: 'inline-flex',
+                              alignItems: 'center',
+                              gap: '0.3rem'
+                            }}>
+                              <span>💰 Your 70% Payout:</span>
+                              <strong style={{ fontSize: '0.84rem' }}>
+                                ₹{Math.round(Number(visit.finalFee !== undefined ? visit.finalFee : (visit.estimatedFee || 899)) * 0.70)}
+                              </strong>
+                              <span style={{ fontSize: '0.68rem', color: '#047857', fontWeight: 600 }}>({isDone ? 'Credited to earnings' : 'Credited on finishing job'})</span>
+                            </span>
+                          </div>
                           <div style={{ fontSize: '0.84rem', color: '#475569', marginTop: '0.35rem', display: 'flex', alignItems: 'center', gap: '0.35rem' }}>
                             <MapPin size={14} style={{ color: '#EF4444', flexShrink: 0 }} />
                             <span><strong>Address:</strong> {visit.fullAddress || visit.area || 'Hyderabad'}</span>
@@ -1160,8 +1196,9 @@ export const NurseDashboard: React.FC<NurseDashboardProps> = ({
                           )}
 
                           {isDone && (
-                            <span style={{ fontSize: '0.82rem', color: '#16A34A', fontWeight: 800 }}>
-                              ✓ Finished & Billed
+                            <span style={{ fontSize: '0.82rem', color: '#16A34A', fontWeight: 800, background: '#DCFCE7', padding: '4px 10px', borderRadius: 6, display: 'inline-flex', alignItems: 'center', gap: '0.3rem' }}>
+                              <CheckCircle2 size={14} />
+                              <span>✓ Finished & Billed (+₹{Math.round(Number(visit.finalFee !== undefined ? visit.finalFee : (visit.estimatedFee || 899)) * 0.70)} Earned)</span>
                             </span>
                           )}
                         </div>
@@ -1416,12 +1453,20 @@ export const NurseDashboard: React.FC<NurseDashboardProps> = ({
               gap: '1rem'
             }}>
               <div>
-                <div style={{ fontSize: '0.85rem', color: '#D1FAE5', fontWeight: 600 }}>Total Earned from Patient Referrals</div>
+                <div style={{ fontSize: '0.85rem', color: '#D1FAE5', fontWeight: 600 }}>Total Earnings (70% Visits Payout + Referrals)</div>
                 <div style={{ fontSize: '2.4rem', fontWeight: 900, color: '#FFFFFF', margin: '0.2rem 0' }}>
                   ₹{totalMoney}
                 </div>
-                <div style={{ fontSize: '0.88rem', color: '#A7F3D0' }}>
-                  ⭐ {totalPoints} Reward Points Balance
+                <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap', marginTop: '0.4rem' }}>
+                  <span style={{ fontSize: '0.76rem', background: 'rgba(255,255,255,0.2)', padding: '2px 8px', borderRadius: 6, color: '#FFFFFF', fontWeight: 700 }}>
+                    💰 ₹{completedVisitsEarnings} from {completedVisits.length} Finished Visits (70%)
+                  </span>
+                  <span style={{ fontSize: '0.76rem', background: 'rgba(255,255,255,0.2)', padding: '2px 8px', borderRadius: 6, color: '#FFFFFF', fontWeight: 700 }}>
+                    👥 ₹{calculatedMoney} from Referrals
+                  </span>
+                  <span style={{ fontSize: '0.76rem', background: 'rgba(255,255,255,0.2)', padding: '2px 8px', borderRadius: 6, color: '#A7F3D0', fontWeight: 700 }}>
+                    ⭐ {totalPoints} Points
+                  </span>
                 </div>
               </div>
 
@@ -1998,15 +2043,20 @@ export const NurseDashboard: React.FC<NurseDashboardProps> = ({
 
               {completedVisits.map(visit => {
                 const procedure = services.find(s => s.id === visit.serviceId);
-                const earnings = procedure ? Math.round((procedure.priceNumber || 800) * 0.70) : 0;
+                const fee = Number(visit.finalFee !== undefined ? visit.finalFee : (visit.estimatedFee || (procedure ? procedure.priceNumber : 899)));
+                const earnings = Math.round(fee * 0.70);
                 return (
-                  <div key={visit.id} style={{ display: 'flex', justifyContent: 'space-between', padding: '1rem', border: '1px solid #E2E8F0', borderRadius: 12 }}>
+                  <div key={visit.id} style={{ display: 'flex', justifyContent: 'space-between', padding: '1rem', border: '1px solid #E2E8F0', borderRadius: 12, background: '#F8FAFC' }}>
                     <div>
-                      <div style={{ fontWeight: 700, color: '#1E293B' }}>Assigned Visit: {visit.patientName}</div>
-                      <div style={{ fontSize: '0.8rem', color: '#64748B' }}>Service: {visit.serviceId}</div>
+                      <div style={{ fontWeight: 700, color: '#1E293B' }}>Assigned Visit Finished: {visit.patientName}</div>
+                      <div style={{ fontSize: '0.8rem', color: '#64748B' }}>Service: {visit.serviceTitle || visit.serviceId} (Bill: ₹{fee})</div>
+                      <div style={{ fontSize: '0.72rem', color: '#0284C7', marginTop: '0.15rem' }}>Booking ID: {visit.id}</div>
                     </div>
                     <div style={{ textAlign: 'right' }}>
-                      <div style={{ fontWeight: 800, color: '#059669' }}>+₹{earnings} (70%)</div>
+                      <div style={{ fontWeight: 800, color: '#059669', fontSize: '1.05rem' }}>+₹{earnings}</div>
+                      <span style={{ fontSize: '0.72rem', background: '#ECFDF5', color: '#059669', padding: '2px 6px', borderRadius: 4, fontWeight: 700, border: '1px solid #A7F3D0', display: 'inline-block', marginTop: '2px' }}>
+                        70% Service Charge Earned
+                      </span>
                     </div>
                   </div>
                 );

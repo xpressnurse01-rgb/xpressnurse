@@ -1025,26 +1025,6 @@ export const BookingModal: React.FC<BookingModalProps> = ({
                       <Trash2 size={14} />
                     </button>
                   </div>
-
-                  {prescriptionUrl && (
-                    <div style={{ marginTop: '0.45rem', paddingTop: '0.4rem', borderTop: '1px dashed #E2E8F0', display: 'flex', alignItems: 'center', justifyContent: 'space-between', fontSize: '0.7rem' }}>
-                      <span style={{ color: '#64748B', display: 'inline-flex', alignItems: 'center', gap: '0.25rem' }}>
-                        <Cloud size={11} style={{ color: '#0284C7' }} />
-                        <code style={{ background: '#F1F5F9', padding: '1px 5px', borderRadius: 4, fontSize: '0.68rem' }}>
-                          xpressnurse-storage/{prescriptionFileName}
-                        </code>
-                      </span>
-                      <a 
-                        href={prescriptionPreviewData || prescriptionUrl} 
-                        target="_blank" 
-                        rel="noopener noreferrer" 
-                        style={{ color: '#0284C7', fontWeight: 700, textDecoration: 'none', display: 'inline-flex', alignItems: 'center', gap: '0.2rem' }}
-                      >
-                        <span>Preview Rx</span>
-                        <ExternalLink size={10} />
-                      </a>
-                    </div>
-                  )}
                 </div>
               )}
             </div>

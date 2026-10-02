@@ -207,7 +207,7 @@ export const LoginPage: React.FC<LoginPageProps> = ({
           nurseName: matchedReferringNurse.name,
           patientName: regName.trim(),
           patientPhone: regPhone.trim(),
-          area: 'Hyderabad Central',
+          area: regServiceArea || 'Gachibowli',
           qualification: 'Registered Nurse',
           status: 'Pending Approval',
           leadValueRupees: 500,
@@ -220,11 +220,10 @@ export const LoginPage: React.FC<LoginPageProps> = ({
         };
         await dbInsertLead(refLead);
 
-        // Update referring nurse pending stats in DB
+        // Update referring nurse pending stats in DB (Points are credited strictly AFTER Admin approval)
         await dbUpdateNurseById(matchedReferringNurse.id, {
           totalReferrals: (matchedReferringNurse.totalReferrals || 0) + 1,
-          earningsPending: (matchedReferringNurse.earningsPending || 0) + 500,
-          pointsEarned: (matchedReferringNurse.pointsEarned || 0) + 50
+          earningsPending: (matchedReferringNurse.earningsPending || 0) + 500
         });
       }
       

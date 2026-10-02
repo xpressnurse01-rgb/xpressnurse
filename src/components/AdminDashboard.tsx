@@ -3469,26 +3469,25 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                                   await onUpdateNurseRecord?.(n.id, { certificateVerified: true, status: 'Active' });
                                   showToast(`Nurse "${n.name}" verified and approved!`);
 
-                                      // If nurse was referred by an existing nurse, credit 50 points referral reward to the referrer (no rupees)
-                                      if (n.referredByNurseId && onUpdateNurseRecord) {
+                                      // If nurse was referred by an existing nurse, credit 50 points referral reward to the referrer (strictly once upon approval)
+                                      if (n.referredByNurseId) {
                                         const referrer = nurses.find((rn) => rn.id === n.referredByNurseId);
                                         if (referrer) {
-                                          const newPoints = (referrer.pointsEarned || 0) + 50;
-                                          await onUpdateNurseRecord(referrer.id, {
-                                            pointsEarned: newPoints,
-                                            convertedLeads: (referrer.convertedLeads || 0) + 1
-                                          });
-
-                                          // Also approve lead if exists
                                           const matchLead = leads.find((l) => l.nurseId === referrer.id && (l.referredNursePhone === n.phone || l.patientPhone === n.phone || l.referredNurseName === n.name));
                                           if (matchLead && onApproveLead) {
                                             await onApproveLead(matchLead.id, 50, 50, `Referred nurse ${n.name} certificate verified by Admin`);
+                                          } else if (onUpdateNurseRecord) {
+                                            const newPoints = (referrer.pointsEarned || 0) + 50;
+                                            await onUpdateNurseRecord(referrer.id, {
+                                              pointsEarned: newPoints,
+                                              convertedLeads: (referrer.convertedLeads || 0) + 1
+                                            });
                                           }
 
-                                        showToast(`Nurse ${n.name} approved! ₹50 referral bonus credited to ${referrer.name}.`);
-                                        return;
+                                          showToast(`Nurse ${n.name} approved! 50 referral reward points credited to ${referrer.name}.`);
+                                          return;
+                                        }
                                       }
-                                    }
                                     showToast(`Nurse ${n.name} approved and activated.`);
                                 }}
                                 className="btn btn-sm btn-primary" 
@@ -4034,10 +4033,25 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                           <div style={{ fontSize: '0.72rem', color: 'var(--neutral-500)' }}>Value: ₹{l.leadValueRupees || 800}</div>
                         </td>
                         <td>
-                          <div style={{ display: 'flex', alignItems: 'center', gap: '0.3rem' }}>
-                            <MapPin size={13} style={{ color: 'var(--neutral-500)' }} />
-                            <span>{l.area}</span>
-                          </div>
+                          {(() => {
+                            const refCandidate = (l.referralType === 'nurse' || l.referredNursePhone)
+                              ? nurses.find((n) => 
+                                  (l.referredNursePhone && n.phone && n.phone.replace(/\D/g, '') === l.referredNursePhone.replace(/\D/g, '')) ||
+                                  (l.referredNurseName && n.name.toLowerCase() === l.referredNurseName.toLowerCase()) ||
+                                  (l.patientName && n.name.toLowerCase() === l.patientName.toLowerCase())
+                                )
+                              : null;
+                            const displayArea = (refCandidate?.serviceArea && refCandidate.serviceArea !== 'Hyderabad Central')
+                              ? refCandidate.serviceArea
+                              : (l.area && l.area !== 'Hyderabad Central' ? l.area : (refCandidate?.serviceArea || l.area || 'Gachibowli'));
+
+                            return (
+                              <div style={{ display: 'flex', alignItems: 'center', gap: '0.3rem' }}>
+                                <MapPin size={13} style={{ color: 'var(--neutral-500)' }} />
+                                <span>{displayArea}</span>
+                              </div>
+                            );
+                          })()}
                           {l.fullAddress && (
                             <div style={{ fontSize: '0.72rem', color: 'var(--neutral-500)', marginTop: '0.15rem' }}>
                               {l.fullAddress}
@@ -7304,10 +7318,24 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                           <div style={{ fontSize: '0.8rem', color: 'var(--neutral-600)' }}>
                             📞 {approvalModalLead.patientPhone}
                           </div>
-                          <div style={{ fontSize: '0.78rem', color: 'var(--neutral-600)', display: 'flex', alignItems: 'center', gap: '0.25rem', marginTop: '0.2rem' }}>
-                            <MapPin size={12} style={{ color: 'var(--neutral-400)' }} />
-                            <span>{approvalModalLead.area}, Hyderabad</span>
-                          </div>
+                          {(() => {
+                            const refCandidate = (approvalModalLead.referralType === 'nurse' || approvalModalLead.referredNursePhone)
+                              ? nurses.find((n) => 
+                                  (approvalModalLead.referredNursePhone && n.phone && n.phone.replace(/\D/g, '') === approvalModalLead.referredNursePhone.replace(/\D/g, '')) ||
+                                  (approvalModalLead.referredNurseName && n.name.toLowerCase() === approvalModalLead.referredNurseName.toLowerCase()) ||
+                                  (approvalModalLead.patientName && n.name.toLowerCase() === approvalModalLead.patientName.toLowerCase())
+                                )
+                              : null;
+                            const modalArea = (refCandidate?.serviceArea && refCandidate.serviceArea !== 'Hyderabad Central')
+                              ? refCandidate.serviceArea
+                              : (approvalModalLead.area && approvalModalLead.area !== 'Hyderabad Central' ? approvalModalLead.area : (refCandidate?.serviceArea || approvalModalLead.area || 'Gachibowli'));
+                            return (
+                              <div style={{ fontSize: '0.78rem', color: 'var(--neutral-600)', display: 'flex', alignItems: 'center', gap: '0.25rem', marginTop: '0.2rem' }}>
+                                <MapPin size={12} style={{ color: 'var(--neutral-400)' }} />
+                                <span>{modalArea}, Hyderabad</span>
+                              </div>
+                            );
+                          })()}
                         </div>
 
                         <div>

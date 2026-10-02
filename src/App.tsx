@@ -1547,18 +1547,29 @@ export const App: React.FC = () => {
     const targetBooking = bookings.find((b) => b.id === id);
     if (!targetBooking) return;
 
-    if (updates.status === 'Completed' && targetBooking.status !== 'Completed' && targetBooking.assignedNurseId) {
-      const assignedNurse = nurses.find((n) => n.id === targetBooking.assignedNurseId);
-      const procedure = services.find((s) => s.id === targetBooking.serviceId);
-      if (assignedNurse && procedure) {
-        const earningsToAdd = Math.round((procedure.priceNumber || 800) * 0.70);
-        const updatedNurse: NurseProfile = {
-          ...assignedNurse,
-          earningsPending: (assignedNurse.earningsPending || 0) + earningsToAdd
-        };
-        setNurses((prev) => prev.map((n) => (n.id === updatedNurse.id ? updatedNurse : n)));
-        broadcastRealtimeUpdate('NURSE_UPDATE', updatedNurse);
-        await dbUpdateNurse(updatedNurse);
+    if (updates.status === 'Completed' && targetBooking.status !== 'Completed') {
+      const assignedNurseId = targetBooking.assignedNurseId || updates.assignedNurseId;
+      if (assignedNurseId) {
+        const assignedNurse = nurses.find((n) => n.id === assignedNurseId);
+        const procedure = services.find((s) => s.id === targetBooking.serviceId);
+        const fee = Number(targetBooking.finalFee !== undefined ? targetBooking.finalFee : (targetBooking.estimatedFee || procedure?.priceNumber || 800));
+        const earningsToAdd = Math.round(fee * 0.70);
+        if (assignedNurse) {
+          const updatedNurse: NurseProfile = {
+            ...assignedNurse,
+            earningsPending: (assignedNurse.earningsPending || 0) + earningsToAdd,
+            referralEarningsRupees: (assignedNurse.referralEarningsRupees || 0) + earningsToAdd,
+            totalEarningsRupees: ((assignedNurse.earningsPaid || 0) + (assignedNurse.earningsPending || 0) + earningsToAdd),
+            completedVisits: (assignedNurse.completedVisits || 0) + 1
+          };
+          setNurses((prev) => {
+            const next = prev.map((n) => (n.id === updatedNurse.id ? updatedNurse : n));
+            try { localStorage.setItem('xn_cached_nurses', JSON.stringify(next)); } catch {}
+            return next;
+          });
+          broadcastRealtimeUpdate('NURSE_UPDATE', updatedNurse);
+          await dbUpdateNurse(updatedNurse);
+        }
       }
     }
 
