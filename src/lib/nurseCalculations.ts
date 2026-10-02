@@ -205,12 +205,30 @@ export function deduplicateLeads(leadsList: NurseLead[] = []): NurseLead[] {
       }
     } else {
       const existing = result[existingIndex];
-      const statusRank: Record<string, number> = { 'Converted': 4, 'Approved': 3, 'Pending': 2, 'Rejected': 1 };
-      const exRank = statusRank[existing.status] || 0;
-      const newRank = statusRank[l.status] || 0;
+      // If either record is Rejected or has rejectionReason, preserve the rejection
+      if (l.status === 'Rejected' || Boolean(l.rejectionReason)) {
+        result[existingIndex] = {
+          ...existing,
+          ...l,
+          status: 'Rejected',
+          rejectionReason: l.rejectionReason || existing.rejectionReason || 'Rejected by Admin review',
+          adminNotes: l.adminNotes || existing.adminNotes
+        };
+      } else if (existing.status === 'Rejected' && l.status !== 'Converted') {
+        result[existingIndex] = {
+          ...l,
+          ...existing,
+          status: 'Rejected',
+          rejectionReason: existing.rejectionReason || l.rejectionReason || 'Rejected by Admin review'
+        };
+      } else {
+        const statusRank: Record<string, number> = { 'Converted': 4, 'Approved': 3, 'Pending Approval': 2, 'Pending': 2, 'Submitted': 2, 'Contacted': 2 };
+        const exRank = statusRank[existing.status] || 0;
+        const newRank = statusRank[l.status] || 0;
 
-      if (newRank > exRank) {
-        result[existingIndex] = { ...existing, ...l };
+        if (newRank >= exRank) {
+          result[existingIndex] = { ...existing, ...l };
+        }
       }
     }
   }

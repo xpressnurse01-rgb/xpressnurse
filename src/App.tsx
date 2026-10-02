@@ -1835,18 +1835,37 @@ export const App: React.FC = () => {
           const pointsToDeduct = (matchLead && matchLead.pointsAwarded) ? matchLead.pointsAwarded : (wasApproved ? 50 : 0);
           const rupeesToDeduct = (matchLead && matchLead.referralCommissionRupees) ? matchLead.referralCommissionRupees : (wasApproved ? (targetBooking.referralBonusRupees || 0) : 0);
 
+          const reason = updates.rejectionReason || targetBooking.rejectionReason || `Patient booking was ${updates.status.toLowerCase()}`;
           if (matchLead) {
             const rejectedLead: NurseLead = {
               ...matchLead,
               status: 'Rejected',
               pointsAwarded: 0,
               referralCommissionRupees: 0,
-              rejectionReason: updates.rejectionReason || `Booking was ${updates.status.toLowerCase()}`,
-              adminNotes: `Booking ${updates.status.toLowerCase()}`
+              rejectionReason: reason,
+              adminNotes: reason
             };
             setLeads((prev) => prev.map((l) => (l.id === matchLead.id ? rejectedLead : l)));
             broadcastRealtimeUpdate('LEAD_UPDATE', rejectedLead);
             await dbUpdateLeadById(matchLead.id, rejectedLead);
+          } else {
+            const rejectedLead: NurseLead = {
+              id: `LEAD-BK-${id}`,
+              nurseId: referringNurseId,
+              patientName: targetBooking.patientName,
+              patientPhone: targetBooking.patientPhone,
+              serviceId: targetBooking.serviceId,
+              area: targetBooking.area,
+              submittedAt: targetBooking.createdAt || new Date().toISOString(),
+              status: 'Rejected',
+              pointsAwarded: 0,
+              referralCommissionRupees: 0,
+              rejectionReason: reason,
+              adminNotes: reason
+            };
+            setLeads((prev) => [rejectedLead, ...prev]);
+            broadcastRealtimeUpdate('LEAD_UPDATE', rejectedLead);
+            await dbSaveLead(rejectedLead);
           }
 
           if (wasApproved || pointsToDeduct > 0 || rupeesToDeduct > 0) {

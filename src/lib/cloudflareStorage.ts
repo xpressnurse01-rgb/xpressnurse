@@ -1,6 +1,7 @@
 import { 
   CloudflareStorageObject, 
   InvoiceDetails, 
+  InvoiceItem,
   CloudflareR2Config, 
   Booking,
   NurseProfile,
@@ -647,6 +648,17 @@ export const generateInvoiceDetails = (booking: Booking): InvoiceDetails => {
     serviceId: booking.serviceId,
     assignedNurseName: booking.assignedNurseName || 'Assigned Fleet RN',
     baseAmount: baseFee,
+    items: [
+      {
+        id: 'item-1',
+        description: booking.serviceTitle || 'Clinical Nursing Care',
+        date: booking.preferredDate || new Date().toISOString().split('T')[0],
+        slot: booking.scheduledSlot || booking.preferredTime || 'Morning (09:00 AM - 01:00 PM)',
+        rate: baseFee,
+        quantity: booking.numberOfVisits || 1,
+        amount: baseFee * (booking.numberOfVisits || 1)
+      }
+    ],
     nightSurcharge,
     discountRupees: discount,
     totalAmount: subtotal,
@@ -760,45 +772,56 @@ export const generatePrintableInvoiceHtml = (inv: InvoiceDetails): string => {
     <table class="table">
       <thead>
         <tr>
-          <th style="width: 50px; text-align: center;">S.No</th>
-          <th>Procedure</th>
+          <th style="width: 45px; text-align: center;">#</th>
+          <th>Procedure / Clinical Service</th>
           <th>Date</th>
-          <th style="text-align: center;">Slot No</th>
+          <th>Time Slot</th>
+          <th style="text-align: right;">Rate (₹)</th>
+          <th style="text-align: center;">Visits</th>
           <th style="text-align: right;">Amount (₹)</th>
         </tr>
       </thead>
       <tbody>
-        <tr>
-          <td style="text-align: center;">1</td>
-          <td>
-            <strong>${inv.serviceTitle}</strong><br>
-            <span style="font-size: 11.5px; color: #64748B;">Doorstep nursing visit with aseptic consumables, vitals check & digital report</span>
-          </td>
-          <td>${inv.serviceDate || '-'}</td>
-          <td style="text-align: center;">${inv.timeSlot || '-'}</td>
-          <td style="text-align: right;">₹${inv.baseAmount * (inv.numberOfVisits || 1)}</td>
-        </tr>
+        ${(inv.items && inv.items.length > 0 ? inv.items : [
+          {
+            id: '1',
+            description: inv.serviceTitle,
+            date: inv.serviceDate || '-',
+            slot: inv.timeSlot || '-',
+            rate: inv.baseAmount,
+            quantity: inv.numberOfVisits || 1,
+            amount: inv.baseAmount * (inv.numberOfVisits || 1)
+          }
+        ]).map((item, index) => `
+          <tr>
+            <td style="text-align: center; font-weight: 700; color: #64748B;">${index + 1}</td>
+            <td>
+              <strong style="color: #0F172A;">${item.description}</strong>
+            </td>
+            <td style="white-space: nowrap; font-size: 13px;">${item.date || '-'}</td>
+            <td style="font-size: 13px; color: #334155;">${item.slot || '-'}</td>
+            <td style="text-align: right; color: #475569;">₹${item.rate}</td>
+            <td style="text-align: center; font-weight: 600;">${item.quantity || 1}</td>
+            <td style="text-align: right; font-weight: 700; color: #0F172A;">₹${item.amount}</td>
+          </tr>
+        `).join('')}
         ${inv.nightSurcharge && inv.nightSurcharge > 0 ? `
         <tr>
-          <td style="text-align: center;">2</td>
-          <td>
+          <td style="text-align: center; font-weight: 700; color: #64748B;">•</td>
+          <td colspan="5">
             <strong>Night Visit Emergency Surcharge</strong><br>
             <span style="font-size: 11.5px; color: #64748B;">Dispatch after 8:00 PM rapid response fee</span>
           </td>
-          <td>-</td>
-          <td style="text-align: center;">-</td>
-          <td style="text-align: right;">₹${inv.nightSurcharge}</td>
+          <td style="text-align: right; font-weight: 700; color: #0F172A;">+₹${inv.nightSurcharge}</td>
         </tr>
         ` : ''}
         ${inv.discountRupees && inv.discountRupees > 0 ? `
         <tr>
-          <td style="text-align: center;">${inv.nightSurcharge && inv.nightSurcharge > 0 ? '3' : '2'}</td>
-          <td>
-            <strong style="color: #059669;">Promotional Coupon Discount</strong>
+          <td style="text-align: center; font-weight: 700; color: #059669;">•</td>
+          <td colspan="5">
+            <strong style="color: #059669;">Promotional Coupon / Fee Concession Discount</strong>
           </td>
-          <td>-</td>
-          <td style="text-align: center;">-</td>
-          <td style="text-align: right; color: #059669;">-₹${inv.discountRupees}</td>
+          <td style="text-align: right; font-weight: 700; color: #059669;">-₹${inv.discountRupees}</td>
         </tr>
         ` : ''}
       </tbody>
@@ -806,13 +829,26 @@ export const generatePrintableInvoiceHtml = (inv: InvoiceDetails): string => {
 
     <div class="totals">
       <div class="total-row">
-        <span>Base Service Fee:</span>
-        <strong>₹${inv.baseAmount}</strong>
+        <span>Scheduled Visits / Slots:</span>
+        <strong>${inv.items && inv.items.length > 0 ? inv.items.reduce((s, it) => s + (Number(it.quantity) || 1), 0) : (inv.numberOfVisits || 1)} visits</strong>
       </div>
-
+      <div class="total-row">
+        <span>Service Subtotal:</span>
+        <strong>₹${inv.items && inv.items.length > 0 ? inv.items.reduce((s, it) => s + (Number(it.amount) || 0), 0) : (inv.baseAmount * (inv.numberOfVisits || 1))}</strong>
+      </div>
+      ${inv.nightSurcharge && inv.nightSurcharge > 0 ? `
+      <div class="total-row">
+        <span>Night Surcharge:</span>
+        <strong>+₹${inv.nightSurcharge}</strong>
+      </div>` : ''}
+      ${inv.discountRupees && inv.discountRupees > 0 ? `
+      <div class="total-row" style="color: #059669;">
+        <span>Discount:</span>
+        <strong>-₹${inv.discountRupees}</strong>
+      </div>` : ''}
       <div class="total-row grand">
-        <span>Grand Total:</span>
-        <span>₹${inv.totalAmount}</span>
+        <span>Grand Total Payable:</span>
+        <span style="color: #059669;">₹${inv.totalAmount}</span>
       </div>
     </div>
 

@@ -251,6 +251,16 @@ export interface CloudflareStorageObject {
   };
 }
 
+export interface InvoiceItem {
+  id: string;
+  description: string;
+  date: string;
+  slot: string;
+  rate: number;
+  quantity: number;
+  amount: number;
+}
+
 export interface InvoiceDetails {
   invoiceNumber: string;
   invoiceDate: string;
@@ -268,6 +278,7 @@ export interface InvoiceDetails {
   serviceId: string;
   assignedNurseName?: string;
   baseAmount: number;
+  items?: InvoiceItem[];
   nightSurcharge?: number;
   discountRupees?: number;
   totalAmount: number;
@@ -275,6 +286,7 @@ export interface InvoiceDetails {
   paymentMode: 'UPI / Online' | 'Cash on Visit' | 'Corporate Direct';
   r2StorageKey: string;
   r2PublicUrl: string;
+  notes?: string;
 }
 
 export interface CloudflareR2Config {

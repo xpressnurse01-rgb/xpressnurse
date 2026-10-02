@@ -922,7 +922,8 @@ export const NurseDashboard: React.FC<NurseDashboardProps> = ({
                 {myVisits.map((visit) => {
                   const isDone = visit.status === 'Completed';
                   const isInProgress = visit.status === 'In-Progress';
-                  const isAssigned = visit.status === 'Assigned' || visit.status === 'Pending';
+                  const isRejected = visit.status === 'Rejected' || visit.status === 'Cancelled' || Boolean(visit.rejectionReason);
+                  const isAssigned = !isRejected && (visit.status === 'Assigned' || visit.status === 'Pending');
 
                   return (
                     <div
@@ -930,7 +931,7 @@ export const NurseDashboard: React.FC<NurseDashboardProps> = ({
                       style={{
                         background: '#FFFFFF',
                         borderRadius: 16,
-                        border: isInProgress ? '2px solid #0284C7' : isDone ? '1px solid #DCFCE7' : '1px solid #E2E8F0',
+                        border: isRejected ? '1.5px solid #FECDD3' : (isInProgress ? '2px solid #0284C7' : isDone ? '1px solid #DCFCE7' : '1px solid #E2E8F0'),
                         padding: '1.25rem',
                         boxShadow: isInProgress ? '0 4px 12px rgba(2, 132, 199, 0.08)' : 'none',
                         position: 'relative'
@@ -943,11 +944,13 @@ export const NurseDashboard: React.FC<NurseDashboardProps> = ({
                           fontWeight: 800,
                           padding: '3px 9px',
                           borderRadius: 9999,
-                          background: isInProgress ? '#EFF6FF' : isDone ? '#F0FDF4' : '#FFFBEB',
-                          color: isInProgress ? '#0284C7' : isDone ? '#16A34A' : '#D97706',
-                          border: `1px solid ${isInProgress ? '#BFDBFE' : isDone ? '#BBF7D0' : '#FDE68A'}`
+                          background: isRejected ? '#FEE2E2' : (isInProgress ? '#EFF6FF' : isDone ? '#F0FDF4' : '#FFFBEB'),
+                          color: isRejected ? '#DC2626' : (isInProgress ? '#0284C7' : isDone ? '#16A34A' : '#D97706'),
+                          border: `1px solid ${isRejected ? '#FCA5A5' : (isInProgress ? '#BFDBFE' : isDone ? '#BBF7D0' : '#FDE68A')}`
                         }}>
-                          {isInProgress ? '⚡ Duty in Progress' : isDone ? '✓ Visit Completed' : '🔔 New Assignment'}
+                          {isRejected
+                            ? `✕ ${visit.status === 'Cancelled' ? 'Duty Cancelled' : 'Duty / Patient Rejected'}`
+                            : (isInProgress ? '⚡ Duty in Progress' : isDone ? '✓ Visit Completed' : '🔔 New Assignment')}
                         </span>
                         <span style={{ fontSize: '0.78rem', color: '#64748B', fontWeight: 600 }}>
                           ID: {visit.id}
@@ -972,9 +975,9 @@ export const NurseDashboard: React.FC<NurseDashboardProps> = ({
                             <span style={{
                               fontSize: '0.76rem',
                               fontWeight: 800,
-                              background: '#ECFDF5',
-                              color: '#059669',
-                              border: '1px solid #A7F3D0',
+                              background: isRejected ? '#F1F5F9' : '#ECFDF5',
+                              color: isRejected ? '#64748B' : '#059669',
+                              border: `1px solid ${isRejected ? '#CBD5E1' : '#A7F3D0'}`,
                               padding: '2px 8px',
                               borderRadius: 6,
                               display: 'inline-flex',
@@ -983,9 +986,11 @@ export const NurseDashboard: React.FC<NurseDashboardProps> = ({
                             }}>
                               <span>💰 Your 70% Payout:</span>
                               <strong style={{ fontSize: '0.84rem' }}>
-                                ₹{Math.round(Number(visit.finalFee !== undefined ? visit.finalFee : (visit.estimatedFee || 899)) * 0.70)}
+                                {isRejected ? '₹0' : `₹${Math.round(Number(visit.finalFee !== undefined ? visit.finalFee : (visit.estimatedFee || 899)) * 0.70)}`}
                               </strong>
-                              <span style={{ fontSize: '0.68rem', color: '#047857', fontWeight: 600 }}>({isDone ? 'Credited to earnings' : 'Credited on finishing job'})</span>
+                              <span style={{ fontSize: '0.68rem', color: isRejected ? '#64748B' : '#047857', fontWeight: 600 }}>
+                                {isRejected ? '(Cancelled/Rejected)' : (isDone ? 'Credited to earnings' : 'Credited on finishing job')}
+                              </span>
                             </span>
                           </div>
                           <div style={{ fontSize: '0.84rem', color: '#475569', marginTop: '0.35rem', display: 'flex', alignItems: 'center', gap: '0.35rem' }}>
@@ -1001,6 +1006,25 @@ export const NurseDashboard: React.FC<NurseDashboardProps> = ({
                           <div style={{ fontSize: '0.78rem', color: '#94A3B8', marginTop: '0.2rem' }}>
                             Received: {visit.createdAt ? new Date(visit.createdAt).toLocaleString() : 'Unknown'}
                           </div>
+
+                          {/* Rejection Reason Alert if rejected/cancelled */}
+                          {isRejected && (
+                            <div style={{
+                              marginTop: '0.5rem',
+                              background: '#FEF2F2',
+                              border: '1px solid #FECDD3',
+                              borderRadius: 8,
+                              padding: '0.45rem 0.8rem',
+                              fontSize: '0.8rem',
+                              color: '#991B1B',
+                              display: 'flex',
+                              alignItems: 'center',
+                              gap: '0.4rem'
+                            }}>
+                              <AlertCircle size={14} style={{ color: '#DC2626', flexShrink: 0 }} />
+                              <span><strong>Reason:</strong> {visit.rejectionReason || (visit.notes && visit.notes.includes('Rejection:') ? visit.notes.split('Rejection:')[1]?.trim() : (visit.notes && visit.notes.includes('[Referral rejected') ? visit.notes : 'Patient cancelled or visit rejected by office'))}</span>
+                            </div>
+                          )}
                         </div>
 
                         {/* Direct Action Buttons */}
@@ -1205,6 +1229,12 @@ export const NurseDashboard: React.FC<NurseDashboardProps> = ({
                             <span style={{ fontSize: '0.82rem', color: '#16A34A', fontWeight: 800, background: '#DCFCE7', padding: '4px 10px', borderRadius: 6, display: 'inline-flex', alignItems: 'center', gap: '0.3rem' }}>
                               <CheckCircle2 size={14} />
                               <span>✓ Finished & Billed (+₹{Math.round(Number(visit.finalFee !== undefined ? visit.finalFee : (visit.estimatedFee || 899)) * 0.70)} Earned)</span>
+                            </span>
+                          )}
+
+                          {isRejected && (
+                            <span style={{ fontSize: '0.82rem', color: '#DC2626', fontWeight: 800, background: '#FEE2E2', padding: '4px 10px', borderRadius: 6, display: 'inline-flex', alignItems: 'center', gap: '0.3rem' }}>
+                              <span>✕ Duty Cancelled / Closed</span>
                             </span>
                           )}
                         </div>
@@ -1595,68 +1625,185 @@ export const NurseDashboard: React.FC<NurseDashboardProps> = ({
                 </button>
               </div>
 
-              {myLeads.length === 0 ? (
-                <div style={{ padding: '2rem 1rem', textAlign: 'center', color: '#64748B' }}>
-                  <p>You have not added any patients yet. Click "Add Patient" to start earning 50 points per patient!</p>
-                </div>
-              ) : (
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '0.6rem' }}>
-                  {myLeads.filter(l => l.referralType !== 'nurse' && !l.referredNursePhone).map((lead) => {
-                    const isFullyCompleted = lead.status === 'Converted';
-                    const isApprovedAwaitingVisit = lead.status === 'Approved';
-                    return (
-                      <div
-                        key={lead.id}
-                        style={{
-                          display: 'flex',
-                          alignItems: 'center',
-                          justifyContent: 'space-between',
-                          padding: '0.85rem 1rem',
-                          borderRadius: 10,
-                          background: isFullyCompleted ? '#F0FDF4' : (isApprovedAwaitingVisit ? '#FFFDF5' : '#F8FAFC'),
-                          border: `1px solid ${isFullyCompleted ? '#BBF7D0' : (isApprovedAwaitingVisit ? '#FDE68A' : '#E2E8F0')}`,
-                          flexWrap: 'wrap',
-                          gap: '0.5rem'
-                        }}
-                      >
-                        <div>
-                          <div style={{ fontWeight: 800, fontSize: '0.95rem', color: '#0F172A' }}>
-                            {lead.patientName}
-                          </div>
-                          <div style={{ fontSize: '0.78rem', color: '#64748B', marginTop: '2px' }}>
-                            {lead.patientPhone} • {lead.area} • {lead.serviceId || 'Nursing Care'}
-                          </div>
-                        </div>
+              {(() => {
+                const patientLeads = myLeads.filter(l => l.referralType !== 'nurse' && !l.referredNursePhone);
+                const nurseLeads = myLeads.filter(l => l.referralType === 'nurse' || Boolean(l.referredNursePhone));
 
-                        <div style={{ textAlign: 'right' }}>
-                          <span style={{
-                            display: 'inline-block',
-                            padding: '3px 8px',
-                            borderRadius: 9999,
-                            fontSize: '0.72rem',
-                            fontWeight: 800,
-                            background: isFullyCompleted ? '#DCFCE7' : (isApprovedAwaitingVisit ? '#FEF3C7' : '#F1F5F9'),
-                            color: isFullyCompleted ? '#15803D' : (isApprovedAwaitingVisit ? '#B45309' : '#475569')
-                          }}>
-                            {isFullyCompleted
-                              ? `✓ Visit Done (+50 Pts, +₹${lead.referralCommissionRupees || 80})`
-                              : (isApprovedAwaitingVisit ? '⏳ Allotted • Visit in Progress' : '⏳ Office Review')}
-                          </span>
-                          {isFullyCompleted ? (
-                            <div style={{ fontSize: '0.75rem', color: '#059669', fontWeight: 700, marginTop: '2px' }}>
-                              +50 Pts & 10% Fee Credited
+                return (
+                  <>
+                    {/* Patient Referrals */}
+                    {patientLeads.length === 0 ? (
+                      <div style={{ padding: '2rem 1rem', textAlign: 'center', color: '#64748B' }}>
+                        <p>You have not added any patients yet. Click "Add Patient" to start earning 50 points per patient!</p>
+                      </div>
+                    ) : (
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: '0.6rem' }}>
+                        {patientLeads.map((lead) => {
+                          const isRejected = lead.status === 'Rejected' || Boolean(lead.rejectionReason);
+                          const isFullyCompleted = !isRejected && lead.status === 'Converted';
+                          const isApprovedAwaitingVisit = !isRejected && lead.status === 'Approved';
+
+                          return (
+                            <div
+                              key={lead.id}
+                              style={{
+                                display: 'flex',
+                                flexDirection: 'column',
+                                padding: '0.85rem 1rem',
+                                borderRadius: 10,
+                                background: isRejected ? '#FEF2F2' : (isFullyCompleted ? '#F0FDF4' : (isApprovedAwaitingVisit ? '#FFFDF5' : '#F8FAFC')),
+                                border: `1px solid ${isRejected ? '#FECDD3' : (isFullyCompleted ? '#BBF7D0' : (isApprovedAwaitingVisit ? '#FDE68A' : '#E2E8F0'))}`,
+                                gap: '0.4rem'
+                              }}
+                            >
+                              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '0.5rem' }}>
+                                <div>
+                                  <div style={{ fontWeight: 800, fontSize: '0.95rem', color: isRejected ? '#991B1B' : '#0F172A' }}>
+                                    {lead.patientName}
+                                  </div>
+                                  <div style={{ fontSize: '0.78rem', color: isRejected ? '#7F1D1D' : '#64748B', marginTop: '2px' }}>
+                                    {lead.patientPhone} • {lead.area} • {lead.serviceId || 'Nursing Care'}
+                                  </div>
+                                </div>
+
+                                <div style={{ textAlign: 'right' }}>
+                                  <span style={{
+                                    display: 'inline-block',
+                                    padding: '3px 8px',
+                                    borderRadius: 9999,
+                                    fontSize: '0.72rem',
+                                    fontWeight: 800,
+                                    background: isRejected ? '#FEE2E2' : (isFullyCompleted ? '#DCFCE7' : (isApprovedAwaitingVisit ? '#FEF3C7' : '#F1F5F9')),
+                                    color: isRejected ? '#DC2626' : (isFullyCompleted ? '#15803D' : (isApprovedAwaitingVisit ? '#B45309' : '#475569'))
+                                  }}>
+                                    {isRejected
+                                      ? '✕ Referral Rejected'
+                                      : (isFullyCompleted
+                                        ? `✓ Visit Done (+50 Pts, +₹${lead.referralCommissionRupees || 80})`
+                                        : (isApprovedAwaitingVisit ? '⏳ Allotted • Visit in Progress' : '⏳ Office Review'))}
+                                  </span>
+                                  {isRejected ? (
+                                    <div style={{ fontSize: '0.72rem', color: '#DC2626', fontWeight: 700, marginTop: '2px' }}>
+                                      0 Pts • No Commission
+                                    </div>
+                                  ) : isFullyCompleted ? (
+                                    <div style={{ fontSize: '0.75rem', color: '#059669', fontWeight: 700, marginTop: '2px' }}>
+                                      +50 Pts & 10% Fee Credited
+                                    </div>
+                                  ) : (
+                                    <div style={{ fontSize: '0.72rem', color: '#B45309', fontWeight: 600, marginTop: '2px' }}>
+                                      50 pts + 10% fee credited after visit
+                                    </div>
+                                  )}
+                                </div>
+                              </div>
+
+                              {isRejected && (
+                                <div style={{
+                                  background: '#FFF1F2',
+                                  border: '1px dashed #FDA4AF',
+                                  borderRadius: 8,
+                                  padding: '0.5rem 0.75rem',
+                                  fontSize: '0.78rem',
+                                  color: '#9F1239',
+                                  display: 'flex',
+                                  alignItems: 'flex-start',
+                                  gap: '0.45rem',
+                                  marginTop: '0.2rem'
+                                }}>
+                                  <AlertCircle size={15} style={{ marginTop: '1px', flexShrink: 0, color: '#E11D48' }} />
+                                  <div>
+                                    <span style={{ fontWeight: 800 }}>Rejection Reason: </span>
+                                    <span>{lead.rejectionReason || lead.adminNotes || 'Patient cancelled, unserviceable location, or rejected during office review'}</span>
+                                  </div>
+                                </div>
+                              )}
                             </div>
-                          ) : (
-                            <div style={{ fontSize: '0.72rem', color: '#B45309', fontWeight: 600, marginTop: '2px' }}>
-                              50 pts + 10% fee credited after visit
-                            </div>
-                          )}
+                          );
+                        })}
+                      </div>
+                    )}
+
+                    {/* Colleague Nurses You Referred */}
+                    {nurseLeads.length > 0 && (
+                      <div style={{ marginTop: '1.5rem', paddingTop: '1.25rem', borderTop: '1px dashed #CBD5E1' }}>
+                        <h5 style={{ margin: '0 0 0.75rem 0', fontSize: '0.95rem', fontWeight: 800, color: '#334155' }}>
+                          Colleague Nurses You Referred ({nurseLeads.length})
+                        </h5>
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '0.6rem' }}>
+                          {nurseLeads.map((nurseLead) => {
+                            const isNurseRejected = nurseLead.status === 'Rejected' || Boolean(nurseLead.rejectionReason);
+                            const isNurseActive = !isNurseRejected && (nurseLead.status === 'Approved' || nurseLead.status === 'Converted');
+
+                            return (
+                              <div
+                                key={nurseLead.id}
+                                style={{
+                                  display: 'flex',
+                                  flexDirection: 'column',
+                                  padding: '0.8rem 1rem',
+                                  borderRadius: 10,
+                                  background: isNurseRejected ? '#FEF2F2' : (isNurseActive ? '#F0FDF4' : '#F8FAFC'),
+                                  border: `1px solid ${isNurseRejected ? '#FECDD3' : (isNurseActive ? '#BBF7D0' : '#E2E8F0')}`,
+                                  gap: '0.35rem'
+                                }}
+                              >
+                                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '0.5rem' }}>
+                                  <div>
+                                    <div style={{ fontWeight: 800, fontSize: '0.9rem', color: isNurseRejected ? '#991B1B' : '#0F172A' }}>
+                                      {nurseLead.referredNurseName || nurseLead.nurseName || 'Colleague Nurse'}
+                                    </div>
+                                    <div style={{ fontSize: '0.76rem', color: isNurseRejected ? '#7F1D1D' : '#64748B', marginTop: '1px' }}>
+                                      {nurseLead.referredNursePhone || nurseLead.patientPhone || 'No Phone'} • {nurseLead.area || 'Hyderabad'}
+                                    </div>
+                                  </div>
+
+                                  <div style={{ textAlign: 'right' }}>
+                                    <span style={{
+                                      display: 'inline-block',
+                                      padding: '3px 8px',
+                                      borderRadius: 9999,
+                                      fontSize: '0.72rem',
+                                      fontWeight: 800,
+                                      background: isNurseRejected ? '#FEE2E2' : (isNurseActive ? '#DCFCE7' : '#FEF3C7'),
+                                      color: isNurseRejected ? '#DC2626' : (isNurseActive ? '#15803D' : '#B45309')
+                                    }}>
+                                      {isNurseRejected
+                                        ? '✕ Verification Rejected'
+                                        : (isNurseActive ? '✓ Verified & Onboarded' : '⏳ Verification Pending')}
+                                    </span>
+                                  </div>
+                                </div>
+
+                                {isNurseRejected && (
+                                  <div style={{
+                                    background: '#FFF1F2',
+                                    border: '1px dashed #FDA4AF',
+                                    borderRadius: 8,
+                                    padding: '0.45rem 0.7rem',
+                                    fontSize: '0.76rem',
+                                    color: '#9F1239',
+                                    display: 'flex',
+                                    alignItems: 'flex-start',
+                                    gap: '0.4rem',
+                                    marginTop: '0.2rem'
+                                  }}>
+                                    <AlertCircle size={14} style={{ marginTop: '1px', flexShrink: 0, color: '#E11D48' }} />
+                                    <div>
+                                      <span style={{ fontWeight: 800 }}>Rejection Reason: </span>
+                                      <span>{nurseLead.rejectionReason || nurseLead.adminNotes || 'Credentials or registration review not accepted'}</span>
+                                    </div>
+                                  </div>
+                                )}
+                              </div>
+                            );
+                          })}
                         </div>
                       </div>
-                    );
-                  })}
-                </div>
-              )}
+                    )}
+                  </>
+                );
+              })()}
             </div>
 
           </div>
