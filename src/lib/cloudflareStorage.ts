@@ -169,16 +169,18 @@ export const syncDatabaseRecordsToStorage = (
   const effectiveNurses = nurses || [];
   effectiveNurses.forEach((n) => {
     const cleanName = n.name.replace(/[^a-zA-Z0-9]/g, '_');
-    const key = `certificates/RN_Cert_${n.id}_${cleanName}.pdf`;
+    const fileName = `Cert_${n.id}_Telangana_Council_Cert_${cleanName}.pdf`;
+    const key = `certificates/${fileName}`;
     const docId = `r2-cert-${n.id}`;
     if (!existingKeyMap.has(key) && !deletedKeys.has(key) && !deletedKeys.has(docId)) {
-      const publicUrl = n.certificateUrl || `${config.publicDomain.replace(/\/+$/, '')}/${key}`;
+      const publicDomain = (config.publicDomain || 'https://pub-xn-healthcare.r2.dev').replace(/\/+$/, '');
+      const publicUrl = n.certificateUrl || `${publicDomain}/${key}`;
       generated.push({
         id: docId,
         bucketName: config.bucketName,
         key,
         category: 'certificates',
-        fileName: `Telangana_Council_Cert_${cleanName}.pdf`,
+        fileName,
         contentType: 'application/pdf',
         sizeBytes: 245000 + (Math.abs(n.name.length * 3421) % 150000),
         uploadedAt: n.createdAt || new Date().toISOString(),
@@ -203,17 +205,21 @@ export const syncDatabaseRecordsToStorage = (
 
     // Prescription (if hasPrescription or fileName or url)
     if (b.hasPrescription || b.prescriptionFileName || b.prescriptionUrl) {
-      const rxCleanName = (b.prescriptionFileName || `Rx_Clinical_${cleanPatient}.pdf`).replace(/[^a-zA-Z0-9._-]/g, '_');
-      const rxKey = `prescriptions/Rx_${cleanId}_${rxCleanName}`;
+      const originalFileName = b.prescriptionFileName || `Clinical_${cleanPatient}.pdf`;
+      const rxCleanName = originalFileName.replace(/[^a-zA-Z0-9._-]/g, '_');
+      const cleanPrefix = rxCleanName.toLowerCase().startsWith('rx_') ? '' : 'Rx_';
+      const fileName = `${cleanPrefix}${cleanId}_${rxCleanName}`;
+      const rxKey = `prescriptions/${fileName}`;
       const rxId = `r2-rx-${b.id}`;
       if (!existingKeyMap.has(rxKey) && !deletedKeys.has(rxKey) && !deletedKeys.has(rxId)) {
-        const publicUrl = b.prescriptionUrl || `${config.publicDomain.replace(/\/+$/, '')}/${rxKey}`;
+        const publicDomain = (config.publicDomain || 'https://pub-xn-healthcare.r2.dev').replace(/\/+$/, '');
+        const publicUrl = b.prescriptionUrl || `${publicDomain}/${rxKey}`;
         generated.push({
           id: rxId,
           bucketName: config.bucketName,
           key: rxKey,
           category: 'prescriptions',
-          fileName: rxCleanName,
+          fileName,
           contentType: 'application/pdf',
           sizeBytes: 195000 + (Math.abs(cleanId.length * 4117) % 120000),
           uploadedAt: b.createdAt || new Date().toISOString(),

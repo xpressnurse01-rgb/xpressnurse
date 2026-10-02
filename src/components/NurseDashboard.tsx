@@ -208,9 +208,7 @@ export const NurseDashboard: React.FC<NurseDashboardProps> = ({
   const referralCode = nurse.referralCode || generateNurseReferralCode(nurse.name, nurse.id, nurse.phone || '');
   let calculatedMoney = 0;
   myConvertedLeads.forEach(lead => {
-    if (lead.referralType === 'nurse' || lead.referredNursePhone) {
-      calculatedMoney += lead.referralCommissionRupees || 50;
-    } else {
+    if (lead.referralType !== 'nurse' && !lead.referredNursePhone) {
       const procedure = services.find(s => s.id === lead.serviceId);
       calculatedMoney += lead.referralCommissionRupees || (procedure ? Math.round((procedure.priceNumber || 800) * 0.10) : 0);
     }
@@ -1988,8 +1986,7 @@ export const NurseDashboard: React.FC<NurseDashboardProps> = ({
                     <div style={{ fontSize: '0.8rem', color: '#64748B' }}>Status: {lead.status}</div>
                   </div>
                   <div style={{ textAlign: 'right' }}>
-                    <div style={{ fontWeight: 800, color: '#059669' }}>+₹{lead.referralCommissionRupees || 50}</div>
-                    <div style={{ fontSize: '0.8rem', color: '#16A34A', fontWeight: 600 }}>+{lead.pointsAwarded || 50} pts</div>
+                    <div style={{ fontWeight: 800, color: '#16A34A', fontSize: '1.1rem' }}>+{lead.pointsAwarded || 50} pts</div>
                   </div>
                 </div>
               ))}

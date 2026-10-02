@@ -1653,13 +1653,11 @@ export const App: React.FC = () => {
         const referrer = nurses.find((rn) => rn.id === referrerId);
         const wasApproved = nurseToDelete.certificateVerified || (matchLead && (matchLead.status === 'Approved' || matchLead.status === 'Converted'));
         const pointsToDeduct = matchLead?.pointsAwarded || (wasApproved ? 50 : 0);
-        const rupeesToDeduct = matchLead?.referralCommissionRupees || (wasApproved ? 500 : 0);
 
-        if (referrer && (pointsToDeduct > 0 || rupeesToDeduct > 0 || wasApproved)) {
+        if (referrer && (pointsToDeduct > 0 || wasApproved)) {
           const updatedReferrer: NurseProfile = {
             ...referrer,
             pointsEarned: Math.max(0, (referrer.pointsEarned || 0) - pointsToDeduct),
-            referralEarningsRupees: Math.max(0, (referrer.referralEarningsRupees || 0) - rupeesToDeduct),
             convertedLeads: Math.max(0, (referrer.convertedLeads || 0) - 1),
             totalReferrals: Math.max(0, (referrer.totalReferrals || 0) - 1)
           };
@@ -1870,13 +1868,11 @@ export const App: React.FC = () => {
         const referrer = nurses.find((rn) => rn.id === referrerId);
         const wasApproved = nurseToDelete.certificateVerified || (matchLead && (matchLead.status === 'Approved' || matchLead.status === 'Converted'));
         const pointsToDeduct = matchLead?.pointsAwarded || (wasApproved ? 50 : 0);
-        const rupeesToDeduct = matchLead?.referralCommissionRupees || (wasApproved ? 500 : 0);
 
-        if (referrer && (pointsToDeduct > 0 || rupeesToDeduct > 0 || wasApproved)) {
+        if (referrer && (pointsToDeduct > 0 || wasApproved)) {
           const updatedReferrer: NurseProfile = {
             ...referrer,
             pointsEarned: Math.max(0, (referrer.pointsEarned || 0) - pointsToDeduct),
-            referralEarningsRupees: Math.max(0, (referrer.referralEarningsRupees || 0) - rupeesToDeduct),
             convertedLeads: Math.max(0, (referrer.convertedLeads || 0) - 1),
             totalReferrals: Math.max(0, (referrer.totalReferrals || 0) - 1)
           };

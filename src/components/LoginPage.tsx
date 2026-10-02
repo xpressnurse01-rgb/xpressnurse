@@ -18,6 +18,7 @@ import {
   Sparkles
 } from 'lucide-react';
 import { 
+  supabase,
   dbVerifyUserPin, 
   dbInsertNurse, 
   dbInsertAppUser, 
@@ -274,10 +275,28 @@ export const LoginPage: React.FC<LoginPageProps> = ({
         return;
       }
 
-      setIsLoading(false);
       const matchedUser = authResult.user;
       const detectedRole = (matchedUser?.role as LoginRole) || role;
 
+      if (detectedRole === 'nurse' && matchedUser) {
+        try {
+          const { data: nurseData } = await supabase.from('nurses').select('status').eq('id', matchedUser.id).single();
+          if (nurseData && nurseData.status === 'Pending Verification') {
+            setIsLoading(false);
+            setErrorMsg('Your profile is pending Admin verification. Please wait for approval before logging in.');
+            return;
+          }
+        } catch (err) {
+          const nurseProfile = activeNursesList.find(n => n.id === matchedUser.id);
+          if (nurseProfile && nurseProfile.status === 'Pending Verification') {
+            setIsLoading(false);
+            setErrorMsg('Your profile is pending Admin verification. Please wait for approval before logging in.');
+            return;
+          }
+        }
+      }
+
+      setIsLoading(false);
       setSuccessMsg(`Welcome, ${matchedUser?.name || 'Staff Member'}! Redirecting to ${detectedRole.toUpperCase()} Dashboard...`);
 
       if (matchedUser) {

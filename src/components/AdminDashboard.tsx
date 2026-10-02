@@ -3237,7 +3237,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                                   ⚡ Referred by {refName}
                                 </span>
                                 <div style={{ fontSize: '0.7rem', color: n.certificateVerified ? '#059669' : '#D97706', fontWeight: 700, marginTop: '2px' }}>
-                                  Bonus: ₹500 {n.certificateVerified ? '✓ Credited' : '⏳ Pending'}
+                                  Bonus: 50 points {n.certificateVerified ? '✓ Credited' : '⏳ Pending'}
                                 </div>
                               </div>
                             );
@@ -3449,18 +3449,12 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                                   await onUpdateNurseRecord?.(n.id, { certificateVerified: true, status: 'Active' });
                                   showToast(`Nurse "${n.name}" verified and approved!`);
 
-                                      // If nurse was referred by an existing nurse, credit ₹50 referral reward to the referrer
+                                      // If nurse was referred by an existing nurse, credit 50 points referral reward to the referrer (no rupees)
                                       if (n.referredByNurseId && onUpdateNurseRecord) {
                                         const referrer = nurses.find((rn) => rn.id === n.referredByNurseId);
                                         if (referrer) {
-                                          const newPaid = (referrer.earningsPaid || 0) + 50;
-                                          const newPending = Math.max(0, (referrer.earningsPending || 0) - 50);
-                                          const newRefEarnings = (referrer.referralEarningsRupees || 0) + 50;
                                           const newPoints = (referrer.pointsEarned || 0) + 50;
                                           await onUpdateNurseRecord(referrer.id, {
-                                            earningsPaid: newPaid,
-                                            earningsPending: newPending,
-                                            referralEarningsRupees: newRefEarnings,
                                             pointsEarned: newPoints,
                                             convertedLeads: (referrer.convertedLeads || 0) + 1
                                           });
