@@ -2114,7 +2114,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
     patientPhone: '',
     serviceId: 'saline-infusion' as ServiceId,
     area: 'LB Nagar' as HyderabadArea,
-    nurseId: 'nurse-101',
+    nurseId: nurses[0]?.id || '',
     status: 'Pending Approval' as NurseLead['status'],
     leadValueRupees: 800,
     pointsAwarded: 50
@@ -2128,7 +2128,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
       patientPhone: '',
       serviceId: (services[0]?.id as ServiceId) || 'saline-infusion',
       area: 'LB Nagar',
-      nurseId: nurses[0]?.id || 'nurse-101',
+      nurseId: nurses[0]?.id || '',
       status: 'Pending Approval',
       leadValueRupees: 800,
       pointsAwarded: 50

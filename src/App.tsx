@@ -478,7 +478,7 @@ export const App: React.FC = () => {
   });
 
   const fallbackNurse: NurseProfile = {
-    id: 'nurse-101',
+    id: nurses[0]?.id || 'nurse-primary',
     name: 'Nurse Priya Sharma',
     phone: '9849012345',
     email: 'priya.nursing@xpressnurse.in',
@@ -486,12 +486,12 @@ export const App: React.FC = () => {
     qualification: 'B.Sc Nursing (Registered RN)',
     serviceArea: 'Hyderabad Central',
     status: 'Active',
-    totalLeads: 8,
-    convertedLeads: 6,
-    totalReferrals: 12,
-    pointsEarned: 1200,
+    totalLeads: 0,
+    convertedLeads: 0,
+    totalReferrals: 0,
+    pointsEarned: 0,
     referralEarningsRupees: 0,
-    rating: 4.9,
+    rating: 5.0,
     avatarUrl: '/images/nurse_priya.jpg',
     certificateVerified: true
   };

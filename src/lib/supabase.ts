@@ -532,7 +532,7 @@ export async function dbSaveBooking(b: Booking): Promise<boolean> {
       service_title: b.serviceTitle,
       area: b.area,
       full_address: b.fullAddress,
-      booking_type: b.bookingType || 'Instant',
+      booking_type: (b.bookingType || 'instant').toLowerCase(),
       scheduled_slot: b.scheduledSlot || null,
       preferred_date: b.preferredDate || 'Today',
       preferred_time: b.preferredTime || (b.bookingType === 'Instant' ? 'Immediate (ASAP)' : b.scheduledSlot || 'Slot TBD'),
@@ -540,6 +540,7 @@ export async function dbSaveBooking(b: Booking): Promise<boolean> {
       prescription_file_name: b.prescriptionFileName || null,
       prescription_url: b.prescriptionUrl || null,
       status: b.status || 'Assigned',
+      nurse_acceptance_status: b.nurseAcceptanceStatus || 'Pending',
       assigned_nurse_id: cleanAssignedNurseId,
       assigned_nurse_name: b.assignedNurseName || null,
       referring_nurse_id: cleanReferringNurseId,
@@ -549,10 +550,13 @@ export async function dbSaveBooking(b: Booking): Promise<boolean> {
       referral_bonus_rupees: Number(b.referralBonusRupees) || 0.00,
       notes: b.notes || null,
       rejection_reason: b.rejectionReason || null,
+      rejected_by: b.rejectedBy || null,
+      rejected_nurse_id: b.rejectedNurseId || null,
+      rejected_nurse_name: b.rejectedNurseName || null,
+      rejected_at: b.rejectedAt || null,
       promo_code: b.promoCode || null,
       discount_rupees: b.discountRupees || 0,
       final_fee: b.finalFee || null,
-      number_of_visits: b.numberOfVisits || null,
       invoice_number: b.invoiceNumber || null,
       invoice_url: b.invoiceUrl || null
     };
@@ -560,6 +564,17 @@ export async function dbSaveBooking(b: Booking): Promise<boolean> {
     const { error } = await supabase.from('bookings').upsert(payload);
     if (error) {
       console.warn('[DB] Supabase bookings save warning:', error.message);
+      // If foreign key constraint failed because nurse or service is not in DB:
+      if (error.message && (error.message.includes('foreign key') || error.message.includes('fkey') || error.message.includes('violates'))) {
+        const safePayload = {
+          ...payload,
+          assigned_nurse_id: null,
+          referring_nurse_id: null,
+          service_id: null
+        };
+        const retryFk = await supabase.from('bookings').upsert(safePayload);
+        if (!retryFk.error) return true;
+      }
       if (error.message && error.message.includes('column')) {
         const fallbackPayload = { ...payload };
         if (fallbackPayload.rejection_reason) {
@@ -568,7 +583,6 @@ export async function dbSaveBooking(b: Booking): Promise<boolean> {
         }
         delete fallbackPayload.booking_type;
         delete fallbackPayload.scheduled_slot;
-        delete fallbackPayload.number_of_visits;
         const retry = await supabase.from('bookings').upsert(fallbackPayload);
         if (!retry.error) return true;
         console.error('[DB] Supabase bookings save retry error:', retry.error.message);
@@ -599,19 +613,22 @@ export async function dbUpdateBooking(id: string, updates: Partial<Booking>): Pr
   }
   if (updates.area !== undefined) payload.area = updates.area;
   if (updates.fullAddress !== undefined) payload.full_address = updates.fullAddress;
-  if (updates.bookingType !== undefined) payload.booking_type = updates.bookingType;
+  if (updates.bookingType !== undefined) payload.booking_type = updates.bookingType.toLowerCase();
   if (updates.scheduledSlot !== undefined) payload.scheduled_slot = updates.scheduledSlot;
   if (updates.preferredDate !== undefined) payload.preferred_date = updates.preferredDate || null;
   if (updates.preferredTime !== undefined) payload.preferred_time = updates.preferredTime || null;
   if (updates.status !== undefined) payload.status = updates.status;
+  if (updates.nurseAcceptanceStatus !== undefined) payload.nurse_acceptance_status = updates.nurseAcceptanceStatus;
   if (updates.rejectionReason !== undefined) payload.rejection_reason = updates.rejectionReason || null;
+  if (updates.rejectedBy !== undefined) payload.rejected_by = updates.rejectedBy || null;
+  if (updates.rejectedNurseId !== undefined) payload.rejected_nurse_id = updates.rejectedNurseId || null;
+  if (updates.rejectedNurseName !== undefined) payload.rejected_nurse_name = updates.rejectedNurseName || null;
+  if (updates.rejectedAt !== undefined) payload.rejected_at = updates.rejectedAt || null;
   if (updates.promoCode !== undefined) payload.promo_code = updates.promoCode || null;
   if (updates.discountRupees !== undefined) payload.discount_rupees = updates.discountRupees;
   if (updates.finalFee !== undefined) payload.final_fee = updates.finalFee || null;
-  if (updates.numberOfVisits !== undefined) payload.number_of_visits = updates.numberOfVisits || null;
   if (updates.invoiceNumber !== undefined) payload.invoice_number = updates.invoiceNumber || null;
   if (updates.invoiceUrl !== undefined) payload.invoice_url = updates.invoiceUrl || null;
-  if (updates.nurseAcceptanceStatus !== undefined) payload.nurse_acceptance_status = updates.nurseAcceptanceStatus;
   if (updates.hasPrescription !== undefined) payload.has_prescription = Boolean(updates.hasPrescription);
   if (updates.prescriptionFileName !== undefined) payload.prescription_file_name = updates.prescriptionFileName || null;
   if (updates.prescriptionUrl !== undefined) payload.prescription_url = updates.prescriptionUrl || null;
@@ -632,6 +649,11 @@ export async function dbUpdateBooking(id: string, updates: Partial<Booking>): Pr
     const { error } = await supabase.from('bookings').update(payload).eq('id', id);
     if (error) {
       console.warn('[DB] Supabase bookings update warning:', error.message);
+      if (error.message && (error.message.includes('foreign key') || error.message.includes('fkey') || error.message.includes('violates'))) {
+        const safePayload = { ...payload, assigned_nurse_id: null, referring_nurse_id: null, service_id: null };
+        const retryFk = await supabase.from('bookings').update(safePayload).eq('id', id);
+        if (!retryFk.error) return true;
+      }
       if (error.message && error.message.includes('column')) {
         const fallbackPayload = { ...payload };
         if (fallbackPayload.rejection_reason) {

@@ -129,20 +129,20 @@ export const NurseDashboard: React.FC<NurseDashboardProps> = ({
     : (currentNurse || (allNurses && allNurses.length > 0 ? allNurses[0] : null));
 
   const nurse: NurseProfile = (liveNurse as NurseProfile) || {
-    id: 'nurse-101',
-    name: 'Nurse Priya Sharma',
+    id: 'nurse-primary',
+    name: 'Staff Nurse',
     phone: '9849012345',
-    email: 'priya.nursing@xpressnurse.in',
+    email: 'nurse@xpressnurse.in',
     experienceYears: 5,
     qualification: 'B.Sc Nursing (Registered RN)',
     serviceArea: 'Gachibowli',
     status: 'Active',
-    totalLeads: 8,
-    convertedLeads: 6,
-    totalReferrals: 12,
-    pointsEarned: 1200,
+    totalLeads: 0,
+    convertedLeads: 0,
+    totalReferrals: 0,
+    pointsEarned: 0,
     referralEarningsRupees: 0,
-    rating: 4.9,
+    rating: 5.0,
     certificateVerified: true
   };
 
