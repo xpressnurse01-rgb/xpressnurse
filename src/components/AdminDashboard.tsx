@@ -81,11 +81,14 @@ import {
   generateInvoiceDetails,
   generatePrintableInvoiceHtml,
   saveInvoiceToCloudflareBucket,
+  saveInvoiceDetailsToCloudflareBucket,
+  cleanPatientFacingNotes,
   openPrintableInvoiceWindow,
   getPrescriptionStorageObject,
   syncDatabaseRecordsToStorage,
   formatSlotForBill
 } from '../lib/cloudflareStorage';
+import { dbUpdateBooking, dbUpdateNurseById } from '../lib/supabase';
 
 interface AdminDashboardProps {
   bookings: Booking[];
@@ -195,10 +198,11 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
     getCloudflareObjects()
   );
 
-  // Sync storage objects cleanly without re-creating deleted files
+  // Sync storage objects cleanly with booking bills, prescriptions, and nurse certificates
   useEffect(() => {
-    setStorageObjects(getCloudflareObjects());
-  }, []);
+    const synced = syncDatabaseRecordsToStorage(bookings, nurses, getCloudflareObjects());
+    setStorageObjects(synced);
+  }, [bookings, nurses]);
 
   const [r2Config, setR2Config] = useState<CloudflareR2Config>(() => getCloudflareConfig());
   const [storageCategoryFilter, setStorageCategoryFilter] = useState<'all' | StorageCategory>('all');
@@ -323,8 +327,8 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
         totalAmount: initialRate,
         paymentStatus: 'Paid',
         paymentMode: 'UPI / Online',
-        r2StorageKey: `invoices/custom_${Date.now()}.pdf`,
-        r2PublicUrl: `/buckets/invoices/custom_${Date.now()}.pdf`
+        r2StorageKey: `invoices/custom_${Date.now()}.html`,
+        r2PublicUrl: `${(r2Config.publicDomain && r2Config.publicDomain.startsWith('http')) ? r2Config.publicDomain.replace(/\/+$/, '') : 'https://pub-830eaa9d07034c8d985d7d00577f77e9.r2.dev'}/invoices/custom_${Date.now()}.html`
       };
       setPreviewInvoice(newInv);
     }
@@ -607,6 +611,27 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
   const handleSaveAndSyncInvoice = async () => {
     if (!previewInvoice) return;
     try {
+      const sanitizedInvoice: InvoiceDetails = {
+        ...previewInvoice,
+        notes: cleanPatientFacingNotes(previewInvoice.notes)
+      };
+
+      // 1. Upload the invoice HTML directly to Cloudflare R2 bucket so it is publicly accessible
+      let uploadedObj: CloudflareStorageObject | null = null;
+      let finalInvoiceUrl = previewInvoice.r2PublicUrl;
+      try {
+        uploadedObj = await saveInvoiceDetailsToCloudflareBucket(sanitizedInvoice);
+        if (uploadedObj?.publicUrl) {
+          finalInvoiceUrl = uploadedObj.publicUrl;
+        }
+      } catch (uploadErr) {
+        console.warn('Cloudflare R2 direct upload notice:', uploadErr);
+        const baseDomain = (r2Config.publicDomain && r2Config.publicDomain.startsWith('http'))
+          ? r2Config.publicDomain.replace(/\/+$/, '')
+          : 'https://pub-830eaa9d07034c8d985d7d00577f77e9.r2.dev';
+        finalInvoiceUrl = `${baseDomain}/invoices/${previewInvoice.invoiceNumber}.html`;
+      }
+
       const matchingBooking = bookings.find((b) => b.id === previewInvoice.bookingId);
       const allDates = previewInvoice.items && previewInvoice.items.length > 0
         ? Array.from(new Set(previewInvoice.items.map((i) => i.date).filter(Boolean))).join(', ')
@@ -619,7 +644,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
       const assignedNurseObj = nurses.find(n => n.name === previewInvoice.assignedNurseName || n.id === previewInvoice.assignedNurseName);
 
       if (matchingBooking && onUpdateBooking) {
-        await onUpdateBooking(matchingBooking.id, {
+        const updatePayload = {
           preferredDate: allDates,
           scheduledSlot: allSlots,
           preferredTime: allSlots,
@@ -637,8 +662,18 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
           fullAddress: previewInvoice.fullAddress || matchingBooking.fullAddress,
           area: (previewInvoice.area || matchingBooking.area) as any,
           invoiceNumber: previewInvoice.invoiceNumber,
+          invoiceUrl: finalInvoiceUrl,
           status: matchingBooking.status
-        });
+        };
+
+        await onUpdateBooking(matchingBooking.id, updatePayload);
+        try {
+          await dbUpdateBooking(matchingBooking.id, {
+            invoiceNumber: previewInvoice.invoiceNumber,
+            invoiceUrl: finalInvoiceUrl
+          });
+        } catch { }
+
         showToast(`Invoice #${previewInvoice.invoiceNumber} saved & synced to Supabase for ${previewInvoice.patientName}!`);
       } else if (onCreateBooking) {
         const newBookingId = (previewInvoice.bookingId && !previewInvoice.bookingId.startsWith('CUSTOM-'))
@@ -667,51 +702,43 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
           nursePayoutRupees: Math.round(previewInvoice.totalAmount * 0.70),
           numberOfVisits: previewInvoice.numberOfVisits || 1,
           hasPrescription: false,
-          notes: previewInvoice.notes || 'Created via Manual Billing / Custom Invoice',
+          notes: sanitizedInvoice.notes || 'Created via Manual Billing / Custom Invoice',
           invoiceNumber: previewInvoice.invoiceNumber,
+          invoiceUrl: finalInvoiceUrl,
           bookingType: 'scheduled'
         };
         await onCreateBooking(newBookingPayload);
         showToast(`Manual Bill #${previewInvoice.invoiceNumber} (₹${previewInvoice.totalAmount}) created as patient booking & updated in Admin Panel!`);
       }
 
+      const invoiceObjToSave: CloudflareStorageObject = uploadedObj || {
+        id: 'r2-inv-' + (matchingBooking?.id || previewInvoice.bookingId || Date.now()),
+        bucketName: r2Config.bucketName || 'xpressnurse-storage',
+        key: `invoices/${previewInvoice.invoiceNumber}.html`,
+        category: 'invoices',
+        fileName: `${previewInvoice.invoiceNumber}.html`,
+        contentType: 'text/html; charset=utf-8',
+        sizeBytes: 5200,
+        uploadedAt: new Date().toISOString(),
+        publicUrl: finalInvoiceUrl,
+        metadata: {
+          bookingId: matchingBooking?.id || previewInvoice.bookingId,
+          patientName: previewInvoice.patientName,
+          nurseName: previewInvoice.assignedNurseName,
+          amount: previewInvoice.totalAmount,
+          description: `Service Invoice #${previewInvoice.invoiceNumber} for ${previewInvoice.serviceTitle} (${previewInvoice.patientName})`
+        }
+      };
+
+      const existing = getCloudflareObjects();
+      const updated = [invoiceObjToSave, ...existing.filter((o) => o.key !== invoiceObjToSave.key && o.id !== invoiceObjToSave.id)];
+      persistCloudflareObjects(updated);
+      setStorageObjects(updated);
+
       if (onRefreshData) {
         try {
           await onRefreshData();
         } catch { }
-      }
-
-      // Persist invoice HTML to local storage objects safely
-      try {
-        const html = generatePrintableInvoiceHtml(previewInvoice);
-        const dataUrl = `data:text/html;charset=utf-8,${encodeURIComponent(html)}`;
-        const existing = getCloudflareObjects();
-        const cleanName = `${previewInvoice.invoiceNumber}.html`;
-        const key = `invoices/${cleanName}`;
-        const newObj: CloudflareStorageObject = {
-          id: 'r2-inv-' + Date.now(),
-          bucketName: r2Config.bucketName || 'xpressnurse-storage',
-          key,
-          category: 'invoices',
-          fileName: cleanName,
-          contentType: 'text/html',
-          sizeBytes: new Blob([html]).size,
-          uploadedAt: new Date().toISOString(),
-          publicUrl: r2Config.publicDomain ? `${r2Config.publicDomain.replace(/\/+$/, '')}/${key}` : `/buckets/${key}`,
-          dataUrl,
-          metadata: {
-            bookingId: previewInvoice.bookingId,
-            patientName: previewInvoice.patientName,
-            nurseName: previewInvoice.assignedNurseName,
-            amount: previewInvoice.totalAmount,
-            description: `Invoice for ${previewInvoice.serviceTitle} (${previewInvoice.patientName})`
-          }
-        };
-        const updated = [newObj, ...existing.filter((o) => o.key !== key)];
-        persistCloudflareObjects(updated);
-        setStorageObjects(updated);
-      } catch (storageErr) {
-        console.warn('Could not persist storage object:', storageErr);
       }
 
       setIsInvoicePreviewModalOpen(false);
@@ -1686,8 +1713,12 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
     rating: 4.9,
     avatarUrl: '',
     pin: '1001',
+    totalLeads: 0,
+    convertedLeads: 0,
+    totalReferrals: 0,
     pointsEarned: 300,
     referralEarningsRupees: 0,
+    totalPayout: 0,
     earningsPaid: 0,
     earningsPending: 0
   });
@@ -1706,8 +1737,12 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
       certificateVerified: true,
       rating: 4.9,
       pin: '',
+      totalLeads: 0,
+      convertedLeads: 0,
+      totalReferrals: 0,
       pointsEarned: 300,
       referralEarningsRupees: 0,
+      totalPayout: 0,
       earningsPaid: 0,
       earningsPending: 0,
       avatarUrl: ''
@@ -1730,6 +1765,18 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
       );
     });
     const m = calculateNurseMetrics(n, bookings, leads, services);
+    const initialPoints = (n.pointsEarned !== undefined && n.pointsEarned !== null) ? Number(n.pointsEarned) : m.totalPoints;
+    const initialReferral = (n.referralEarningsRupees !== undefined && n.referralEarningsRupees !== null) ? Number(n.referralEarningsRupees) : m.referralEarnings;
+    const initialDuty = (n.earningsPending !== undefined && n.earningsPending !== null) ? Number(n.earningsPending) : m.completedVisitsEarnings;
+    const initialTotalPayout = (n.totalPayout !== undefined && n.totalPayout !== null)
+      ? Number(n.totalPayout)
+      : (n.totalEarningsRupees !== undefined && n.totalEarningsRupees !== null)
+        ? Number(n.totalEarningsRupees)
+        : (initialDuty + initialReferral);
+    const initialTotalLeads = m.totalLeadsCount;
+    const initialConvertedLeads = m.convertedLeadsCount;
+    const initialTotalReferrals = m.totalLeadsCount;
+
     setNurseForm({
       id: n.id,
       name: n.name,
@@ -1742,10 +1789,14 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
       certificateVerified: !!n.certificateVerified,
       rating: n.rating || 4.9,
       pin: (n.pin && n.pin.trim() !== '') ? n.pin.trim() : (existingUser?.pin ? String(existingUser.pin).trim() : ''),
-      pointsEarned: m.totalPoints,
-      referralEarningsRupees: m.referralEarnings,
+      totalLeads: initialTotalLeads,
+      convertedLeads: initialConvertedLeads,
+      totalReferrals: initialTotalReferrals,
+      pointsEarned: initialPoints,
+      referralEarningsRupees: initialReferral,
+      totalPayout: initialTotalPayout,
       earningsPaid: Number(n.earningsPaid) || 0,
-      earningsPending: m.completedVisitsEarnings,
+      earningsPending: initialDuty,
       avatarUrl: n.avatarUrl || ''
     });
     setIsNurseModalOpen(true);
@@ -1768,11 +1819,13 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
       serviceArea: nurseForm.serviceArea,
       pin: nurseForm.pin.trim() || undefined,
       status: (nurseForm.status as 'Active' | 'Pending Verification' | 'On Leave') || 'Active',
-      totalLeads: editingNurse ? editingNurse.totalLeads : 0,
-      convertedLeads: editingNurse ? editingNurse.convertedLeads : 0,
-      totalReferrals: editingNurse ? editingNurse.totalReferrals : 0,
+      totalLeads: Number(nurseForm.totalLeads) || 0,
+      convertedLeads: Number(nurseForm.convertedLeads) || 0,
+      totalReferrals: Number(nurseForm.totalReferrals) || Number(nurseForm.totalLeads) || 0,
       pointsEarned: Number(nurseForm.pointsEarned) || 0,
       referralEarningsRupees: Number(nurseForm.referralEarningsRupees) || 0,
+      totalPayout: Number(nurseForm.totalPayout) || 0,
+      total_payout: Number(nurseForm.totalPayout) || 0,
       earningsPaid: Number(nurseForm.earningsPaid) || 0,
       earningsPending: Number(nurseForm.earningsPending) || 0,
       rating: Number(nurseForm.rating) || 4.9,
@@ -1782,6 +1835,9 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
 
     if (editingNurse && onUpdateNurseRecord) {
       await onUpdateNurseRecord(editingNurse.id, nursePayload);
+      try {
+        await dbUpdateNurseById(editingNurse.id, nursePayload);
+      } catch { }
       // Also update app_user pin and details if exists
       if (onUpdateAppUser) {
         const u = appUsers.find((x) => x.id === editingNurse.id || x.phone === editingNurse.phone || (x.email && x.email.toLowerCase() === editingNurse.email.toLowerCase()));
@@ -2324,10 +2380,15 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
   const filteredLeads = leads.filter((l) => {
     const pName = (l.patientName || l.referredNurseName || '').toLowerCase();
     const pPhone = l.patientPhone || l.referredNursePhone || '';
-    const matchesSearch =
-      pName.includes(leadSearch.toLowerCase()) ||
-      pPhone.includes(leadSearch) ||
-      l.area.toLowerCase().includes(leadSearch.toLowerCase());
+    const refNurse = nurses.find((n) => n.id === l.nurseId);
+    const refNurseName = (refNurse?.name || l.nurseId || '').toLowerCase();
+    const query = leadSearch.toLowerCase().trim();
+    const matchesSearch = !query ||
+      pName.includes(query) ||
+      pPhone.includes(query) ||
+      (l.id || '').toLowerCase().includes(query) ||
+      refNurseName.includes(query) ||
+      (l.area || '').toLowerCase().includes(query);
     const matchesStatus = leadStatusFilter === 'all' ? true : l.status === leadStatusFilter;
     const isNurseRef = l.referralType === 'nurse' || !!l.referredNursePhone;
     const matchesType = leadTypeFilter === 'all' ? true : (leadTypeFilter === 'nurse' ? isNurseRef : !isNurseRef);
@@ -3969,7 +4030,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                               <td>{n.experienceYears} Years</td>
                               <td>
                                 <div><strong>{m.completedVisitsCount} Done</strong> <span style={{ fontSize: '0.74rem', color: '#64748B' }}>({m.activeVisitsCount} Active)</span></div>
-                                <div style={{ fontSize: '0.74rem', color: 'var(--neutral-500)', marginTop: '2px' }}>Leads: {m.totalLeadsCount} • Ref Done: {m.completedReferredVisitsCount}</div>
+                                <div style={{ fontSize: '0.74rem', color: 'var(--neutral-500)', marginTop: '2px' }}>Leads: {m.totalLeadsCount} • Ref Done: {m.convertedLeadsCount}</div>
                               </td>
                               <td>
                                 <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
@@ -4591,7 +4652,14 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                   </thead>
                   <tbody>
                     {filteredLeads.map((l) => {
-                      const referringNurse = nurses.find((n) => n.id === l.nurseId);
+                      const referringNurse = nurses.find((n) => {
+                        if (n.id === l.nurseId) return true;
+                        const nPhone = (n.phone || '').replace(/\D/g, '');
+                        const lNursePhone = (l.nurseId || '').replace(/\D/g, '');
+                        if (nPhone && lNursePhone && (nPhone === lNursePhone || nPhone.endsWith(lNursePhone) || lNursePhone.endsWith(nPhone))) return true;
+                        if (l.nurseName && n.name.toLowerCase().trim() === l.nurseName.toLowerCase().trim()) return true;
+                        return false;
+                      });
                       const isPending = l.status === 'Pending Approval';
                       const isApproved = l.status === 'Approved' || l.status === 'Converted';
                       const isRejected = l.status === 'Rejected';
@@ -4698,11 +4766,22 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                           </td>
                           <td>
                             {isRejected ? (
-                              <span style={{ color: 'var(--neutral-400)', fontSize: '0.8rem' }}>0 pts</span>
+                              <span style={{ color: 'var(--neutral-400)', fontSize: '0.8rem' }}>0 pts (Rejected)</span>
                             ) : (
-                              <strong style={{ color: '#059669', fontSize: '0.9rem' }}>
-                                +50 pts
-                              </strong>
+                              <div>
+                                <strong style={{ color: '#059669', fontSize: '0.9rem' }}>
+                                  +{l.pointsAwarded || 50} pts
+                                </strong>
+                                {l.referralType !== 'nurse' && !l.referredNursePhone ? (
+                                  <div style={{ fontSize: '0.74rem', color: '#0284C7', fontWeight: 700, marginTop: '2px' }}>
+                                    + ₹{l.referralCommissionRupees || Math.round((Number(l.leadValueRupees) || 800) * 0.10)} (10%)
+                                  </div>
+                                ) : (
+                                  <div style={{ fontSize: '0.72rem', color: '#7C3AED', fontWeight: 600, marginTop: '2px' }}>
+                                    + ₹{l.referralCommissionRupees || 50} Bonus
+                                  </div>
+                                )}
+                              </div>
                             )}
                           </td>
                           <td>
@@ -7394,13 +7473,52 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
 
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem', marginBottom: '0.85rem' }}>
                 <div>
+                  <label className="form-label" style={{ fontSize: '0.78rem', fontWeight: 700, color: '#334155' }}>
+                    TOTAL LEADS SUBMITTED
+                  </label>
+                  <input
+                    type="number"
+                    min={0}
+                    step="any"
+                    placeholder="e.g. 3"
+                    value={nurseForm.totalLeads}
+                    onChange={(e) => setNurseForm({ ...nurseForm, totalLeads: Number(e.target.value), totalReferrals: Number(e.target.value) })}
+                    className="form-control"
+                    style={{ fontWeight: 800, color: '#1E293B', background: '#F8FAFC', borderColor: '#CBD5E1' }}
+                  />
+                  <div style={{ fontSize: '0.72rem', color: '#64748B', marginTop: '3px', fontWeight: 600 }}>
+                    Patient + Colleague nurse referrals
+                  </div>
+                </div>
+                <div>
+                  <label className="form-label" style={{ fontSize: '0.78rem', fontWeight: 700, color: '#047857' }}>
+                    CONVERTED REFERRALS (REF DONE)
+                  </label>
+                  <input
+                    type="number"
+                    min={0}
+                    step="any"
+                    placeholder="e.g. 2"
+                    value={nurseForm.convertedLeads}
+                    onChange={(e) => setNurseForm({ ...nurseForm, convertedLeads: Number(e.target.value) })}
+                    className="form-control"
+                    style={{ fontWeight: 800, color: '#047857', background: '#ECFDF5', borderColor: '#A7F3D0' }}
+                  />
+                  <div style={{ fontSize: '0.72rem', color: '#059669', marginTop: '3px', fontWeight: 600 }}>
+                    Completed patient visits + approved nurses
+                  </div>
+                </div>
+              </div>
+
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem', marginBottom: '0.85rem' }}>
+                <div>
                   <label className="form-label" style={{ fontSize: '0.78rem', fontWeight: 700, color: '#B45309' }}>
                     REWARD POINTS BALANCE (⭐ PTS)
                   </label>
                   <input
                     type="number"
                     min={0}
-                    step={10}
+                    step="any"
                     placeholder="e.g. 500"
                     value={nurseForm.pointsEarned}
                     onChange={(e) => setNurseForm({ ...nurseForm, pointsEarned: Number(e.target.value) })}
@@ -7415,15 +7533,70 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                   <input
                     type="number"
                     min={0}
-                    step={10}
+                    step="any"
                     placeholder="e.g. 130"
                     value={nurseForm.referralEarningsRupees}
-                    onChange={(e) => setNurseForm({ ...nurseForm, referralEarningsRupees: Number(e.target.value) })}
+                    onChange={(e) => {
+                      const newRef = Number(e.target.value);
+                      const currentDuty = Number(nurseForm.earningsPending) || 0;
+                      setNurseForm({
+                        ...nurseForm,
+                        referralEarningsRupees: newRef,
+                        totalPayout: currentDuty + newRef
+                      });
+                    }}
                     className="form-control"
                     style={{ fontWeight: 800, color: '#047857', background: '#ECFDF5', borderColor: '#A7F3D0' }}
                   />
                   <div style={{ fontSize: '0.72rem', color: '#059669', marginTop: '3px', fontWeight: 600 }}>
                     Strictly 10% on completed patient referrals
+                  </div>
+                </div>
+              </div>
+
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem', marginBottom: '0.85rem' }}>
+                <div>
+                  <label className="form-label" style={{ fontSize: '0.78rem', fontWeight: 700, color: '#047857' }}>
+                    TOTAL PAYOUT / EARNINGS (₹ RUPEES)
+                  </label>
+                  <input
+                    type="number"
+                    min={0}
+                    step="any"
+                    placeholder="e.g. 1633"
+                    value={nurseForm.totalPayout}
+                    onChange={(e) => setNurseForm({ ...nurseForm, totalPayout: Number(e.target.value) })}
+                    className="form-control"
+                    style={{ fontWeight: 900, color: '#047857', background: '#D1FAE5', borderColor: '#6EE7B7' }}
+                  />
+                  <div style={{ fontSize: '0.72rem', color: '#047857', marginTop: '3px', fontWeight: 600 }}>
+                    Total Earnings (70% duty + 10% referral)
+                  </div>
+                </div>
+                <div>
+                  <label className="form-label" style={{ fontSize: '0.78rem', fontWeight: 700, color: '#0284C7' }}>
+                    DUTY EARNINGS (70% VISITS)
+                  </label>
+                  <input
+                    type="number"
+                    min={0}
+                    step="any"
+                    placeholder="e.g. 1503"
+                    value={nurseForm.earningsPending}
+                    onChange={(e) => {
+                      const newDuty = Number(e.target.value);
+                      const currentRef = Number(nurseForm.referralEarningsRupees) || 0;
+                      setNurseForm({
+                        ...nurseForm,
+                        earningsPending: newDuty,
+                        totalPayout: newDuty + currentRef
+                      });
+                    }}
+                    className="form-control"
+                    style={{ fontWeight: 800, color: '#0369A1', background: '#F0F9FF', borderColor: '#BAE6FD' }}
+                  />
+                  <div style={{ fontSize: '0.72rem', color: '#0284C7', marginTop: '3px', fontWeight: 600 }}>
+                    70% service charge for assigned completed visits
                   </div>
                 </div>
               </div>
@@ -9060,8 +9233,8 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                         totalAmount: initialRate,
                         paymentStatus: 'Paid',
                         paymentMode: 'UPI / Online',
-                        r2StorageKey: `invoices/custom_${Date.now()}.pdf`,
-                        r2PublicUrl: `/buckets/invoices/custom_${Date.now()}.pdf`
+                        r2StorageKey: `invoices/custom_${Date.now()}.html`,
+                        r2PublicUrl: `${(r2Config.publicDomain && r2Config.publicDomain.startsWith('http')) ? r2Config.publicDomain.replace(/\/+$/, '') : 'https://pub-830eaa9d07034c8d985d7d00577f77e9.r2.dev'}/invoices/custom_${Date.now()}.html`
                       });
                     } else {
                       const found = bookings.find((b) => b.id === selectedId);
@@ -9917,7 +10090,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                     </div>
 
                     {/* Clinical Remarks / Special Notes Box */}
-                    {Boolean(previewInvoice.notes && previewInvoice.notes.trim()) && (
+                    {Boolean(cleanPatientFacingNotes(previewInvoice.notes)) && (
                       <div style={{
                         margin: '1.25rem 0',
                         padding: '0.85rem 1.1rem',
@@ -9930,7 +10103,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                           <span>Clinical Remarks / Special Notes:</span>
                         </div>
                         <div style={{ fontSize: '0.86rem', color: '#0C4A6E', lineHeight: 1.5, fontWeight: 500 }}>
-                          {previewInvoice.notes}
+                          {cleanPatientFacingNotes(previewInvoice.notes)}
                         </div>
                       </div>
                     )}

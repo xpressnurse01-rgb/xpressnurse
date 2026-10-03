@@ -276,6 +276,7 @@ export async function dbFetchNurses(): Promise<NurseProfile[] | null> {
       referralCode: n.referral_code || generateNurseReferralCode(n.name, n.id, n.phone),
       earningsPaid: Number(n.earnings_paid) || 0,
       earningsPending: Number(n.earnings_pending) || 0,
+      totalPayout: n.total_payout != null && !isNaN(Number(n.total_payout)) ? Number(n.total_payout) : (Number(n.earnings_pending || 0) + Number(n.referral_earnings_rupees || 0)),
       rejectionReason: n.rejection_reason || undefined
     };
   });
@@ -289,7 +290,11 @@ export async function dbSaveNurse(n: NurseProfile): Promise<boolean> {
 
 export async function dbUpdateNurse(n: NurseProfile): Promise<boolean> {
   try {
-    const payload = {
+    const totalPayoutCalc = n.totalPayout !== undefined
+      ? Number(n.totalPayout)
+      : (n.totalEarningsRupees !== undefined ? Number(n.totalEarningsRupees) : (Number(n.earningsPaid || 0) + Number(n.earningsPending || 0) + Number(n.referralEarningsRupees || 0)));
+
+    const payload: any = {
       id: n.id,
       name: n.name,
       phone: n.phone,
@@ -310,10 +315,16 @@ export async function dbUpdateNurse(n: NurseProfile): Promise<boolean> {
       referred_by_nurse_id: n.referredByNurseId || null,
       earnings_paid: Number(n.earningsPaid) || 0,
       earnings_pending: Number(n.earningsPending) || 0,
+      total_payout: totalPayoutCalc,
       rejection_reason: n.rejectionReason || null
     };
 
-    const { error } = await supabase.from('nurses').upsert(payload);
+    let { error } = await supabase.from('nurses').upsert(payload);
+    if (error && (error.code === '42703' || error.message?.includes('total_payout'))) {
+      delete payload.total_payout;
+      const retry = await supabase.from('nurses').upsert(payload);
+      error = retry.error;
+    }
     return !error;
   } catch {
     return false;
@@ -322,7 +333,11 @@ export async function dbUpdateNurse(n: NurseProfile): Promise<boolean> {
 
 export async function dbInsertNurse(n: NurseProfile): Promise<boolean> {
   try {
-    const payload = {
+    const totalPayoutCalc = n.totalPayout !== undefined
+      ? Number(n.totalPayout)
+      : (n.totalEarningsRupees !== undefined ? Number(n.totalEarningsRupees) : (Number(n.earningsPaid || 0) + Number(n.earningsPending || 0) + Number(n.referralEarningsRupees || 0)));
+
+    const payload: any = {
       id: n.id,
       name: n.name,
       phone: n.phone,
@@ -343,10 +358,16 @@ export async function dbInsertNurse(n: NurseProfile): Promise<boolean> {
       referred_by_nurse_id: n.referredByNurseId || null,
       earnings_paid: Number(n.earningsPaid) || 0,
       earnings_pending: Number(n.earningsPending) || 0,
+      total_payout: totalPayoutCalc,
       rejection_reason: n.rejectionReason || null
     };
 
-    const { error } = await supabase.from('nurses').upsert(payload);
+    let { error } = await supabase.from('nurses').upsert(payload);
+    if (error && (error.code === '42703' || error.message?.includes('total_payout'))) {
+      delete payload.total_payout;
+      const retry = await supabase.from('nurses').upsert(payload);
+      error = retry.error;
+    }
     return !error;
   } catch {
     return false;
@@ -367,6 +388,9 @@ export async function dbUpdateNurseById(id: string, updates: Partial<NurseProfil
   if (updates.totalReferrals !== undefined) payload.total_referrals = Math.round(Number(updates.totalReferrals));
   if (updates.pointsEarned !== undefined) payload.points_earned = !isNaN(Number(updates.pointsEarned)) ? Math.max(0, Math.round(Number(updates.pointsEarned))) : 0;
   if (updates.referralEarningsRupees !== undefined) payload.referral_earnings_rupees = Number(updates.referralEarningsRupees);
+  if (updates.totalPayout !== undefined || updates.total_payout !== undefined || (updates as any).totalEarningsRupees !== undefined) {
+    payload.total_payout = Number(updates.totalPayout ?? updates.total_payout ?? (updates as any).totalEarningsRupees);
+  }
   if (updates.rating !== undefined) payload.rating = Number(updates.rating);
   if (updates.certificateVerified !== undefined) payload.certificate_verified = Boolean(updates.certificateVerified);
   if (updates.certificateUrl !== undefined) payload.certificate_url = updates.certificateUrl;
@@ -377,7 +401,12 @@ export async function dbUpdateNurseById(id: string, updates: Partial<NurseProfil
   if (updates.rejectionReason !== undefined) payload.rejection_reason = updates.rejectionReason;
 
   try {
-    const { error } = await supabase.from('nurses').update(payload).eq('id', id);
+    let { error } = await supabase.from('nurses').update(payload).eq('id', id);
+    if (error && (error.code === '42703' || error.message?.includes('total_payout'))) {
+      delete payload.total_payout;
+      const retry = await supabase.from('nurses').update(payload).eq('id', id);
+      error = retry.error;
+    }
     if (error) console.error("Supabase Update Error:", error.message, error.details);
 
     // Also sync matching user in app_users table

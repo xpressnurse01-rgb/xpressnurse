@@ -1005,6 +1005,7 @@ export const App: React.FC = () => {
               totalReferrals: Number(raw.total_referrals) || 0,
               pointsEarned: Number(raw.points_earned) || 0,
               referralEarningsRupees: Number(raw.referral_earnings_rupees) || 0,
+              totalPayout: Number(raw.total_payout) || (Number(raw.earnings_pending || 0) + Number(raw.referral_earnings_rupees || 0)),
               rating: Number(raw.rating) || 4.9,
               avatarUrl: raw.avatar_url,
               certificateVerified: Boolean(raw.certificate_verified),

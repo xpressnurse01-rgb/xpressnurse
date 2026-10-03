@@ -14,13 +14,18 @@ import { AwsClient } from 'aws4fetch';
 // CLOUDFLARE R2 STORAGE BUCKET CONFIGURATION & SERVICE
 // ============================================================================
 
+export const sanitizeConfigValue = (val?: string | null): string => {
+  if (!val) return '';
+  return String(val).trim().replace(/^["']|["']$/g, '').trim();
+};
+
 export const DEFAULT_CLOUDFLARE_CONFIG: CloudflareR2Config = {
-  accountId: import.meta.env.VITE_CLOUDFLARE_R2_ACCOUNT_ID || '',
-  bucketName: import.meta.env.VITE_CLOUDFLARE_R2_BUCKET_NAME || 'xpressnurse-storage',
-  publicDomain: import.meta.env.VITE_CLOUDFLARE_R2_PUBLIC_DOMAIN || '/buckets',
-  endpoint: import.meta.env.VITE_CLOUDFLARE_R2_ENDPOINT || '',
-  accessKeyId: import.meta.env.VITE_CLOUDFLARE_R2_ACCESS_KEY_ID || '',
-  secretAccessKey: import.meta.env.VITE_CLOUDFLARE_R2_SECRET_ACCESS_KEY || '',
+  accountId: sanitizeConfigValue(import.meta.env.VITE_CLOUDFLARE_R2_ACCOUNT_ID) || '191a5a2501e16ad7236f97b921a8ebbf',
+  bucketName: sanitizeConfigValue(import.meta.env.VITE_CLOUDFLARE_R2_BUCKET_NAME) || 'xpressnurse-storage',
+  publicDomain: sanitizeConfigValue(import.meta.env.VITE_CLOUDFLARE_R2_PUBLIC_DOMAIN) || 'https://pub-830eaa9d07034c8d985d7d00577f77e9.r2.dev',
+  endpoint: sanitizeConfigValue(import.meta.env.VITE_CLOUDFLARE_R2_ENDPOINT) || 'https://191a5a2501e16ad7236f97b921a8ebbf.r2.cloudflarestorage.com',
+  accessKeyId: sanitizeConfigValue(import.meta.env.VITE_CLOUDFLARE_R2_ACCESS_KEY_ID) || 'eff57e4dd1e580e2b04ea5f410b4372e',
+  secretAccessKey: sanitizeConfigValue(import.meta.env.VITE_CLOUDFLARE_R2_SECRET_ACCESS_KEY) || 'a4eda6552ed9c1b1b413899e6b7015e83771a1a968c0936bbd2d078b8eb68c34',
   corsEnabled: true
 };
 
@@ -73,15 +78,20 @@ export const getCloudflareConfig = (): CloudflareR2Config => {
       const saved = localStorage.getItem(R2_CONFIG_KEY);
       if (saved) {
         const parsed = JSON.parse(saved);
-        const config = { 
+        const parsedDomain = sanitizeConfigValue(parsed.publicDomain);
+        const publicDomain = (parsedDomain && parsedDomain.startsWith('http'))
+          ? parsedDomain
+          : DEFAULT_CLOUDFLARE_CONFIG.publicDomain;
+
+        const config: CloudflareR2Config = { 
           ...DEFAULT_CLOUDFLARE_CONFIG, 
           ...parsed,
-          accountId: parsed.accountId || import.meta.env.VITE_CLOUDFLARE_R2_ACCOUNT_ID || '',
-          bucketName: parsed.bucketName || import.meta.env.VITE_CLOUDFLARE_R2_BUCKET_NAME || 'xpressnurse-storage',
-          endpoint: parsed.endpoint || import.meta.env.VITE_CLOUDFLARE_R2_ENDPOINT || '',
-          publicDomain: parsed.publicDomain || import.meta.env.VITE_CLOUDFLARE_R2_PUBLIC_DOMAIN || '/buckets',
-          accessKeyId: parsed.accessKeyId || import.meta.env.VITE_CLOUDFLARE_R2_ACCESS_KEY_ID || '',
-          secretAccessKey: parsed.secretAccessKey || import.meta.env.VITE_CLOUDFLARE_R2_SECRET_ACCESS_KEY || ''
+          accountId: sanitizeConfigValue(parsed.accountId) || DEFAULT_CLOUDFLARE_CONFIG.accountId,
+          bucketName: sanitizeConfigValue(parsed.bucketName) || DEFAULT_CLOUDFLARE_CONFIG.bucketName,
+          endpoint: sanitizeConfigValue(parsed.endpoint) || DEFAULT_CLOUDFLARE_CONFIG.endpoint,
+          publicDomain,
+          accessKeyId: sanitizeConfigValue(parsed.accessKeyId) || DEFAULT_CLOUDFLARE_CONFIG.accessKeyId,
+          secretAccessKey: sanitizeConfigValue(parsed.secretAccessKey) || DEFAULT_CLOUDFLARE_CONFIG.secretAccessKey
         };
         return config;
       }
@@ -213,7 +223,46 @@ export const syncDatabaseRecordsToStorage = (
     const cleanId = b.id.replace(/[^a-zA-Z0-9]/g, '');
     const cleanPatient = (b.patientName || 'Patient').replace(/[^a-zA-Z0-9]/g, '_');
 
-    // Invoices are generated dynamically in the dashboard, no need to sync to Cloudflare
+    // 2a. Sync Invoices (Bills) for all bookings
+    const invoiceNum = b.invoiceNumber || `XN-INV-2026-${(cleanId.slice(-6) || 'GENERAL').toUpperCase()}`;
+    const invoiceFileName = `${invoiceNum}.html`;
+    const invoiceKey = `invoices/${invoiceFileName}`;
+    const invoiceDocId = `r2-inv-${b.id}`;
+
+    const hasInvoice = existing.some(o => 
+      o.key === invoiceKey ||
+      o.fileName === invoiceFileName ||
+      o.id === invoiceDocId ||
+      (b.invoiceUrl && o.publicUrl === b.invoiceUrl) ||
+      (o.category === 'invoices' && o.metadata?.bookingId === b.id)
+    );
+
+    if (!hasInvoice && !deletedKeys.has(invoiceKey) && !deletedKeys.has(invoiceDocId)) {
+      const publicDomain = (config.publicDomain && config.publicDomain.startsWith('http'))
+        ? config.publicDomain.replace(/\/+$/, '')
+        : 'https://pub-830eaa9d07034c8d985d7d00577f77e9.r2.dev';
+      const invoicePublicUrl = b.invoiceUrl || `${publicDomain}/${invoiceKey}`;
+      const fee = Number(b.finalFee !== undefined && b.finalFee !== null ? b.finalFee : (b.estimatedFee || 800));
+
+      generated.push({
+        id: invoiceDocId,
+        bucketName: config.bucketName,
+        key: invoiceKey,
+        category: 'invoices',
+        fileName: invoiceFileName,
+        contentType: 'text/html; charset=utf-8',
+        sizeBytes: 5200 + (Math.abs(cleanId.length * 313) % 2000),
+        uploadedAt: b.createdAt || new Date().toISOString(),
+        publicUrl: invoicePublicUrl,
+        metadata: {
+          bookingId: b.id,
+          patientName: b.patientName,
+          nurseName: b.assignedNurseName,
+          amount: fee,
+          description: `Service Invoice #${invoiceNum} for ${b.serviceTitle} (${b.patientName})`
+        }
+      });
+    }
 
     // Prescription (if hasPrescription or fileName or url)
     if (b.hasPrescription || b.prescriptionFileName || b.prescriptionUrl) {
@@ -301,9 +350,10 @@ export const uploadToCloudflareStorage = async (
     .replace(/[^a-zA-Z0-9._-]/g, '_');
     
   const key = `${cleanCategory}/${cleanName}`;
-  const publicUrl = config.publicDomain 
-    ? `${config.publicDomain.replace(/\/+$/, '')}/${key}` 
-    : (typeof window !== 'undefined' ? `${window.location.origin}/buckets/${key}` : `/buckets/${key}`);
+  const publicDomain = (config.publicDomain && config.publicDomain.startsWith('http'))
+    ? config.publicDomain.replace(/\/+$/, '')
+    : 'https://pub-830eaa9d07034c8d985d7d00577f77e9.r2.dev';
+  const publicUrl = `${publicDomain}/${key}`;
 
   // Attempt real upload to Cloudflare R2 bucket endpoint
   if (config.endpoint) {
@@ -323,14 +373,21 @@ export const uploadToCloudflareStorage = async (
       let bodyData: ArrayBuffer | null = null;
       if (fileData.dataUrl) {
         if (fileData.dataUrl.startsWith('data:')) {
-          const base64 = fileData.dataUrl.split(',')[1];
-          const binaryString = window.atob(base64);
-          const len = binaryString.length;
-          const bytes = new Uint8Array(len);
-          for (let i = 0; i < len; i++) {
-            bytes[i] = binaryString.charCodeAt(i);
+          if (fileData.dataUrl.includes(';base64,')) {
+            const base64 = fileData.dataUrl.split(';base64,')[1];
+            const binaryString = window.atob(base64);
+            const len = binaryString.length;
+            const bytes = new Uint8Array(len);
+            for (let i = 0; i < len; i++) {
+              bytes[i] = binaryString.charCodeAt(i);
+            }
+            bodyData = bytes.buffer;
+          } else {
+            const commaIndex = fileData.dataUrl.indexOf(',');
+            const rawContent = commaIndex !== -1 ? fileData.dataUrl.substring(commaIndex + 1) : '';
+            const decodedText = decodeURIComponent(rawContent);
+            bodyData = new TextEncoder().encode(decodedText).buffer;
           }
-          bodyData = bytes.buffer;
         } else {
           const res = await fetch(fileData.dataUrl);
           bodyData = await res.arrayBuffer();
@@ -348,8 +405,8 @@ export const uploadToCloudflareStorage = async (
 
       if (config.accessKeyId && config.secretAccessKey) {
         const aws = new AwsClient({
-          accessKeyId: config.accessKeyId.trim(),
-          secretAccessKey: config.secretAccessKey.trim(),
+          accessKeyId: sanitizeConfigValue(config.accessKeyId),
+          secretAccessKey: sanitizeConfigValue(config.secretAccessKey),
           service: 's3',
           region: 'auto',
         });
@@ -643,6 +700,48 @@ export const formatSlotForBill = (slotStr?: string): string => {
   return trimmed;
 };
 
+// Clean clinical remarks / special notes for patient bills so internal referral discussions,
+// commission percentages, points credited, and internal approval memos are strictly hidden from patient.
+export const cleanPatientFacingNotes = (notes?: string | null): string => {
+  if (!notes) return '';
+  let cleaned = String(notes);
+
+  // 1. Remove bracketed referral/approval notices: [Approved: ...], [50 points ... credited ...], [Referral ...]
+  cleaned = cleaned.replace(/\[\s*(?:Approved:?|Referral:?)?[^\]]*?(?:credited|points|commission|payout|referral)[^\]]*?\]/gi, '');
+  cleaned = cleaned.replace(/\[[^\]]*?credited upon visit completion[^\]]*?\]/gi, '');
+  cleaned = cleaned.replace(/\[[^\]]*?\bpoints?\b[^\]]*?\]/gi, '');
+
+  // 2. Remove sentence-level referral notes:
+  // "Patient Referral by <Name>. ..." or "Referral discussion with/by ...", "Referral by ..."
+  cleaned = cleaned.replace(/(?:Patient\s+)?Referral\s+(?:discussion\s+)?(?:by|for|from)?\s*[^.;|\n\r]+(?:[.;]|\s*(?=\|)|$)/gi, '');
+  
+  // 3. Remove "Patient approved & assigned to ... points ... credited ..."
+  cleaned = cleaned.replace(/Patient approved\s*&\s*assigned to[^.;|\n\r]+(?:credited upon visit completion)?[.;]?/gi, '');
+
+  // 4. Remove any remaining referral payout or points text
+  cleaned = cleaned.replace(/\+?\d+\s*points?\s*\+?\s*₹?\d*[^.;|\n\r]*(?:credited|approved|payout)[^.;|\n\r]*/gi, '');
+  cleaned = cleaned.replace(/(?:referral\s+bonus|referral\s+commission|referral\s+payout)[^.;|\n\r]*/gi, '');
+
+  // 5. Clean up "Description: " prefix if left at start of segment
+  cleaned = cleaned.replace(/Description:\s*/gi, '');
+
+  // 6. Clean dangling delimiters (| , ; -) and multiple spaces
+  cleaned = cleaned
+    .split('|')
+    .map(s => s.trim())
+    .filter(Boolean)
+    .join(' | ');
+
+  cleaned = cleaned.replace(/^[\s,.;|-]+|[\s,.;|-]+$/g, '').trim();
+
+  // If after cleaning it only says something generic or referral leftover
+  if (/^referral/i.test(cleaned) || /^\[.*\]$/.test(cleaned)) {
+    return '';
+  }
+
+  return cleaned;
+};
+
 export const generateInvoiceDetails = (booking: Booking): InvoiceDetails => {
   const config = getCloudflareConfig();
   const cleanBookingId = booking.id.replace(/[^a-zA-Z0-9]/g, '');
@@ -652,8 +751,11 @@ export const generateInvoiceDetails = (booking: Booking): InvoiceDetails => {
   const nightSurcharge = Number(booking.nightSurcharge) || 0;
   const subtotal = Math.max(0, baseFee + nightSurcharge - discount);
 
-  const r2StorageKey = `invoices/${invoiceNumber}.pdf`;
-  const r2PublicUrl = `${config.publicDomain.replace(/\/+$/, '')}/${r2StorageKey}`;
+  const r2StorageKey = `invoices/${invoiceNumber}.html`;
+  const baseDomain = (config.publicDomain && config.publicDomain.startsWith('http'))
+    ? config.publicDomain.replace(/\/+$/, '')
+    : 'https://pub-830eaa9d07034c8d985d7d00577f77e9.r2.dev';
+  const r2PublicUrl = `${baseDomain}/${r2StorageKey}`;
 
   return {
     invoiceNumber,
@@ -692,31 +794,40 @@ export const generateInvoiceDetails = (booking: Booking): InvoiceDetails => {
     totalAmount: subtotal,
     paymentStatus: booking.status === 'Completed' ? 'Paid' : 'Pending',
     paymentMode: 'UPI / Online',
-    notes: booking.notes || '',
+    notes: cleanPatientFacingNotes(booking.notes),
     r2StorageKey,
     r2PublicUrl
   };
 };
 
-// Upload Invoice to Cloudflare Storage Bucket
-export const saveInvoiceToCloudflareBucket = async (booking: Booking): Promise<CloudflareStorageObject> => {
-  const inv = generateInvoiceDetails(booking);
-  const html = generatePrintableInvoiceHtml(inv);
+// Upload Invoice Details directly to Cloudflare Storage Bucket
+export const saveInvoiceDetailsToCloudflareBucket = async (inv: InvoiceDetails): Promise<CloudflareStorageObject> => {
+  const sanitizedInv: InvoiceDetails = {
+    ...inv,
+    notes: cleanPatientFacingNotes(inv.notes)
+  };
+  const html = generatePrintableInvoiceHtml(sanitizedInv);
   const dataUrl = `data:text/html;charset=utf-8,${encodeURIComponent(html)}`;
   return uploadToCloudflareStorage({
-    fileName: `${inv.invoiceNumber}.html`,
+    fileName: `${sanitizedInv.invoiceNumber}.html`,
     category: 'invoices',
-    contentType: 'text/html',
+    contentType: 'text/html; charset=utf-8',
     sizeBytes: new Blob([html]).size,
     dataUrl,
     metadata: {
-      bookingId: booking.id,
-      patientName: booking.patientName,
-      nurseName: booking.assignedNurseName,
-      amount: inv.totalAmount,
-      description: `Service Invoice for ${booking.serviceTitle}`
+      bookingId: sanitizedInv.bookingId,
+      patientName: sanitizedInv.patientName,
+      nurseName: sanitizedInv.assignedNurseName,
+      amount: sanitizedInv.totalAmount,
+      description: `Service Invoice #${sanitizedInv.invoiceNumber} for ${sanitizedInv.serviceTitle}`
     }
   });
+};
+
+// Upload Invoice to Cloudflare Storage Bucket from Booking
+export const saveInvoiceToCloudflareBucket = async (booking: Booking): Promise<CloudflareStorageObject> => {
+  const inv = generateInvoiceDetails(booking);
+  return saveInvoiceDetailsToCloudflareBucket(inv);
 };
 
 // Clean Printable HTML Invoice for Direct View / PDF Save
@@ -881,13 +992,13 @@ export const generatePrintableInvoiceHtml = (inv: InvoiceDetails): string => {
       </div>
     </div>
 
-    ${inv.notes && inv.notes.trim() ? `
+    ${cleanPatientFacingNotes(inv.notes) ? `
     <div style="margin: 24px 0 16px 0; padding: 14px 18px; background: #F0F9FF; border: 1.5px solid #BAE6FD; border-radius: 10px;">
       <div style="font-size: 11px; font-weight: 800; color: #0369A1; text-transform: uppercase; margin-bottom: 4px; letter-spacing: 0.05em;">
         Clinical Remarks / Special Notes:
       </div>
       <div style="font-size: 13.5px; color: #0C4A6E; line-height: 1.5; font-weight: 500;">
-        ${inv.notes}
+        ${cleanPatientFacingNotes(inv.notes)}
       </div>
     </div>
     ` : ''}

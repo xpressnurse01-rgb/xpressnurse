@@ -45,6 +45,7 @@ import {
   generateInvoiceDetails,
   openPrintableInvoiceWindow,
   saveInvoiceToCloudflareBucket,
+  cleanPatientFacingNotes,
   getPrescriptionStorageObject,
   uploadCertificateToCloudflareBucket
 } from '../lib/cloudflareStorage';
@@ -848,6 +849,7 @@ export const NurseDashboard: React.FC<NurseDashboardProps> = ({
               </div>
             )}
 
+
             {/* Quick Share Code Banner */}
             <div style={{
               background: '#FFFFFF',
@@ -1597,6 +1599,7 @@ export const NurseDashboard: React.FC<NurseDashboardProps> = ({
                 <div style={{ fontSize: '1.25rem', fontWeight: 900, color: '#059669' }}>{myConvertedLeads.length}</div>
               </div>
             </div>
+
 
             <button
               onClick={() => setIsHistoryModalOpen(true)}

@@ -114,6 +114,8 @@ export interface NurseProfile {
   earningsPending?: number;
   referralEarningsRupees: number;
   totalEarningsRupees?: number;
+  totalPayout?: number;
+  total_payout?: number;
   paidEarningsRupees?: number;
   pendingEarningsRupees?: number;
   payouts?: NursePayoutRecord[];
