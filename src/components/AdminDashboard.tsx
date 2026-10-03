@@ -269,64 +269,50 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
     if (booking) {
       const inv = generateInvoiceDetails(booking);
       if (!inv.items || inv.items.length === 0) {
+        const fee = Number(booking.finalFee !== undefined ? booking.finalFee : (booking.estimatedFee || 800));
         inv.items = [
           {
             id: 'item-1',
             description: booking.serviceTitle || 'Clinical Nursing Care',
             date: booking.preferredDate || new Date().toISOString().split('T')[0],
             slot: formatSlotForBill(booking.scheduledSlot || booking.preferredTime || 'M'),
-            rate: Number(booking.estimatedFee) || 800,
+            rate: fee,
             quantity: booking.numberOfVisits || 1,
-            amount: (Number(booking.estimatedFee) || 800) * (booking.numberOfVisits || 1)
-          }
-        ];
-      }
-      setPreviewInvoice(inv);
-    } else if (bookings.length > 0) {
-      const inv = generateInvoiceDetails(bookings[0]);
-      if (!inv.items || inv.items.length === 0) {
-        inv.items = [
-          {
-            id: 'item-1',
-            description: bookings[0].serviceTitle || 'Clinical Nursing Care',
-            date: bookings[0].preferredDate || new Date().toISOString().split('T')[0],
-            slot: formatSlotForBill(bookings[0].scheduledSlot || bookings[0].preferredTime || 'M'),
-            rate: Number(bookings[0].estimatedFee) || 800,
-            quantity: bookings[0].numberOfVisits || 1,
-            amount: (Number(bookings[0].estimatedFee) || 800) * (bookings[0].numberOfVisits || 1)
+            amount: fee * (booking.numberOfVisits || 1)
           }
         ];
       }
       setPreviewInvoice(inv);
     } else {
-      const initialRate = services[0]?.priceNumber || 800;
+      const initialRate = services[0]?.priceNumber || services[0]?.singleVisitPrice || 800;
+      const initialTitle = services[0]?.title || 'Clinical Nursing Care';
       const newInv: InvoiceDetails = {
-        invoiceNumber: `XN-INV-2026-CUSTOM-${Math.floor(1000 + Math.random() * 9000)}`,
+        invoiceNumber: `XN-INV-2026-MANUAL-${Math.floor(1000 + Math.random() * 9000)}`,
         invoiceDate: new Date().toLocaleDateString('en-IN', {
           day: '2-digit',
           month: 'short',
           year: 'numeric'
         }),
         bookingId: 'CUSTOM-' + Date.now().toString().slice(-4),
-        patientName: 'Custom Patient',
-        patientPhone: '+91 ',
+        patientName: '',
+        patientPhone: '',
         patientAge: 45,
         patientGender: 'Female',
-        fullAddress: 'Doorstep Care, Hyderabad',
+        fullAddress: '',
         area: 'Banjara Hills',
-        serviceTitle: services[0]?.title || 'Clinical Nursing Care',
+        serviceTitle: initialTitle,
         serviceDate: new Date().toISOString().split('T')[0],
-        timeSlot: 'M',
+        timeSlot: 'Morning (09:00 AM - 01:00 PM)',
         numberOfVisits: 1,
-        serviceId: services[0]?.id || 'general-care',
-        assignedNurseName: nurses[0]?.name || 'Attending RN',
+        serviceId: services[0]?.id || 'saline-infusion',
+        assignedNurseName: nurses[0]?.name || 'Assigned Fleet RN',
         baseAmount: initialRate,
         items: [
           {
             id: 'item-1',
-            description: services[0]?.title || 'Clinical Nursing Care',
+            description: initialTitle,
             date: new Date().toISOString().split('T')[0],
-            slot: 'M',
+            slot: 'Morning (09:00 AM - 01:00 PM)',
             rate: initialRate,
             quantity: 1,
             amount: initialRate
@@ -391,7 +377,8 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
       const nextDate = customDate || lastItem?.date || new Date().toISOString().split('T')[0];
       const nextSlot = customSlot || 'M';
       const title = serviceTitle || lastItem?.description || prev.serviceTitle || services[0]?.title || 'Clinical Care';
-      const rate = customRate !== undefined ? customRate : (lastItem?.rate || Number(prev.baseAmount) || 800);
+      const matchedSrv = services.find(s => s.title.toLowerCase().trim() === title.toLowerCase().trim());
+      const rate = customRate !== undefined ? customRate : (matchedSrv ? (Number(matchedSrv.priceNumber || matchedSrv.singleVisitPrice) || 800) : (lastItem?.rate || Number(prev.baseAmount) || 800));
 
       const newItem: InvoiceItem = {
         id: 'item-' + Date.now() + '-' + Math.floor(Math.random() * 1000),
@@ -586,6 +573,8 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
       return {
         ...prev,
         items: updatedItems,
+        serviceTitle: updatedItems[0]?.description || prev.serviceTitle,
+        baseAmount: updatedItems[0]?.rate || prev.baseAmount,
         numberOfVisits: totalVisits,
         totalAmount: Math.max(0, itemsTotal + surcharge - discount)
       };
@@ -607,6 +596,8 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
       return {
         ...prev,
         items: updatedItems,
+        serviceTitle: updatedItems[0]?.description || prev.serviceTitle,
+        baseAmount: updatedItems[0]?.rate || prev.baseAmount,
         numberOfVisits: totalVisits,
         totalAmount: Math.max(0, itemsTotal + surcharge - discount)
       };
@@ -617,30 +608,77 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
     if (!previewInvoice) return;
     try {
       const matchingBooking = bookings.find((b) => b.id === previewInvoice.bookingId);
-      if (matchingBooking && onUpdateBooking) {
-        const allDates = previewInvoice.items && previewInvoice.items.length > 0
-          ? Array.from(new Set(previewInvoice.items.map((i) => i.date).filter(Boolean))).join(', ')
-          : previewInvoice.serviceDate;
-        const allSlots = previewInvoice.items && previewInvoice.items.length > 0
-          ? previewInvoice.items.map((i) => `${i.date ? i.date + ': ' : ''}${i.slot}`).join(' | ')
-          : previewInvoice.timeSlot;
+      const allDates = previewInvoice.items && previewInvoice.items.length > 0
+        ? Array.from(new Set(previewInvoice.items.map((i) => i.date).filter(Boolean))).join(', ')
+        : (previewInvoice.serviceDate || new Date().toISOString().split('T')[0]);
+      const allSlots = previewInvoice.items && previewInvoice.items.length > 0
+        ? previewInvoice.items.map((i) => `${i.date ? i.date + ': ' : ''}${i.slot}`).join(' | ')
+        : (previewInvoice.timeSlot || 'Morning (09:00 AM - 01:00 PM)');
+      const primaryProcedure = previewInvoice.items?.[0]?.description || previewInvoice.serviceTitle || 'Clinical Nursing Care';
+      const matchedService = services.find(s => s.title.toLowerCase().trim() === primaryProcedure.toLowerCase().trim() || s.id === previewInvoice.serviceId);
+      const assignedNurseObj = nurses.find(n => n.name === previewInvoice.assignedNurseName || n.id === previewInvoice.assignedNurseName);
 
+      if (matchingBooking && onUpdateBooking) {
         await onUpdateBooking(matchingBooking.id, {
           preferredDate: allDates,
           scheduledSlot: allSlots,
+          preferredTime: allSlots,
           numberOfVisits: previewInvoice.numberOfVisits,
+          serviceTitle: primaryProcedure,
+          serviceId: (matchedService?.id || matchingBooking.serviceId) as any,
+          estimatedFee: previewInvoice.totalAmount,
           finalFee: previewInvoice.totalAmount,
-          assignedNurseName: previewInvoice.assignedNurseName,
-          patientName: previewInvoice.patientName,
-          patientPhone: previewInvoice.patientPhone,
-          fullAddress: previewInvoice.fullAddress,
-          area: previewInvoice.area as any,
+          assignedNurseName: assignedNurseObj?.name || previewInvoice.assignedNurseName,
+          assignedNurseId: assignedNurseObj?.id || matchingBooking.assignedNurseId,
+          patientName: previewInvoice.patientName || matchingBooking.patientName,
+          patientPhone: previewInvoice.patientPhone || matchingBooking.patientPhone,
+          patientAge: previewInvoice.patientAge || matchingBooking.patientAge,
+          patientGender: previewInvoice.patientGender || matchingBooking.patientGender,
+          fullAddress: previewInvoice.fullAddress || matchingBooking.fullAddress,
+          area: (previewInvoice.area || matchingBooking.area) as any,
           invoiceNumber: previewInvoice.invoiceNumber,
           status: matchingBooking.status
         });
         showToast(`Invoice #${previewInvoice.invoiceNumber} saved & synced to Supabase for ${previewInvoice.patientName}!`);
-      } else {
-        showToast(`Custom Invoice #${previewInvoice.invoiceNumber} generated!`);
+      } else if (onCreateBooking) {
+        const newBookingId = (previewInvoice.bookingId && !previewInvoice.bookingId.startsWith('CUSTOM-'))
+          ? previewInvoice.bookingId
+          : `BK-${Date.now().toString().slice(-6)}`;
+
+        const newBookingPayload: Booking = {
+          id: newBookingId,
+          createdAt: new Date().toISOString(),
+          patientName: previewInvoice.patientName?.trim() || 'Direct Patient',
+          patientPhone: previewInvoice.patientPhone?.trim() || '+91 99999 99999',
+          patientAge: Number(previewInvoice.patientAge) || 45,
+          patientGender: (previewInvoice.patientGender as any) || 'Female',
+          serviceTitle: primaryProcedure,
+          serviceId: (matchedService?.id || 'saline-infusion') as any,
+          area: previewInvoice.area || 'Banjara Hills',
+          fullAddress: previewInvoice.fullAddress?.trim() || `${previewInvoice.area || 'Banjara Hills'}, Hyderabad`,
+          preferredDate: allDates,
+          preferredTime: allSlots,
+          scheduledSlot: allSlots,
+          status: previewInvoice.paymentStatus === 'Paid' ? 'Completed' : (assignedNurseObj ? 'Assigned' : 'Pending'),
+          assignedNurseName: assignedNurseObj?.name || previewInvoice.assignedNurseName,
+          assignedNurseId: assignedNurseObj?.id,
+          estimatedFee: previewInvoice.totalAmount,
+          finalFee: previewInvoice.totalAmount,
+          nursePayoutRupees: Math.round(previewInvoice.totalAmount * 0.70),
+          numberOfVisits: previewInvoice.numberOfVisits || 1,
+          hasPrescription: false,
+          notes: previewInvoice.notes || 'Created via Manual Billing / Custom Invoice',
+          invoiceNumber: previewInvoice.invoiceNumber,
+          bookingType: 'scheduled'
+        };
+        await onCreateBooking(newBookingPayload);
+        showToast(`Manual Bill #${previewInvoice.invoiceNumber} (₹${previewInvoice.totalAmount}) created as patient booking & updated in Admin Panel!`);
+      }
+
+      if (onRefreshData) {
+        try {
+          await onRefreshData();
+        } catch { }
       }
 
       // Persist invoice HTML to local storage objects safely
@@ -1402,7 +1440,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
       (b.assignedNurseName && b.assignedNurseName.toLowerCase().includes(bookingSearch.toLowerCase()));
 
     const isNurseDeclined = b.rejectedBy === 'Nurse' || b.nurseAcceptanceStatus === 'Rejected' || (b.status === 'Rejected' && b.rejectionReason?.toLowerCase().includes('nurse'));
-    const isNurseAccepted = b.nurseAcceptanceStatus === 'Accepted' || (b.status === 'In-Progress' && !isNurseDeclined);
+    const isNurseAccepted = (b.nurseAcceptanceStatus === 'Accepted' || b.status === 'In-Progress') && b.status !== 'Completed' && !isNurseDeclined;
 
     const matchesStatus =
       bookingStatusFilter === 'all'
@@ -3117,7 +3155,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                 )}
                 <option value="Pending">Pending ({bookings.filter(b => b.status === 'Pending').length})</option>
                 <option value="Assigned">Assigned ({bookings.filter(b => b.status === 'Assigned').length})</option>
-                <option value="Accepted">Accepted & In-Progress ({bookings.filter(b => b.status === 'In-Progress' || b.nurseAcceptanceStatus === 'Accepted').length})</option>
+                <option value="Accepted">Accepted & In-Progress ({bookings.filter(b => (b.status === 'In-Progress' || b.nurseAcceptanceStatus === 'Accepted') && b.status !== 'Completed' && b.status !== 'Cancelled' && b.status !== 'Rejected').length})</option>
                 <option value="Completed">Completed ({bookings.filter(b => b.status === 'Completed').length})</option>
                 <option value="Rejected">Rejected by Admin ({bookings.filter(b => b.status === 'Rejected' && b.rejectedBy !== 'Nurse' && !b.rejectionReason?.toLowerCase().includes('nurse')).length})</option>
                 <option value="Cancelled">Cancelled ({bookings.filter(b => b.status === 'Cancelled').length})</option>
@@ -3313,9 +3351,26 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                           </td>
                           <td style={{ whiteSpace: 'nowrap' }}>
                             {(() => {
+                              const isCompleted = b.status === 'Completed';
                               const isDeclinedByNurse = b.rejectedBy === 'Nurse' || b.nurseAcceptanceStatus === 'Rejected' || (b.status === 'Rejected' && b.rejectionReason?.toLowerCase().includes('nurse'));
-                              const isAcceptedByNurse = b.nurseAcceptanceStatus === 'Accepted' || (b.status === 'In-Progress' && !isDeclinedByNurse);
-                              const isAwaitingNurse = !isAcceptedByNurse && !isDeclinedByNurse && b.status === 'Assigned';
+                              const isAcceptedByNurse = !isCompleted && !isDeclinedByNurse && (b.nurseAcceptanceStatus === 'Accepted' || b.status === 'In-Progress');
+                              const isAwaitingNurse = !isCompleted && !isAcceptedByNurse && !isDeclinedByNurse && b.status === 'Assigned';
+
+                              if (isCompleted) {
+                                const fee = Number(b.finalFee !== undefined ? b.finalFee : (b.estimatedFee || 800));
+                                const nurseCut = b.nursePayoutRupees || Math.round(fee * 0.70);
+                                return (
+                                  <div>
+                                    <span className="status-pill success" style={{ background: '#ECFDF5', color: '#047857', border: '1px solid #A7F3D0', display: 'inline-flex', alignItems: 'center', gap: '0.3rem', fontWeight: 800 }}>
+                                      <CheckCircle size={13} style={{ color: '#059669' }} />
+                                      <span>✓ Service Completed</span>
+                                    </span>
+                                    <div style={{ fontSize: '0.72rem', color: '#059669', marginTop: '2px', fontWeight: 700 }}>
+                                      Work done & settled (₹{nurseCut} nurse payout)
+                                    </div>
+                                  </div>
+                                );
+                              }
 
                               if (isDeclinedByNurse) {
                                 return (
@@ -3334,9 +3389,14 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
 
                               if (isAcceptedByNurse) {
                                 return (
-                                  <span className="status-pill success" style={{ display: 'inline-flex', alignItems: 'center', gap: '0.25rem', fontWeight: 750 }}>
-                                    ✓ Nurse Accepted
-                                  </span>
+                                  <div>
+                                    <span className="status-pill success" style={{ display: 'inline-flex', alignItems: 'center', gap: '0.25rem', fontWeight: 750 }}>
+                                      ✓ Nurse Accepted (In-Progress)
+                                    </span>
+                                    <div style={{ fontSize: '0.71rem', color: '#0369A1', marginTop: '2px', fontWeight: 600 }}>
+                                      Underway by {b.assignedNurseName || 'Nurse'}
+                                    </div>
+                                  </div>
                                 );
                               }
 
@@ -3350,7 +3410,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
 
                               return (
                                 <div>
-                                  <span className={`status-pill ${b.status === 'Completed' ? 'success' :
+                                  <span className={`status-pill ${
                                       b.status === 'Pending' ? 'warning' :
                                         b.status === 'Rejected' || b.status === 'Cancelled' ? 'danger' : 'neutral'
                                     }`} style={{ whiteSpace: 'nowrap' }}>
@@ -3719,15 +3779,17 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                           <th>Service Area (Rule 2)</th>
                           <th>Qualification</th>
                           <th>Experience</th>
-                          <th>Leads & Referrals</th>
+                          <th>Visits & Leads</th>
                           <th>Points</th>
-                          <th>Earnings (10%)</th>
+                          <th>Duty & Ref Earnings</th>
+                          <th>Total Payout (₹)</th>
                           <th>Verification</th>
                           <th style={{ textAlign: 'right' }}>Actions</th>
                         </tr>
                       </thead>
                       <tbody>
                         {filteredNurses.map((n) => {
+                          const m = calculateNurseMetrics(n, bookings, leads, services);
                           const nursePhoneDigits = (n.phone || '').replace(/\D/g, '');
                           const nurseLast10 = nursePhoneDigits.length >= 10 ? nursePhoneDigits.slice(-10) : nursePhoneDigits;
                           const userObj = appUsers.find((u) => {
@@ -3894,12 +3956,12 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                               <td>{n.qualification}</td>
                               <td>{n.experienceYears} Years</td>
                               <td>
-                                <div>Leads: {n.totalLeads}</div>
-                                <div style={{ fontSize: '0.78rem', color: 'var(--neutral-500)' }}>Ref: {n.totalReferrals || 0}</div>
+                                <div><strong>{m.completedVisitsCount} Done</strong> <span style={{ fontSize: '0.74rem', color: '#64748B' }}>({m.activeVisitsCount} Active)</span></div>
+                                <div style={{ fontSize: '0.74rem', color: 'var(--neutral-500)', marginTop: '2px' }}>Leads: {m.totalLeadsCount} • Ref: {m.convertedLeadsCount}</div>
                               </td>
                               <td>
                                 <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
-                                  <strong>{n.pointsEarned} pts</strong>
+                                  <strong style={{ color: '#D97706' }}>{m.totalPoints} pts</strong>
                                   <button
                                     type="button"
                                     onClick={async (e) => {
@@ -3931,8 +3993,16 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                                 </div>
                               </td>
                               <td>
+                                <div>
+                                  <span style={{ fontSize: '0.8rem', color: '#047857', fontWeight: 800 }}>₹{m.completedVisitsEarnings}</span> <span style={{ fontSize: '0.72rem', color: '#64748B' }}>(70% duty)</span>
+                                </div>
+                                <div style={{ fontSize: '0.74rem', color: '#0284C7', fontWeight: 700, marginTop: '1px' }}>
+                                  + ₹{m.referralEarnings} <span style={{ fontSize: '0.7rem', color: '#64748B', fontWeight: 500 }}>(10% ref)</span>
+                                </div>
+                              </td>
+                              <td>
                                 <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
-                                  <strong style={{ color: '#059669' }}>₹{n.referralEarningsRupees}</strong>
+                                  <strong style={{ color: '#059669', fontSize: '0.92rem' }}>₹{m.totalMoney}</strong>
                                   <button
                                     type="button"
                                     onClick={async (e) => {
@@ -8940,28 +9010,29 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                   onChange={(e) => {
                     const selectedId = e.target.value;
                     if (selectedId === 'custom') {
-                      const initialRate = services[0]?.priceNumber || 800;
+                      const initialRate = services[0]?.priceNumber || services[0]?.singleVisitPrice || 800;
+                      const initialTitle = services[0]?.title || 'Clinical Home Care';
                       setPreviewInvoice({
-                        invoiceNumber: `XN-INV-2026-CUSTOM-${Math.floor(1000 + Math.random() * 9000)}`,
+                        invoiceNumber: `XN-INV-2026-MANUAL-${Math.floor(1000 + Math.random() * 9000)}`,
                         invoiceDate: new Date().toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' }),
                         bookingId: 'CUSTOM-' + Date.now().toString().slice(-4),
-                        patientName: 'Custom Patient',
-                        patientPhone: '+91 ',
+                        patientName: '',
+                        patientPhone: '',
                         patientAge: 45,
                         patientGender: 'Female',
-                        fullAddress: 'Doorstep Care, Hyderabad',
+                        fullAddress: '',
                         area: 'Banjara Hills',
-                        serviceTitle: services[0]?.title || 'Clinical Home Care',
+                        serviceTitle: initialTitle,
                         serviceDate: new Date().toISOString().split('T')[0],
                         timeSlot: 'Morning (09:00 AM - 01:00 PM)',
                         numberOfVisits: 1,
-                        serviceId: services[0]?.id || 'general-care',
-                        assignedNurseName: nurses[0]?.name || 'Attending RN',
+                        serviceId: services[0]?.id || 'saline-infusion',
+                        assignedNurseName: nurses[0]?.name || 'Assigned Fleet RN',
                         baseAmount: initialRate,
                         items: [
                           {
                             id: 'item-1',
-                            description: services[0]?.title || 'Clinical Home Care',
+                            description: initialTitle,
                             date: new Date().toISOString().split('T')[0],
                             slot: 'Morning (09:00 AM - 01:00 PM)',
                             rate: initialRate,
@@ -8981,6 +9052,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                       const found = bookings.find((b) => b.id === selectedId);
                       if (found) {
                         const inv = generateInvoiceDetails(found);
+                        const fee = Number(found.finalFee !== undefined ? found.finalFee : (found.estimatedFee || 800));
                         if (!inv.items || inv.items.length === 0) {
                           inv.items = [
                             {
@@ -8988,9 +9060,9 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                               description: found.serviceTitle || 'Clinical Nursing Care',
                               date: found.preferredDate || new Date().toISOString().split('T')[0],
                               slot: found.scheduledSlot || found.preferredTime || 'Morning (09:00 AM - 01:00 PM)',
-                              rate: Number(found.estimatedFee) || 800,
+                              rate: fee,
                               quantity: found.numberOfVisits || 1,
-                              amount: (Number(found.estimatedFee) || 800) * (found.numberOfVisits || 1)
+                              amount: fee * (found.numberOfVisits || 1)
                             }
                           ];
                         }
@@ -9281,36 +9353,55 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
 
                                 {/* Procedure / Clinical Service Description */}
                                 <td style={{ padding: '0.55rem 0.65rem' }}>
-                                  <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                                  <div style={{ display: 'flex', flexDirection: 'column', gap: '5px' }}>
+                                    {/* Catalog Dropdown with Auto Price Match */}
+                                    <select
+                                      value={services.some(s => s.title.toLowerCase().trim() === (item.description || '').toLowerCase().trim()) ? services.find(s => s.title.toLowerCase().trim() === (item.description || '').toLowerCase().trim())?.title : 'custom'}
+                                      onChange={(e) => {
+                                        const chosenTitle = e.target.value;
+                                        if (chosenTitle !== 'custom') {
+                                          const found = services.find(s => s.title === chosenTitle);
+                                          if (found) {
+                                            const price = Number(found.priceNumber || found.singleVisitPrice) || 800;
+                                            handleUpdateItemRow(index, {
+                                              description: found.title,
+                                              rate: price
+                                            });
+                                          }
+                                        }
+                                      }}
+                                      className="form-control"
+                                      style={{ height: 28, fontSize: '0.74rem', fontWeight: 700, borderColor: '#BAE6FD', background: '#F0F9FF', color: '#0369A1' }}
+                                    >
+                                      <option value="" disabled>-- Select Clinical Service / Procedure --</option>
+                                      {services.map((s) => (
+                                        <option key={s.id} value={s.title}>
+                                          {s.title} (₹{s.priceNumber || s.singleVisitPrice})
+                                        </option>
+                                      ))}
+                                      <option value="custom">✏️ Custom / Manual Procedure Entry</option>
+                                    </select>
+
+                                    {/* Editable Description Text Input */}
                                     <input
                                       type="text"
                                       value={item.description}
-                                      onChange={(e) => handleUpdateItemRow(index, { description: e.target.value })}
+                                      onChange={(e) => {
+                                        const val = e.target.value;
+                                        const matchingSrv = services.find(s => s.title.toLowerCase().trim() === val.toLowerCase().trim());
+                                        if (matchingSrv) {
+                                          handleUpdateItemRow(index, {
+                                            description: val,
+                                            rate: Number(matchingSrv.priceNumber || matchingSrv.singleVisitPrice) || item.rate
+                                          });
+                                        } else {
+                                          handleUpdateItemRow(index, { description: val });
+                                        }
+                                      }}
                                       className="form-control"
-                                      style={{ height: 32, fontSize: '0.78rem', fontWeight: 600 }}
-                                      placeholder="e.g. Wound Dressing, IV Therapy"
+                                      style={{ height: 30, fontSize: '0.78rem', fontWeight: 600 }}
+                                      placeholder="Type or customize procedure title..."
                                     />
-                                    <div style={{ display: 'flex', gap: '4px', flexWrap: 'wrap' }}>
-                                      {services.slice(0, 3).map((s) => (
-                                        <button
-                                          key={s.id}
-                                          type="button"
-                                          onClick={() => handleUpdateItemRow(index, { description: s.title, rate: s.priceNumber })}
-                                          style={{
-                                            border: 'none',
-                                            background: '#F1F5F9',
-                                            color: '#475569',
-                                            padding: '1px 6px',
-                                            borderRadius: 4,
-                                            fontSize: '0.68rem',
-                                            cursor: 'pointer'
-                                          }}
-                                          title={`Set to ${s.title} (₹${s.priceNumber})`}
-                                        >
-                                          {s.title.split(' ')[0]} (₹{s.priceNumber})
-                                        </button>
-                                      ))}
-                                    </div>
                                   </div>
                                 </td>
 
@@ -9432,15 +9523,22 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
 
                                 {/* Rate per Visit (₹) */}
                                 <td style={{ padding: '0.55rem 0.65rem', textAlign: 'right' }}>
-                                  <input
-                                    type="number"
-                                    min="0"
-                                    step="50"
-                                    value={item.rate || 0}
-                                    onChange={(e) => handleUpdateItemRow(index, { rate: Number(e.target.value) || 0 })}
-                                    className="form-control"
-                                    style={{ height: 32, fontSize: '0.78rem', textAlign: 'right', padding: '0 6px' }}
-                                  />
+                                  <div style={{ display: 'flex', alignItems: 'center', gap: '2px', justifyContent: 'flex-end' }}>
+                                    <span style={{ fontSize: '0.78rem', color: '#64748B', fontWeight: 700 }}>₹</span>
+                                    <input
+                                      type="number"
+                                      min="0"
+                                      step="50"
+                                      value={item.rate === 0 ? '' : item.rate}
+                                      placeholder="0"
+                                      onChange={(e) => {
+                                        const val = e.target.value === '' ? 0 : Number(e.target.value);
+                                        handleUpdateItemRow(index, { rate: isNaN(val) ? 0 : val });
+                                      }}
+                                      className="form-control"
+                                      style={{ height: 32, width: 85, fontSize: '0.8rem', textAlign: 'right', padding: '0 6px', fontWeight: 800, background: '#FFFFFF' }}
+                                    />
+                                  </div>
                                 </td>
 
                                 {/* Row Total (₹) */}

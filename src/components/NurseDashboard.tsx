@@ -250,8 +250,14 @@ export const NurseDashboard: React.FC<NurseDashboardProps> = ({
       const payoutRupees = Math.round(fee * 0.70);
 
       await onUpdateBooking(booking.id, {
-        status: 'Completed'
+        status: 'Completed',
+        nursePayoutRupees: payoutRupees
       });
+      if (onRefreshData) {
+        try {
+          await onRefreshData();
+        } catch { }
+      }
       try {
         confetti({ particleCount: 70, spread: 70, origin: { y: 0.5 } });
       } catch { }

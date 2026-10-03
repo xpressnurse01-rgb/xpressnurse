@@ -646,8 +646,8 @@ export const formatSlotForBill = (slotStr?: string): string => {
 export const generateInvoiceDetails = (booking: Booking): InvoiceDetails => {
   const config = getCloudflareConfig();
   const cleanBookingId = booking.id.replace(/[^a-zA-Z0-9]/g, '');
-  const invoiceNumber = `XN-INV-2026-${cleanBookingId}`;
-  const baseFee = Number(booking.estimatedFee) || 800;
+  const invoiceNumber = `XN-INV-2026-${(cleanBookingId.slice(-6) || 'GENERAL').toUpperCase()}`;
+  const baseFee = Number(booking.finalFee !== undefined ? booking.finalFee : (booking.estimatedFee || 800));
   const discount = Number(booking.discountRupees) || 0;
   const nightSurcharge = Number(booking.nightSurcharge) || 0;
   const subtotal = Math.max(0, baseFee + nightSurcharge - discount);
