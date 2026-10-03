@@ -225,6 +225,11 @@ export const NurseDashboard: React.FC<NurseDashboardProps> = ({
         status: 'In-Progress',
         nurseAcceptanceStatus: 'Accepted'
       });
+      if (onRefreshData) {
+        try {
+          await onRefreshData();
+        } catch { }
+      }
       try {
         confetti({ particleCount: 40, spread: 50, origin: { y: 0.6 } });
       } catch { }
@@ -233,12 +238,23 @@ export const NurseDashboard: React.FC<NurseDashboardProps> = ({
 
   const handleRejectVisit = async (booking: Booking) => {
     if (onUpdateBooking) {
-      if (window.confirm("Are you sure you want to reject this assigned visit?")) {
+      const inputReason = window.prompt(
+        "Please state reason for declining this visit (e.g. Distance too far, Already on duty, Emergency, Schedule conflict):",
+        "Nurse unavailable / Distance issue"
+      );
+      if (inputReason !== null) {
+        const finalReason = inputReason.trim() ? inputReason.trim() : "Rejected by Nurse via App";
         await onUpdateBooking(booking.id, {
           nurseAcceptanceStatus: 'Rejected',
           status: 'Rejected',
-          rejectionReason: 'Rejected by Nurse via App'
+          rejectedBy: 'Nurse',
+          rejectionReason: finalReason
         });
+        if (onRefreshData) {
+          try {
+            await onRefreshData();
+          } catch { }
+        }
       }
     }
   };
@@ -251,6 +267,7 @@ export const NurseDashboard: React.FC<NurseDashboardProps> = ({
 
       await onUpdateBooking(booking.id, {
         status: 'Completed',
+        nurseAcceptanceStatus: 'Accepted',
         nursePayoutRupees: payoutRupees
       });
       if (onRefreshData) {

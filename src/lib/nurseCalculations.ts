@@ -265,12 +265,15 @@ export function calculateNurseMetrics(
   const activeVisits = myVisits.filter((b) => b.status === 'Assigned' || b.status === 'In-Progress');
   const completedVisits = myVisits.filter((b) => b.status === 'Completed');
 
-  // Completed visit earnings (70% service charge for completed visits)
+  // Completed visit earnings (70% service charge for completed visits or explicit nursePayoutRupees)
   let completedVisitsEarnings = 0;
   completedVisits.forEach((visit) => {
     const procedure = services.find((s) => s.id === visit.serviceId);
     const fee = Number(visit.finalFee !== undefined ? visit.finalFee : (visit.estimatedFee || (procedure ? procedure.priceNumber : 899)));
-    completedVisitsEarnings += Math.round(fee * 0.70);
+    const calculated70 = Math.round(fee * 0.70);
+    completedVisitsEarnings += (visit.nursePayoutRupees !== undefined && visit.nursePayoutRupees !== null && Number(visit.nursePayoutRupees) > 0)
+      ? Number(visit.nursePayoutRupees)
+      : calculated70;
   });
 
   // 2. Filter Leads submitted by THIS nurse
@@ -299,16 +302,17 @@ export function calculateNurseMetrics(
     }
   });
 
-  // Referral earnings are strictly 10% of converted patient referrals (never double-count or mix with visit earnings!)
-  const referralEarnings = referralCommissionFromLeads;
+  // Referral earnings: sync with converted patient referrals + any admin-adjusted referral bonus cash
+  const referralEarnings = Math.max(Number(nurse.referralEarningsRupees || 0), referralCommissionFromLeads);
 
   // Total rupee earnings (70% visits + 10% referrals)
   const totalMoney = completedVisitsEarnings + referralEarnings;
 
-  // Total points: strictly prioritize nurse.pointsEarned set by Admin/system
+  // Total points: prioritize nurse.pointsEarned set by Admin/system, combined with converted lead points
+  const basePointsFromLeads = myConvertedLeads.reduce((acc, l) => acc + (Number(l.pointsAwarded) || 50), 0);
   const totalPoints = (nurse.pointsEarned !== undefined && nurse.pointsEarned !== null && !isNaN(Number(nurse.pointsEarned)))
-    ? Number(nurse.pointsEarned)
-    : (myConvertedLeads.length * 50);
+    ? Math.max(Number(nurse.pointsEarned), basePointsFromLeads)
+    : basePointsFromLeads;
 
   const totalLeadsCount = Math.max(Number(nurse.totalLeads || 0), myLeads.length);
   const convertedLeadsCount = Math.max(Number(nurse.convertedLeads || 0), myConvertedLeads.length);

@@ -5175,12 +5175,13 @@ select.form-control,
   background-repeat: no-repeat !important;
   background-position: right 0.95rem center !important;
   background-size: 15px 15px !important;
-  padding: 0.62rem 2.65rem 0.62rem 0.95rem !important;
+  padding: 0.45rem 2.5rem 0.45rem 0.85rem !important;
   font-family: var(--font-family, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif) !important;
   font-size: 0.88rem !important;
   font-weight: 600 !important;
   color: var(--primary-navy-950, #0B192C) !important;
-  line-height: 1.5 !important;
+  line-height: normal !important;
+  min-height: 40px !important;
   border: 1.5px solid rgba(2, 132, 199, 0.28) !important;
   border-radius: 12px !important;
   box-shadow: 0 2px 8px -2px rgba(10, 25, 47, 0.05), inset 0 1px 0 rgba(255, 255, 255, 0.9) !important;

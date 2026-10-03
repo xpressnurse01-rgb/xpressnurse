@@ -692,6 +692,7 @@ export const generateInvoiceDetails = (booking: Booking): InvoiceDetails => {
     totalAmount: subtotal,
     paymentStatus: booking.status === 'Completed' ? 'Paid' : 'Pending',
     paymentMode: 'UPI / Online',
+    notes: booking.notes || '',
     r2StorageKey,
     r2PublicUrl
   };
@@ -879,6 +880,17 @@ export const generatePrintableInvoiceHtml = (inv: InvoiceDetails): string => {
         <span style="color: #059669;">₹${inv.totalAmount}</span>
       </div>
     </div>
+
+    ${inv.notes && inv.notes.trim() ? `
+    <div style="margin: 24px 0 16px 0; padding: 14px 18px; background: #F0F9FF; border: 1.5px solid #BAE6FD; border-radius: 10px;">
+      <div style="font-size: 11px; font-weight: 800; color: #0369A1; text-transform: uppercase; margin-bottom: 4px; letter-spacing: 0.05em;">
+        Clinical Remarks / Special Notes:
+      </div>
+      <div style="font-size: 13.5px; color: #0C4A6E; line-height: 1.5; font-weight: 500;">
+        ${inv.notes}
+      </div>
+    </div>
+    ` : ''}
 
     <div class="cloud-footer">
       <div></div>

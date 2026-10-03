@@ -1383,7 +1383,15 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
       return;
     }
     const assignedNurseObj = nurses.find((n) => n.id === bookingForm.assignedNurseId);
+    const existingPayout = editingBooking?.nursePayoutRupees;
+    const bookingFee = Number(editingBooking?.finalFee !== undefined ? editingBooking.finalFee : (bookingForm.estimatedFee || 800));
+    const calculatedNurseCut = Math.round(bookingFee * 0.70);
+    const finalPayout = (bookingForm.status === 'Completed')
+      ? (existingPayout || calculatedNurseCut)
+      : existingPayout;
+
     const bookingPayload: Booking = {
+      ...(editingBooking || {}),
       id: editingBooking ? editingBooking.id : bookingForm.id,
       createdAt: editingBooking ? editingBooking.createdAt : new Date().toISOString(),
       patientName: bookingForm.patientName.trim(),
@@ -1397,9 +1405,12 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
       preferredDate: editingBooking?.preferredDate || (bookingForm.bookingType === 'scheduled' ? (bookingForm.scheduledSlot || 'Scheduled') : 'Today (ASAP)'),
       preferredTime: editingBooking?.preferredTime || (bookingForm.bookingType === 'scheduled' ? (bookingForm.scheduledSlot || 'Scheduled Slot') : 'Instant Request'),
       status: bookingForm.status,
-      assignedNurseId: assignedNurseObj?.id,
-      assignedNurseName: assignedNurseObj?.name,
+      assignedNurseId: assignedNurseObj?.id || editingBooking?.assignedNurseId,
+      assignedNurseName: assignedNurseObj?.name || editingBooking?.assignedNurseName,
       estimatedFee: Number(bookingForm.estimatedFee),
+      finalFee: editingBooking?.finalFee,
+      nurseAcceptanceStatus: bookingForm.status === 'Completed' ? 'Accepted' : editingBooking?.nurseAcceptanceStatus,
+      nursePayoutRupees: finalPayout,
       hasPrescription: bookingForm.hasPrescription,
       notes: bookingForm.notes.trim(),
       bookingType: bookingForm.bookingType,
@@ -9162,7 +9173,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                           onChange={(e) => updateInvoiceCalculation({ patientName: e.target.value })}
                           placeholder="Patient name"
                           className="form-control"
-                          style={{ height: 34, fontSize: '0.82rem' }}
+                          style={{ minHeight: 42, height: 42, fontSize: '0.86rem', padding: '0.45rem 0.85rem' }}
                         />
                       </div>
                       <div>
@@ -9173,7 +9184,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                           onChange={(e) => updateInvoiceCalculation({ patientPhone: e.target.value })}
                           placeholder="+91 Phone"
                           className="form-control"
-                          style={{ height: 34, fontSize: '0.82rem' }}
+                          style={{ minHeight: 42, height: 42, fontSize: '0.86rem', padding: '0.45rem 0.85rem' }}
                         />
                       </div>
                       <div>
@@ -9182,7 +9193,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                           value={previewInvoice.assignedNurseName || ''}
                           onChange={(e) => updateInvoiceCalculation({ assignedNurseName: e.target.value })}
                           className="form-control"
-                          style={{ height: 34, fontSize: '0.82rem' }}
+                          style={{ minHeight: 42, height: 42, fontSize: '0.86rem', padding: '0.45rem 2.2rem 0.45rem 0.85rem', lineHeight: 'normal' }}
                         >
                           <option value="Assigned Fleet RN">Assigned Fleet RN (Default)</option>
                           {nurses.map((n) => (
@@ -9199,7 +9210,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                           value={previewInvoice.area || 'Banjara Hills'}
                           onChange={(e) => updateInvoiceCalculation({ area: e.target.value })}
                           className="form-control"
-                          style={{ height: 34, fontSize: '0.82rem' }}
+                          style={{ minHeight: 42, height: 42, fontSize: '0.86rem', padding: '0.45rem 2.2rem 0.45rem 0.85rem', lineHeight: 'normal' }}
                         >
                           {HYDERABAD_AREAS.map((a) => (
                             <option key={a} value={a}>{a}</option>
@@ -9214,7 +9225,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                           onChange={(e) => updateInvoiceCalculation({ fullAddress: e.target.value })}
                           placeholder="House/flat, apartment, landmark"
                           className="form-control"
-                          style={{ height: 34, fontSize: '0.82rem' }}
+                          style={{ minHeight: 42, height: 42, fontSize: '0.86rem', padding: '0.45rem 0.85rem' }}
                         />
                       </div>
                       <div>
@@ -9223,7 +9234,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                           value={previewInvoice.paymentStatus}
                           onChange={(e) => updateInvoiceCalculation({ paymentStatus: e.target.value as any })}
                           className="form-control"
-                          style={{ height: 34, fontSize: '0.82rem' }}
+                          style={{ minHeight: 42, height: 42, fontSize: '0.86rem', padding: '0.45rem 2.2rem 0.45rem 0.85rem', lineHeight: 'normal' }}
                         >
                           <option value="Paid">Paid</option>
                           <option value="Pending">Pending</option>
@@ -9236,7 +9247,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                           value={previewInvoice.paymentMode}
                           onChange={(e) => updateInvoiceCalculation({ paymentMode: e.target.value as any })}
                           className="form-control"
-                          style={{ height: 34, fontSize: '0.82rem' }}
+                          style={{ minHeight: 42, height: 42, fontSize: '0.86rem', padding: '0.45rem 2.2rem 0.45rem 0.85rem', lineHeight: 'normal' }}
                         >
                           <option value="UPI / Online">UPI / Online</option>
                           <option value="Cash on Visit">Cash on Visit</option>
@@ -9371,7 +9382,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                                         }
                                       }}
                                       className="form-control"
-                                      style={{ height: 28, fontSize: '0.74rem', fontWeight: 700, borderColor: '#BAE6FD', background: '#F0F9FF', color: '#0369A1' }}
+                                      style={{ minHeight: 36, height: 36, fontSize: '0.78rem', fontWeight: 700, borderColor: '#BAE6FD', background: '#F0F9FF', color: '#0369A1', padding: '0.35rem 2rem 0.35rem 0.65rem', lineHeight: 'normal' }}
                                     >
                                       <option value="" disabled>-- Select Clinical Service / Procedure --</option>
                                       {services.map((s) => (
@@ -9672,7 +9683,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                           value={previewInvoice.nightSurcharge || 0}
                           onChange={(e) => updateInvoiceCalculation({ nightSurcharge: Number(e.target.value) || 0 })}
                           className="form-control"
-                          style={{ height: 34, fontSize: '0.82rem' }}
+                          style={{ minHeight: 42, height: 42, fontSize: '0.86rem', padding: '0.45rem 0.85rem' }}
                           placeholder="e.g. 200 for late night"
                         />
                       </div>
@@ -9685,7 +9696,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                           value={previewInvoice.discountRupees || 0}
                           onChange={(e) => updateInvoiceCalculation({ discountRupees: Number(e.target.value) || 0 })}
                           className="form-control"
-                          style={{ height: 34, fontSize: '0.82rem' }}
+                          style={{ minHeight: 42, height: 42, fontSize: '0.86rem', padding: '0.45rem 0.85rem' }}
                           placeholder="e.g. 150 discount"
                         />
                       </div>
@@ -9696,7 +9707,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                           value={previewInvoice.notes || ''}
                           onChange={(e) => updateInvoiceCalculation({ notes: e.target.value })}
                           className="form-control"
-                          style={{ height: 34, fontSize: '0.82rem' }}
+                          style={{ minHeight: 42, height: 42, fontSize: '0.86rem', padding: '0.45rem 0.85rem' }}
                           placeholder="e.g. Includes aseptic sterile consumable kit"
                         />
                       </div>
@@ -9900,6 +9911,25 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                         <span style={{ color: '#059669' }}>₹{previewInvoice.totalAmount}</span>
                       </div>
                     </div>
+
+                    {/* Clinical Remarks / Special Notes Box */}
+                    {Boolean(previewInvoice.notes && previewInvoice.notes.trim()) && (
+                      <div style={{
+                        margin: '1.25rem 0',
+                        padding: '0.85rem 1.1rem',
+                        background: '#F0F9FF',
+                        border: '1.5px solid #BAE6FD',
+                        borderRadius: 10
+                      }}>
+                        <div style={{ fontSize: '0.72rem', fontWeight: 800, color: '#0369A1', textTransform: 'uppercase', marginBottom: '4px', letterSpacing: '0.04em', display: 'flex', alignItems: 'center', gap: '0.35rem' }}>
+                          <FileText size={13} />
+                          <span>Clinical Remarks / Special Notes:</span>
+                        </div>
+                        <div style={{ fontSize: '0.86rem', color: '#0C4A6E', lineHeight: 1.5, fontWeight: 500 }}>
+                          {previewInvoice.notes}
+                        </div>
+                      </div>
+                    )}
 
                     {/* Footer sign */}
                     <div style={{ borderTop: '1px dashed #CBD5E1', paddingTop: '1rem', display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '0.74rem', color: '#64748B' }}>
