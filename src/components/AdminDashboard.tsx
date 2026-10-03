@@ -1729,6 +1729,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
         (u.identifier && n.email && u.identifier.toLowerCase().trim() === n.email.toLowerCase().trim())
       );
     });
+    const m = calculateNurseMetrics(n, bookings, leads, services);
     setNurseForm({
       id: n.id,
       name: n.name,
@@ -1741,10 +1742,10 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
       certificateVerified: !!n.certificateVerified,
       rating: n.rating || 4.9,
       pin: (n.pin && n.pin.trim() !== '') ? n.pin.trim() : (existingUser?.pin ? String(existingUser.pin).trim() : ''),
-      pointsEarned: Number(n.pointsEarned) || 0,
-      referralEarningsRupees: Number(n.referralEarningsRupees) || 0,
+      pointsEarned: m.totalPoints,
+      referralEarningsRupees: m.referralEarnings,
       earningsPaid: Number(n.earningsPaid) || 0,
-      earningsPending: Number(n.earningsPending) || 0,
+      earningsPending: m.completedVisitsEarnings,
       avatarUrl: n.avatarUrl || ''
     });
     setIsNurseModalOpen(true);
@@ -7414,13 +7415,16 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                   <input
                     type="number"
                     min={0}
-                    step={50}
-                    placeholder="e.g. 1000"
+                    step={10}
+                    placeholder="e.g. 130"
                     value={nurseForm.referralEarningsRupees}
                     onChange={(e) => setNurseForm({ ...nurseForm, referralEarningsRupees: Number(e.target.value) })}
                     className="form-control"
                     style={{ fontWeight: 800, color: '#047857', background: '#ECFDF5', borderColor: '#A7F3D0' }}
                   />
+                  <div style={{ fontSize: '0.72rem', color: '#059669', marginTop: '3px', fontWeight: 600 }}>
+                    Strictly 10% on completed patient referrals
+                  </div>
                 </div>
               </div>
 
