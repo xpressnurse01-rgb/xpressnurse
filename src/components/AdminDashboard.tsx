@@ -3968,7 +3968,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                               <td>{n.experienceYears} Years</td>
                               <td>
                                 <div><strong>{m.completedVisitsCount} Done</strong> <span style={{ fontSize: '0.74rem', color: '#64748B' }}>({m.activeVisitsCount} Active)</span></div>
-                                <div style={{ fontSize: '0.74rem', color: 'var(--neutral-500)', marginTop: '2px' }}>Leads: {m.totalLeadsCount} • Ref: {m.convertedLeadsCount}</div>
+                                <div style={{ fontSize: '0.74rem', color: 'var(--neutral-500)', marginTop: '2px' }}>Leads: {m.totalLeadsCount} • Ref Done: {m.completedReferredVisitsCount}</div>
                               </td>
                               <td>
                                 <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}>

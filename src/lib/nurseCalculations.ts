@@ -8,17 +8,19 @@ export interface NurseFinancialMetrics {
   completedVisits: Booking[];
   activeVisitsCount: number;
   completedVisitsCount: number;
-  completedVisitsEarnings: number; // 70% service charge for completed visits
+  completedVisitsEarnings: number; // Strictly 70% service charge for visits completed by this nurse
 
   // Referrals
   myLeads: NurseLead[];
   myConvertedLeads: NurseLead[];
+  completedReferredVisits: Booking[];
+  completedReferredVisitsCount: number;
   totalLeadsCount: number;
   convertedLeadsCount: number;
-  referralEarnings: number; // 10% procedure fee from converted patient referrals (or admin adjusted cash)
+  referralEarnings: number; // Strictly 10% on referred patient service completion
 
   // Totals
-  totalMoney: number; // completedVisitsEarnings (70%) + referralEarnings (10%)
+  totalMoney: number; // completedVisitsEarnings (70%) + referralEarnings (10% on completed referred patient visits)
   totalPoints: number; // live points
   referralCode: string;
 }
@@ -265,15 +267,12 @@ export function calculateNurseMetrics(
   const activeVisits = myVisits.filter((b) => b.status === 'Assigned' || b.status === 'In-Progress');
   const completedVisits = myVisits.filter((b) => b.status === 'Completed');
 
-  // Completed visit earnings (70% service charge for completed visits or explicit nursePayoutRupees)
+  // 1. Completed visit earnings: strictly 70% of service charge for completed visits assigned to this nurse
   let completedVisitsEarnings = 0;
   completedVisits.forEach((visit) => {
     const procedure = services.find((s) => s.id === visit.serviceId);
-    const fee = Number(visit.finalFee !== undefined ? visit.finalFee : (visit.estimatedFee || (procedure ? procedure.priceNumber : 899)));
-    const calculated70 = Math.round(fee * 0.70);
-    completedVisitsEarnings += (visit.nursePayoutRupees !== undefined && visit.nursePayoutRupees !== null && Number(visit.nursePayoutRupees) > 0)
-      ? Number(visit.nursePayoutRupees)
-      : calculated70;
+    const fee = Number(visit.finalFee !== undefined && visit.finalFee !== null ? visit.finalFee : (visit.estimatedFee || (procedure ? procedure.priceNumber : 800)));
+    completedVisitsEarnings += Math.round(fee * 0.70);
   });
 
   // 2. Filter Leads submitted by THIS nurse
@@ -287,35 +286,86 @@ export function calculateNurseMetrics(
     return false;
   });
 
-  const myConvertedLeads = myLeads.filter((l) =>
-    l.status === 'Converted' ||
-    (l.status === 'Approved' && (l.referralType === 'nurse' || Boolean(l.referredNursePhone)))
-  );
+  const myPatientLeads = myLeads.filter((l) => l.referralType !== 'nurse' && !l.referredNursePhone);
 
-  // 10% procedure fee from converted patient referrals
-  let referralCommissionFromLeads = 0;
-  myConvertedLeads.forEach((lead) => {
-    if (lead.referralType !== 'nurse' && !lead.referredNursePhone) {
-      const procedure = services.find((s) => s.id === lead.serviceId);
-      const fee = Number(lead.leadValueRupees) || (procedure?.priceNumber ?? 800);
-      referralCommissionFromLeads += Math.round(fee * 0.10);
+  // 3. Strictly find all COMPLETED bookings for patients referred by THIS nurse
+  // Referral earnings are strictly 10% and ONLY awarded on referred patient service completion
+  const completedReferredVisits: Booking[] = [];
+  const seenReferredBookingIds = new Set<string>();
+
+  cleanBookings.forEach((b) => {
+    // Must be completed service
+    if (b.status !== 'Completed') return;
+    if (seenReferredBookingIds.has(b.id)) return;
+
+    // Check direct nurse referral on the booking
+    const isDirectRef = Boolean(
+      (b.referringNurseId && b.referringNurseId === nurseId) ||
+      (nursePhoneClean && (b as any).referringNursePhone && (b as any).referringNursePhone.replace(/\D/g, '').endsWith(nurseLast10)) ||
+      (nurseNameClean && b.referringNurseName && b.referringNurseName.toLowerCase().includes(nurseNameClean))
+    );
+
+    // Check matching patient lead submitted by this nurse
+    const isMatchedLeadRef = !isDirectRef && myPatientLeads.some((l) => {
+      const lPhone = normalizePhone10(l.patientPhone);
+      const bPhone = normalizePhone10(b.patientPhone);
+      const lName = (l.patientName || '').toLowerCase().trim();
+      const bName = (b.patientName || '').toLowerCase().trim();
+      const cleanLeadDigits = l.id.replace(/\D/g, '') || l.id.slice(-6);
+
+      if (b.id === `BK-${cleanLeadDigits.slice(-6)}` || b.id === `BK-${cleanLeadDigits.slice(-4)}`) return true;
+      if (lPhone && bPhone && lPhone === bPhone && lPhone.length >= 10) return true;
+      if (lName && bName && lName === bName) return true;
+      return false;
+    });
+
+    if (isDirectRef || isMatchedLeadRef) {
+      seenReferredBookingIds.add(b.id);
+      completedReferredVisits.push(b);
     }
   });
 
-  // Referral earnings: sync with converted patient referrals + any admin-adjusted referral bonus cash
-  const referralEarnings = Math.max(Number(nurse.referralEarningsRupees || 0), referralCommissionFromLeads);
+  // Strictly 10% on referred patient service completion
+  let referralEarnings = 0;
+  completedReferredVisits.forEach((visit) => {
+    const procedure = services.find((s) => s.id === visit.serviceId);
+    const fee = Number(visit.finalFee !== undefined && visit.finalFee !== null ? visit.finalFee : (visit.estimatedFee || (procedure ? procedure.priceNumber : 800)));
+    referralEarnings += Math.round(fee * 0.10);
+  });
 
-  // Total rupee earnings (70% visits + 10% referrals)
+  // Total rupee earnings strictly: 70% service earnings + 10% on referred patient service completion
   const totalMoney = completedVisitsEarnings + referralEarnings;
 
-  // Total points: prioritize nurse.pointsEarned set by Admin/system, combined with converted lead points
+  // Converted leads: colleague nurse referrals that are approved/converted + patient referrals with completed service
+  const myConvertedLeads = myLeads.filter((l) => {
+    if (l.status === 'Rejected' || Boolean(l.rejectionReason)) return false;
+    if (l.referralType === 'nurse' || Boolean(l.referredNursePhone)) {
+      return l.status === 'Converted' || l.status === 'Approved';
+    }
+    const lPhone = normalizePhone10(l.patientPhone);
+    const lName = (l.patientName || '').toLowerCase().trim();
+    const cleanLeadDigits = l.id.replace(/\D/g, '') || l.id.slice(-6);
+
+    const hasCompletedVisit = completedReferredVisits.some((b) => {
+      if (b.id === `BK-${cleanLeadDigits.slice(-6)}` || b.id === `BK-${cleanLeadDigits.slice(-4)}`) return true;
+      const bPhone = normalizePhone10(b.patientPhone);
+      if (lPhone && bPhone && lPhone === bPhone && lPhone.length >= 10) return true;
+      const bName = (b.patientName || '').toLowerCase().trim();
+      if (lName && bName && lName === bName) return true;
+      return false;
+    });
+
+    return hasCompletedVisit || l.status === 'Converted';
+  });
+
+  // Total points: live points earned from completed patient referrals and approved colleague nurses (+50 pts each)
   const basePointsFromLeads = myConvertedLeads.reduce((acc, l) => acc + (Number(l.pointsAwarded) || 50), 0);
   const totalPoints = (nurse.pointsEarned !== undefined && nurse.pointsEarned !== null && !isNaN(Number(nurse.pointsEarned)))
     ? Math.max(Number(nurse.pointsEarned), basePointsFromLeads)
     : basePointsFromLeads;
 
   const totalLeadsCount = Math.max(Number(nurse.totalLeads || 0), myLeads.length);
-  const convertedLeadsCount = Math.max(Number(nurse.convertedLeads || 0), myConvertedLeads.length);
+  const convertedLeadsCount = Math.max(Number(nurse.convertedLeads || 0), myConvertedLeads.length, completedReferredVisits.length);
 
   const referralCode = nurse.referralCode || generateNurseReferralCode(nurse.name, nurse.id, nurse.phone || '');
 
@@ -328,6 +378,8 @@ export function calculateNurseMetrics(
     completedVisitsEarnings,
     myLeads,
     myConvertedLeads,
+    completedReferredVisits,
+    completedReferredVisitsCount: completedReferredVisits.length,
     totalLeadsCount,
     convertedLeadsCount,
     referralEarnings,

@@ -726,7 +726,7 @@ export async function dbFetchLeads(): Promise<NurseLead[] | null> {
     area: l.area,
     submittedAt: l.submitted_at,
     referralType: l.referral_type,
-    status: l.status || 'Converted',
+    status: l.status || 'Pending Approval',
     assignedNurseId: l.assigned_nurse_id,
     leadValueRupees: Number(l.lead_value_rupees) || 1000.00,
     pointsAwarded: l.points_awarded != null && !isNaN(Number(l.points_awarded)) ? Math.round(Number(l.points_awarded)) : 50,

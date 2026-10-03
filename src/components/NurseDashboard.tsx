@@ -201,6 +201,7 @@ export const NurseDashboard: React.FC<NurseDashboardProps> = ({
     completedVisitsEarnings,
     myLeads,
     myConvertedLeads,
+    completedReferredVisits,
     referralEarnings: calculatedMoney,
     totalMoney,
     totalPoints,
@@ -1521,7 +1522,7 @@ export const NurseDashboard: React.FC<NurseDashboardProps> = ({
                     💰 ₹{completedVisitsEarnings} from {completedVisits.length} Finished Visits (70%)
                   </span>
                   <span style={{ fontSize: '0.76rem', background: 'rgba(255,255,255,0.2)', padding: '2px 8px', borderRadius: 6, color: '#FFFFFF', fontWeight: 700 }}>
-                    👥 ₹{calculatedMoney} from Patient Referrals (10%)
+                    👥 ₹{calculatedMoney} from {completedReferredVisits.length} Finished Patient Referrals (10%)
                   </span>
                 </div>
               </div>
@@ -1662,9 +1663,37 @@ export const NurseDashboard: React.FC<NurseDashboardProps> = ({
                     ) : (
                       <div style={{ display: 'flex', flexDirection: 'column', gap: '0.6rem' }}>
                         {patientLeads.map((lead) => {
-                          const isRejected = lead.status === 'Rejected' || Boolean(lead.rejectionReason);
-                          const isFullyCompleted = !isRejected && lead.status === 'Converted';
-                          const isApprovedAwaitingVisit = !isRejected && lead.status === 'Approved';
+                          const lPhone = (lead.patientPhone || '').replace(/\D/g, '').slice(-10);
+                          const lName = (lead.patientName || '').toLowerCase().trim();
+                          const cleanLeadDigits = lead.id.replace(/\D/g, '') || lead.id.slice(-6);
+
+                          const matchingCompleted = completedReferredVisits.find((b) => {
+                            if (b.id === `BK-${cleanLeadDigits.slice(-6)}` || b.id === `BK-${cleanLeadDigits.slice(-4)}`) return true;
+                            const bPhone = (b.patientPhone || '').replace(/\D/g, '').slice(-10);
+                            if (lPhone && bPhone && lPhone === bPhone && lPhone.length >= 10) return true;
+                            const bName = (b.patientName || '').toLowerCase().trim();
+                            if (lName && bName && lName === bName) return true;
+                            return false;
+                          });
+
+                          const matchingBooking = bookings.find((b) => {
+                            if (b.id === `BK-${cleanLeadDigits.slice(-6)}` || b.id === `BK-${cleanLeadDigits.slice(-4)}`) return true;
+                            const bPhone = (b.patientPhone || '').replace(/\D/g, '').slice(-10);
+                            if (lPhone && bPhone && lPhone === bPhone && lPhone.length >= 10) return true;
+                            const bName = (b.patientName || '').toLowerCase().trim();
+                            if (lName && bName && lName === bName) return true;
+                            return false;
+                          });
+
+                          const isRejected = lead.status === 'Rejected' || matchingBooking?.status === 'Rejected' || matchingBooking?.status === 'Cancelled' || Boolean(lead.rejectionReason);
+                          const isFullyCompleted = !isRejected && Boolean(matchingCompleted);
+                          const isApprovedAwaitingVisit = !isRejected && !isFullyCompleted && (matchingBooking?.status === 'Assigned' || matchingBooking?.status === 'In-Progress');
+
+                          const procedure = services.find(s => s.id === (matchingCompleted?.serviceId || matchingBooking?.serviceId || lead.serviceId));
+                          const baseFee = Number(matchingCompleted?.finalFee !== undefined && matchingCompleted?.finalFee !== null
+                            ? matchingCompleted.finalFee
+                            : (matchingCompleted?.estimatedFee || matchingBooking?.finalFee || matchingBooking?.estimatedFee || (procedure ? procedure.priceNumber : 800)));
+                          const earned10 = Math.round(baseFee * 0.10);
 
                           return (
                             <div
@@ -1702,8 +1731,8 @@ export const NurseDashboard: React.FC<NurseDashboardProps> = ({
                                     {isRejected
                                       ? '✕ Referral Rejected'
                                       : (isFullyCompleted
-                                        ? `✓ Visit Done (+50 Pts, +₹${lead.referralCommissionRupees || 80})`
-                                        : (isApprovedAwaitingVisit ? '⏳ Allotted • Visit in Progress' : '⏳ Office Review'))}
+                                        ? `✓ Visit Done (+50 Pts, +₹${earned10})`
+                                        : (isApprovedAwaitingVisit ? '⏳ Allotted • Visit in Progress' : '⏳ Office Review • Pending Visit'))}
                                   </span>
                                   {isRejected ? (
                                     <div style={{ fontSize: '0.72rem', color: '#DC2626', fontWeight: 700, marginTop: '2px' }}>
@@ -1711,11 +1740,11 @@ export const NurseDashboard: React.FC<NurseDashboardProps> = ({
                                     </div>
                                   ) : isFullyCompleted ? (
                                     <div style={{ fontSize: '0.75rem', color: '#059669', fontWeight: 700, marginTop: '2px' }}>
-                                      +50 Pts & 10% Fee Credited
+                                      +50 Pts & ₹{earned10} (10% Fee) Credited
                                     </div>
                                   ) : (
                                     <div style={{ fontSize: '0.72rem', color: '#B45309', fontWeight: 600, marginTop: '2px' }}>
-                                      50 pts + 10% fee credited after visit
+                                      50 pts + ₹{earned10} (10%) credited after visit
                                     </div>
                                   )}
                                 </div>
@@ -2227,28 +2256,34 @@ export const NurseDashboard: React.FC<NurseDashboardProps> = ({
             </div>
 
             <div style={{ padding: '1.5rem', display: 'flex', flexDirection: 'column', gap: '0.8rem' }}>
-              {myConvertedLeads.filter(l => l.referralType !== 'nurse' && !l.referredNursePhone).map(lead => {
-                const procedure = services.find(s => s.id === lead.serviceId);
-                const fee = Number(lead.leadValueRupees) || (procedure?.priceNumber ?? 800);
-                const fallbackEarnings = Math.round(fee * 0.10);
+              {/* 1. Completed Patient Referrals (Strictly 10% on service completion) */}
+              {completedReferredVisits.map(visit => {
+                const procedure = services.find(s => s.id === visit.serviceId);
+                const fee = Number(visit.finalFee !== undefined && visit.finalFee !== null ? visit.finalFee : (visit.estimatedFee || (procedure ? procedure.priceNumber : 800)));
+                const refEarnings = Math.round(fee * 0.10);
                 return (
-                  <div key={lead.id} style={{ display: 'flex', justifyContent: 'space-between', padding: '1rem', border: '1px solid #E2E8F0', borderRadius: 12 }}>
+                  <div key={`ref-${visit.id}`} style={{ display: 'flex', justifyContent: 'space-between', padding: '1rem', border: '1px solid #BBF7D0', borderRadius: 12, background: '#F0FDF4' }}>
                     <div>
-                      <div style={{ fontWeight: 700, color: '#1E293B' }}>Patient Referral: {lead.patientName}</div>
-                      <div style={{ fontSize: '0.8rem', color: '#64748B' }}>Status: {lead.status}</div>
+                      <div style={{ fontWeight: 700, color: '#166534' }}>Patient Referral Completed: {visit.patientName}</div>
+                      <div style={{ fontSize: '0.8rem', color: '#64748B' }}>Service: {visit.serviceTitle || visit.serviceId} (Bill: ₹{fee})</div>
+                      <div style={{ fontSize: '0.72rem', color: '#059669', marginTop: '0.15rem' }}>Booking ID: {visit.id}</div>
                     </div>
                     <div style={{ textAlign: 'right' }}>
-                      <div style={{ fontWeight: 800, color: '#059669' }}>+₹{fallbackEarnings} (10%)</div>
-                      <div style={{ fontSize: '0.8rem', color: '#16A34A', fontWeight: 600 }}>+{lead.pointsAwarded || 50} pts</div>
+                      <div style={{ fontWeight: 800, color: '#059669', fontSize: '1.05rem' }}>+₹{refEarnings}</div>
+                      <span style={{ fontSize: '0.72rem', background: '#DCFCE7', color: '#15803D', padding: '2px 6px', borderRadius: 4, fontWeight: 700, border: '1px solid #BBF7D0', display: 'inline-block', marginTop: '2px' }}>
+                        10% Referral Commission
+                      </span>
+                      <div style={{ fontSize: '0.75rem', color: '#16A34A', fontWeight: 600, marginTop: '2px' }}>+50 pts</div>
                     </div>
                   </div>
                 );
               })}
 
-              {myConvertedLeads.filter(l => l.referralType === 'nurse' || l.referredNursePhone).map(lead => (
+              {/* 2. Nurse Colleague Referrals (+50 points each) */}
+              {myConvertedLeads.filter(l => l.referralType === 'nurse' || Boolean(l.referredNursePhone)).map(lead => (
                 <div key={lead.id} style={{ display: 'flex', justifyContent: 'space-between', padding: '1rem', border: '1px solid #E2E8F0', borderRadius: 12 }}>
                   <div>
-                    <div style={{ fontWeight: 700, color: '#1E293B' }}>Nurse Referral: {lead.referredNurseName || lead.patientName}</div>
+                    <div style={{ fontWeight: 700, color: '#1E293B' }}>Nurse Colleague Referral: {lead.referredNurseName || lead.patientName}</div>
                     <div style={{ fontSize: '0.8rem', color: '#64748B' }}>Status: {lead.status}</div>
                   </div>
                   <div style={{ textAlign: 'right' }}>
@@ -2257,9 +2292,10 @@ export const NurseDashboard: React.FC<NurseDashboardProps> = ({
                 </div>
               ))}
 
+              {/* 3. Completed Assigned Visits (Strictly 70% service charge) */}
               {completedVisits.map(visit => {
                 const procedure = services.find(s => s.id === visit.serviceId);
-                const fee = Number(visit.finalFee !== undefined ? visit.finalFee : (visit.estimatedFee || (procedure ? procedure.priceNumber : 899)));
+                const fee = Number(visit.finalFee !== undefined && visit.finalFee !== null ? visit.finalFee : (visit.estimatedFee || (procedure ? procedure.priceNumber : 899)));
                 const earnings = Math.round(fee * 0.70);
                 return (
                   <div key={visit.id} style={{ display: 'flex', justifyContent: 'space-between', padding: '1rem', border: '1px solid #E2E8F0', borderRadius: 12, background: '#F8FAFC' }}>
@@ -2278,7 +2314,7 @@ export const NurseDashboard: React.FC<NurseDashboardProps> = ({
                 );
               })}
 
-              {myConvertedLeads.length === 0 && completedVisits.length === 0 && (
+              {completedReferredVisits.length === 0 && completedVisits.length === 0 && myConvertedLeads.length === 0 && (
                 <div style={{ textAlign: 'center', padding: '2rem', color: '#64748B' }}>
                   No transactions yet.
                 </div>

@@ -346,7 +346,7 @@ export const App: React.FC = () => {
         const fee = Number(l.leadValueRupees) || (procedure?.priceNumber || 800);
         const comm = Number(l.referralCommissionRupees) || Math.round(fee * 0.10);
         const assignedNurse = l.assignedNurseId ? nurses.find((n) => n.id === l.assignedNurseId) : null;
-        const bStatus = l.status === 'Converted' ? 'Completed' : (l.assignedNurseId ? 'Assigned' : 'Pending');
+        const bStatus = (l.status === 'Converted' && (l.adminNotes?.includes('completed') || (l as any).completedAt)) ? 'Completed' : (l.assignedNurseId ? 'Assigned' : 'Pending');
 
         const synthBooking: Booking = {
           id: deterministicId,
@@ -723,7 +723,7 @@ export const App: React.FC = () => {
             const fee = Number(l.leadValueRupees) || (procedure?.priceNumber || 800);
             const comm = Number(l.referralCommissionRupees) || Math.round(fee * 0.10);
             const assignedNurse = l.assignedNurseId ? effectiveNurses.find((n) => n.id === l.assignedNurseId) : null;
-            const bStatus = l.status === 'Converted' ? 'Completed' : (l.assignedNurseId ? 'Assigned' : 'Pending');
+            const bStatus = (l.status === 'Converted' && (l.adminNotes?.includes('completed') || (l as any).completedAt)) ? 'Completed' : (l.assignedNurseId ? 'Assigned' : 'Pending');
 
             const synthBooking: Booking = {
               id: deterministicId,
