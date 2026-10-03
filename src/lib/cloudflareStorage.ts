@@ -745,8 +745,8 @@ export const cleanPatientFacingNotes = (notes?: string | null): string => {
 export const generateInvoiceDetails = (booking: Booking): InvoiceDetails => {
   const config = getCloudflareConfig();
   const cleanBookingId = booking.id.replace(/[^a-zA-Z0-9]/g, '');
-  const invoiceNumber = `XN-INV-2026-${(cleanBookingId.slice(-6) || 'GENERAL').toUpperCase()}`;
-  const baseFee = Number(booking.finalFee !== undefined ? booking.finalFee : (booking.estimatedFee || 800));
+  const invoiceNumber = booking.invoiceNumber || `XN-INV-2026-${(cleanBookingId.slice(-6) || 'GENERAL').toUpperCase()}`;
+  const baseFee = Number(booking.finalFee !== undefined && booking.finalFee !== null ? booking.finalFee : (booking.estimatedFee || 800));
   const discount = Number(booking.discountRupees) || 0;
   const nightSurcharge = Number(booking.nightSurcharge) || 0;
   const subtotal = Math.max(0, baseFee + nightSurcharge - discount);
@@ -755,7 +755,22 @@ export const generateInvoiceDetails = (booking: Booking): InvoiceDetails => {
   const baseDomain = (config.publicDomain && config.publicDomain.startsWith('http'))
     ? config.publicDomain.replace(/\/+$/, '')
     : 'https://pub-830eaa9d07034c8d985d7d00577f77e9.r2.dev';
-  const r2PublicUrl = `${baseDomain}/${r2StorageKey}`;
+  let r2PublicUrl = booking.invoiceUrl || `${baseDomain}/${r2StorageKey}`;
+
+  // If invoiceUrl was not directly on the booking, inspect synced Cloudflare storage objects
+  if (!booking.invoiceUrl && typeof window !== 'undefined') {
+    try {
+      const existingObjs = getCloudflareObjects();
+      const match = existingObjs.find(o =>
+        o.metadata?.bookingId === booking.id ||
+        (booking.invoiceNumber && o.fileName === `${booking.invoiceNumber}.html`) ||
+        o.key === `invoices/${invoiceNumber}.html`
+      );
+      if (match?.publicUrl) {
+        r2PublicUrl = match.publicUrl;
+      }
+    } catch { }
+  }
 
   return {
     invoiceNumber,
@@ -1015,6 +1030,10 @@ export const generatePrintableInvoiceHtml = (inv: InvoiceDetails): string => {
 
 // Open printable invoice window
 export const openPrintableInvoiceWindow = (inv: InvoiceDetails): void => {
+  if (inv.r2PublicUrl && inv.r2PublicUrl.startsWith('http')) {
+    window.open(inv.r2PublicUrl, '_blank');
+    return;
+  }
   const html = generatePrintableInvoiceHtml(inv);
   const win = window.open('', '_blank');
   if (win) {

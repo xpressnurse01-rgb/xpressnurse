@@ -663,7 +663,8 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
           area: (previewInvoice.area || matchingBooking.area) as any,
           invoiceNumber: previewInvoice.invoiceNumber,
           invoiceUrl: finalInvoiceUrl,
-          status: matchingBooking.status
+          discountRupees: Number(previewInvoice.discountRupees) || 0,
+          status: (matchingBooking.status === 'Pending' && (assignedNurseObj || previewInvoice.assignedNurseName)) ? 'Assigned' : matchingBooking.status
         };
 
         await onUpdateBooking(matchingBooking.id, updatePayload);

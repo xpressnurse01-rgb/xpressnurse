@@ -1967,7 +1967,11 @@ export const App: React.FC = () => {
       }
     }
 
-    setBookings((prev) => prev.map((b) => (b.id === id ? { ...b, ...updates } : b)));
+    setBookings((prev) => {
+      const next = prev.map((b) => (b.id === id ? { ...b, ...updates } : b));
+      try { localStorage.setItem('xn_cached_bookings', JSON.stringify(next)); } catch { }
+      return next;
+    });
     broadcastRealtimeUpdate('BOOKING_UPDATE', { id, ...updates });
     await dbUpdateBooking(id, updates);
   };

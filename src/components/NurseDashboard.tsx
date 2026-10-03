@@ -349,7 +349,8 @@ export const NurseDashboard: React.FC<NurseDashboardProps> = ({
 
   const handleViewInvoice = (booking: Booking) => {
     const inv = generateInvoiceDetails(booking);
-    openPrintableInvoiceWindow(inv);
+    setPreviewInvoice(inv);
+    setIsInvoiceModalOpen(true);
   };
 
   return (
@@ -790,6 +791,50 @@ export const NurseDashboard: React.FC<NurseDashboardProps> = ({
                     >
                       <MessageCircle size={13} /> WhatsApp
                     </a>
+                    <button
+                      type="button"
+                      onClick={() => handleViewInvoice(activeVisits[0])}
+                      style={{
+                        background: activeVisits[0].invoiceUrl ? '#F0F9FF' : '#F8FAFC',
+                        border: activeVisits[0].invoiceUrl ? '1px solid #BAE6FD' : '1px solid #CBD5E1',
+                        color: activeVisits[0].invoiceUrl ? '#0284C7' : '#0F172A',
+                        borderRadius: 8,
+                        padding: '0.45rem 0.8rem',
+                        fontSize: '0.8rem',
+                        fontWeight: 700,
+                        cursor: 'pointer',
+                        display: 'inline-flex',
+                        alignItems: 'center',
+                        gap: '0.3rem'
+                      }}
+                    >
+                      <Receipt size={13} style={{ color: activeVisits[0].invoiceUrl ? '#0284C7' : undefined }} />
+                      <span>Doorstep Bill {activeVisits[0].invoiceNumber ? `(#${activeVisits[0].invoiceNumber.replace('XN-INV-2026-', '')})` : ''}</span>
+                    </button>
+                    {activeVisits[0].invoiceUrl && (
+                      <a
+                        href={activeVisits[0].invoiceUrl}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="btn"
+                        style={{
+                          background: '#ECFDF5',
+                          border: '1px solid #A7F3D0',
+                          color: '#059669',
+                          borderRadius: 8,
+                          padding: '0.45rem 0.7rem',
+                          fontSize: '0.8rem',
+                          fontWeight: 750,
+                          textDecoration: 'none',
+                          display: 'inline-flex',
+                          alignItems: 'center',
+                          gap: '0.25rem'
+                        }}
+                      >
+                        <ExternalLink size={13} />
+                        <span>Live Bill</span>
+                      </a>
+                    )}
                     {activeVisits[0].status === 'Assigned' && (
                       <>
                         <button
@@ -1161,10 +1206,11 @@ export const NurseDashboard: React.FC<NurseDashboardProps> = ({
                           <button
                             type="button"
                             onClick={() => handleViewInvoice(visit)}
+                            title={visit.invoiceUrl ? `View Synced Doorstep Bill (${visit.invoiceNumber || 'Official'})` : 'View Doorstep Bill'}
                             style={{
-                              background: '#F8FAFC',
-                              border: '1px solid #E2E8F0',
-                              color: '#475569',
+                              background: visit.invoiceUrl ? '#F0F9FF' : '#F8FAFC',
+                              border: visit.invoiceUrl ? '1px solid #BAE6FD' : '1px solid #E2E8F0',
+                              color: visit.invoiceUrl ? '#0284C7' : '#475569',
                               padding: '0.35rem 0.7rem',
                               borderRadius: 6,
                               fontSize: '0.76rem',
@@ -1175,9 +1221,33 @@ export const NurseDashboard: React.FC<NurseDashboardProps> = ({
                               gap: '0.25rem'
                             }}
                           >
-                            <Receipt size={12} />
-                            <span>Doorstep Bill</span>
+                            <Receipt size={12} style={{ color: visit.invoiceUrl ? '#0284C7' : undefined }} />
+                            <span>Doorstep Bill {visit.invoiceNumber ? `(#${visit.invoiceNumber.replace('XN-INV-2026-', '')})` : ''}</span>
                           </button>
+                          {visit.invoiceUrl && (
+                            <a
+                              href={visit.invoiceUrl}
+                              target="_blank"
+                              rel="noreferrer"
+                              title="Open Official Synced Bill on Cloudflare R2"
+                              style={{
+                                background: '#ECFDF5',
+                                border: '1px solid #A7F3D0',
+                                color: '#059669',
+                                padding: '0.35rem 0.6rem',
+                                borderRadius: 6,
+                                fontSize: '0.74rem',
+                                fontWeight: 750,
+                                textDecoration: 'none',
+                                display: 'inline-flex',
+                                alignItems: 'center',
+                                gap: '0.2rem'
+                              }}
+                            >
+                              <ExternalLink size={12} />
+                              <span>Live Bill</span>
+                            </a>
+                          )}
                         </div>
 
                         {/* State Change Buttons */}
@@ -2341,17 +2411,37 @@ export const NurseDashboard: React.FC<NurseDashboardProps> = ({
           <div style={{
             background: '#FFFFFF',
             borderRadius: 16,
-            maxWidth: 500,
+            maxWidth: 520,
             width: '100%',
             padding: '1.5rem',
             boxShadow: '0 20px 40px rgba(0,0,0,0.2)'
           }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '1rem' }}>
               <div>
-                <h4 style={{ margin: 0, fontSize: '1.15rem', fontWeight: 800, color: '#0F172A' }}>
-                  Doorstep Bill: {previewInvoice.invoiceNumber}
-                </h4>
-                <div style={{ fontSize: '0.78rem', color: '#64748B' }}>Date: {previewInvoice.invoiceDate}</div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '0.45rem', flexWrap: 'wrap' }}>
+                  <h4 style={{ margin: 0, fontSize: '1.15rem', fontWeight: 800, color: '#0F172A' }}>
+                    Doorstep Bill: {previewInvoice.invoiceNumber}
+                  </h4>
+                  {previewInvoice.r2PublicUrl && (
+                    <span style={{
+                      fontSize: '0.7rem',
+                      background: '#DCFCE7',
+                      color: '#15803D',
+                      padding: '2px 7px',
+                      borderRadius: 6,
+                      fontWeight: 750,
+                      border: '1px solid #86EFAC',
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      gap: 3
+                    }}>
+                      ✓ Live Synced Bill
+                    </span>
+                  )}
+                </div>
+                <div style={{ fontSize: '0.78rem', color: '#64748B', marginTop: 2 }}>
+                  Date: {previewInvoice.invoiceDate} • Assigned RN: {previewInvoice.assignedNurseName || nurse.name}
+                </div>
               </div>
               <button
                 type="button"
@@ -2363,12 +2453,18 @@ export const NurseDashboard: React.FC<NurseDashboardProps> = ({
             </div>
 
             <div style={{ background: '#F8FAFC', borderRadius: 10, padding: '1rem', marginBottom: '1rem', border: '1px solid #E2E8F0' }}>
-              <div style={{ fontSize: '0.85rem', color: '#0F172A', fontWeight: 700 }}>{previewInvoice.patientName}</div>
-              <div style={{ fontSize: '0.8rem', color: '#64748B' }}>{previewInvoice.fullAddress || previewInvoice.area}</div>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <span style={{ fontSize: '0.88rem', color: '#0F172A', fontWeight: 800 }}>{previewInvoice.patientName}</span>
+                {previewInvoice.patientPhone && (
+                  <span style={{ fontSize: '0.78rem', color: '#0284C7', fontWeight: 700 }}>{previewInvoice.patientPhone}</span>
+                )}
+              </div>
+              <div style={{ fontSize: '0.8rem', color: '#64748B', marginTop: 2 }}>{previewInvoice.fullAddress || previewInvoice.area}</div>
+              
               <div style={{ borderTop: '1px dashed #CBD5E1', margin: '0.75rem 0', paddingTop: '0.75rem' }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.85rem', color: '#334155' }}>
                   <span>
-                    {previewInvoice.serviceTitle}
+                    <strong>{previewInvoice.serviceTitle}</strong>
                     {previewInvoice.serviceDate && <span style={{ display: 'block', fontSize: '0.75rem', color: '#64748B' }}>Date: {previewInvoice.serviceDate}</span>}
                     {previewInvoice.timeSlot && <span style={{ display: 'block', fontSize: '0.75rem', color: '#64748B' }}>Slot: {previewInvoice.timeSlot}</span>}
                   </span>
@@ -2376,32 +2472,73 @@ export const NurseDashboard: React.FC<NurseDashboardProps> = ({
                 </div>
                 {Boolean(previewInvoice.discountRupees && previewInvoice.discountRupees > 0) && (
                   <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.85rem', color: '#059669', marginTop: '4px' }}>
-                    <span>Coupon Discount</span>
+                    <span>Coupon / Special Discount</span>
                     <strong>-₹{previewInvoice.discountRupees}</strong>
                   </div>
                 )}
+                {Boolean(previewInvoice.nightSurcharge && previewInvoice.nightSurcharge > 0) && (
+                  <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.85rem', color: '#B45309', marginTop: '4px' }}>
+                    <span>Night Surcharge</span>
+                    <strong>+₹{previewInvoice.nightSurcharge}</strong>
+                  </div>
+                )}
                 <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '1.1rem', fontWeight: 900, color: '#0F172A', marginTop: '0.6rem', paddingTop: '0.6rem', borderTop: '1px solid #E2E8F0' }}>
-                  <span>Total Due:</span>
+                  <span>Total Amount Due:</span>
                   <span style={{ color: '#059669' }}>₹{previewInvoice.totalAmount}</span>
                 </div>
+                <div style={{ marginTop: '0.4rem', fontSize: '0.78rem', color: '#64748B', display: 'flex', justifyContent: 'space-between' }}>
+                  <span>Payment Status: <strong style={{ color: previewInvoice.paymentStatus === 'Paid' ? '#059669' : '#D97706' }}>{previewInvoice.paymentStatus || 'Pending'}</strong></span>
+                  <span>Nurse 70% Share: <strong style={{ color: '#0284C7' }}>₹{Math.round(previewInvoice.totalAmount * 0.70)}</strong></span>
+                </div>
               </div>
+
+              {previewInvoice.notes && (
+                <div style={{ marginTop: '0.65rem', paddingTop: '0.5rem', borderTop: '1px dotted #CBD5E1', fontSize: '0.75rem', color: '#64748B' }}>
+                  <strong>Notes:</strong> {previewInvoice.notes}
+                </div>
+              )}
             </div>
 
-            <div style={{ display: 'flex', justifyContent: 'space-between', gap: '0.5rem' }}>
-              <button
-                type="button"
-                onClick={() => openPrintableInvoiceWindow(previewInvoice)}
-                className="btn btn-outline"
-                style={{ borderRadius: 8, padding: '0.45rem 1rem', fontSize: '0.82rem', display: 'flex', alignItems: 'center', gap: '0.35rem' }}
-              >
-                <Printer size={14} />
-                <span>Print Bill</span>
-              </button>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '0.5rem', flexWrap: 'wrap' }}>
+              <div style={{ display: 'flex', gap: '0.5rem' }}>
+                {previewInvoice.r2PublicUrl && (
+                  <a
+                    href={previewInvoice.r2PublicUrl}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="btn"
+                    style={{
+                      borderRadius: 8,
+                      padding: '0.45rem 0.9rem',
+                      fontSize: '0.82rem',
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      gap: '0.35rem',
+                      background: '#0284C7',
+                      color: '#FFFFFF',
+                      textDecoration: 'none',
+                      fontWeight: 750
+                    }}
+                  >
+                    <ExternalLink size={14} />
+                    <span>Open Live R2 Bill</span>
+                  </a>
+                )}
+                <button
+                  type="button"
+                  onClick={() => openPrintableInvoiceWindow(previewInvoice)}
+                  className="btn btn-outline"
+                  style={{ borderRadius: 8, padding: '0.45rem 0.9rem', fontSize: '0.82rem', display: 'inline-flex', alignItems: 'center', gap: '0.35rem', fontWeight: 700 }}
+                >
+                  <Printer size={14} />
+                  <span>Print Bill</span>
+                </button>
+              </div>
               <button
                 type="button"
                 onClick={() => setIsInvoiceModalOpen(false)}
                 className="btn btn-primary"
-                style={{ borderRadius: 8, padding: '0.45rem 1.25rem', fontSize: '0.82rem' }}
+                style={{ borderRadius: 8, padding: '0.45rem 1.25rem', fontSize: '0.82rem', fontWeight: 700 }}
               >
                 Close
               </button>
