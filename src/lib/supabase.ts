@@ -413,7 +413,10 @@ export async function dbUpdateNurseById(id: string, updates: Partial<NurseProfil
     const userPayload: any = {};
     if (updates.name !== undefined) userPayload.name = updates.name;
     if (updates.phone !== undefined) userPayload.phone = updates.phone;
-    if (updates.email !== undefined) userPayload.email = updates.email;
+    if (updates.email !== undefined) {
+      userPayload.email = updates.email.trim();
+      userPayload.identifier = updates.email.trim().toLowerCase();
+    }
     if (updates.qualification !== undefined) userPayload.designation = updates.qualification;
     if (updates.serviceArea !== undefined) userPayload.service_area = updates.serviceArea;
     if (Object.keys(userPayload).length > 0) {

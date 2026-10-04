@@ -13,10 +13,18 @@ export interface NurseFinancialMetrics {
   // Referrals
   myLeads: NurseLead[];
   myConvertedLeads: NurseLead[];
+  myPatientLeads: NurseLead[];
+  myConvertedPatientLeads: NurseLead[];
+  myNurseLeads: NurseLead[];
+  myConvertedNurseLeads: NurseLead[];
   completedReferredVisits: Booking[];
   completedReferredVisitsCount: number;
   totalLeadsCount: number;
   convertedLeadsCount: number;
+  patientLeadsCount: number;
+  patientConvertedCount: number;
+  nurseLeadsCount: number;
+  nurseConvertedCount: number;
   referralEarnings: number; // Strictly 10% on referred patient service completion
 
   // Totals
@@ -246,7 +254,8 @@ export function calculateNurseMetrics(
   nurse: NurseProfile,
   bookings: Booking[] = [],
   leads: NurseLead[] = [],
-  services: ServiceItem[] = []
+  services: ServiceItem[] = [],
+  allNurses: NurseProfile[] = []
 ): NurseFinancialMetrics {
   const cleanBookings = deduplicateBookings(bookings);
   const cleanLeads = deduplicateLeads(leads);
@@ -329,6 +338,44 @@ export function calculateNurseMetrics(
   const myLeads = deduplicateLeads([...directLeads, ...virtualLeads]);
   const myPatientLeads = myLeads.filter((l) => l.referralType !== 'nurse' && !l.referredNursePhone);
 
+  // Colleague nurse referrals from leads plus registered nurses where referredByNurseId === nurseId
+  const directNurseLeads = myLeads.filter((l) => l.referralType === 'nurse' || Boolean(l.referredNursePhone));
+  const extraNurseLeads: NurseLead[] = [];
+  if (allNurses && allNurses.length > 0) {
+    const colleagues = allNurses.filter((n) => n.referredByNurseId === nurseId);
+    colleagues.forEach((colleague) => {
+      const cPhone = normalizePhone10(colleague.phone);
+      const cName = (colleague.name || '').toLowerCase().trim();
+      const alreadyPresent = directNurseLeads.some((l) => {
+        const lPhone = normalizePhone10(l.referredNursePhone || l.patientPhone);
+        const lName = (l.referredNurseName || l.patientName || '').toLowerCase().trim();
+        return (cPhone && lPhone && cPhone === lPhone) || (cName && lName && cName === lName);
+      });
+      if (!alreadyPresent) {
+        const isConverted = colleague.certificateVerified || colleague.status === 'Active';
+        extraNurseLeads.push({
+          id: `REF-NR-${colleague.id}`,
+          nurseId: nurseId,
+          referredNurseName: colleague.name,
+          referredNursePhone: colleague.phone,
+          patientName: colleague.name,
+          patientPhone: colleague.phone,
+          serviceId: 'saline-infusion',
+          area: colleague.serviceArea || 'Gachibowli',
+          submittedAt: colleague.createdAt || new Date().toISOString(),
+          status: isConverted ? 'Approved' : 'Pending Approval',
+          referralType: 'nurse',
+          leadValueRupees: 50,
+          pointsAwarded: 50,
+          referralCommissionRupees: 50
+        });
+      }
+    });
+  }
+
+  const myNurseLeads = deduplicateLeads([...directNurseLeads, ...extraNurseLeads]);
+  const myAllLeadsCombined = deduplicateLeads([...myLeads, ...extraNurseLeads]);
+
   // 4. Strictly find all COMPLETED bookings for patients referred by THIS nurse
   // Referral earnings are strictly 10% and ONLY awarded on referred patient service completion
   const completedReferredVisits: Booking[] = [];
@@ -374,12 +421,9 @@ export function calculateNurseMetrics(
     calculatedReferralEarnings += Math.round(fee * 0.10);
   });
 
-  // Converted leads: colleague nurse referrals that are approved/converted + patient referrals with completed service
-  const myConvertedLeads = myLeads.filter((l) => {
+  // Converted Patient Leads (Completed service booking or marked Converted)
+  const myConvertedPatientLeads = myPatientLeads.filter((l) => {
     if (l.status === 'Rejected' || Boolean(l.rejectionReason)) return false;
-    if (l.referralType === 'nurse' || Boolean(l.referredNursePhone)) {
-      return l.status === 'Converted' || l.status === 'Approved';
-    }
     const lPhone = normalizePhone10(l.patientPhone);
     const lName = (l.patientName || '').toLowerCase().trim();
     const cleanLeadDigits = l.id.replace(/\D/g, '') || l.id.slice(-6);
@@ -396,20 +440,52 @@ export function calculateNurseMetrics(
     return hasCompletedVisit || l.status === 'Converted';
   });
 
+  // Converted Colleague Nurse Leads (Approved or Converted)
+  const myConvertedNurseLeads = myNurseLeads.filter((l) => {
+    if (l.status === 'Rejected' || Boolean(l.rejectionReason)) return false;
+    return l.status === 'Converted' || l.status === 'Approved';
+  });
+
+  const myConvertedLeads = deduplicateLeads([
+    ...myConvertedPatientLeads,
+    ...myConvertedNurseLeads
+  ]);
+
   // Total points: live points earned from completed patient referrals and approved colleague nurses (+50 pts each)
   const basePointsFromLeads = myConvertedLeads.reduce((acc, l) => acc + (Number(l.pointsAwarded) || 50), 0);
   const totalPoints = (nurse.pointsEarned !== undefined && nurse.pointsEarned !== null && !isNaN(Number(nurse.pointsEarned)))
     ? Math.max(Number(nurse.pointsEarned), basePointsFromLeads)
     : basePointsFromLeads;
 
-  // Accurate Leads & Referrals Counts
-  const totalLeadsCount = myLeads.length > 0
-    ? myLeads.length
-    : (nurse.totalLeads != null && !isNaN(Number(nurse.totalLeads)) ? Number(nurse.totalLeads) : 0);
+  // Granular Patient vs Nurse Lead & Conversion Counts
+  const patientLeadsCount = myPatientLeads.length > 0
+    ? myPatientLeads.length
+    : (nurse.patientLeads != null && !isNaN(Number(nurse.patientLeads))
+        ? Number(nurse.patientLeads)
+        : (myNurseLeads.length === 0 && nurse.totalLeads != null && !isNaN(Number(nurse.totalLeads)) ? Number(nurse.totalLeads) : 0));
 
-  const convertedLeadsCount = myConvertedLeads.length > 0
-    ? myConvertedLeads.length
-    : (nurse.convertedLeads != null && !isNaN(Number(nurse.convertedLeads)) ? Number(nurse.convertedLeads) : 0);
+  const patientConvertedCount = myConvertedPatientLeads.length > 0
+    ? myConvertedPatientLeads.length
+    : (nurse.patientConverted != null && !isNaN(Number(nurse.patientConverted))
+        ? Number(nurse.patientConverted)
+        : (myConvertedNurseLeads.length === 0 && nurse.convertedLeads != null && !isNaN(Number(nurse.convertedLeads)) ? Number(nurse.convertedLeads) : 0));
+
+  const nurseLeadsCount = myNurseLeads.length > 0
+    ? myNurseLeads.length
+    : (nurse.nurseLeads != null && !isNaN(Number(nurse.nurseLeads)) ? Number(nurse.nurseLeads) : 0);
+
+  const nurseConvertedCount = myConvertedNurseLeads.length > 0
+    ? myConvertedNurseLeads.length
+    : (nurse.nurseConverted != null && !isNaN(Number(nurse.nurseConverted)) ? Number(nurse.nurseConverted) : 0);
+
+  // Accurate Leads & Referrals Overall Totals
+  const totalLeadsCount = (myPatientLeads.length > 0 || myNurseLeads.length > 0)
+    ? (myPatientLeads.length + myNurseLeads.length)
+    : (nurse.totalLeads != null && !isNaN(Number(nurse.totalLeads)) ? Number(nurse.totalLeads) : (patientLeadsCount + nurseLeadsCount));
+
+  const convertedLeadsCount = (myConvertedPatientLeads.length > 0 || myConvertedNurseLeads.length > 0)
+    ? (myConvertedPatientLeads.length + myConvertedNurseLeads.length)
+    : (nurse.convertedLeads != null && !isNaN(Number(nurse.convertedLeads)) ? Number(nurse.convertedLeads) : (patientConvertedCount + nurseConvertedCount));
 
   const referralCode = nurse.referralCode || generateNurseReferralCode(nurse.name, nurse.id, nurse.phone || '');
 
@@ -437,12 +513,20 @@ export function calculateNurseMetrics(
     activeVisitsCount: activeVisits.length,
     completedVisitsCount: completedVisits.length,
     completedVisitsEarnings: finalCompletedVisitsEarnings,
-    myLeads,
+    myLeads: myAllLeadsCombined,
     myConvertedLeads,
+    myPatientLeads,
+    myConvertedPatientLeads,
+    myNurseLeads,
+    myConvertedNurseLeads,
     completedReferredVisits,
     completedReferredVisitsCount: completedReferredVisits.length,
     totalLeadsCount,
     convertedLeadsCount,
+    patientLeadsCount,
+    patientConvertedCount,
+    nurseLeadsCount,
+    nurseConvertedCount,
     referralEarnings: finalReferralEarnings,
     totalMoney: finalTotalMoney,
     totalPoints,

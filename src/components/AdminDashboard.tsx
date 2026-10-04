@@ -1580,8 +1580,13 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
       'Experience Tier',
       'Certificate Verified',
       'Status',
-      'Completed Visits',
+      'Completed Visits (Done)',
       'Active Visits',
+      'Patient Referrals (Patient Ref)',
+      'Patient Converted (Patient Conv)',
+      'Nurse Leads (Nurse Lead)',
+      'Nurse Converted (Nurse Conv)',
+      'Total Ref Done',
       'Referral Points',
       'Earnings Paid (INR)',
       'Earnings Pending (INR)',
@@ -1592,7 +1597,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
       const tier = exp >= 10 ? 'Senior (> 10 Years)' : exp >= 5 ? 'Mid-Level (5-10 Years)' : 'Junior (< 5 Years)';
       const nurseCode = n.referralCode || generateNurseReferralCode(n.name, n.id, n.phone);
       const origin = n.referredByNurseId ? `Referred (${n.referredByNurseName || n.referredByNurseId})` : 'Individual / Direct';
-      const m = calculateNurseMetrics(n, bookings, leads, services);
+      const m = calculateNurseMetrics(n, bookings, leads, services, nurses);
       return [
         sanitizeCsvCell(n.id),
         sanitizeCsvCell(n.name),
@@ -1609,6 +1614,11 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
         sanitizeCsvCell(n.status || 'Active'),
         m.completedVisitsCount,
         m.activeVisitsCount,
+        m.patientLeadsCount,
+        m.patientConvertedCount,
+        m.nurseLeadsCount,
+        m.nurseConvertedCount,
+        m.convertedLeadsCount,
         m.totalPoints,
         m.completedVisitsEarnings,
         m.referralEarnings,
@@ -1716,6 +1726,10 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
     pin: '1001',
     totalLeads: 0,
     convertedLeads: 0,
+    patientLeads: 0,
+    patientConverted: 0,
+    nurseLeads: 0,
+    nurseConverted: 0,
     totalReferrals: 0,
     pointsEarned: 300,
     referralEarningsRupees: 0,
@@ -1740,6 +1754,10 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
       pin: '',
       totalLeads: 0,
       convertedLeads: 0,
+      patientLeads: 0,
+      patientConverted: 0,
+      nurseLeads: 0,
+      nurseConverted: 0,
       totalReferrals: 0,
       pointsEarned: 300,
       referralEarningsRupees: 0,
@@ -1765,7 +1783,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
         (u.identifier && n.email && u.identifier.toLowerCase().trim() === n.email.toLowerCase().trim())
       );
     });
-    const m = calculateNurseMetrics(n, bookings, leads, services);
+    const m = calculateNurseMetrics(n, bookings, leads, services, nurses);
     const initialPoints = (n.pointsEarned !== undefined && n.pointsEarned !== null) ? Number(n.pointsEarned) : m.totalPoints;
     const initialReferral = (n.referralEarningsRupees !== undefined && n.referralEarningsRupees !== null) ? Number(n.referralEarningsRupees) : m.referralEarnings;
     const initialDuty = (m.completedVisitsCount > 0 && n.earningsPending !== undefined && n.earningsPending !== null)
@@ -1792,6 +1810,10 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
       pin: (n.pin && n.pin.trim() !== '') ? n.pin.trim() : (existingUser?.pin ? String(existingUser.pin).trim() : ''),
       totalLeads: initialTotalLeads,
       convertedLeads: initialConvertedLeads,
+      patientLeads: m.patientLeadsCount,
+      patientConverted: m.patientConvertedCount,
+      nurseLeads: m.nurseLeadsCount,
+      nurseConverted: m.nurseConvertedCount,
       totalReferrals: initialTotalReferrals,
       pointsEarned: initialPoints,
       referralEarningsRupees: initialReferral,
@@ -1822,6 +1844,10 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
       status: (nurseForm.status as 'Active' | 'Pending Verification' | 'On Leave') || 'Active',
       totalLeads: Number(nurseForm.totalLeads) || 0,
       convertedLeads: Number(nurseForm.convertedLeads) || 0,
+      patientLeads: Number(nurseForm.patientLeads) || 0,
+      patientConverted: Number(nurseForm.patientConverted) || 0,
+      nurseLeads: Number(nurseForm.nurseLeads) || 0,
+      nurseConverted: Number(nurseForm.nurseConverted) || 0,
       totalReferrals: Number(nurseForm.totalReferrals) || Number(nurseForm.totalLeads) || 0,
       pointsEarned: Number(nurseForm.pointsEarned) || 0,
       referralEarningsRupees: Number(nurseForm.referralEarningsRupees) || 0,
@@ -1847,6 +1873,8 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
             pin: nurseForm.pin.trim() || u.pin,
             name: nursePayload.name,
             phone: cleanPhone,
+            email: nursePayload.email,
+            identifier: nursePayload.email.toLowerCase(),
             serviceArea: nursePayload.serviceArea
           });
         }
@@ -2392,7 +2420,20 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
       (l.area || '').toLowerCase().includes(query);
     const matchesStatus = leadStatusFilter === 'all' ? true : l.status === leadStatusFilter;
     const isNurseRef = l.referralType === 'nurse' || !!l.referredNursePhone;
-    const matchesType = leadTypeFilter === 'all' ? true : (leadTypeFilter === 'nurse' ? isNurseRef : !isNurseRef);
+    const isLeadConverted = l.status === 'Converted' || (isNurseRef ? l.status === 'Approved' : bookings.some(b => b.status === 'Completed' && ((b.referringNurseId && b.referringNurseId === l.nurseId && (b.patientPhone === l.patientPhone || b.patientName === l.patientName)) || (l.patientPhone && b.patientPhone === l.patientPhone))));
+
+    let matchesType = true;
+    if (leadTypeFilter === 'patient') {
+      matchesType = !isNurseRef;
+    } else if (leadTypeFilter === 'patient-converted') {
+      matchesType = !isNurseRef && isLeadConverted;
+    } else if (leadTypeFilter === 'nurse') {
+      matchesType = isNurseRef;
+    } else if (leadTypeFilter === 'nurse-converted') {
+      matchesType = isNurseRef && isLeadConverted;
+    } else if (leadTypeFilter === 'ref-done') {
+      matchesType = isLeadConverted;
+    }
     return matchesSearch && matchesStatus && matchesType;
   });
 
@@ -3853,7 +3894,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                           <th>Service Area (Rule 2)</th>
                           <th>Qualification</th>
                           <th>Experience</th>
-                          <th>Visits & Leads</th>
+                          <th>Visits & Referrals (Ref Done)</th>
                           <th>Points</th>
                           <th>Duty & Ref Earnings</th>
                           <th>Total Payout (₹)</th>
@@ -3863,7 +3904,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                       </thead>
                       <tbody>
                         {filteredNurses.map((n) => {
-                          const m = calculateNurseMetrics(n, bookings, leads, services);
+                          const m = calculateNurseMetrics(n, bookings, leads, services, nurses);
                           const nursePhoneDigits = (n.phone || '').replace(/\D/g, '');
                           const nurseLast10 = nursePhoneDigits.length >= 10 ? nursePhoneDigits.slice(-10) : nursePhoneDigits;
                           const userObj = appUsers.find((u) => {
@@ -4029,9 +4070,66 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                               </td>
                               <td>{n.qualification}</td>
                               <td>{n.experienceYears} Years</td>
-                              <td>
-                                <div><strong>{m.completedVisitsCount} Done</strong> <span style={{ fontSize: '0.74rem', color: '#64748B' }}>({m.activeVisitsCount} Active)</span></div>
-                                <div style={{ fontSize: '0.74rem', color: 'var(--neutral-500)', marginTop: '2px' }}>Leads: {m.totalLeadsCount} • Ref Done: {m.convertedLeadsCount}</div>
+                              <td style={{ minWidth: 205, verticalAlign: 'top' }}>
+                                <div style={{ display: 'flex', flexDirection: 'column', gap: '0.35rem' }}>
+                                  {/* Visits Done */}
+                                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '0.4rem' }}>
+                                    <span style={{
+                                      background: '#0F172A',
+                                      color: '#F8FAFC',
+                                      fontWeight: 800,
+                                      fontSize: '0.75rem',
+                                      padding: '2px 8px',
+                                      borderRadius: 4,
+                                      display: 'inline-flex',
+                                      alignItems: 'center',
+                                      gap: '4px'
+                                    }}>
+                                      🩺 <strong>{m.completedVisitsCount} Done</strong>
+                                    </span>
+                                    <span style={{ fontSize: '0.72rem', color: '#64748B', fontWeight: 600 }}>
+                                      ({m.activeVisitsCount} active)
+                                    </span>
+                                  </div>
+
+                                  {/* Patient Ref & Patient Conv */}
+                                  <div style={{
+                                    background: '#F0F9FF',
+                                    border: '1px solid #BAE6FD',
+                                    borderRadius: 5,
+                                    padding: '3px 7px',
+                                    fontSize: '0.73rem',
+                                    color: '#0369A1',
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    justifyContent: 'space-between',
+                                    gap: '0.4rem'
+                                  }} title="Patient Referrals: Total patient leads submitted vs converted completed visits">
+                                    <span>Patient Ref: <strong style={{ color: '#0369A1', fontSize: '0.8rem' }}>{m.patientLeadsCount}</strong></span>
+                                    <span style={{ color: '#0284C7', fontWeight: 800, background: '#E0F2FE', padding: '1px 5px', borderRadius: 4 }}>
+                                      Patient Conv: {m.patientConvertedCount}
+                                    </span>
+                                  </div>
+
+                                  {/* Nurse Lead & Nurse Converted */}
+                                  <div style={{
+                                    background: '#FAF5FF',
+                                    border: '1px solid #E9D5FF',
+                                    borderRadius: 5,
+                                    padding: '3px 7px',
+                                    fontSize: '0.73rem',
+                                    color: '#6B21A8',
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    justifyContent: 'space-between',
+                                    gap: '0.4rem'
+                                  }} title="Colleague Nurse Referrals: Total colleague nurse leads vs approved/converted nurses">
+                                    <span>Nurse Lead: <strong style={{ color: '#6B21A8', fontSize: '0.8rem' }}>{m.nurseLeadsCount}</strong></span>
+                                    <span style={{ color: '#7E22CE', fontWeight: 800, background: '#F3E8FF', padding: '1px 5px', borderRadius: 4 }}>
+                                      Nurse Converted: {m.nurseConvertedCount}
+                                    </span>
+                                  </div>
+                                </div>
                               </td>
                               <td>
                                 <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
@@ -4562,28 +4660,10 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                 }}
               >
                 <option value="all">All Referrals</option>
-                <option value="patient">Patient Referrals</option>
-                <option value="nurse">Nurse Referrals</option>
-              </select>
-            </div>
-
-            <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
-              <span style={{ fontSize: '0.8rem', color: 'var(--neutral-600)', fontWeight: 600 }}>Type:</span>
-              <select
-                value={leadTypeFilter}
-                onChange={(e) => setLeadTypeFilter(e.target.value)}
-                style={{
-                  padding: '0.4rem 0.75rem',
-                  fontSize: '0.82rem',
-                  borderRadius: 8,
-                  border: '1px solid #CBD5E1',
-                  background: '#FFFFFF',
-                  fontWeight: 600
-                }}
-              >
-                <option value="all">All Referrals</option>
-                <option value="patient">Patient Referrals</option>
-                <option value="nurse">Nurse Referrals</option>
+                <option value="patient">🩺 Patient Ref</option>
+                <option value="patient-converted">✓ Patient Conv (Completed)</option>
+                <option value="nurse">👩‍⚕️ Nurse Lead</option>
+                <option value="nurse-converted">✓ Nurse Converted (Approved)</option>
               </select>
             </div>
 
@@ -4708,10 +4788,12 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                                 borderRadius: 4,
                                 display: 'inline-block',
                                 width: 'fit-content',
-                                background: l.referralType === 'nurse' || l.referredNursePhone ? '#EDE9FE' : '#E0F2FE',
-                                color: l.referralType === 'nurse' || l.referredNursePhone ? '#6D28D9' : '#0369A1'
+                                background: (l.referralType === 'nurse' || l.referredNursePhone) ? '#EDE9FE' : (l.status === 'Converted' ? '#ECFDF5' : '#E0F2FE'),
+                                color: (l.referralType === 'nurse' || l.referredNursePhone) ? '#6D28D9' : (l.status === 'Converted' ? '#047857' : '#0369A1')
                               }}>
-                                {l.referralType === 'nurse' || l.referredNursePhone ? 'Nurse Referral' : 'Patient Referral'}
+                                {(l.referralType === 'nurse' || l.referredNursePhone)
+                                  ? (l.status === 'Approved' || l.status === 'Converted' ? '👩‍⚕️ Nurse Converted' : '👩‍⚕️ Nurse Lead')
+                                  : (l.status === 'Converted' ? '✓ Patient Conv' : '🩺 Patient Ref')}
                               </span>
                             </div>
                           </td>
@@ -7377,6 +7459,8 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                   <label className="form-label" style={{ fontSize: '0.78rem', fontWeight: 700 }}>LOGIN EMAIL *</label>
                   <input
                     type="email"
+                    name="admin_nurse_email"
+                    autoComplete="off"
                     required
                     placeholder="nurse.name@xpressnurse.in"
                     value={nurseForm.email}
@@ -7472,6 +7556,103 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                 </div>
               </div>
 
+              {/* Granular Referral Breakdown: Patient Ref & Patient Conv */}
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem', marginBottom: '0.85rem' }}>
+                <div style={{ background: '#F0F9FF', padding: '0.65rem 0.75rem', borderRadius: 8, border: '1px solid #BAE6FD' }}>
+                  <label className="form-label" style={{ fontSize: '0.76rem', fontWeight: 800, color: '#0369A1' }}>
+                    PATIENT REF (SUBMITTED)
+                  </label>
+                  <input
+                    type="number"
+                    min={0}
+                    step="any"
+                    placeholder="e.g. 2"
+                    value={nurseForm.patientLeads ?? 0}
+                    onChange={(e) => {
+                      const pL = Number(e.target.value);
+                      const nL = Number(nurseForm.nurseLeads ?? 0);
+                      setNurseForm({ ...nurseForm, patientLeads: pL, totalLeads: pL + nL, totalReferrals: pL + nL });
+                    }}
+                    className="form-control"
+                    style={{ fontWeight: 800, color: '#0369A1', background: '#FFFFFF', borderColor: '#BAE6FD' }}
+                  />
+                  <div style={{ fontSize: '0.71rem', color: '#0284C7', marginTop: '3px', fontWeight: 600 }}>
+                    Patient referrals submitted
+                  </div>
+                </div>
+                <div style={{ background: '#ECFDF5', padding: '0.65rem 0.75rem', borderRadius: 8, border: '1px solid #A7F3D0' }}>
+                  <label className="form-label" style={{ fontSize: '0.76rem', fontWeight: 800, color: '#047857' }}>
+                    PATIENT CONV (DONE)
+                  </label>
+                  <input
+                    type="number"
+                    min={0}
+                    step="any"
+                    placeholder="e.g. 1"
+                    value={nurseForm.patientConverted ?? 0}
+                    onChange={(e) => {
+                      const pC = Number(e.target.value);
+                      const nC = Number(nurseForm.nurseConverted ?? 0);
+                      setNurseForm({ ...nurseForm, patientConverted: pC, convertedLeads: pC + nC });
+                    }}
+                    className="form-control"
+                    style={{ fontWeight: 800, color: '#047857', background: '#FFFFFF', borderColor: '#A7F3D0' }}
+                  />
+                  <div style={{ fontSize: '0.71rem', color: '#059669', marginTop: '3px', fontWeight: 600 }}>
+                    Completed patient visits (10% paid)
+                  </div>
+                </div>
+              </div>
+
+              {/* Granular Referral Breakdown: Nurse Lead & Nurse Conv */}
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem', marginBottom: '0.85rem' }}>
+                <div style={{ background: '#FAF5FF', padding: '0.65rem 0.75rem', borderRadius: 8, border: '1px solid #E9D5FF' }}>
+                  <label className="form-label" style={{ fontSize: '0.76rem', fontWeight: 800, color: '#6B21A8' }}>
+                    NURSE LEAD (COLLEAGUES)
+                  </label>
+                  <input
+                    type="number"
+                    min={0}
+                    step="any"
+                    placeholder="e.g. 1"
+                    value={nurseForm.nurseLeads ?? 0}
+                    onChange={(e) => {
+                      const nL = Number(e.target.value);
+                      const pL = Number(nurseForm.patientLeads ?? 0);
+                      setNurseForm({ ...nurseForm, nurseLeads: nL, totalLeads: pL + nL, totalReferrals: pL + nL });
+                    }}
+                    className="form-control"
+                    style={{ fontWeight: 800, color: '#6B21A8', background: '#FFFFFF', borderColor: '#E9D5FF' }}
+                  />
+                  <div style={{ fontSize: '0.71rem', color: '#7E22CE', marginTop: '3px', fontWeight: 600 }}>
+                    Colleague nurse referrals submitted
+                  </div>
+                </div>
+                <div style={{ background: '#FDF4FF', padding: '0.65rem 0.75rem', borderRadius: 8, border: '1px solid #F0ABFC' }}>
+                  <label className="form-label" style={{ fontSize: '0.76rem', fontWeight: 800, color: '#86198F' }}>
+                    NURSE CONV (APPROVED)
+                  </label>
+                  <input
+                    type="number"
+                    min={0}
+                    step="any"
+                    placeholder="e.g. 1"
+                    value={nurseForm.nurseConverted ?? 0}
+                    onChange={(e) => {
+                      const nC = Number(e.target.value);
+                      const pC = Number(nurseForm.patientConverted ?? 0);
+                      setNurseForm({ ...nurseForm, nurseConverted: nC, convertedLeads: pC + nC });
+                    }}
+                    className="form-control"
+                    style={{ fontWeight: 800, color: '#86198F', background: '#FFFFFF', borderColor: '#F0ABFC' }}
+                  />
+                  <div style={{ fontSize: '0.71rem', color: '#A21CAF', marginTop: '3px', fontWeight: 600 }}>
+                    Approved & active colleague nurses (+50 pts)
+                  </div>
+                </div>
+              </div>
+
+              {/* Total Leads & Total Ref Done Summary */}
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem', marginBottom: '0.85rem' }}>
                 <div>
                   <label className="form-label" style={{ fontSize: '0.78rem', fontWeight: 700, color: '#334155' }}>
@@ -7488,7 +7669,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                     style={{ fontWeight: 800, color: '#1E293B', background: '#F8FAFC', borderColor: '#CBD5E1' }}
                   />
                   <div style={{ fontSize: '0.72rem', color: '#64748B', marginTop: '3px', fontWeight: 600 }}>
-                    Patient + Colleague nurse referrals
+                    Patient Ref + Nurse Lead
                   </div>
                 </div>
                 <div>
@@ -7506,7 +7687,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                     style={{ fontWeight: 800, color: '#047857', background: '#ECFDF5', borderColor: '#A7F3D0' }}
                   />
                   <div style={{ fontSize: '0.72rem', color: '#059669', marginTop: '3px', fontWeight: 600 }}>
-                    Completed patient visits + approved nurses
+                    Patient Conv + Nurse Conv
                   </div>
                 </div>
               </div>

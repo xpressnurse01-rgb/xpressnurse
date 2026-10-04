@@ -105,6 +105,10 @@ export interface NurseProfile {
   status: 'Active' | 'Pending Verification' | 'On Leave' | 'Rejected' | string;
   totalLeads: number;
   convertedLeads: number;
+  patientLeads?: number;
+  patientConverted?: number;
+  nurseLeads?: number;
+  nurseConverted?: number;
   totalReferrals: number;
   pointsEarned: number;
   completedVisits?: number;

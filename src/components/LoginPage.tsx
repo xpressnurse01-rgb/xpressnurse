@@ -160,11 +160,12 @@ export const LoginPage: React.FC<LoginPageProps> = ({
       const myReferralCode = generateNurseReferralCode(regName.trim(), newId, regPhone.trim());
       
       const cleanPhone = regPhone.replace(/\D/g, '');
+      const cleanEmail = regEmail.trim().toLowerCase();
       const newNurse: NurseProfile = {
         id: newId,
         name: regName.trim(),
         phone: cleanPhone || regPhone.trim(),
-        email: regEmail.trim(),
+        email: cleanEmail,
         experienceYears: Number(regExperienceYears) || 1,
         qualification: regQualification.trim() || 'Registered Nurse (B.Sc)',
         serviceArea: regServiceArea || 'Gachibowli',
@@ -187,11 +188,11 @@ export const LoginPage: React.FC<LoginPageProps> = ({
       const newAppUser: AppUser = {
         id: newId,
         role: 'nurse',
-        identifier: regEmail.trim().toLowerCase(),
+        identifier: cleanEmail,
         name: regName.trim(),
         pin: regPin.trim(),
         phone: cleanPhone || regPhone.trim(),
-        email: regEmail.trim(),
+        email: cleanEmail,
         designation: regQualification.trim() || 'Registered Nurse (B.Sc)',
         serviceArea: regServiceArea || 'Gachibowli'
       };
@@ -562,17 +563,41 @@ export const LoginPage: React.FC<LoginPageProps> = ({
 
               <div className="form-group" style={{ marginBottom: '0.75rem' }}>
                 <label className="form-label">Full Name</label>
-                <input type="text" value={regName} onChange={e => setRegName(e.target.value)} className="form-control" placeholder="Nurse Name" />
+                <input 
+                  type="text" 
+                  name="nurse_reg_fullname"
+                  autoComplete="off"
+                  value={regName} 
+                  onChange={e => setRegName(e.target.value)} 
+                  className="form-control" 
+                  placeholder="Nurse Name" 
+                />
               </div>
 
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem', marginBottom: '0.75rem' }}>
                 <div className="form-group">
                   <label className="form-label">Email</label>
-                  <input type="email" value={regEmail} onChange={e => setRegEmail(e.target.value)} className="form-control" placeholder="Email address" />
+                  <input 
+                    type="email" 
+                    name="nurse_reg_email"
+                    autoComplete="off"
+                    value={regEmail} 
+                    onChange={e => setRegEmail(e.target.value)} 
+                    className="form-control" 
+                    placeholder="nurse.name@gmail.com" 
+                  />
                 </div>
                 <div className="form-group">
                   <label className="form-label">Phone</label>
-                  <input type="tel" value={regPhone} onChange={e => setRegPhone(e.target.value)} className="form-control" placeholder="Mobile" />
+                  <input 
+                    type="tel" 
+                    name="nurse_reg_phone"
+                    autoComplete="off"
+                    value={regPhone} 
+                    onChange={e => setRegPhone(e.target.value)} 
+                    className="form-control" 
+                    placeholder="10-digit Mobile" 
+                  />
                 </div>
               </div>
 
