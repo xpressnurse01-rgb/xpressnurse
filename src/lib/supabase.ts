@@ -28,7 +28,33 @@ export const SEED_APP_USERS: AppUser[] = [];
 export const BASELINE_NURSES: NurseProfile[] = [];
 export const BASELINE_BOOKINGS: Booking[] = [];
 export const BASELINE_LEADS: NurseLead[] = [];
-export const BASELINE_COUPONS: Coupon[] = [];
+export const BASELINE_COUPONS: Coupon[] = [
+  {
+    id: 'CPN-FIRST100',
+    code: 'FIRST100',
+    discountType: 'flat',
+    discountValue: 100,
+    minOrderAmount: 0,
+    description: '₹100 flat discount for first home visit [SHOW_IN_MODAL]',
+    status: 'Active',
+    showInBookingModal: true,
+    timesUsed: 0,
+    createdAt: '2026-01-01T00:00:00.000Z'
+  },
+  {
+    id: 'CPN-CARE15',
+    code: 'CARE15',
+    discountType: 'percent',
+    discountValue: 15,
+    maxDiscount: 200,
+    minOrderAmount: 0,
+    description: '15% instant off up to ₹200 on all nursing procedures [SHOW_IN_MODAL]',
+    status: 'Active',
+    showInBookingModal: true,
+    timesUsed: 0,
+    createdAt: '2026-01-01T00:00:00.000Z'
+  }
+];
 
 // Helper to execute database query with exponential backoff retry for transient network / schema cache cold starts
 export async function executeWithRetry<T>(
@@ -75,13 +101,13 @@ export async function dbFetchServices(): Promise<ServiceItem[] | null> {
     title: s.title,
     subtitle: s.subtitle || '',
     description: s.description || '',
-    singleVisitPrice: Number(s.single_visit_price),
-    multiVisitPrice: s.multi_visit_price ? Number(s.multi_visit_price) : Number(s.single_visit_price),
-    nightSurcharge: s.night_surcharge ? Number(s.night_surcharge) : 399,
+    singleVisitPrice: s.single_visit_price !== undefined && s.single_visit_price !== null ? Number(s.single_visit_price) : 800,
+    multiVisitPrice: s.multi_visit_price !== undefined && s.multi_visit_price !== null ? Number(s.multi_visit_price) : (s.single_visit_price !== undefined && s.single_visit_price !== null ? Number(s.single_visit_price) : 800),
+    nightSurcharge: s.night_surcharge !== undefined && s.night_surcharge !== null ? Number(s.night_surcharge) : 399,
     prescriptionRequired: Boolean(s.prescription_required),
     duration: s.duration || '30 - 45 mins',
-    indicativePrice: `Single: ₹${Math.round(s.single_visit_price)} / Multi: ₹${Math.round(s.multi_visit_price || s.single_visit_price)}`,
-    priceNumber: Number(s.single_visit_price) || 800,
+    indicativePrice: `Single: ₹${Math.round(s.single_visit_price ?? 0)} / Multi: ₹${Math.round(s.multi_visit_price ?? s.single_visit_price ?? 0)}`,
+    priceNumber: s.single_visit_price !== undefined && s.single_visit_price !== null ? Number(s.single_visit_price) : 800,
     features: [
       'Doorstep clinical service across Hyderabad',
       'Certified & background-verified RN attending',
@@ -115,9 +141,9 @@ export async function dbInsertService(s: ServiceItem): Promise<boolean> {
       title: s.title,
       subtitle: s.subtitle || null,
       description: s.description || null,
-      single_visit_price: Number(s.priceNumber ?? s.singleVisitPrice) || 800,
-      multi_visit_price: Number(s.multiVisitPrice) || Number(s.priceNumber ?? s.singleVisitPrice) || 800,
-      night_surcharge: Number(s.nightSurcharge) || 399,
+      single_visit_price: (s.priceNumber !== undefined && s.priceNumber !== null) ? Number(s.priceNumber) : ((s.singleVisitPrice !== undefined && s.singleVisitPrice !== null) ? Number(s.singleVisitPrice) : 800),
+      multi_visit_price: (s.multiVisitPrice !== undefined && s.multiVisitPrice !== null) ? Number(s.multiVisitPrice) : ((s.priceNumber !== undefined && s.priceNumber !== null) ? Number(s.priceNumber) : 800),
+      night_surcharge: (s.nightSurcharge !== undefined && s.nightSurcharge !== null) ? Number(s.nightSurcharge) : 399,
       prescription_required: Boolean(s.prescriptionRequired),
       duration: s.duration || '45 - 60 mins',
       icon: s.icon || 'Activity',

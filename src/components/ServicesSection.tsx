@@ -59,10 +59,22 @@ export const ServicesSection: React.FC<ServicesSectionProps> = ({ services = [],
   });
 
   const cleanPriceDisplay = (srv: ServiceItem) => {
-    if (srv.id === 'wound-dressing') return 'Starts ₹799*';
-    if (srv.priceNumber) return `₹${srv.priceNumber.toLocaleString('en-IN')}`;
-    const match = (srv.indicativePrice || '').match(/₹[\d,]+/);
-    return match ? match[0] : (srv.indicativePrice || '₹799');
+    const price = srv.priceNumber !== undefined && srv.priceNumber !== null
+      ? srv.priceNumber
+      : (srv.singleVisitPrice !== undefined && srv.singleVisitPrice !== null ? srv.singleVisitPrice : null);
+
+    if (price !== null) {
+      if (price === 0) return 'Free / Decided at service • ₹0';
+      if (srv.id === 'wound-dressing') return `Starts ₹${price.toLocaleString('en-IN')}*`;
+      return `₹${price.toLocaleString('en-IN')}`;
+    }
+
+    if (srv.indicativePrice) {
+      const match = srv.indicativePrice.match(/₹[\d,]+/);
+      if (match) return match[0];
+      return srv.indicativePrice;
+    }
+    return '₹799';
   };
 
   return (
@@ -136,10 +148,13 @@ export const ServicesSection: React.FC<ServicesSectionProps> = ({ services = [],
               {/* Card Media Header - Clean Single Badge */}
               <div className="service-media-wrap">
                 <img
-                  src={service.imageUrl || '/images/doctor_xpressnurse.jpg'}
+                  src={service.imageUrl || service.thumbnailUrl || '/images/doctor_xpressnurse.jpg'}
                   alt={service.title}
                   className="service-photo"
                   loading="lazy"
+                  onError={(e) => {
+                    (e.target as HTMLImageElement).src = '/images/doctor_xpressnurse.jpg';
+                  }}
                 />
                 
                 {/* Single Clean Tag Pill on Top-Left */}
@@ -175,7 +190,9 @@ export const ServicesSection: React.FC<ServicesSectionProps> = ({ services = [],
                   <div className="district-price-col">
                     <div className="district-price-value">{cleanPriceDisplay(service)}</div>
                     <div className="district-price-note">
-                      {service.id === 'wound-dressing' ? 'Depends on wound type & depth' : 'All-inclusive • Zero advance'}
+                      {((service.priceNumber !== undefined && service.priceNumber === 0) || (service.singleVisitPrice !== undefined && service.singleVisitPrice === 0))
+                        ? 'Free or decided during home visit • ₹0'
+                        : (service.id === 'wound-dressing' ? 'Depends on wound type & depth' : 'All-inclusive • Zero advance')}
                     </div>
                   </div>
 

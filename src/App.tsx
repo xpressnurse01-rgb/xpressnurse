@@ -38,6 +38,7 @@ import {
   dbUpdateCoupon,
   dbDeleteCoupon,
   dbDeleteMultipleCoupons,
+  BASELINE_COUPONS,
   dbFetchAppUsers,
   dbInsertBooking,
   dbUpdateBooking,
@@ -243,12 +244,13 @@ export const App: React.FC = () => {
       const cached = localStorage.getItem('xn_cached_coupons');
       if (cached !== null) {
         const parsed = JSON.parse(cached);
-        if (Array.isArray(parsed)) {
-          return parsed.filter(c => c.id !== 'coup-1' && c.id !== 'coup-2' && c.id !== 'coup-3');
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          const cleaned = parsed.filter(c => c.id !== 'coup-1' && c.id !== 'coup-2' && c.id !== 'coup-3');
+          if (cleaned.length > 0) return cleaned;
         }
       }
     } catch { }
-    return [];
+    return BASELINE_COUPONS;
   });
 
   const [appUsers, setAppUsers] = useState<AppUser[]>(() => {
@@ -1986,21 +1988,39 @@ export const App: React.FC = () => {
 
   // Coupon CRUD Handlers for Admin Operations
   const handleCreateCoupon = async (newCouponData: Omit<Coupon, 'id' | 'createdAt' | 'timesUsed'>) => {
-    const created = await dbInsertCoupon(newCouponData);
-    if (created) {
-      setCoupons((prev) => [created, ...prev.filter((c) => c.code !== created.code)]);
-      broadcastRealtimeUpdate('COUPON_CREATE', created);
+    let created = await dbInsertCoupon(newCouponData);
+    if (!created) {
+      created = {
+        id: `cpn-${newCouponData.code.toLowerCase()}-${Date.now().toString().slice(-4)}`,
+        ...newCouponData,
+        createdAt: new Date().toISOString(),
+        timesUsed: 0
+      };
     }
+    setCoupons((prev) => {
+      const next = [created!, ...prev.filter((c) => c.code !== created!.code)];
+      try { localStorage.setItem('xn_cached_coupons', JSON.stringify(next)); } catch { }
+      return next;
+    });
+    broadcastRealtimeUpdate('COUPON_CREATE', created);
   };
 
   const handleUpdateCoupon = async (id: string, updates: Partial<Coupon>) => {
-    setCoupons((prev) => prev.map((c) => (c.id === id ? { ...c, ...updates } : c)));
+    setCoupons((prev) => {
+      const next = prev.map((c) => (c.id === id ? { ...c, ...updates } : c));
+      try { localStorage.setItem('xn_cached_coupons', JSON.stringify(next)); } catch { }
+      return next;
+    });
     broadcastRealtimeUpdate('COUPON_UPDATE', { id, ...updates });
     await dbUpdateCoupon(id, updates);
   };
 
   const handleDeleteCoupon = async (id: string) => {
-    setCoupons((prev) => prev.filter((c) => c.id !== id));
+    setCoupons((prev) => {
+      const next = prev.filter((c) => c.id !== id);
+      try { localStorage.setItem('xn_cached_coupons', JSON.stringify(next)); } catch { }
+      return next;
+    });
     broadcastRealtimeUpdate('COUPON_DELETE', { id });
     await dbDeleteCoupon(id);
   };
@@ -2436,17 +2456,29 @@ export const App: React.FC = () => {
 
   // 4. Services CRUD Handlers
   const handleCreateService = async (s: ServiceItem) => {
-    setServices((prev) => [...prev, s]);
+    setServices((prev) => {
+      const next = [...prev, s];
+      try { localStorage.setItem('xn_cached_services', JSON.stringify(next)); } catch { }
+      return next;
+    });
     broadcastRealtimeUpdate('SERVICE_CREATE', s);
     await dbInsertService(s);
   };
   const handleUpdateService = async (id: string, updates: Partial<ServiceItem>) => {
-    setServices((prev) => prev.map((s) => (s.id === id ? { ...s, ...updates } : s)));
+    setServices((prev) => {
+      const next = prev.map((s) => (s.id === id ? { ...s, ...updates } : s));
+      try { localStorage.setItem('xn_cached_services', JSON.stringify(next)); } catch { }
+      return next;
+    });
     broadcastRealtimeUpdate('SERVICE_UPDATE', { id, ...updates });
     await dbUpdateServiceById(id, updates);
   };
   const handleDeleteService = async (id: string) => {
-    setServices((prev) => prev.filter((s) => s.id !== id));
+    setServices((prev) => {
+      const next = prev.filter((s) => s.id !== id);
+      try { localStorage.setItem('xn_cached_services', JSON.stringify(next)); } catch { }
+      return next;
+    });
     broadcastRealtimeUpdate('SERVICE_DELETE', { id });
     await dbDeleteService(id);
   };

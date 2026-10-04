@@ -1198,7 +1198,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
       status: coupon.status === 'Expired' ? 'Inactive' : coupon.status,
       usageLimit: coupon.usageLimit ? String(coupon.usageLimit) : '',
       validUntil: coupon.validUntil ? coupon.validUntil.split('T')[0] : '',
-      showInBookingModal: coupon.description.includes('[SHOW_IN_MODAL]')
+      showInBookingModal: coupon.showInBookingModal !== undefined ? coupon.showInBookingModal : coupon.description.includes('[SHOW_IN_MODAL]')
     });
     setCouponFormError('');
     setIsCouponModalOpen(true);
@@ -1233,6 +1233,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
         description: couponForm.showInBookingModal
           ? `${couponForm.description.trim()} [SHOW_IN_MODAL]`
           : couponForm.description.trim().replace('[SHOW_IN_MODAL]', '').trim(),
+        showInBookingModal: Boolean(couponForm.showInBookingModal),
         status: couponForm.status,
         usageLimit: couponForm.usageLimit ? Number(couponForm.usageLimit) : undefined,
         validUntil: couponForm.validUntil ? new Date(couponForm.validUntil).toISOString() : undefined
@@ -2001,9 +2002,9 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
       title: s.title,
       subtitle: s.subtitle || '',
       description: s.description || '',
-      priceNumber: s.priceNumber || 800,
-      multiVisitPrice: s.multiVisitPrice || s.priceNumber || 800,
-      nightSurcharge: s.nightSurcharge || 399,
+      priceNumber: s.priceNumber !== undefined ? s.priceNumber : (s.singleVisitPrice !== undefined ? s.singleVisitPrice : 800),
+      multiVisitPrice: s.multiVisitPrice !== undefined ? s.multiVisitPrice : (s.priceNumber !== undefined ? s.priceNumber : 800),
+      nightSurcharge: s.nightSurcharge !== undefined ? s.nightSurcharge : 399,
       prescriptionRequired: !!s.prescriptionRequired,
       duration: s.duration || '45 - 60 mins',
       badge: s.badge || '',
@@ -2146,8 +2147,9 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
       title: serviceForm.title.trim(),
       subtitle: serviceForm.subtitle.trim(),
       description: serviceForm.description.trim(),
-      indicativePrice: `₹${serviceForm.priceNumber} per visit`,
+      indicativePrice: Number(serviceForm.priceNumber) === 0 ? 'Free / Decided at service • ₹0' : `₹${serviceForm.priceNumber} per visit`,
       priceNumber: Number(serviceForm.priceNumber),
+      singleVisitPrice: Number(serviceForm.priceNumber),
       multiVisitPrice: Number(serviceForm.multiVisitPrice),
       nightSurcharge: Number(serviceForm.nightSurcharge),
       prescriptionRequired: serviceForm.prescriptionRequired,
@@ -4447,13 +4449,17 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                             </td>
                             <td>
                               <div style={{ fontWeight: 800, color: 'var(--primary-navy-950)', fontSize: '0.95rem' }}>
-                                ₹{s.priceNumber}
+                                {(s.priceNumber === 0 || s.singleVisitPrice === 0)
+                                  ? <span style={{ color: '#059669', fontSize: '0.85rem' }}>₹0 (Free / Decided at service)</span>
+                                  : `₹${s.priceNumber !== undefined ? s.priceNumber : (s.singleVisitPrice !== undefined ? s.singleVisitPrice : 0)}`}
                               </div>
-                              <div style={{ fontSize: '0.72rem', color: 'var(--neutral-500)' }}>per home visit</div>
+                              <div style={{ fontSize: '0.72rem', color: 'var(--neutral-500)' }}>
+                                {(s.priceNumber === 0 || s.singleVisitPrice === 0) ? 'Complimentary or Decided at visit' : 'per home visit'}
+                              </div>
                             </td>
                             <td>
                               <div style={{ fontWeight: 700, color: '#059669', fontSize: '0.88rem' }}>
-                                ₹{s.multiVisitPrice || s.priceNumber}
+                                ₹{s.multiVisitPrice !== undefined ? s.multiVisitPrice : (s.priceNumber !== undefined ? s.priceNumber : 0)}
                               </div>
                               <div style={{ fontSize: '0.72rem', color: 'var(--neutral-500)' }}>per visit package</div>
                             </td>
@@ -8076,18 +8082,19 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                   <label className="form-label" style={{ fontSize: '0.78rem', fontWeight: 700 }}>SINGLE VISIT (₹) *</label>
                   <input
                     type="number"
-                    min={100}
+                    min={0}
                     required
                     value={serviceForm.priceNumber}
                     onChange={(e) => setServiceForm({ ...serviceForm, priceNumber: Number(e.target.value) })}
                     className="form-control"
                   />
+                  <span style={{ fontSize: '0.7rem', color: '#059669', fontWeight: 600 }}>Set ₹0 for Free or To Be Decided At Service</span>
                 </div>
                 <div>
                   <label className="form-label" style={{ fontSize: '0.78rem', fontWeight: 700 }}>PACKAGE / VISIT (₹)</label>
                   <input
                     type="number"
-                    min={100}
+                    min={0}
                     value={serviceForm.multiVisitPrice}
                     onChange={(e) => setServiceForm({ ...serviceForm, multiVisitPrice: Number(e.target.value) })}
                     className="form-control"
@@ -8140,17 +8147,43 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
               </div>
 
               <div style={{ marginBottom: '1.25rem' }}>
-                <label className="form-label" style={{ fontSize: '0.78rem', fontWeight: 700, display: 'block', marginBottom: '0.5rem' }}>
-                  SERVICE MAIN IMAGE (Optional)
+                <label className="form-label" style={{ fontSize: '0.78rem', fontWeight: 700, display: 'block', marginBottom: '0.4rem' }}>
+                  SERVICE MAIN IMAGE (Photo)
                 </label>
-                <div style={{ display: 'flex', gap: '1rem', alignItems: 'center' }}>
+                <div style={{ display: 'flex', gap: '0.5rem', marginBottom: '0.5rem' }}>
+                  <input
+                    type="text"
+                    placeholder="Enter image URL e.g. /images/doctor_xpressnurse.jpg or https://..."
+                    value={serviceForm.imageUrl}
+                    onChange={(e) => setServiceForm({ ...serviceForm, imageUrl: e.target.value })}
+                    className="form-control"
+                    style={{ fontSize: '0.85rem' }}
+                  />
                   {serviceForm.imageUrl && (
+                    <button
+                      type="button"
+                      onClick={() => setServiceForm({ ...serviceForm, imageUrl: '' })}
+                      className="btn btn-outline btn-sm"
+                      style={{ color: '#EF4444', borderColor: '#FECDD3', padding: '0 0.75rem', fontWeight: 600 }}
+                    >
+                      Clear
+                    </button>
+                  )}
+                </div>
+
+                {serviceForm.imageUrl && (
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', marginBottom: '0.5rem' }}>
                     <img
                       src={serviceForm.imageUrl}
                       alt="Main image preview"
-                      style={{ width: 64, height: 64, objectFit: 'cover', borderRadius: 8, border: '1px solid #E2E8F0' }}
+                      style={{ width: 64, height: 64, objectFit: 'cover', borderRadius: 8, border: '1px solid #CBD5E1' }}
+                      onError={(e) => { (e.target as HTMLImageElement).src = '/images/doctor_xpressnurse.jpg'; }}
                     />
-                  )}
+                    <span style={{ fontSize: '0.75rem', color: '#059669', fontWeight: 600 }}>✓ Image URL preview active</span>
+                  </div>
+                )}
+
+                <div style={{ display: 'flex', gap: '1rem', alignItems: 'center' }}>
                   <div style={{ flex: 1 }}>
                     <input
                       type="file"
@@ -8166,6 +8199,9 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                         background: '#F8FAFC'
                       }}
                     />
+                    <div style={{ fontSize: '0.72rem', color: '#64748B', marginTop: '0.2rem' }}>
+                      Or upload photo file directly from your computer (auto-hosted to Cloudflare)
+                    </div>
                     {isUploadingServiceImage && (
                       <div style={{ fontSize: '0.75rem', color: '#0284C7', marginTop: '0.25rem', fontWeight: 600 }}>
                         Uploading main image...
@@ -8176,17 +8212,43 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
               </div>
 
               <div style={{ marginBottom: '1.25rem' }}>
-                <label className="form-label" style={{ fontSize: '0.78rem', fontWeight: 700, display: 'block', marginBottom: '0.5rem' }}>
+                <label className="form-label" style={{ fontSize: '0.78rem', fontWeight: 700, display: 'block', marginBottom: '0.4rem' }}>
                   SERVICE THUMBNAIL IMAGE (Optional)
                 </label>
-                <div style={{ display: 'flex', gap: '1rem', alignItems: 'center' }}>
+                <div style={{ display: 'flex', gap: '0.5rem', marginBottom: '0.5rem' }}>
+                  <input
+                    type="text"
+                    placeholder="Enter thumbnail URL or upload below..."
+                    value={serviceForm.thumbnailUrl}
+                    onChange={(e) => setServiceForm({ ...serviceForm, thumbnailUrl: e.target.value })}
+                    className="form-control"
+                    style={{ fontSize: '0.85rem' }}
+                  />
                   {serviceForm.thumbnailUrl && (
+                    <button
+                      type="button"
+                      onClick={() => setServiceForm({ ...serviceForm, thumbnailUrl: '' })}
+                      className="btn btn-outline btn-sm"
+                      style={{ color: '#EF4444', borderColor: '#FECDD3', padding: '0 0.75rem', fontWeight: 600 }}
+                    >
+                      Clear
+                    </button>
+                  )}
+                </div>
+
+                {serviceForm.thumbnailUrl && (
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', marginBottom: '0.5rem' }}>
                     <img
                       src={serviceForm.thumbnailUrl}
                       alt="Thumbnail preview"
-                      style={{ width: 64, height: 64, objectFit: 'cover', borderRadius: 8, border: '1px solid #E2E8F0' }}
+                      style={{ width: 64, height: 64, objectFit: 'cover', borderRadius: 8, border: '1px solid #CBD5E1' }}
+                      onError={(e) => { (e.target as HTMLImageElement).src = '/images/doctor_xpressnurse.jpg'; }}
                     />
-                  )}
+                    <span style={{ fontSize: '0.75rem', color: '#059669', fontWeight: 600 }}>✓ Thumbnail preview active</span>
+                  </div>
+                )}
+
+                <div style={{ display: 'flex', gap: '1rem', alignItems: 'center' }}>
                   <div style={{ flex: 1 }}>
                     <input
                       type="file"

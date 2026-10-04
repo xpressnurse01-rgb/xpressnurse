@@ -132,7 +132,9 @@ export const BookingModal: React.FC<BookingModalProps> = ({
   const currentService = serviceList.find((s) => s.id === serviceId) || serviceList[0];
 
   // Pricing & Promo Code Calculations
-  const baseFee = currentService.priceNumber || 799;
+  const baseFee = (currentService.priceNumber !== undefined && currentService.priceNumber !== null)
+    ? currentService.priceNumber
+    : ((currentService.singleVisitPrice !== undefined && currentService.singleVisitPrice !== null) ? currentService.singleVisitPrice : 799);
   const discountRupees = appliedPromo ? appliedPromo.discountRupees : 0;
   const finalFee = Math.max(0, baseFee - discountRupees);
 
@@ -482,9 +484,11 @@ export const BookingModal: React.FC<BookingModalProps> = ({
       ? `Attached (%0A   *File:* ${createdBooking.prescriptionFileName}%0A   *Document Link:* ${createdBooking.prescriptionUrl || 'https://pub-830eaa9d07034c8d985d7d00577f77e9.r2.dev/prescriptions/' + createdBooking.prescriptionFileName})`
       : (createdBooking.serviceId === 'doctor-consult' ? 'Requires Teleconsult Rx Issuance' : 'Attached & Verified');
 
+    const finalVal = createdBooking.finalFee !== undefined ? createdBooking.finalFee : createdBooking.estimatedFee;
+    const feeStr = finalVal === 0 ? 'Free / Decided at service (₹0)' : `₹${finalVal}`;
     const promoInfo = createdBooking.promoCode
-      ? `%0A*Promo Code:* ${createdBooking.promoCode} (-₹${createdBooking.discountRupees})%0A*Payable Amount:* ₹${createdBooking.finalFee || createdBooking.estimatedFee}`
-      : `%0A*Payable Amount:* ₹${createdBooking.estimatedFee}`;
+      ? `%0A*Promo Code:* ${createdBooking.promoCode} (-₹${createdBooking.discountRupees})%0A*Payable Amount:* ${feeStr}`
+      : `%0A*Payable Amount:* ${feeStr}`;
 
     const text = `*New Home Care Booking - Xpress Nurse*%0A%0A` +
       `*Booking Ref:* ${createdBooking.id}%0A` +
@@ -683,8 +687,8 @@ export const BookingModal: React.FC<BookingModalProps> = ({
                 <label style={{ fontSize: '0.8rem', fontWeight: 700, color: 'var(--primary-navy-950)', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
                   Care Procedure
                 </label>
-                <span style={{ fontSize: '0.88rem', fontWeight: 800, color: '#0F172A', background: '#F1F5F9', padding: '0.15rem 0.65rem', borderRadius: 9999 }}>
-                  ₹{currentService.priceNumber || 799}
+                <span style={{ fontSize: '0.85rem', fontWeight: 800, color: '#0F172A', background: '#F1F5F9', padding: '0.15rem 0.65rem', borderRadius: 9999 }}>
+                  {baseFee === 0 ? 'Free / Decided at service (₹0)' : `₹${baseFee}`}
                 </span>
               </div>
               <select
@@ -693,11 +697,15 @@ export const BookingModal: React.FC<BookingModalProps> = ({
                 onChange={(e) => setServiceId(e.target.value as ServiceId)}
                 style={{ width: '100%', padding: '0.6rem 0.85rem', borderRadius: 10, fontWeight: 600, fontSize: '0.88rem' }}
               >
-                {serviceList.map((srv) => (
-                  <option key={srv.id} value={srv.id}>
-                    {srv.title} — {srv.indicativePrice}
-                  </option>
-                ))}
+                {serviceList.map((srv) => {
+                  const pNum = srv.priceNumber !== undefined && srv.priceNumber !== null ? srv.priceNumber : srv.singleVisitPrice;
+                  const priceLabel = pNum === 0 ? 'Free / Decided at service • ₹0' : srv.indicativePrice;
+                  return (
+                    <option key={srv.id} value={srv.id}>
+                      {srv.title} — {priceLabel}
+                    </option>
+                  );
+                })}
               </select>
               {serviceId === 'wound-dressing' && (
                 <div style={{ marginTop: '0.4rem', fontSize: '0.74rem', color: '#92400E', background: '#FEF3C7', padding: '0.35rem 0.65rem', borderRadius: 8, border: '1px solid #FDE68A', display: 'flex', alignItems: 'center', gap: '0.35rem' }}>
@@ -1263,11 +1271,16 @@ export const BookingModal: React.FC<BookingModalProps> = ({
                     {showCoupons && (
                       <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem', marginTop: '0.75rem' }}>
                         {couponList
-                          .filter((c) => c.status === 'Active' && c.description.includes('[SHOW_IN_MODAL]'))
+                          .filter((c) => c.status === 'Active' && (c.showInBookingModal === true || c.description.includes('[SHOW_IN_MODAL]') || !couponList.some(k => k.status === 'Active' && (k.showInBookingModal || k.description.includes('[SHOW_IN_MODAL]')))))
                           .map((cpn) => (
                             <div key={cpn.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: '#F8FAFC', padding: '0.5rem 0.75rem', borderRadius: 8, border: '1px solid #E2E8F0' }}>
                               <div>
-                                <div style={{ fontSize: '0.85rem', fontWeight: 800, color: '#0F172A' }}>{cpn.code}</div>
+                                <div style={{ fontSize: '0.85rem', fontWeight: 800, color: '#0F172A', display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
+                                  <span>{cpn.code}</span>
+                                  <span style={{ fontSize: '0.7rem', fontWeight: 700, color: '#059669', background: '#ECFDF5', padding: '1px 6px', borderRadius: 4 }}>
+                                    {cpn.discountType === 'percent' ? `${cpn.discountValue}% OFF` : `₹${cpn.discountValue} OFF`}
+                                  </span>
+                                </div>
                                 <div style={{ fontSize: '0.7rem', color: '#64748B' }}>{cpn.description.replace('[SHOW_IN_MODAL]', '').trim()}</div>
                               </div>
                               <button
@@ -1304,7 +1317,7 @@ export const BookingModal: React.FC<BookingModalProps> = ({
               ) : (
                 <>
                   <span>
-                    Confirm Booking • ₹{finalFee}
+                    Confirm Booking • {finalFee === 0 ? 'Free / Decided at service (₹0)' : `₹${finalFee}`}
                     {appliedPromo && (
                       <span style={{ fontSize: '0.8rem', opacity: 0.85, marginLeft: '0.4rem', fontWeight: 500, textDecoration: 'line-through' }}>
                         ₹{baseFee}
@@ -1319,7 +1332,7 @@ export const BookingModal: React.FC<BookingModalProps> = ({
             {/* Minimalist Micro Reassurance */}
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.45rem', marginTop: '0.65rem', fontSize: '0.74rem', color: 'var(--neutral-500)' }}>
               <ShieldCheck size={14} style={{ color: '#059669' }} />
-              <span>Zero advance deposit • Pay after visit completed • Sterile sealed consumables</span>
+              <span>Zero advance deposit • {baseFee === 0 ? 'Free / Decided at service' : 'Pay after visit completed'} • Sterile sealed consumables</span>
             </div>
           </form>
         )}

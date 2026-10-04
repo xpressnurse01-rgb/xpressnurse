@@ -1550,7 +1550,7 @@ export const NurseDashboard: React.FC<NurseDashboardProps> = ({
                   <option value="injection-administration">Injection & Vitals (₹699)</option>
                   <option value="doctor-consult">Doctor Video Consultation (₹299)</option>
                   <option value="vitals-monitoring">General Health Check (₹699)</option>
-                  <option value="other">Other Nursing Service / Specialized Care</option>
+                  <option value="other">Other Nursing Servie</option>
                 </select>
               </div>
 
@@ -2541,7 +2541,7 @@ export const NurseDashboard: React.FC<NurseDashboardProps> = ({
                 )}
               </div>
               <div style={{ fontSize: '0.8rem', color: '#64748B', marginTop: 2 }}>{previewInvoice.fullAddress || previewInvoice.area}</div>
-              
+
               <div style={{ borderTop: '1px dashed #CBD5E1', margin: '0.75rem 0', paddingTop: '0.75rem' }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.85rem', color: '#334155' }}>
                   <span>
