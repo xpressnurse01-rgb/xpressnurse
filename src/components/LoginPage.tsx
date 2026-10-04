@@ -222,8 +222,7 @@ export const LoginPage: React.FC<LoginPageProps> = ({
 
         // Update referring nurse pending stats in DB (Points are credited strictly AFTER Admin approval)
         await dbUpdateNurseById(matchedReferringNurse.id, {
-          totalReferrals: (matchedReferringNurse.totalReferrals || 0) + 1,
-          earningsPending: (matchedReferringNurse.earningsPending || 0) + 500
+          totalReferrals: (matchedReferringNurse.totalReferrals || 0) + 1
         });
       }
       

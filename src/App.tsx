@@ -191,10 +191,18 @@ export const App: React.FC = () => {
           return parsed
             .filter(n => n.id !== 'nurse-101' && n.id !== 'nurse-102' && n.id !== 'nurse-103' && n.id !== 'nurse-104')
             .map(n => {
+              const updated = { ...n };
               if (Number(n.convertedLeads || 0) === 0 && Number(n.referralEarningsRupees || 0) > 0) {
-                return { ...n, referralEarningsRupees: 0 };
+                updated.referralEarningsRupees = 0;
               }
-              return n;
+              if (Number(n.completedVisits || 0) === 0 && Number(n.earningsPending || 0) > 0) {
+                updated.earningsPending = 0;
+              }
+              if (Number(updated.referralEarningsRupees || 0) === 0 && Number(updated.earningsPending || 0) === 0) {
+                updated.totalPayout = 0;
+                updated.totalEarningsRupees = 0;
+              }
+              return updated;
             });
         }
       }

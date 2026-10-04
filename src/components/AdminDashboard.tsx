@@ -1768,12 +1768,12 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
     const m = calculateNurseMetrics(n, bookings, leads, services);
     const initialPoints = (n.pointsEarned !== undefined && n.pointsEarned !== null) ? Number(n.pointsEarned) : m.totalPoints;
     const initialReferral = (n.referralEarningsRupees !== undefined && n.referralEarningsRupees !== null) ? Number(n.referralEarningsRupees) : m.referralEarnings;
-    const initialDuty = (n.earningsPending !== undefined && n.earningsPending !== null) ? Number(n.earningsPending) : m.completedVisitsEarnings;
-    const initialTotalPayout = (n.totalPayout !== undefined && n.totalPayout !== null)
-      ? Number(n.totalPayout)
-      : (n.totalEarningsRupees !== undefined && n.totalEarningsRupees !== null)
-        ? Number(n.totalEarningsRupees)
-        : (initialDuty + initialReferral);
+    const initialDuty = (m.completedVisitsCount > 0 && n.earningsPending !== undefined && n.earningsPending !== null)
+      ? Number(n.earningsPending)
+      : m.completedVisitsEarnings;
+    const initialTotalPayout = (m.completedVisitsCount === 0 && m.completedReferredVisitsCount === 0 && (!n.referralEarningsRupees || Number(n.referralEarningsRupees) <= 0))
+      ? 0
+      : (initialDuty + initialReferral);
     const initialTotalLeads = m.totalLeadsCount;
     const initialConvertedLeads = m.convertedLeadsCount;
     const initialTotalReferrals = m.totalLeadsCount;

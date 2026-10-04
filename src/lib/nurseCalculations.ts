@@ -413,19 +413,22 @@ export function calculateNurseMetrics(
 
   const referralCode = nurse.referralCode || generateNurseReferralCode(nurse.name, nurse.id, nurse.phone || '');
 
-  const finalCompletedVisitsEarnings = (nurse.earningsPending !== undefined && nurse.earningsPending !== null && !isNaN(Number(nurse.earningsPending)))
-    ? Number(nurse.earningsPending)
-    : completedVisitsEarnings;
+  // Duty earnings (70% service charge for completed visits): strictly 0 if no visits have been completed.
+  const finalCompletedVisitsEarnings = completedVisits.length === 0
+    ? 0
+    : (completedVisitsEarnings > 0
+        ? completedVisitsEarnings
+        : (nurse.earningsPending !== undefined && nurse.earningsPending !== null && !isNaN(Number(nurse.earningsPending))
+            ? Number(nurse.earningsPending)
+            : 0));
 
   const finalReferralEarnings = (nurse.referralEarningsRupees !== undefined && nurse.referralEarningsRupees !== null && !isNaN(Number(nurse.referralEarningsRupees)))
     ? Number(nurse.referralEarningsRupees)
     : calculatedReferralEarnings;
 
-  const finalTotalMoney = (nurse.totalPayout !== undefined && nurse.totalPayout !== null && !isNaN(Number(nurse.totalPayout)))
-    ? Number(nurse.totalPayout)
-    : (nurse.totalEarningsRupees !== undefined && nurse.totalEarningsRupees !== null && !isNaN(Number(nurse.totalEarningsRupees)))
-      ? Number(nurse.totalEarningsRupees)
-      : (finalCompletedVisitsEarnings + finalReferralEarnings);
+  const finalTotalMoney = (finalCompletedVisitsEarnings === 0 && finalReferralEarnings === 0)
+    ? 0
+    : (finalCompletedVisitsEarnings + finalReferralEarnings);
 
   return {
     myVisits,
