@@ -414,7 +414,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
     const hasM = s.includes('MORNING') || s.includes('8:00 AM') || s.includes('8 AM') || /\bM\b/.test(s);
     const hasA = s.includes('AFTERNOON') || s.includes('2:00 PM') || s.includes('2 PM') || /\bA\b/.test(s);
     const hasE = s.includes('EVENING') || s.includes('8:00 PM') || s.includes('8 PM') || s.includes('NIGHT') || /\bE\b/.test(s);
-    
+
     const res: ('M' | 'A' | 'E')[] = [];
     if (hasM) res.push('M');
     if (hasA) res.push('A');
@@ -431,7 +431,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
       if (!prev || !prev.items || !prev.items[index]) return prev;
       const current = prev.items[index];
       let active = parseActiveItemSlots(current.slot);
-      
+
       if (active.includes(slotCode)) {
         if (active.length > 1) {
           active = active.filter((code) => code !== slotCode);
@@ -439,29 +439,29 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
       } else {
         active = [...active, slotCode];
       }
-      
+
       const order: ('M' | 'A' | 'E')[] = ['M', 'A', 'E'];
       active.sort((a, b) => order.indexOf(a) - order.indexOf(b));
-      
+
       const newSlotStr = formatItemSlotsString(active);
       const newQuantity = active.length;
       const rate = Number(current.rate) || 0;
-      
+
       const updated = {
         ...current,
         slot: newSlotStr,
         quantity: newQuantity,
         amount: rate * newQuantity
       };
-      
+
       const updatedItems = [...prev.items];
       updatedItems[index] = updated;
-      
+
       const itemsTotal = updatedItems.reduce((acc, it) => acc + (Number(it.amount) || 0), 0);
       const totalVisits = updatedItems.reduce((acc, it) => acc + (Number(it.quantity) || 1), 0);
       const surcharge = Number(prev.nightSurcharge) || 0;
       const discount = Number(prev.discountRupees) || 0;
-      
+
       return {
         ...prev,
         items: updatedItems,
@@ -475,7 +475,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
     setPreviewInvoice((prev) => {
       if (!prev || !prev.items || !prev.items[index]) return prev;
       const baseItem = prev.items[index];
-      
+
       const slotsOrder = ['8:00 AM', '2:00 PM', '8:00 PM'];
       const curLower = (baseItem.slot || '').toLowerCase();
       let nextSlot = '2:00 PM';
@@ -520,7 +520,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
     setPreviewInvoice((prev) => {
       if (!prev || !prev.items || !prev.items[index]) return prev;
       const baseItem = prev.items[index];
-      
+
       let nextDate = '';
       try {
         const d = new Date(baseItem.date || Date.now());
@@ -1580,7 +1580,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
       'Experience Tier',
       'Certificate Verified',
       'Status',
-      'Completed Visits (Done)',
+      'Completed Visits (Attended)',
       'Active Visits',
       'Patient Referrals (Patient Ref)',
       'Patient Converted (Patient Conv)',
@@ -3525,9 +3525,8 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
 
                               return (
                                 <div>
-                                  <span className={`status-pill ${
-                                      b.status === 'Pending' ? 'warning' :
-                                        b.status === 'Rejected' || b.status === 'Cancelled' ? 'danger' : 'neutral'
+                                  <span className={`status-pill ${b.status === 'Pending' ? 'warning' :
+                                      b.status === 'Rejected' || b.status === 'Cancelled' ? 'danger' : 'neutral'
                                     }`} style={{ whiteSpace: 'nowrap' }}>
                                     {b.status === 'Rejected' ? '✕ Rejected by Admin' : b.status === 'Cancelled' ? '✕ Cancelled' : b.status}
                                   </span>
@@ -4072,7 +4071,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                               <td>{n.experienceYears} Years</td>
                               <td style={{ minWidth: 205, verticalAlign: 'top' }}>
                                 <div style={{ display: 'flex', flexDirection: 'column', gap: '0.35rem' }}>
-                                  {/* Visits Done */}
+                                  {/* Visits Attended */}
                                   <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '0.4rem' }}>
                                     <span style={{
                                       background: '#0F172A',
@@ -4085,7 +4084,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                                       alignItems: 'center',
                                       gap: '4px'
                                     }}>
-                                      🩺 <strong>{m.completedVisitsCount} Done</strong>
+                                      🩺 <strong>{m.completedVisitsCount} Attended</strong>
                                     </span>
                                     <span style={{ fontSize: '0.72rem', color: '#64748B', fontWeight: 600 }}>
                                       ({m.activeVisitsCount} active)
@@ -4869,9 +4868,9 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                           </td>
                           <td>
                             <span className={`status-pill ${isApproved ? 'success' :
-                                isPending ? 'warning' :
-                                  isRejected ? 'danger' :
-                                    l.status === 'Submitted' ? 'info' : 'neutral'
+                              isPending ? 'warning' :
+                                isRejected ? 'danger' :
+                                  l.status === 'Submitted' ? 'info' : 'neutral'
                               }`}>
                               {isPending ? '⏳ Waiting Approval' :
                                 l.status === 'Converted' ? '✓ Completed (+50 Pts & 10% Paid)' :
@@ -5192,7 +5191,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                             </td>
                             <td>
                               <span className={`status-pill ${c.status === 'Completed' ? 'success' :
-                                  c.status === 'Awaiting Call' ? 'danger' : 'neutral'
+                                c.status === 'Awaiting Call' ? 'danger' : 'neutral'
                                 }`}>
                                 {c.status}
                               </span>
