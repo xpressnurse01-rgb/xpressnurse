@@ -80,7 +80,11 @@ import {
   deduplicateBookings,
   deduplicateLeads,
   normalizePhone10,
-  areBookingsDuplicate
+  areBookingsDuplicate,
+  findMatchingNurseForLead,
+  findMatchingLeadForNurse,
+  findMatchingBookingForPatientLead,
+  findMatchingLeadForPatientBooking
 } from './lib/nurseCalculations';
 
 export const App: React.FC = () => {
@@ -467,16 +471,167 @@ export const App: React.FC = () => {
     };
   }, [currentPath, services]);
 
+  // Session resolver prioritizing tab isolation and role-scoped persistence
+  const resolveSessionUser = (targetPath?: string): AppUser | null => {
+    if (typeof window === 'undefined') return null;
+    const path = targetPath || window.location.pathname || '/';
+
+    const parseUser = (raw: string | null): AppUser | null => {
+      if (!raw) return null;
+      try {
+        const u = JSON.parse(raw);
+        return u && u.id && u.role ? u : null;
+      } catch {
+        return null;
+      }
+    };
+
+    const isAdminRoute = path.startsWith('/admin');
+    const isNurseRoute = path.startsWith('/nurse');
+    const isDoctorRoute = path.startsWith('/doctor');
+    const isLoginRoute = path.startsWith('/login');
+
+    if (isAdminRoute) {
+      const tabUser = parseUser(sessionStorage.getItem('xn_auth_user'));
+      if (tabUser && tabUser.role === 'admin') return tabUser;
+
+      const tabAdmin = parseUser(sessionStorage.getItem('xn_auth_user_admin'));
+      if (tabAdmin && tabAdmin.role === 'admin') {
+        try { sessionStorage.setItem('xn_auth_user', JSON.stringify(tabAdmin)); } catch {}
+        return tabAdmin;
+      }
+
+      const localAdmin = parseUser(localStorage.getItem('xn_auth_user_admin'));
+      if (localAdmin && localAdmin.role === 'admin') {
+        try {
+          sessionStorage.setItem('xn_auth_user', JSON.stringify(localAdmin));
+          sessionStorage.setItem('xn_auth_user_admin', JSON.stringify(localAdmin));
+        } catch {}
+        return localAdmin;
+      }
+
+      const legacyUser = parseUser(localStorage.getItem('xn_auth_user'));
+      if (legacyUser && legacyUser.role === 'admin') {
+        try {
+          sessionStorage.setItem('xn_auth_user', JSON.stringify(legacyUser));
+          sessionStorage.setItem('xn_auth_user_admin', JSON.stringify(legacyUser));
+          localStorage.setItem('xn_auth_user_admin', JSON.stringify(legacyUser));
+        } catch {}
+        return legacyUser;
+      }
+
+      return null;
+    }
+
+    if (isNurseRoute) {
+      const tabUser = parseUser(sessionStorage.getItem('xn_auth_user'));
+      if (tabUser && (tabUser.role === 'nurse' || tabUser.role === 'admin')) return tabUser;
+
+      const tabNurse = parseUser(sessionStorage.getItem('xn_auth_user_nurse'));
+      if (tabNurse && tabNurse.role === 'nurse') {
+        try { sessionStorage.setItem('xn_auth_user', JSON.stringify(tabNurse)); } catch {}
+        return tabNurse;
+      }
+
+      const localNurse = parseUser(localStorage.getItem('xn_auth_user_nurse'));
+      if (localNurse && localNurse.role === 'nurse') {
+        try {
+          sessionStorage.setItem('xn_auth_user', JSON.stringify(localNurse));
+          sessionStorage.setItem('xn_auth_user_nurse', JSON.stringify(localNurse));
+        } catch {}
+        return localNurse;
+      }
+
+      const localAdmin = parseUser(localStorage.getItem('xn_auth_user_admin'));
+      if (localAdmin && localAdmin.role === 'admin') {
+        return localAdmin;
+      }
+
+      const legacyUser = parseUser(localStorage.getItem('xn_auth_user'));
+      if (legacyUser && (legacyUser.role === 'nurse' || legacyUser.role === 'admin')) {
+        return legacyUser;
+      }
+
+      return null;
+    }
+
+    if (isDoctorRoute) {
+      const tabUser = parseUser(sessionStorage.getItem('xn_auth_user'));
+      if (tabUser && (tabUser.role === 'doctor' || tabUser.role === 'admin')) return tabUser;
+
+      const tabDoctor = parseUser(sessionStorage.getItem('xn_auth_user_doctor'));
+      if (tabDoctor && tabDoctor.role === 'doctor') {
+        try { sessionStorage.setItem('xn_auth_user', JSON.stringify(tabDoctor)); } catch {}
+        return tabDoctor;
+      }
+
+      const localDoctor = parseUser(localStorage.getItem('xn_auth_user_doctor'));
+      if (localDoctor && localDoctor.role === 'doctor') {
+        try {
+          sessionStorage.setItem('xn_auth_user', JSON.stringify(localDoctor));
+          sessionStorage.setItem('xn_auth_user_doctor', JSON.stringify(localDoctor));
+        } catch {}
+        return localDoctor;
+      }
+
+      const localAdmin = parseUser(localStorage.getItem('xn_auth_user_admin'));
+      if (localAdmin && localAdmin.role === 'admin') {
+        return localAdmin;
+      }
+
+      const legacyUser = parseUser(localStorage.getItem('xn_auth_user'));
+      if (legacyUser && (legacyUser.role === 'doctor' || legacyUser.role === 'admin')) {
+        return legacyUser;
+      }
+
+      return null;
+    }
+
+    if (isLoginRoute) {
+      try {
+        const portal = new URLSearchParams(window.location.search).get('portal');
+        if (portal === 'admin') {
+          return parseUser(sessionStorage.getItem('xn_auth_user_admin')) || parseUser(localStorage.getItem('xn_auth_user_admin'));
+        }
+        if (portal === 'nurse') {
+          return parseUser(sessionStorage.getItem('xn_auth_user_nurse')) || parseUser(localStorage.getItem('xn_auth_user_nurse'));
+        }
+        if (portal === 'doctor') {
+          return parseUser(sessionStorage.getItem('xn_auth_user_doctor')) || parseUser(localStorage.getItem('xn_auth_user_doctor'));
+        }
+      } catch {}
+    }
+
+    const tabUser = parseUser(sessionStorage.getItem('xn_auth_user'));
+    if (tabUser) return tabUser;
+
+    return (
+      parseUser(localStorage.getItem('xn_auth_user_admin')) ||
+      parseUser(localStorage.getItem('xn_auth_user_nurse')) ||
+      parseUser(localStorage.getItem('xn_auth_user_doctor')) ||
+      parseUser(localStorage.getItem('xn_auth_user'))
+    );
+  };
+
   const [authUser, setAuthUser] = useState<AppUser | null>(() => {
-    const saved = localStorage.getItem('xn_auth_user');
-    return saved ? JSON.parse(saved) : null;
+    return resolveSessionUser();
   });
+
+  // Keep authUser in sync with current route and tab session
+  useEffect(() => {
+    const resolved = resolveSessionUser(currentPath);
+    setAuthUser(resolved);
+  }, [currentPath]);
 
   const [activeNurseId, setActiveNurseId] = useState<string>(() => {
     try {
-      const saved = localStorage.getItem('xn_auth_user');
-      if (saved) {
-        const u = JSON.parse(saved);
+      const nurseSession =
+        sessionStorage.getItem('xn_auth_user_nurse') ||
+        sessionStorage.getItem('xn_auth_user') ||
+        localStorage.getItem('xn_auth_user_nurse') ||
+        localStorage.getItem('xn_auth_user');
+      if (nurseSession) {
+        const u = JSON.parse(nurseSession);
         if (u.role === 'nurse' && u.id) return u.id;
       }
       const savedNurseId = localStorage.getItem('xn_active_nurse_id');
@@ -539,11 +694,19 @@ export const App: React.FC = () => {
   // Login success handler — set active nurse based on logged-in user
   const handleLoginSuccess = (user: AppUser) => {
     setAuthUser(user);
-    localStorage.setItem('xn_auth_user', JSON.stringify(user));
+    const roleKey = `xn_auth_user_${user.role}`;
+    try {
+      sessionStorage.setItem('xn_auth_user', JSON.stringify(user));
+      sessionStorage.setItem(roleKey, JSON.stringify(user));
+      localStorage.setItem(roleKey, JSON.stringify(user));
+      localStorage.setItem('xn_auth_user', JSON.stringify(user));
+    } catch {}
     // If nurse, switch active nurse directly to their own account
     if (user.role === 'nurse') {
       setActiveNurseId(user.id);
-      localStorage.setItem('xn_active_nurse_id', user.id);
+      try {
+        localStorage.setItem('xn_active_nurse_id', user.id);
+      } catch {}
     }
   };
 
@@ -580,24 +743,27 @@ export const App: React.FC = () => {
         }
         if (remoteNurses !== null) {
           setNurses(remoteNurses);
-          // If authUser is logged in as a nurse, verify they are active in the live database
-          const savedAuth = localStorage.getItem('xn_auth_user');
-          if (savedAuth) {
+          // If in nurse portal, verify logged-in nurse is active in live database
+          const nurseAuthRaw = sessionStorage.getItem('xn_auth_user_nurse') || localStorage.getItem('xn_auth_user_nurse');
+          if (nurseAuthRaw) {
             try {
-              const u = JSON.parse(savedAuth);
-              if (u.role === 'nurse') {
+              const u = JSON.parse(nurseAuthRaw);
+              if (u && u.role === 'nurse') {
                 const found = remoteNurses.find(
                   (n) => n.id === u.id || (n.email && n.email.toLowerCase() === (u.email || u.identifier || '').toLowerCase()) || (n.phone && n.phone.replace(/\D/g, '') === (u.phone || '').replace(/\D/g, ''))
                 );
                 if (found && found.status === 'Active') {
                   setActiveNurseId(found.id);
-                  localStorage.setItem('xn_active_nurse_id', found.id);
-                } else {
-                  // Nurse was deleted, removed, or is not active — strictly evict session!
-                  setAuthUser(null);
-                  localStorage.removeItem('xn_auth_user');
-                  localStorage.removeItem('xn_active_nurse_id');
+                  try { localStorage.setItem('xn_active_nurse_id', found.id); } catch {}
+                } else if (found && found.status !== 'Active') {
+                  try {
+                    localStorage.removeItem('xn_auth_user_nurse');
+                    localStorage.removeItem('xn_active_nurse_id');
+                    sessionStorage.removeItem('xn_auth_user_nurse');
+                  } catch {}
                   if (window.location.pathname === '/nurse') {
+                    setAuthUser(null);
+                    try { sessionStorage.removeItem('xn_auth_user'); } catch {}
                     navigate('/login?portal=nurse');
                   }
                 }
@@ -782,12 +948,16 @@ export const App: React.FC = () => {
               (n) => n.id === prev.id || (n.phone && prev.phone && n.phone.replace(/\D/g, '') === prev.phone.replace(/\D/g, ''))
             );
             if (!found || found.status !== 'Active') {
-              try { localStorage.removeItem('xn_auth_user'); } catch {}
-              try { localStorage.removeItem('xn_active_nurse_id'); } catch {}
+              try {
+                sessionStorage.removeItem('xn_auth_user');
+                sessionStorage.removeItem('xn_auth_user_nurse');
+                localStorage.removeItem('xn_auth_user_nurse');
+                localStorage.removeItem('xn_active_nurse_id');
+              } catch {}
               if (window.location.pathname === '/nurse') {
                 navigate('/login?portal=nurse');
+                return null;
               }
-              return null;
             }
           }
           return prev;
@@ -847,12 +1017,16 @@ export const App: React.FC = () => {
         setAppUsers((prev) => prev.filter((u) => u.id !== data.id));
         setAuthUser((prev) => {
           if (prev && prev.id === data.id) {
-            try { localStorage.removeItem('xn_auth_user'); } catch {}
-            try { localStorage.removeItem('xn_active_nurse_id'); } catch {}
+            try {
+              sessionStorage.removeItem('xn_auth_user');
+              sessionStorage.removeItem('xn_auth_user_nurse');
+              localStorage.removeItem('xn_auth_user_nurse');
+              localStorage.removeItem('xn_active_nurse_id');
+            } catch {}
             if (window.location.pathname === '/nurse') {
               navigate('/login?portal=nurse');
+              return null;
             }
-            return null;
           }
           return prev;
         });
@@ -1345,26 +1519,32 @@ export const App: React.FC = () => {
     await dbUpdateLeadById(leadId, approvedLead);
 
     // If this lead corresponds to a referred nurse, activate and approve that nurse now!
-    const leadNursePhone = (lead.referredNursePhone || lead.patientPhone || '').replace(/\D/g, '');
-    const referredNurse = nurses.find((n) =>
-      (leadNursePhone && n.phone && n.phone.replace(/\D/g, '') === leadNursePhone) ||
-      (lead.referredNurseName && n.name.toLowerCase() === lead.referredNurseName.toLowerCase()) ||
-      (lead.patientName && n.name.toLowerCase() === lead.patientName.toLowerCase())
-    );
-    if (referredNurse && (!referredNurse.certificateVerified || referredNurse.status !== 'Active')) {
+    const referredNurse = findMatchingNurseForLead(lead, nurses);
+
+    if (referredNurse) {
       const activatedNurse: NurseProfile = {
         ...referredNurse,
         status: 'Active',
-        certificateVerified: true
+        certificateVerified: true,
+        referredByNurseId: lead.nurseId || referredNurse.referredByNurseId
       };
-      setNurses((prev) => prev.map((n) => (n.id === activatedNurse.id ? activatedNurse : n)));
+      setNurses((prev) => {
+        const next = prev.map((n) => (n.id === activatedNurse.id ? activatedNurse : n));
+        try { localStorage.setItem('xn_cached_nurses', JSON.stringify(next)); } catch { }
+        return next;
+      });
       broadcastRealtimeUpdate('NURSE_UPDATE', activatedNurse);
-      await dbUpdateNurse(activatedNurse);
+      await dbUpdateNurseById(activatedNurse.id, {
+        status: 'Active',
+        certificateVerified: true,
+        referredByNurseId: lead.nurseId || referredNurse.referredByNurseId
+      });
     }
 
-    // For Nurse Referral: credit referring nurse 50 points upon nurse verification (only if not already credited).
+    // For Nurse Referral: credit referring nurse 50 points upon nurse verification (strictly once upon approval).
     const referringNurse = nurses.find((n) => n.id === lead.nurseId);
-    if (referringNurse && isNurseReferral && !isAlreadyApproved) {
+    const nurseWasAlreadyVerified = Boolean(referredNurse?.certificateVerified && referredNurse?.status === 'Active');
+    if (referringNurse && isNurseReferral && !isAlreadyApproved && !nurseWasAlreadyVerified) {
       const updatedNurse: NurseProfile = {
         ...referringNurse,
         pointsEarned: (referringNurse.pointsEarned || 0) + pointsToCredit,
@@ -1593,7 +1773,13 @@ export const App: React.FC = () => {
           designation: updated.qualification,
           serviceArea: updated.serviceArea,
         };
-        try { localStorage.setItem('xn_auth_user', JSON.stringify(next)); } catch { }
+        try {
+          const roleKey = `xn_auth_user_${next.role}`;
+          sessionStorage.setItem('xn_auth_user', JSON.stringify(next));
+          sessionStorage.setItem(roleKey, JSON.stringify(next));
+          localStorage.setItem(roleKey, JSON.stringify(next));
+          localStorage.setItem('xn_auth_user', JSON.stringify(next));
+        } catch { }
         return next;
       }
       return prev;
@@ -1633,22 +1819,19 @@ export const App: React.FC = () => {
           broadcastRealtimeUpdate('BOOKING_UPDATE', updated);
           dbSaveBooking(updated);
 
-          // Link assignedNurseId to matching patient referral lead
-          if (b.referringNurseId) {
-            const bPhoneClean = (b.patientPhone || '').replace(/\D/g, '');
-            const matchingLead = leads.find(l =>
-              (bPhoneClean && l.patientPhone && l.patientPhone.replace(/\D/g, '') === bPhoneClean) ||
-              (l.nurseId === b.referringNurseId && l.patientName && b.patientName && l.patientName.toLowerCase() === b.patientName.toLowerCase())
-            );
-            if (matchingLead) {
-              const updatedLead: NurseLead = {
-                ...matchingLead,
-                assignedNurseId: nurseId
-              };
-              setLeads((prevLeads) => prevLeads.map(l => l.id === matchingLead.id ? updatedLead : l));
-              broadcastRealtimeUpdate('LEAD_UPDATE', updatedLead);
-              dbUpdateLeadById(matchingLead.id, updatedLead);
-            }
+          // Link assignedNurseId to matching patient referral lead and mark lead as Approved!
+          const matchingLead = findMatchingLeadForPatientBooking(updated, leads);
+          if (matchingLead) {
+            const updatedLead: NurseLead = {
+              ...matchingLead,
+              assignedNurseId: nurseId,
+              status: matchingLead.status === 'Converted' ? 'Converted' : 'Approved',
+              approvedAt: matchingLead.approvedAt || new Date().toISOString(),
+              approvedBy: 'Admin'
+            };
+            setLeads((prevLeads) => prevLeads.map(l => l.id === matchingLead.id ? updatedLead : l));
+            broadcastRealtimeUpdate('LEAD_UPDATE', updatedLead);
+            dbUpdateLeadById(matchingLead.id, updatedLead);
           }
 
           return updated;
@@ -1926,12 +2109,7 @@ export const App: React.FC = () => {
       }
 
       // 2. Credit 50 points + 10% service commission to the Referring Nurse who referred this patient lead!
-      const matchLead = leads.find((l) =>
-        l.id === `LEAD-BK-${id}` ||
-        l.id === `RP-${id.replace(/^BK-/, '')}` ||
-        (targetBooking.referringNurseId && l.nurseId === targetBooking.referringNurseId &&
-          (l.patientPhone === targetBooking.patientPhone || l.patientName === targetBooking.patientName))
-      );
+      const matchLead = findMatchingLeadForPatientBooking(targetBooking, leads);
       const refNurseId = targetBooking.referringNurseId || matchLead?.nurseId;
 
       if (refNurseId && (!matchLead || matchLead.referralType !== 'nurse')) {
@@ -2054,6 +2232,49 @@ export const App: React.FC = () => {
     await dbInsertNurse(n);
   };
   const handleUpdateNurseRecord = async (id: string, updates: Partial<NurseProfile>) => {
+    const targetNurse = nurses.find((n) => n.id === id);
+    const mergedNurse = targetNurse ? { ...targetNurse, ...updates } : (updates as NurseProfile);
+
+    // If nurse is being verified/approved, sync matching colleague nurse referral lead and credit points once
+    if (updates.certificateVerified === true || updates.status === 'Active') {
+      const matchLead = findMatchingLeadForNurse(mergedNurse as NurseProfile, leads);
+      const referrerId = updates.referredByNurseId || targetNurse?.referredByNurseId || matchLead?.nurseId;
+
+      if (matchLead && matchLead.status !== 'Approved' && matchLead.status !== 'Converted') {
+        const approvedLead: NurseLead = {
+          ...matchLead,
+          status: 'Approved',
+          pointsAwarded: 50,
+          approvedAt: matchLead.approvedAt || new Date().toISOString(),
+          approvedBy: 'Admin',
+          adminNotes: `Referred nurse ${mergedNurse.name || 'Nurse'} approved & verified by Admin`
+        };
+        setLeads((prev) => prev.map((l) => (l.id === matchLead.id ? approvedLead : l)));
+        broadcastRealtimeUpdate('LEAD_UPDATE', approvedLead);
+        await dbUpdateLeadById(matchLead.id, approvedLead);
+      }
+
+      // Strictly credit 50 points to referrer ONCE upon verification
+      if (referrerId && targetNurse && !targetNurse.certificateVerified) {
+        const referrer = nurses.find((rn) => rn.id === referrerId);
+        if (referrer) {
+          const updatedReferrer: NurseProfile = {
+            ...referrer,
+            pointsEarned: (referrer.pointsEarned || 0) + 50,
+            convertedLeads: (referrer.convertedLeads || 0) + 1,
+            totalReferrals: Math.max(referrer.totalReferrals || 0, (referrer.convertedLeads || 0) + 1)
+          };
+          setNurses((prev) => {
+            const next = prev.map((n) => (n.id === updatedReferrer.id ? updatedReferrer : n));
+            try { localStorage.setItem('xn_cached_nurses', JSON.stringify(next)); } catch { }
+            return next;
+          });
+          broadcastRealtimeUpdate('NURSE_UPDATE', updatedReferrer);
+          await dbUpdateNurse(updatedReferrer);
+        }
+      }
+    }
+
     setNurses((prev) => {
       const next = prev.map((n) => (n.id === id ? { ...n, ...updates } : n));
       try { localStorage.setItem('xn_cached_nurses', JSON.stringify(next)); } catch { }
@@ -2086,7 +2307,13 @@ export const App: React.FC = () => {
           designation: updates.qualification ?? prev.designation,
           serviceArea: updates.serviceArea ?? prev.serviceArea,
         };
-        try { localStorage.setItem('xn_auth_user', JSON.stringify(next)); } catch { }
+        try {
+          const roleKey = `xn_auth_user_${next.role}`;
+          sessionStorage.setItem('xn_auth_user', JSON.stringify(next));
+          sessionStorage.setItem(roleKey, JSON.stringify(next));
+          localStorage.setItem(roleKey, JSON.stringify(next));
+          localStorage.setItem('xn_auth_user', JSON.stringify(next));
+        } catch { }
         return next;
       }
       return prev;
@@ -2143,12 +2370,16 @@ export const App: React.FC = () => {
     // If currently logged-in user is this deleted nurse, immediately evict session!
     setAuthUser((prev) => {
       if (prev && (prev.id === id || (nurseToDelete && (prev.phone === nurseToDelete.phone || prev.email === nurseToDelete.email)))) {
-        try { localStorage.removeItem('xn_auth_user'); } catch {}
-        try { localStorage.removeItem('xn_active_nurse_id'); } catch {}
+        try {
+          sessionStorage.removeItem('xn_auth_user');
+          sessionStorage.removeItem('xn_auth_user_nurse');
+          localStorage.removeItem('xn_auth_user_nurse');
+          localStorage.removeItem('xn_active_nurse_id');
+        } catch {}
         if (currentPath === '/nurse') {
           setTimeout(() => navigate('/login?portal=nurse'), 50);
+          return null;
         }
-        return null;
       }
       return prev;
     });
@@ -2393,12 +2624,16 @@ export const App: React.FC = () => {
     // If currently logged-in user is among the deleted nurses, immediately evict session!
     setAuthUser((prev) => {
       if (prev && idSet.has(prev.id)) {
-        try { localStorage.removeItem('xn_auth_user'); } catch {}
-        try { localStorage.removeItem('xn_active_nurse_id'); } catch {}
+        try {
+          sessionStorage.removeItem('xn_auth_user');
+          sessionStorage.removeItem('xn_auth_user_nurse');
+          localStorage.removeItem('xn_auth_user_nurse');
+          localStorage.removeItem('xn_active_nurse_id');
+        } catch {}
         if (currentPath === '/nurse') {
           setTimeout(() => navigate('/login?portal=nurse'), 50);
+          return null;
         }
-        return null;
       }
       return prev;
     });

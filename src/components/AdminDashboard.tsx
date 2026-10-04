@@ -69,7 +69,15 @@ import {
 import { EmptyState } from './EmptyState';
 import { generateNurseReferralCode, dbLogAuditEvent } from '../lib/supabase';
 import { getSafeBlobUrl, HYDERABAD_AREAS } from './NurseDashboard';
-import { calculateNurseMetrics, deduplicateBookings, deduplicateLeads } from '../lib/nurseCalculations';
+import {
+  calculateNurseMetrics,
+  deduplicateBookings,
+  deduplicateLeads,
+  findMatchingNurseForLead,
+  findMatchingLeadForNurse,
+  findMatchingBookingForPatientLead,
+  findMatchingLeadForPatientBooking
+} from '../lib/nurseCalculations';
 import {
   getCloudflareConfig,
   saveCloudflareConfig,
@@ -2316,6 +2324,13 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
     setIsProcessingApproval(true);
     try {
       const isPatient = approvalModalLead.referralType !== 'nurse' && !approvalModalLead.referredNursePhone;
+      if (!isPatient) {
+        const matchingNurse = findMatchingNurseForLead(approvalModalLead, nurses);
+        if (matchingNurse && !matchingNurse.certificateVerified && onUpdateNurseRecord) {
+          await onUpdateNurseRecord(matchingNurse.id, { certificateVerified: true, status: 'Active' });
+        }
+      }
+
       const createdBookingId = await onApproveLead(
         approvalModalLead.id,
         approvalPoints,
@@ -2785,7 +2800,13 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
             className="btn btn-sm btn-outline"
             onClick={() => {
               try {
-                localStorage.removeItem('xn_auth_user');
+                sessionStorage.removeItem('xn_auth_user');
+                sessionStorage.removeItem('xn_auth_user_admin');
+                localStorage.removeItem('xn_auth_user_admin');
+                const legacy = localStorage.getItem('xn_auth_user');
+                if (legacy && legacy.includes('"role":"admin"')) {
+                  localStorage.removeItem('xn_auth_user');
+                }
                 window.location.href = '/login?portal=admin';
               } catch { }
             }}
@@ -3955,47 +3976,55 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
 
                               {/* Origin (Referred vs Direct) */}
                               <td>
-                                {n.referredByNurseId ? (() => {
-                                  const refNurse = nurses.find((rn) => rn.id === n.referredByNurseId);
-                                  const refName = refNurse?.name || n.referredByNurseName || n.referredByNurseId;
-                                  return (
-                                    <div>
-                                      <span style={{
-                                        display: 'inline-flex',
-                                        alignItems: 'center',
-                                        gap: '0.3rem',
-                                        background: '#EFF6FF',
-                                        color: '#1D4ED8',
-                                        border: '1px solid #BFDBFE',
-                                        borderRadius: 9999,
-                                        padding: '2px 8px',
-                                        fontSize: '0.72rem',
-                                        fontWeight: 800,
-                                        whiteSpace: 'nowrap'
-                                      }}>
-                                        ⚡ Referred by {refName}
-                                      </span>
-                                      <div style={{ fontSize: '0.7rem', color: n.certificateVerified ? '#059669' : '#D97706', fontWeight: 700, marginTop: '2px' }}>
-                                        Bonus: 50 points {n.certificateVerified ? '✓ Credited' : '⏳ Pending'}
+                                {(() => {
+                                  const matchLead = findMatchingLeadForNurse(n, leads);
+                                  const referrerId = n.referredByNurseId || matchLead?.nurseId;
+                                  const refNurse = referrerId ? nurses.find((rn) => rn.id === referrerId) : undefined;
+                                  const refName = refNurse?.name || n.referredByNurseName || (referrerId ? `Nurse ${referrerId}` : null);
+                                  const isNurseApproved = Boolean(n.certificateVerified || (matchLead && (matchLead.status === 'Approved' || matchLead.status === 'Converted')));
+
+                                  if (referrerId || refName) {
+                                    return (
+                                      <div>
+                                        <span style={{
+                                          display: 'inline-flex',
+                                          alignItems: 'center',
+                                          gap: '0.3rem',
+                                          background: '#EFF6FF',
+                                          color: '#1D4ED8',
+                                          border: '1px solid #BFDBFE',
+                                          borderRadius: 9999,
+                                          padding: '2px 8px',
+                                          fontSize: '0.72rem',
+                                          fontWeight: 800,
+                                          whiteSpace: 'nowrap'
+                                        }}>
+                                          ⚡ Referred by {refName}
+                                        </span>
+                                        <div style={{ fontSize: '0.7rem', color: isNurseApproved ? '#059669' : '#D97706', fontWeight: 700, marginTop: '2px' }}>
+                                          Bonus: 50 points {isNurseApproved ? '✓ Credited' : '⏳ Pending'}
+                                        </div>
                                       </div>
-                                    </div>
+                                    );
+                                  }
+
+                                  return (
+                                    <span style={{
+                                      display: 'inline-flex',
+                                      alignItems: 'center',
+                                      background: '#F1F5F9',
+                                      color: '#475569',
+                                      border: '1px solid #E2E8F0',
+                                      borderRadius: 9999,
+                                      padding: '2px 8px',
+                                      fontSize: '0.72rem',
+                                      fontWeight: 700,
+                                      whiteSpace: 'nowrap'
+                                    }}>
+                                      Individual / Direct
+                                    </span>
                                   );
-                                })() : (
-                                  <span style={{
-                                    display: 'inline-flex',
-                                    alignItems: 'center',
-                                    background: '#F1F5F9',
-                                    color: '#475569',
-                                    border: '1px solid #E2E8F0',
-                                    borderRadius: 9999,
-                                    padding: '2px 8px',
-                                    fontSize: '0.72rem',
-                                    fontWeight: 700,
-                                    whiteSpace: 'nowrap'
-                                  }}>
-                                    Individual / Direct
-                                  </span>
-                                )}
+                                })()}
                               </td>
 
                               {/* Referral Code */}
@@ -4205,82 +4234,68 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                                 </div>
                               </td>
                               <td>
-                                <div style={{ display: 'flex', flexDirection: 'column', gap: '0.35rem', alignItems: 'flex-start' }}>
-                                  {n.certificateVerified ? (
-                                    <span className="status-pill success" style={{ fontSize: '0.72rem', padding: '2px 8px' }}>
-                                      ✓ Verified Certificate
-                                    </span>
-                                  ) : (
-                                    <span className="status-pill warning" style={{ fontSize: '0.72rem', padding: '2px 8px' }}>
-                                      ⏳ Pending Review
-                                    </span>
-                                  )}
+                                {(() => {
+                                  const matchLead = findMatchingLeadForNurse(n, leads);
+                                  const isNurseApproved = Boolean(n.certificateVerified || (matchLead && (matchLead.status === 'Approved' || matchLead.status === 'Converted')));
 
-                                  {/* View Certificate Button - works for any nurse with a certificateUrl */}
-                                  {n.certificateUrl ? (
-                                    <button
-                                      type="button"
-                                      onClick={() => {
-                                        setAdminCertModalNurse(n);
-                                        setAdminCertModalOpen(true);
-                                      }}
-                                      className="btn btn-sm"
-                                      style={{
-                                        fontSize: '0.72rem',
-                                        padding: '0.22rem 0.55rem',
-                                        background: '#EFF6FF',
-                                        border: '1px solid #BFDBFE',
-                                        color: '#1D4ED8',
-                                        borderRadius: 5,
-                                        display: 'inline-flex',
-                                        alignItems: 'center',
-                                        gap: '0.3rem',
-                                        fontWeight: 700,
-                                        cursor: 'pointer'
-                                      }}
-                                    >
-                                      <Eye size={12} />
-                                      <span>View Certificate</span>
-                                    </button>
-                                  ) : (
-                                    <span style={{ fontSize: '0.7rem', color: '#94A3B8' }}>No doc uploaded</span>
-                                  )}
+                                  return (
+                                    <div style={{ display: 'flex', flexDirection: 'column', gap: '0.35rem', alignItems: 'flex-start' }}>
+                                      {isNurseApproved ? (
+                                        <span className="status-pill success" style={{ fontSize: '0.72rem', padding: '2px 8px' }}>
+                                          ✓ Verified Certificate
+                                        </span>
+                                      ) : (
+                                        <span className="status-pill warning" style={{ fontSize: '0.72rem', padding: '2px 8px' }}>
+                                          ⏳ Pending Review
+                                        </span>
+                                      )}
 
-                                  {!n.certificateVerified && (
-                                    <button
-                                      type="button"
-                                      onClick={async () => {
-                                        await onUpdateNurseRecord?.(n.id, { certificateVerified: true, status: 'Active' });
-                                        showToast(`Nurse "${n.name}" verified and approved!`);
+                                      {/* View Certificate Button - works for any nurse with a certificateUrl */}
+                                      {n.certificateUrl ? (
+                                        <button
+                                          type="button"
+                                          onClick={() => {
+                                            setAdminCertModalNurse(n);
+                                            setAdminCertModalOpen(true);
+                                          }}
+                                          className="btn btn-sm"
+                                          style={{
+                                            fontSize: '0.72rem',
+                                            padding: '0.22rem 0.55rem',
+                                            background: '#EFF6FF',
+                                            border: '1px solid #BFDBFE',
+                                            color: '#1D4ED8',
+                                            borderRadius: 5,
+                                            display: 'inline-flex',
+                                            alignItems: 'center',
+                                            gap: '0.3rem',
+                                            fontWeight: 700,
+                                            cursor: 'pointer'
+                                          }}
+                                        >
+                                          <Eye size={12} />
+                                          <span>View Certificate</span>
+                                        </button>
+                                      ) : (
+                                        <span style={{ fontSize: '0.7rem', color: '#94A3B8' }}>No doc uploaded</span>
+                                      )}
 
-                                        // If nurse was referred by an existing nurse, credit 50 points referral reward to the referrer (strictly once upon approval)
-                                        if (n.referredByNurseId) {
-                                          const referrer = nurses.find((rn) => rn.id === n.referredByNurseId);
-                                          if (referrer) {
-                                            const matchLead = leads.find((l) => l.nurseId === referrer.id && (l.referredNursePhone === n.phone || l.patientPhone === n.phone || l.referredNurseName === n.name));
-                                            if (matchLead && onApproveLead) {
-                                              await onApproveLead(matchLead.id, 50, 50, `Referred nurse ${n.name} certificate verified by Admin`);
-                                            } else if (onUpdateNurseRecord) {
-                                              const newPoints = (referrer.pointsEarned || 0) + 50;
-                                              await onUpdateNurseRecord(referrer.id, {
-                                                pointsEarned: newPoints,
-                                                convertedLeads: (referrer.convertedLeads || 0) + 1
-                                              });
-                                            }
-
-                                            showToast(`Nurse ${n.name} approved! 50 referral reward points credited to ${referrer.name}.`);
-                                            return;
-                                          }
-                                        }
-                                        showToast(`Nurse ${n.name} approved and activated.`);
-                                      }}
-                                      className="btn btn-sm btn-primary"
-                                      style={{ fontSize: '0.7rem', padding: '0.2rem 0.55rem', background: '#0284C7', color: 'white', border: 'none', borderRadius: 4, cursor: 'pointer', fontWeight: 700 }}
-                                    >
-                                      Approve Nurse
-                                    </button>
-                                  )}
-                                </div>
+                                      {!isNurseApproved && (
+                                        <button
+                                          type="button"
+                                          onClick={async () => {
+                                            await onUpdateNurseRecord?.(n.id, { certificateVerified: true, status: 'Active' });
+                                            showToast(`Nurse "${n.name}" verified and approved!`);
+                                          }}
+                                          className="btn btn-sm btn-primary"
+                                          style={{ fontSize: '0.7rem', padding: '0.2rem 0.55rem', background: '#0284C7', color: 'white', border: 'none', borderRadius: 4, cursor: 'pointer', fontWeight: 700 }}
+                                        >
+                                          Approve Nurse
+                                        </button>
+                                      )}
+                                    </div>
+                                  );
+                                })()}
                               </td>
                               <td style={{ textAlign: 'right' }}>
                                 <div style={{ display: 'inline-flex', alignItems: 'center', gap: '0.35rem' }}>
@@ -4544,9 +4559,9 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
         <div className="card">
           <div className="card-header" style={{ flexWrap: 'wrap', gap: '0.75rem' }}>
             <div>
-              <h3 className="card-title">Patient Referrals by Nurses</h3>
+              <h3 className="card-title">Patient & Colleague Nurse Referrals</h3>
               <p style={{ fontSize: '0.84rem', color: 'var(--neutral-500)', margin: 0 }}>
-                Total: {leads.length} referrals | Every approved patient gives the nurse +50 Reward Points
+                Total: {leads.length} referrals ({leads.filter((l) => l.referralType !== 'nurse' && !l.referredNursePhone).length} Patient, {leads.filter((l) => l.referralType === 'nurse' || Boolean(l.referredNursePhone)).length} Nurse) | Every approved referral gives the nurse +50 Reward Points
               </p>
             </div>
             <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center', flexWrap: 'wrap' }}>
@@ -4564,73 +4579,90 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                 style={{ borderRadius: 9999, fontWeight: 700, gap: '0.4rem' }}
               >
                 <Plus size={16} />
-                <span>Add Patient Referral</span>
+                <span>Add Referral</span>
               </button>
             </div>
           </div>
 
           {/* Pending Approvals Notice Banner */}
-          {leads.filter((l) => l.status === 'Pending Approval').length > 0 && (
-            <div style={{
-              margin: '0.85rem 1.25rem 0',
-              padding: '0.85rem 1.15rem',
-              background: 'linear-gradient(135deg, #ECFDF5 0%, #D1FAE5 100%)',
-              border: '1px solid #10B981',
-              borderRadius: 12,
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'space-between',
-              gap: '1rem',
-              flexWrap: 'wrap'
-            }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '0.65rem' }}>
-                <div style={{
-                  width: 36,
-                  height: 36,
-                  borderRadius: '50%',
-                  background: '#059669',
-                  color: '#FFFFFF',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  fontWeight: 900
-                }}>
-                  <Award size={20} />
-                </div>
-                <div>
-                  <div style={{ fontWeight: 800, color: '#065F46', fontSize: '0.94rem' }}>
-                    {leads.filter((l) => l.status === 'Pending Approval').length} Patient Referral(s) Waiting for Office Approval
+          {(() => {
+            const pendingAll = leads.filter((l) => l.status === 'Pending Approval');
+            const pendingPatients = pendingAll.filter((l) => l.referralType !== 'nurse' && !l.referredNursePhone);
+            const pendingNurses = pendingAll.filter((l) => l.referralType === 'nurse' || Boolean(l.referredNursePhone));
+
+            if (pendingAll.length === 0) return null;
+
+            let bannerTitle = '';
+            if (pendingPatients.length > 0 && pendingNurses.length > 0) {
+              bannerTitle = `${pendingPatients.length} Patient Referral(s) & ${pendingNurses.length} Nurse Referral(s) Waiting for Office Approval`;
+            } else if (pendingNurses.length > 0) {
+              bannerTitle = `${pendingNurses.length} Nurse Referral(s) Waiting for Office Approval`;
+            } else {
+              bannerTitle = `${pendingPatients.length} Patient Referral(s) Waiting for Office Approval`;
+            }
+
+            return (
+              <div style={{
+                margin: '0.85rem 1.25rem 0',
+                padding: '0.85rem 1.15rem',
+                background: 'linear-gradient(135deg, #ECFDF5 0%, #D1FAE5 100%)',
+                border: '1px solid #10B981',
+                borderRadius: 12,
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+                gap: '1rem',
+                flexWrap: 'wrap'
+              }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '0.65rem' }}>
+                  <div style={{
+                    width: 36,
+                    height: 36,
+                    borderRadius: '50%',
+                    background: '#059669',
+                    color: '#FFFFFF',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    fontWeight: 900
+                  }}>
+                    <Award size={20} />
                   </div>
-                  <div style={{ fontSize: '0.8rem', color: '#047857' }}>
-                    Click Approve below to automatically add +50 Reward Points to the referring nurse.
+                  <div>
+                    <div style={{ fontWeight: 800, color: '#065F46', fontSize: '0.94rem' }}>
+                      {bannerTitle}
+                    </div>
+                    <div style={{ fontSize: '0.8rem', color: '#047857' }}>
+                      Click Approve below to automatically add +50 Reward Points to the referring nurse.
+                    </div>
                   </div>
                 </div>
+                <button
+                  type="button"
+                  onClick={() => setLeadStatusFilter('Pending Approval')}
+                  style={{
+                    background: '#059669',
+                    color: '#FFFFFF',
+                    border: 'none',
+                    borderRadius: 9999,
+                    fontWeight: 700,
+                    fontSize: '0.8rem',
+                    padding: '0.45rem 1.1rem',
+                    cursor: 'pointer'
+                  }}
+                >
+                  Review Waiting ({pendingAll.length})
+                </button>
               </div>
-              <button
-                type="button"
-                onClick={() => setLeadStatusFilter('Pending Approval')}
-                style={{
-                  background: '#059669',
-                  color: '#FFFFFF',
-                  border: 'none',
-                  borderRadius: 9999,
-                  fontWeight: 700,
-                  fontSize: '0.8rem',
-                  padding: '0.45rem 1.1rem',
-                  cursor: 'pointer'
-                }}
-              >
-                Review Waiting ({leads.filter((l) => l.status === 'Pending Approval').length})
-              </button>
-            </div>
-          )}
+            );
+          })()}
 
           {/* Filter & Search Toolbar */}
           <div style={{ padding: '0.85rem 1.25rem', borderBottom: '1px solid var(--neutral-200)', background: '#FAFAFA', display: 'flex', gap: '0.75rem', flexWrap: 'wrap', alignItems: 'center', justifyContent: 'space-between' }}>
-            <div style={{ position: 'relative', minWidth: 260, flex: 1 }}>
+            <div style={{ position: 'relative', minWidth: 240, flex: 1 }}>
               <input
                 type="text"
-                placeholder="Search by patient name, phone, or neighborhood..."
+                placeholder="Search by patient name, nurse name, phone, or area..."
                 value={leadSearch}
                 onChange={(e) => setLeadSearch(e.target.value)}
                 style={{
@@ -4644,8 +4676,60 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
               <Search size={14} style={{ position: 'absolute', left: 8, top: '50%', transform: 'translateY(-50%)', color: 'var(--neutral-400)' }} />
             </div>
 
+            {/* Quick Segmented Toggle for Referral Categories */}
+            <div style={{ display: 'flex', gap: '0.35rem', alignItems: 'center', flexWrap: 'wrap' }}>
+              <button
+                type="button"
+                onClick={() => setLeadTypeFilter('all')}
+                style={{
+                  padding: '0.35rem 0.75rem',
+                  fontSize: '0.8rem',
+                  fontWeight: 700,
+                  borderRadius: 20,
+                  border: leadTypeFilter === 'all' ? '1px solid #0284C7' : '1px solid #CBD5E1',
+                  background: leadTypeFilter === 'all' ? '#E0F2FE' : '#FFFFFF',
+                  color: leadTypeFilter === 'all' ? '#0369A1' : '#475569',
+                  cursor: 'pointer'
+                }}
+              >
+                All ({leads.length})
+              </button>
+              <button
+                type="button"
+                onClick={() => setLeadTypeFilter('patient')}
+                style={{
+                  padding: '0.35rem 0.75rem',
+                  fontSize: '0.8rem',
+                  fontWeight: 700,
+                  borderRadius: 20,
+                  border: (leadTypeFilter === 'patient' || leadTypeFilter === 'patient-converted') ? '1px solid #0284C7' : '1px solid #CBD5E1',
+                  background: (leadTypeFilter === 'patient' || leadTypeFilter === 'patient-converted') ? '#E0F2FE' : '#FFFFFF',
+                  color: (leadTypeFilter === 'patient' || leadTypeFilter === 'patient-converted') ? '#0369A1' : '#475569',
+                  cursor: 'pointer'
+                }}
+              >
+                🩺 Patients ({leads.filter((l) => l.referralType !== 'nurse' && !l.referredNursePhone).length})
+              </button>
+              <button
+                type="button"
+                onClick={() => setLeadTypeFilter('nurse')}
+                style={{
+                  padding: '0.35rem 0.75rem',
+                  fontSize: '0.8rem',
+                  fontWeight: 700,
+                  borderRadius: 20,
+                  border: (leadTypeFilter === 'nurse' || leadTypeFilter === 'nurse-converted') ? '1px solid #7C3AED' : '1px solid #CBD5E1',
+                  background: (leadTypeFilter === 'nurse' || leadTypeFilter === 'nurse-converted') ? '#EDE9FE' : '#FFFFFF',
+                  color: (leadTypeFilter === 'nurse' || leadTypeFilter === 'nurse-converted') ? '#6D28D9' : '#475569',
+                  cursor: 'pointer'
+                }}
+              >
+                👩‍⚕️ Nurses ({leads.filter((l) => l.referralType === 'nurse' || Boolean(l.referredNursePhone)).length})
+              </button>
+            </div>
+
             <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
-              <span style={{ fontSize: '0.8rem', color: 'var(--neutral-600)', fontWeight: 600 }}>Type:</span>
+              <span style={{ fontSize: '0.8rem', color: 'var(--neutral-600)', fontWeight: 600 }}>Filter:</span>
               <select
                 value={leadTypeFilter}
                 onChange={(e) => setLeadTypeFilter(e.target.value)}
@@ -4659,9 +4743,9 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                 }}
               >
                 <option value="all">All Referrals</option>
-                <option value="patient">🩺 Patient Ref</option>
+                <option value="patient">🩺 Patient Ref (All)</option>
                 <option value="patient-converted">✓ Patient Conv (Completed)</option>
-                <option value="nurse">👩‍⚕️ Nurse Lead</option>
+                <option value="nurse">👩‍⚕️ Nurse Lead (All)</option>
                 <option value="nurse-converted">✓ Nurse Converted (Approved)</option>
               </select>
             </div>
@@ -4720,9 +4804,16 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                         />
                       </th>
                       <th>Lead ID</th>
-                      <th>Patient Name</th>
+                      <th style={{ minWidth: 90 }}>Category</th>
+                      <th style={{ minWidth: 160 }}>
+                        {leadTypeFilter === 'patient' || leadTypeFilter === 'patient-converted'
+                          ? 'Patient Name'
+                          : leadTypeFilter === 'nurse' || leadTypeFilter === 'nurse-converted'
+                          ? 'Referred Nurse'
+                          : 'Referred Name (Patient / Nurse)'}
+                      </th>
                       <th>Phone</th>
-                      <th>Service</th>
+                      <th>Service / Details</th>
                       <th>Area</th>
                       <th>Referring Nurse</th>
                       <th>Reward</th>
@@ -4732,6 +4823,10 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                   </thead>
                   <tbody>
                     {filteredLeads.map((l) => {
+                      const isNurseRef = l.referralType === 'nurse' || Boolean(l.referredNursePhone);
+                      const matchingNurse = isNurseRef ? findMatchingNurseForLead(l, nurses) : undefined;
+                      const matchingBooking = !isNurseRef ? findMatchingBookingForPatientLead(l, bookings) : undefined;
+
                       const referringNurse = nurses.find((n) => {
                         if (n.id === l.nurseId) return true;
                         const nPhone = (n.phone || '').replace(/\D/g, '');
@@ -4740,9 +4835,27 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                         if (l.nurseName && n.name.toLowerCase().trim() === l.nurseName.toLowerCase().trim()) return true;
                         return false;
                       });
-                      const isPending = l.status === 'Pending Approval';
-                      const isApproved = l.status === 'Approved' || l.status === 'Converted';
-                      const isRejected = l.status === 'Rejected';
+
+                      const isNurseAlreadyApproved = Boolean(
+                        l.status === 'Approved' ||
+                        l.status === 'Converted' ||
+                        (matchingNurse && matchingNurse.certificateVerified && matchingNurse.status === 'Active')
+                      );
+
+                      const isPatientAlreadyApproved = Boolean(
+                        l.status === 'Approved' ||
+                        l.status === 'Converted' ||
+                        (matchingBooking && matchingBooking.status !== 'Pending' && matchingBooking.status !== 'Rejected' && matchingBooking.status !== 'Cancelled')
+                      );
+
+                      const isPatientCompleted = Boolean(
+                        l.status === 'Converted' ||
+                        (matchingBooking && matchingBooking.status === 'Completed')
+                      );
+
+                      const isApproved = isNurseRef ? isNurseAlreadyApproved : (l.status === 'Approved' || isPatientAlreadyApproved);
+                      const isRejected = l.status === 'Rejected' || (matchingBooking && (matchingBooking.status === 'Rejected' || matchingBooking.status === 'Cancelled'));
+                      const isPending = !isApproved && !isRejected;
                       const isSelected = selectedLeadIds.has(l.id);
 
                       return (
@@ -4776,36 +4889,87 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                               )}
                             </div>
                           </td>
-                          <td>
-                            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.2rem' }}>
-                              <div style={{ fontWeight: 600 }}>{l.referralType === 'nurse' || l.referredNursePhone ? l.referredNurseName || l.patientName : l.patientName}</div>
+                          <td style={{ verticalAlign: 'middle' }}>
+                            {isNurseRef ? (
                               <span style={{
-                                fontSize: '0.65rem',
+                                fontSize: '0.72rem',
                                 fontWeight: 800,
                                 textTransform: 'uppercase',
-                                padding: '2px 6px',
-                                borderRadius: 4,
-                                display: 'inline-block',
-                                width: 'fit-content',
-                                background: (l.referralType === 'nurse' || l.referredNursePhone) ? '#EDE9FE' : (l.status === 'Converted' ? '#ECFDF5' : '#E0F2FE'),
-                                color: (l.referralType === 'nurse' || l.referredNursePhone) ? '#6D28D9' : (l.status === 'Converted' ? '#047857' : '#0369A1')
+                                padding: '3px 8px',
+                                borderRadius: 6,
+                                display: 'inline-flex',
+                                alignItems: 'center',
+                                gap: '0.25rem',
+                                background: '#EDE9FE',
+                                color: '#6D28D9',
+                                border: '1px solid #DDD6FE'
                               }}>
-                                {(l.referralType === 'nurse' || l.referredNursePhone)
-                                  ? (l.status === 'Approved' || l.status === 'Converted' ? '👩‍⚕️ Nurse Converted' : '👩‍⚕️ Nurse Lead')
-                                  : (l.status === 'Converted' ? '✓ Patient Conv' : '🩺 Patient Ref')}
+                                👩‍⚕️ Nurse
                               </span>
+                            ) : (
+                              <span style={{
+                                fontSize: '0.72rem',
+                                fontWeight: 800,
+                                textTransform: 'uppercase',
+                                padding: '3px 8px',
+                                borderRadius: 6,
+                                display: 'inline-flex',
+                                alignItems: 'center',
+                                gap: '0.25rem',
+                                background: '#E0F2FE',
+                                color: '#0369A1',
+                                border: '1px solid #BAE6FD'
+                              }}>
+                                🩺 Patient
+                              </span>
+                            )}
+                          </td>
+                          <td>
+                            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.2rem' }}>
+                              <div style={{ fontWeight: 700, fontSize: '0.92rem', color: '#0F172A' }}>
+                                {isNurseRef ? (l.referredNurseName || l.patientName || 'Nurse Colleague') : (l.patientName || 'Patient')}
+                              </div>
+                              <div style={{ fontSize: '0.74rem', color: '#64748B' }}>
+                                {isNurseRef ? (
+                                  <span>Colleague Nurse Referral {l.experienceYears ? `• ${l.experienceYears} yrs exp` : ''}</span>
+                                ) : (
+                                  <span>
+                                    {l.patientGender ? `${l.patientGender}` : 'Patient'}
+                                    {l.patientAge ? ` • Age ${l.patientAge}` : ''}
+                                  </span>
+                                )}
+                              </div>
                             </div>
                           </td>
                           <td>
                             {isRejected ? (
                               <span style={{ color: '#94A3B8', fontSize: '0.74rem' }}>✕ Contact Hidden (Rejected)</span>
                             ) : (
-                              l.patientPhone
+                              <div style={{ fontWeight: 600, color: '#334155' }}>
+                                {isNurseRef ? (l.referredNursePhone || l.patientPhone) : l.patientPhone}
+                              </div>
                             )}
                           </td>
                           <td>
-                            <div style={{ fontWeight: 500 }}>{l.serviceId}</div>
-                            <div style={{ fontSize: '0.72rem', color: 'var(--neutral-500)' }}>Value: ₹{l.leadValueRupees || 800}</div>
+                            {isNurseRef ? (
+                              <div>
+                                <div style={{ fontWeight: 600, color: '#5B21B6' }}>
+                                  {l.qualification || 'B.Sc / GNM Nursing'}
+                                </div>
+                                <div style={{ fontSize: '0.72rem', color: '#7C3AED' }}>
+                                  {l.experienceYears ? `${l.experienceYears} Yrs Experience` : 'Registered Nurse'}
+                                </div>
+                              </div>
+                            ) : (
+                              <div>
+                                <div style={{ fontWeight: 600, color: '#0369A1' }}>
+                                  {l.serviceTitle || (services.find((s) => s.id === l.serviceId)?.title) || l.serviceId || 'Nursing Care'}
+                                </div>
+                                <div style={{ fontSize: '0.72rem', color: 'var(--neutral-500)' }}>
+                                  Value: ₹{l.leadValueRupees || 800}
+                                </div>
+                              </div>
+                            )}
                           </td>
                           <td>
                             {(() => {
@@ -10709,15 +10873,6 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                     type="button"
                     onClick={async () => {
                       await onUpdateNurseRecord?.(adminCertModalNurse.id, { certificateVerified: true, status: 'Active' });
-                      if (adminCertModalNurse.referredByNurseId && onUpdateNurseRecord) {
-                        const referrer = nurses.find((rn) => rn.id === adminCertModalNurse.referredByNurseId);
-                        if (referrer) {
-                          await onUpdateNurseRecord(referrer.id, {
-                            pointsEarned: (referrer.pointsEarned || 0) + 50,
-                            convertedLeads: (referrer.convertedLeads || 0) + 1
-                          });
-                        }
-                      }
                       showToast(`Nurse ${adminCertModalNurse.name} certificate verified and approved!`);
                       setAdminCertModalOpen(false);
                     }}

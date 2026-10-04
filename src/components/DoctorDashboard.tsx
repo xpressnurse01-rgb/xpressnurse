@@ -193,7 +193,13 @@ export const DoctorDashboard: React.FC<DoctorDashboardProps> = ({
             className="btn btn-sm btn-outline"
             onClick={() => {
               try {
-                localStorage.removeItem('xn_auth_user');
+                sessionStorage.removeItem('xn_auth_user');
+                sessionStorage.removeItem('xn_auth_user_doctor');
+                localStorage.removeItem('xn_auth_user_doctor');
+                const legacy = localStorage.getItem('xn_auth_user');
+                if (legacy && legacy.includes('"role":"doctor"')) {
+                  localStorage.removeItem('xn_auth_user');
+                }
                 window.location.href = '/login?portal=doctor';
               } catch {}
             }}

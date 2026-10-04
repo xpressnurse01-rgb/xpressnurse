@@ -20,6 +20,7 @@ import {
   Copy,
   Check,
   User,
+  Users,
   Award,
   FileText,
   Receipt,
@@ -156,6 +157,7 @@ export const NurseDashboard: React.FC<NurseDashboardProps> = ({
   const [patientAge, setPatientAge] = useState('');
   const [patientGender, setPatientGender] = useState<'Female' | 'Male' | 'Other'>('Female');
   const [serviceId, setServiceId] = useState<ServiceId>('saline-infusion');
+  const [otherServiceName, setOtherServiceName] = useState('');
   const [area, setArea] = useState<HyderabadArea>(nurse.serviceArea || 'Gachibowli');
   const [fullAddress, setFullAddress] = useState('');
   const [notes, setNotes] = useState('');
@@ -202,6 +204,14 @@ export const NurseDashboard: React.FC<NurseDashboardProps> = ({
     completedVisitsEarnings,
     myLeads,
     myConvertedLeads,
+    myPatientLeads,
+    myConvertedPatientLeads,
+    patientLeadsCount,
+    patientConvertedCount,
+    myNurseLeads,
+    myConvertedNurseLeads,
+    nurseLeadsCount,
+    nurseConvertedCount,
     completedReferredVisits,
     referralEarnings: calculatedMoney,
     totalMoney,
@@ -314,8 +324,21 @@ export const NurseDashboard: React.FC<NurseDashboardProps> = ({
       return;
     }
 
+    if (serviceId === 'other' && !otherServiceName.trim()) {
+      setLeadErrorMsg('Please specify the nursing service needed.');
+      return;
+    }
+
     const procedure = services.find(s => s.id === serviceId);
-    const procFee = procedure?.priceNumber || 800;
+    const procFee = serviceId === 'other' ? 800 : (procedure?.priceNumber || 800);
+    const finalServiceTitle = serviceId === 'other'
+      ? (otherServiceName.trim() || 'Other Nursing Service')
+      : (procedure?.title || 'Nursing Service');
+
+    const formattedNotes = [
+      serviceId === 'other' ? `Service Needed: ${otherServiceName.trim()}` : '',
+      notes.trim()
+    ].filter(Boolean).join(' • ') || `Added by ${nurse.name}`;
 
     const newLead: NurseLead = {
       id: `LD-${Math.floor(1000 + Math.random() * 9000)}`,
@@ -325,10 +348,11 @@ export const NurseDashboard: React.FC<NurseDashboardProps> = ({
       patientAge: patientAge ? parseInt(patientAge, 10) : undefined,
       patientGender,
       serviceId,
+      serviceTitle: finalServiceTitle,
       leadValueRupees: procFee,
       area,
       fullAddress: fullAddress.trim(),
-      notes: notes.trim() || `Added by ${nurse.name}`,
+      notes: formattedNotes,
       status: 'Pending Approval',
       submittedAt: new Date().toISOString()
     };
@@ -341,6 +365,7 @@ export const NurseDashboard: React.FC<NurseDashboardProps> = ({
     setPatientAge('');
     setFullAddress('');
     setNotes('');
+    setOtherServiceName('');
 
     try {
       confetti({ particleCount: 60, spread: 60, origin: { y: 0.5 } });
@@ -683,13 +708,41 @@ export const NurseDashboard: React.FC<NurseDashboardProps> = ({
                   </div>
                 </div>
                 <div style={{ fontSize: '2rem', fontWeight: 900, color: '#0F172A', margin: '0.4rem 0' }}>
-                  {myLeads.length}
+                  {patientLeadsCount}
                 </div>
                 <div style={{ fontSize: '0.82rem', color: '#16A34A', fontWeight: 700, display: 'flex', alignItems: 'center', gap: '0.25rem' }}>
-                  <span>{myConvertedLeads.length} Approved & Converted</span>
+                  <span>{patientConvertedCount} Approved & Converted</span>
                   <ChevronRight size={14} />
                 </div>
               </div>
+
+              {/* Card 2b: Colleague Nurses Referred (Shown if nurse has referred any colleague nurses) */}
+              {nurseLeadsCount > 0 && (
+                <div
+                  onClick={() => setActiveTab('my-money')}
+                  style={{
+                    background: '#FFFFFF',
+                    borderRadius: 16,
+                    padding: '1.25rem',
+                    border: '1.5px solid #E2E8F0',
+                    cursor: 'pointer'
+                  }}
+                >
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                    <span style={{ fontSize: '0.85rem', color: '#64748B', fontWeight: 600 }}>Colleague Nurses</span>
+                    <div style={{ width: 36, height: 36, borderRadius: 10, background: '#FAF5FF', color: '#9333EA', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                      <Users size={18} />
+                    </div>
+                  </div>
+                  <div style={{ fontSize: '2rem', fontWeight: 900, color: '#0F172A', margin: '0.4rem 0' }}>
+                    {nurseLeadsCount}
+                  </div>
+                  <div style={{ fontSize: '0.82rem', color: '#9333EA', fontWeight: 700, display: 'flex', alignItems: 'center', gap: '0.25rem' }}>
+                    <span>{nurseConvertedCount} Approved (+50 Pts)</span>
+                    <ChevronRight size={14} />
+                  </div>
+                </div>
+              )}
 
               {/* Card 3: Money */}
               <div
@@ -1497,8 +1550,29 @@ export const NurseDashboard: React.FC<NurseDashboardProps> = ({
                   <option value="injection-administration">Injection & Vitals (₹699)</option>
                   <option value="doctor-consult">Doctor Video Consultation (₹299)</option>
                   <option value="vitals-monitoring">General Health Check (₹699)</option>
+                  <option value="other">Other Nursing Service / Specialized Care</option>
                 </select>
               </div>
+
+              {serviceId === 'other' && (
+                <div style={{ animation: 'fadeIn 0.2s ease-in-out' }}>
+                  <label style={{ display: 'block', fontSize: '0.84rem', fontWeight: 700, color: '#0369A1', marginBottom: '0.3rem' }}>
+                    Specify Nursing Service Needed *
+                  </label>
+                  <input
+                    type="text"
+                    placeholder="e.g. Nebulization, Bed bath, Tracheostomy dressing, Chemo port flush..."
+                    value={otherServiceName}
+                    onChange={(e) => setOtherServiceName(e.target.value)}
+                    className="form-control"
+                    style={{ width: '100%', height: 42, borderRadius: 8, fontSize: '0.9rem', borderColor: '#38BDF8', backgroundColor: '#F0F9FF' }}
+                    required={serviceId === 'other'}
+                  />
+                  <span style={{ fontSize: '0.78rem', color: '#64748B', marginTop: '0.25rem', display: 'block' }}>
+                    Please enter the specific nursing procedure needed so Admin can evaluate and assign the right nurse.
+                  </span>
+                </div>
+              )}
 
               <div>
                 <label style={{ display: 'block', fontSize: '0.84rem', fontWeight: 700, color: '#334155', marginBottom: '0.3rem' }}>
@@ -1702,7 +1776,7 @@ export const NurseDashboard: React.FC<NurseDashboardProps> = ({
             }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
                 <h4 style={{ margin: 0, fontSize: '1.1rem', fontWeight: 800, color: '#0F172A' }}>
-                  Patients You Referred ({myLeads.filter(l => l.referralType !== 'nurse' && !l.referredNursePhone).length})
+                  Patients You Referred ({patientLeadsCount})
                 </h4>
                 <button
                   type="button"
@@ -1723,8 +1797,8 @@ export const NurseDashboard: React.FC<NurseDashboardProps> = ({
               </div>
 
               {(() => {
-                const patientLeads = myLeads.filter(l => l.referralType !== 'nurse' && !l.referredNursePhone);
-                const nurseLeads = myLeads.filter(l => l.referralType === 'nurse' || Boolean(l.referredNursePhone));
+                const patientLeads = myPatientLeads;
+                const nurseLeads = myNurseLeads;
 
                 return (
                   <>
@@ -2149,8 +2223,15 @@ export const NurseDashboard: React.FC<NurseDashboardProps> = ({
                 type="button"
                 onClick={() => {
                   try {
-                    localStorage.removeItem('xn_auth_user');
-                    window.location.href = '/login';
+                    sessionStorage.removeItem('xn_auth_user');
+                    sessionStorage.removeItem('xn_auth_user_nurse');
+                    localStorage.removeItem('xn_auth_user_nurse');
+                    localStorage.removeItem('xn_active_nurse_id');
+                    const legacy = localStorage.getItem('xn_auth_user');
+                    if (legacy && legacy.includes('"role":"nurse"')) {
+                      localStorage.removeItem('xn_auth_user');
+                    }
+                    window.location.href = '/login?portal=nurse';
                   } catch { }
                 }}
                 className="btn btn-outline"

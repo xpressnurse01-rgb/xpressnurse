@@ -533,3 +533,107 @@ export function calculateNurseMetrics(
     referralCode
   };
 }
+
+/**
+ * Accurately finds the registered nurse profile corresponding to a colleague nurse referral lead.
+ */
+export function findMatchingNurseForLead(lead: NurseLead, nursesList: NurseProfile[] = []): NurseProfile | undefined {
+  if (!lead || !nursesList.length) return undefined;
+  const lPhone10 = normalizePhone10(lead.referredNursePhone || lead.patientPhone);
+  const lName = (lead.referredNurseName || lead.patientName || '').toLowerCase().trim();
+  const cleanLName = lName.replace(/^nurse\s+/, '').trim();
+
+  return nursesList.find((n) => {
+    if (!n) return false;
+    const nPhone10 = normalizePhone10(n.phone);
+    const nName = (n.name || '').toLowerCase().trim();
+    const cleanNName = nName.replace(/^nurse\s+/, '').trim();
+
+    if (lPhone10 && nPhone10 && lPhone10 === nPhone10) return true;
+    if (cleanLName && cleanNName && (cleanLName === cleanNName || cleanLName.includes(cleanNName) || cleanNName.includes(cleanLName))) return true;
+    return false;
+  });
+}
+
+/**
+ * Accurately finds the colleague nurse referral lead corresponding to a nurse profile.
+ */
+export function findMatchingLeadForNurse(nurse: NurseProfile, leadsList: NurseLead[] = []): NurseLead | undefined {
+  if (!nurse || !leadsList.length) return undefined;
+  const nPhone10 = normalizePhone10(nurse.phone);
+  const nName = (nurse.name || '').toLowerCase().trim();
+  const cleanNName = nName.replace(/^nurse\s+/, '').trim();
+
+  return leadsList.find((l) => {
+    if (!l) return false;
+    const isNurseRef = l.referralType === 'nurse' || Boolean(l.referredNursePhone);
+    if (!isNurseRef) return false;
+
+    const lPhone10 = normalizePhone10(l.referredNursePhone || l.patientPhone);
+    const lName = (l.referredNurseName || l.patientName || '').toLowerCase().trim();
+    const cleanLName = lName.replace(/^nurse\s+/, '').trim();
+
+    if (nPhone10 && lPhone10 && nPhone10 === lPhone10) return true;
+    if (cleanNName && cleanLName && (cleanNName === cleanLName || cleanNName.includes(cleanLName) || cleanLName.includes(cleanNName))) return true;
+    if (nurse.referredByNurseId && l.nurseId === nurse.referredByNurseId) {
+      if (nPhone10 && lPhone10 && nPhone10 === lPhone10) return true;
+      if (cleanNName && cleanLName && cleanNName === cleanLName) return true;
+    }
+    return false;
+  });
+}
+
+/**
+ * Accurately finds the booking corresponding to a patient referral lead.
+ */
+export function findMatchingBookingForPatientLead(lead: NurseLead, bookingsList: Booking[] = []): Booking | undefined {
+  if (!lead || !bookingsList.length) return undefined;
+  const lPhone10 = normalizePhone10(lead.patientPhone);
+  const lName = (lead.patientName || '').toLowerCase().trim();
+  const cleanLeadDigits = lead.id.replace(/\D/g, '') || lead.id.slice(-6);
+
+  return bookingsList.find((b) => {
+    if (!b) return false;
+    if (b.id === `BK-${cleanLeadDigits.slice(-6)}` || b.id === `BK-${cleanLeadDigits.slice(-4)}` || b.id === `BK-${cleanLeadDigits}`) return true;
+    const bPhone10 = normalizePhone10(b.patientPhone);
+    const bName = (b.patientName || '').toLowerCase().trim();
+    if (lPhone10 && bPhone10 && lPhone10 === bPhone10) return true;
+    if (lName && bName && lName === bName) return true;
+    if (b.referringNurseId && b.referringNurseId === lead.nurseId) {
+      if (lPhone10 && bPhone10 && lPhone10 === bPhone10) return true;
+      if (lName && bName && (lName.includes(bName) || bName.includes(lName))) return true;
+    }
+    return false;
+  });
+}
+
+/**
+ * Accurately finds the patient referral lead corresponding to a booking.
+ */
+export function findMatchingLeadForPatientBooking(booking: Booking, leadsList: NurseLead[] = []): NurseLead | undefined {
+  if (!booking || !leadsList.length) return undefined;
+  const bPhone10 = normalizePhone10(booking.patientPhone);
+  const bName = (booking.patientName || '').toLowerCase().trim();
+  const cleanDigits = booking.id.replace(/\D/g, '').slice(-6);
+
+  return leadsList.find((l) => {
+    if (!l) return false;
+    const isNurseRef = l.referralType === 'nurse' || Boolean(l.referredNursePhone);
+    if (isNurseRef) return false;
+
+    const lCleanDigits = l.id.replace(/\D/g, '').slice(-6);
+    if (cleanDigits && lCleanDigits && cleanDigits === lCleanDigits) return true;
+    if (l.id === `RP-${booking.id.replace(/^BK-/, '')}` || l.id === `LEAD-${booking.id}`) return true;
+
+    const lPhone10 = normalizePhone10(l.patientPhone);
+    const lName = (l.patientName || '').toLowerCase().trim();
+    if (bPhone10 && lPhone10 && bPhone10 === lPhone10) return true;
+    if (bName && lName && bName === lName) return true;
+    if (booking.referringNurseId && l.nurseId === booking.referringNurseId) {
+      if (bPhone10 && lPhone10 && bPhone10 === lPhone10) return true;
+      if (bName && lName && (bName.includes(lName) || lName.includes(bName))) return true;
+    }
+    return false;
+  });
+}
+

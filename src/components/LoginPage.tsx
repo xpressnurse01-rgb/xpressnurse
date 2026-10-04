@@ -331,10 +331,16 @@ export const LoginPage: React.FC<LoginPageProps> = ({
 
       if (matchedUser) {
         const { pin: _pin, ...safeUser } = matchedUser;
-        localStorage.setItem('xn_auth_user', JSON.stringify(safeUser));
-        if (detectedRole === 'nurse') {
-          localStorage.setItem('xn_active_nurse_id', matchedUser.id);
-        }
+        const roleKey = `xn_auth_user_${detectedRole}`;
+        try {
+          sessionStorage.setItem('xn_auth_user', JSON.stringify(safeUser));
+          sessionStorage.setItem(roleKey, JSON.stringify(safeUser));
+          localStorage.setItem(roleKey, JSON.stringify(safeUser));
+          localStorage.setItem('xn_auth_user', JSON.stringify(safeUser));
+          if (detectedRole === 'nurse') {
+            localStorage.setItem('xn_active_nurse_id', matchedUser.id);
+          }
+        } catch { }
         if (onLoginSuccess) {
           onLoginSuccess(matchedUser);
         }
