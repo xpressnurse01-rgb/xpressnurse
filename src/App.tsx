@@ -1296,18 +1296,33 @@ export const App: React.FC = () => {
             }
           } else if (payload.new && (payload.eventType === 'UPDATE' || payload.eventType === 'INSERT')) {
             const raw: any = payload.new;
+            const rawDesc = raw.description || '';
+            const match = rawDesc.match(/<!--pricing:([^>]+)-->/);
+            const pricingLabel = match ? match[1].trim() : undefined;
+            const cleanDesc = rawDesc.replace(/\s*<!--pricing:[^>]+-->/g, '').trim();
+            const isZero = Number(raw.single_visit_price) === 0 || Number(raw.price_number) === 0;
+
+            let computedIndicative = raw.indicative_price || `₹${Math.round(raw.single_visit_price ?? raw.price_number ?? 0)}`;
+            if (isZero) {
+              if (pricingLabel) {
+                computedIndicative = pricingLabel.includes('₹') ? pricingLabel : `${pricingLabel} • ₹0`;
+              } else {
+                computedIndicative = 'Free / Decided at service • ₹0';
+              }
+            }
+
             const mapped: ServiceItem = {
               id: raw.id,
               title: raw.title,
               subtitle: raw.subtitle,
-              description: raw.description,
+              description: cleanDesc,
               singleVisitPrice: raw.single_visit_price ? Number(raw.single_visit_price) : undefined,
               multiVisitPrice: raw.multi_visit_price ? Number(raw.multi_visit_price) : undefined,
               nightSurcharge: raw.night_surcharge ? Number(raw.night_surcharge) : undefined,
               prescriptionRequired: Boolean(raw.prescription_required),
               duration: raw.duration,
-              indicativePrice: raw.indicative_price,
-              priceNumber: raw.price_number ? Number(raw.price_number) : undefined,
+              indicativePrice: computedIndicative,
+              priceNumber: raw.price_number ? Number(raw.price_number) : (raw.single_visit_price ? Number(raw.single_visit_price) : 0),
               features: raw.features,
               icon: raw.icon,
               badge: raw.badge,

@@ -752,13 +752,10 @@ export const generateInvoiceDetails = (booking: Booking): InvoiceDetails => {
   const subtotal = Math.max(0, baseFee + nightSurcharge - discount);
 
   const r2StorageKey = `invoices/${invoiceNumber}.html`;
-  const baseDomain = (config.publicDomain && config.publicDomain.startsWith('http'))
-    ? config.publicDomain.replace(/\/+$/, '')
-    : 'https://pub-830eaa9d07034c8d985d7d00577f77e9.r2.dev';
-  let r2PublicUrl = booking.invoiceUrl || `${baseDomain}/${r2StorageKey}`;
+  let r2PublicUrl = booking.invoiceUrl || '';
 
   // If invoiceUrl was not directly on the booking, inspect synced Cloudflare storage objects
-  if (!booking.invoiceUrl && typeof window !== 'undefined') {
+  if (!r2PublicUrl && typeof window !== 'undefined') {
     try {
       const existingObjs = getCloudflareObjects();
       const match = existingObjs.find(o =>
@@ -1030,24 +1027,25 @@ export const generatePrintableInvoiceHtml = (inv: InvoiceDetails): string => {
 
 // Open printable invoice window
 export const openPrintableInvoiceWindow = (inv: InvoiceDetails): void => {
-  if (inv.r2PublicUrl && inv.r2PublicUrl.startsWith('http')) {
-    window.open(inv.r2PublicUrl, '_blank');
-    return;
-  }
   const html = generatePrintableInvoiceHtml(inv);
-  const win = window.open('', '_blank');
-  if (win) {
-    win.document.open();
-    win.document.write(html);
-    win.document.close();
-  } else {
-    // Fallback: download as HTML file
-    const blob = new Blob([html], { type: 'text/html' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `${inv.invoiceNumber}.html`;
-    a.click();
-    URL.revokeObjectURL(url);
+  try {
+    const blob = new Blob([html], { type: 'text/html;charset=utf-8' });
+    const blobUrl = URL.createObjectURL(blob);
+    const win = window.open(blobUrl, '_blank');
+    if (!win) {
+      // Fallback: download as HTML file if popup is blocked
+      const a = document.createElement('a');
+      a.href = blobUrl;
+      a.download = `${inv.invoiceNumber}.html`;
+      a.click();
+    }
+    setTimeout(() => URL.revokeObjectURL(blobUrl), 60000);
+  } catch {
+    const win = window.open('', '_blank');
+    if (win) {
+      win.document.open();
+      win.document.write(html);
+      win.document.close();
+    }
   }
 };

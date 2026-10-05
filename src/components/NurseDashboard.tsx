@@ -2249,257 +2249,324 @@ export const NurseDashboard: React.FC<NurseDashboardProps> = ({
 
       {/* ================================================================= */}
       {/* 3. SIMPLE MODALS (Prescription, Invoice & Certificate) */}
-      {/* ================================================================= */}
+      {/* 1. UNIFIED DOCTOR PRESCRIPTION & CLINICAL ORDERS MODAL */}
       {isRxModalOpen && previewRxBooking && (
-        <div style={{
-          position: 'fixed',
-          top: 0, left: 0, right: 0, bottom: 0,
-          background: 'rgba(15, 23, 42, 0.65)',
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-          zIndex: 9999,
-          padding: '1rem'
-        }}>
-          <div style={{
-            background: '#FFFFFF',
-            borderRadius: 16,
-            maxWidth: 520,
-            width: '100%',
-            padding: '1.5rem',
-            boxShadow: '0 20px 40px rgba(0,0,0,0.2)'
-          }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
-              <h4 style={{ margin: 0, fontSize: '1.1rem', fontWeight: 800, color: '#0F172A' }}>
-                Doctor's Prescription & Orders
-              </h4>
-              <button
-                type="button"
-                onClick={() => setIsRxModalOpen(false)}
-                style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#64748B' }}
-              >
-                <X size={20} />
-              </button>
-            </div>
-
-            <div style={{ background: '#F8FAFC', borderRadius: 10, padding: '1rem', marginBottom: '1rem', border: '1px solid #E2E8F0' }}>
-              <div style={{ fontSize: '0.8rem', color: '#64748B' }}>Patient: <strong>{previewRxBooking.patientName}</strong></div>
-              <div style={{ fontSize: '0.8rem', color: '#64748B', marginTop: '2px' }}>Procedure: <strong>{previewRxBooking.serviceTitle}</strong></div>
-              <div style={{ marginTop: '0.75rem', fontSize: '0.9rem', color: '#0F172A', whiteSpace: 'pre-wrap', lineHeight: 1.5 }}>
-                {previewRxBooking.notes || 'Administer normal saline infusion 500ml IV under aseptic precautions. Monitor vitals before and after.'}
-              </div>
-            </div>
-
-            <div style={{ textAlign: 'right' }}>
-              <button
-                type="button"
-                onClick={() => setIsRxModalOpen(false)}
-                className="btn btn-primary"
-                style={{ borderRadius: 8, padding: '0.5rem 1.25rem', fontSize: '0.85rem' }}
-              >
-                Close
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Rx/Prescription Modal */}
-      {isRxModalOpen && previewRxBooking && (
-        <div style={{
-          position: 'fixed',
-          top: 0, left: 0, right: 0, bottom: 0,
-          background: 'rgba(15, 23, 42, 0.65)',
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-          zIndex: 9999,
-          padding: '1rem'
-        }}>
-          <div style={{
-            background: '#FFFFFF',
-            borderRadius: 16,
-            maxWidth: 480,
-            width: '100%',
-            padding: '1.5rem',
-            boxShadow: '0 20px 40px rgba(0,0,0,0.2)'
-          }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
-              <h4 style={{ margin: 0, fontSize: '1.15rem', fontWeight: 800, color: '#0F172A' }}>
-                Patient Prescription
-              </h4>
-              <button
-                type="button"
-                onClick={() => setIsRxModalOpen(false)}
-                style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#64748B' }}
-              >
-                <X size={20} />
-              </button>
-            </div>
-
-            <div style={{ textAlign: 'center', padding: '1.5rem 1rem', background: '#F8FAFC', borderRadius: 10, border: '1.5px dashed #CBD5E1', marginBottom: '1rem' }}>
-              <FileText size={36} style={{ color: '#0284C7', margin: '0 auto 0.5rem' }} />
-              <div style={{ fontSize: '0.9rem', fontWeight: 700, color: '#0F172A' }}>
-                {previewRxBooking.patientName}
-              </div>
-            </div>
-
-            {previewRxBooking.prescriptionUrl ? (
-              <div style={{ textAlign: 'center', marginBottom: '1rem' }}>
-                <img src={previewRxBooking.prescriptionUrl} alt="Prescription" style={{ maxWidth: '100%', borderRadius: 8, border: '1px solid #E2E8F0', objectFit: 'contain', maxHeight: '400px' }} onError={(e) => { e.currentTarget.style.display = 'none'; }} />
-                <div style={{ marginTop: '0.75rem' }}>
-                  <a href={previewRxBooking.prescriptionUrl} target="_blank" rel="noreferrer" className="btn btn-outline" style={{ display: 'inline-flex', alignItems: 'center', gap: '0.5rem', fontWeight: 700, fontSize: '0.8rem' }}>
-                    <ExternalLink size={16} /> Open Full Size / PDF
-                  </a>
+        <div
+          style={{
+            position: 'fixed',
+            top: 0, left: 0, right: 0, bottom: 0,
+            background: 'rgba(15, 23, 42, 0.65)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            zIndex: 9999,
+            padding: '1rem',
+            backdropFilter: 'blur(4px)'
+          }}
+          onClick={() => setIsRxModalOpen(false)}
+        >
+          <div
+            style={{
+              background: '#FFFFFF',
+              borderRadius: 20,
+              maxWidth: 540,
+              width: '100%',
+              maxHeight: '90vh',
+              display: 'flex',
+              flexDirection: 'column',
+              boxShadow: '0 25px 50px -12px rgba(0,0,0,0.25)',
+              overflow: 'hidden'
+            }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            {/* Header - Always Fixed at Top */}
+            <div style={{
+              padding: '1.2rem 1.5rem',
+              borderBottom: '1px solid #E2E8F0',
+              background: '#FAFAFA',
+              display: 'flex',
+              justifyContent: 'space-between',
+              alignItems: 'center',
+              flexShrink: 0
+            }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '0.65rem' }}>
+                <div style={{
+                  width: 38,
+                  height: 38,
+                  borderRadius: 10,
+                  background: '#EFF6FF',
+                  color: '#0284C7',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  flexShrink: 0
+                }}>
+                  <FileText size={20} />
+                </div>
+                <div>
+                  <h4 style={{ margin: 0, fontSize: '1.1rem', fontWeight: 800, color: '#0F172A' }}>
+                    Doctor's Prescription & Clinical Orders
+                  </h4>
+                  <div style={{ fontSize: '0.76rem', color: '#64748B', marginTop: 2 }}>
+                    Booking Ref: <strong style={{ color: '#0284C7', fontFamily: 'monospace' }}>{previewRxBooking.id}</strong> • Patient: <strong>{previewRxBooking.patientName}</strong>
+                  </div>
                 </div>
               </div>
-            ) : (
-              <div style={{ fontSize: '0.85rem', color: '#64748B', textAlign: 'center', marginBottom: '1rem' }}>
-                No prescription file attached, or it was manually verified.
-                {previewRxBooking.prescriptionFileName && <div>File Name: {previewRxBooking.prescriptionFileName}</div>}
-              </div>
-            )}
-
-            <div style={{ textAlign: 'right' }}>
               <button
                 type="button"
                 onClick={() => setIsRxModalOpen(false)}
-                className="btn btn-primary"
-                style={{ borderRadius: 8, padding: '0.45rem 1.25rem', fontSize: '0.82rem' }}
+                title="Close"
+                style={{
+                  background: '#F1F5F9',
+                  border: 'none',
+                  borderRadius: '50%',
+                  width: 32,
+                  height: 32,
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  cursor: 'pointer',
+                  color: '#64748B'
+                }}
               >
-                Close
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Invoice Modal */}
-      {/* Transaction History Modal */}
-      {isHistoryModalOpen && (
-        <div style={{
-          position: 'fixed',
-          top: 0, left: 0, right: 0, bottom: 0,
-          background: 'rgba(15, 23, 42, 0.65)',
-          backdropFilter: 'blur(4px)',
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-          zIndex: 9999,
-          padding: '1rem'
-        }}>
-          <div style={{
-            background: '#FFFFFF',
-            borderRadius: 24,
-            width: '100%',
-            maxWidth: 600,
-            maxHeight: '85vh',
-            overflowY: 'auto',
-            boxShadow: '0 25px 50px -12px rgba(0,0,0,0.25)',
-            display: 'flex',
-            flexDirection: 'column'
-          }}>
-            <div style={{ padding: '1.25rem 1.5rem', background: '#FAFAFA', borderBottom: '1px solid #E2E8F0', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-              <div>
-                <h3 style={{ margin: 0, fontSize: '1.25rem', fontWeight: 800, color: '#0F172A', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                  <Clock size={20} style={{ color: '#059669' }} />
-                  Transaction History
-                </h3>
-              </div>
-              <button onClick={() => setIsHistoryModalOpen(false)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#64748B' }}>
-                <X size={20} />
+                <X size={18} />
               </button>
             </div>
 
-            <div style={{ padding: '1.5rem', display: 'flex', flexDirection: 'column', gap: '0.8rem' }}>
-              {/* 1. Completed Patient Referrals (Strictly 10% on service completion) */}
-              {completedReferredVisits.map(visit => {
-                const procedure = services.find(s => s.id === visit.serviceId);
-                const fee = Number(visit.finalFee !== undefined && visit.finalFee !== null ? visit.finalFee : (visit.estimatedFee || (procedure ? procedure.priceNumber : 800)));
-                const refEarnings = Math.round(fee * 0.10);
-                return (
-                  <div key={`ref-${visit.id}`} style={{ display: 'flex', justifyContent: 'space-between', padding: '1rem', border: '1px solid #BBF7D0', borderRadius: 12, background: '#F0FDF4' }}>
-                    <div>
-                      <div style={{ fontWeight: 700, color: '#166534' }}>Patient Referral Completed: {visit.patientName}</div>
-                      <div style={{ fontSize: '0.8rem', color: '#64748B' }}>Service: {visit.serviceTitle || visit.serviceId} (Bill: ₹{fee})</div>
-                      <div style={{ fontSize: '0.72rem', color: '#059669', marginTop: '0.15rem' }}>Booking ID: {visit.id}</div>
-                    </div>
-                    <div style={{ textAlign: 'right' }}>
-                      <div style={{ fontWeight: 800, color: '#059669', fontSize: '1.05rem' }}>+₹{refEarnings}</div>
-                      <span style={{ fontSize: '0.72rem', background: '#DCFCE7', color: '#15803D', padding: '2px 6px', borderRadius: 4, fontWeight: 700, border: '1px solid #BBF7D0', display: 'inline-block', marginTop: '2px' }}>
-                        10% Referral Commission
-                      </span>
-                      <div style={{ fontSize: '0.75rem', color: '#16A34A', fontWeight: 600, marginTop: '2px' }}>+50 pts</div>
-                    </div>
-                  </div>
-                );
-              })}
-
-              {/* 2. Nurse Colleague Referrals (+50 points each) */}
-              {myConvertedLeads.filter(l => l.referralType === 'nurse' || Boolean(l.referredNursePhone)).map(lead => (
-                <div key={lead.id} style={{ display: 'flex', justifyContent: 'space-between', padding: '1rem', border: '1px solid #E2E8F0', borderRadius: 12 }}>
+            {/* Body - Scrollable */}
+            <div style={{
+              padding: '1.25rem 1.5rem',
+              overflowY: 'auto',
+              flex: 1,
+              display: 'flex',
+              flexDirection: 'column',
+              gap: '0.9rem'
+            }}>
+              {/* Patient & Procedure Summary Box */}
+              <div style={{
+                background: '#F8FAFC',
+                borderRadius: 12,
+                padding: '0.9rem 1.1rem',
+                border: '1px solid #E2E8F0'
+              }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: '0.5rem' }}>
                   <div>
-                    <div style={{ fontWeight: 700, color: '#1E293B' }}>Nurse Colleague Referral: {lead.referredNurseName || lead.patientName}</div>
-                    <div style={{ fontSize: '0.8rem', color: '#64748B' }}>Status: {lead.status}</div>
+                    <div style={{ fontSize: '0.7rem', color: '#64748B', fontWeight: 700, textTransform: 'uppercase' }}>Patient Info</div>
+                    <div style={{ fontSize: '0.92rem', fontWeight: 800, color: '#0F172A' }}>
+                      {previewRxBooking.patientName} {previewRxBooking.patientAge ? `(${previewRxBooking.patientAge} yrs, ${previewRxBooking.patientGender || 'Patient'})` : ''}
+                    </div>
+                    {previewRxBooking.patientPhone && (
+                      <div style={{ fontSize: '0.78rem', color: '#0284C7', fontWeight: 600, marginTop: 2 }}>
+                        📞 {previewRxBooking.patientPhone}
+                      </div>
+                    )}
                   </div>
                   <div style={{ textAlign: 'right' }}>
-                    <div style={{ fontWeight: 800, color: '#16A34A', fontSize: '1.1rem' }}>+{lead.pointsAwarded || 50} pts</div>
+                    <div style={{ fontSize: '0.7rem', color: '#64748B', fontWeight: 700, textTransform: 'uppercase' }}>Prescribed Procedure</div>
+                    <div style={{ fontSize: '0.88rem', fontWeight: 800, color: '#059669' }}>
+                      {previewRxBooking.serviceTitle}
+                    </div>
                   </div>
                 </div>
-              ))}
+              </div>
 
-              {/* 3. Completed Assigned Visits (Strictly 70% service charge) */}
-              {completedVisits.map(visit => {
-                const procedure = services.find(s => s.id === visit.serviceId);
-                const fee = Number(visit.finalFee !== undefined && visit.finalFee !== null ? visit.finalFee : (visit.estimatedFee || (procedure ? procedure.priceNumber : 899)));
-                const earnings = Math.round(fee * 0.70);
-                return (
-                  <div key={visit.id} style={{ display: 'flex', justifyContent: 'space-between', padding: '1rem', border: '1px solid #E2E8F0', borderRadius: 12, background: '#F8FAFC' }}>
-                    <div>
-                      <div style={{ fontWeight: 700, color: '#1E293B' }}>Assigned Visit Finished: {visit.patientName}</div>
-                      <div style={{ fontSize: '0.8rem', color: '#64748B' }}>Service: {visit.serviceTitle || visit.serviceId} (Bill: ₹{fee})</div>
-                      <div style={{ fontSize: '0.72rem', color: '#0284C7', marginTop: '0.15rem' }}>Booking ID: {visit.id}</div>
-                    </div>
-                    <div style={{ textAlign: 'right' }}>
-                      <div style={{ fontWeight: 800, color: '#059669', fontSize: '1.05rem' }}>+₹{earnings}</div>
-                      <span style={{ fontSize: '0.72rem', background: '#ECFDF5', color: '#059669', padding: '2px 6px', borderRadius: 4, fontWeight: 700, border: '1px solid #A7F3D0', display: 'inline-block', marginTop: '2px' }}>
-                        70% Service Charge Earned
+              {/* Doctor Clinical Orders Box */}
+              <div style={{
+                background: '#FFFBEB',
+                border: '1px solid #FDE68A',
+                borderRadius: 12,
+                padding: '0.9rem 1.1rem'
+              }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '0.45rem', marginBottom: '0.35rem' }}>
+                  <span style={{ fontSize: '1.25rem', fontWeight: 900, color: '#D97706', fontFamily: 'serif', lineHeight: 1 }}>℞</span>
+                  <span style={{ fontSize: '0.78rem', fontWeight: 800, color: '#92400E', textTransform: 'uppercase', letterSpacing: '0.03em' }}>
+                    Attending Physician Clinical Orders
+                  </span>
+                </div>
+                <div style={{
+                  fontSize: '0.86rem',
+                  color: '#78350F',
+                  lineHeight: 1.55,
+                  background: '#FFFFFF',
+                  padding: '0.75rem 0.9rem',
+                  borderRadius: 8,
+                  border: '1px solid #FDE68A',
+                  whiteSpace: 'pre-wrap'
+                }}>
+                  {previewRxBooking.notes || 'Administer prescribed home nursing care in strict compliance with attending physician orders. Ensure vitals evaluation (BP, Pulse, SpO2, Temperature) prior to procedure initiation and secure cannula/aseptic dressing upon conclusion.'}
+                </div>
+              </div>
+
+              {/* Attached Prescription Document Preview */}
+              {previewRxBooking.prescriptionUrl ? (
+                <div style={{
+                  border: '1px solid #E2E8F0',
+                  borderRadius: 12,
+                  padding: '0.85rem',
+                  background: '#F8FAFC'
+                }}>
+                  <div style={{
+                    fontSize: '0.74rem',
+                    fontWeight: 700,
+                    color: '#475569',
+                    textTransform: 'uppercase',
+                    marginBottom: '0.5rem',
+                    display: 'flex',
+                    justifyContent: 'space-between',
+                    alignItems: 'center'
+                  }}>
+                    <span>Official Prescription Document</span>
+                    {previewRxBooking.prescriptionFileName && (
+                      <span style={{ fontSize: '0.72rem', color: '#64748B', fontWeight: 500, fontFamily: 'monospace' }}>
+                        {previewRxBooking.prescriptionFileName}
                       </span>
-                    </div>
+                    )}
                   </div>
-                );
-              })}
-
-              {completedReferredVisits.length === 0 && completedVisits.length === 0 && myConvertedLeads.length === 0 && (
-                <div style={{ textAlign: 'center', padding: '2rem', color: '#64748B' }}>
-                  No transactions yet.
+                  <div style={{
+                    textAlign: 'center',
+                    background: '#FFFFFF',
+                    borderRadius: 8,
+                    padding: '0.5rem',
+                    border: '1px solid #CBD5E1',
+                    maxHeight: 240,
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    overflow: 'hidden'
+                  }}>
+                    <img
+                      src={previewRxBooking.prescriptionUrl}
+                      alt="Prescription"
+                      style={{
+                        maxWidth: '100%',
+                        maxHeight: 220,
+                        objectFit: 'contain',
+                        borderRadius: 6,
+                        cursor: 'pointer'
+                      }}
+                      onClick={() => window.open(previewRxBooking.prescriptionUrl, '_blank')}
+                      title="Click to view full size"
+                      onError={(e) => {
+                        const parent = e.currentTarget.parentElement;
+                        if (parent) {
+                          parent.innerHTML = '<div style="padding:1.5rem;color:#64748B;font-size:0.85rem;">Prescription PDF/Document attached. Click button below to open.</div>';
+                        }
+                      }}
+                    />
+                  </div>
+                  <div style={{ marginTop: '0.65rem', textAlign: 'center' }}>
+                    <a
+                      href={previewRxBooking.prescriptionUrl}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="btn btn-outline"
+                      style={{
+                        display: 'inline-flex',
+                        alignItems: 'center',
+                        gap: '0.4rem',
+                        fontWeight: 700,
+                        fontSize: '0.8rem',
+                        padding: '0.4rem 0.9rem',
+                        borderRadius: 8
+                      }}
+                    >
+                      <ExternalLink size={14} /> Open Full Size / PDF
+                    </a>
+                  </div>
+                </div>
+              ) : (
+                <div style={{
+                  padding: '1rem',
+                  background: '#F1F5F9',
+                  borderRadius: 12,
+                  textAlign: 'center',
+                  fontSize: '0.82rem',
+                  color: '#64748B',
+                  border: '1px dashed #CBD5E1'
+                }}>
+                  <div style={{ color: '#059669', fontWeight: 800, fontSize: '0.88rem', marginBottom: 2 }}>
+                    ✓ Prescription Verified & Approved
+                  </div>
+                  <div style={{ fontSize: '0.78rem' }}>
+                    Authorized teleconsultation order by attending physician.
+                    {previewRxBooking.prescriptionFileName && ` File Ref: ${previewRxBooking.prescriptionFileName}`}
+                  </div>
                 </div>
               )}
             </div>
+
+            {/* Footer - Always Fixed at Bottom */}
+            <div style={{
+              padding: '0.9rem 1.5rem',
+              borderTop: '1px solid #E2E8F0',
+              background: '#FAFAFA',
+              display: 'flex',
+              justifyContent: 'space-between',
+              alignItems: 'center',
+              flexShrink: 0
+            }}>
+              <span style={{ fontSize: '0.74rem', color: '#64748B' }}>
+                Xpress Nurse Clinical Care Protocol
+              </span>
+              <button
+                type="button"
+                onClick={() => setIsRxModalOpen(false)}
+                className="btn btn-primary"
+                style={{
+                  borderRadius: 8,
+                  padding: '0.45rem 1.4rem',
+                  fontSize: '0.85rem',
+                  fontWeight: 700,
+                  cursor: 'pointer'
+                }}
+              >
+                Close
+              </button>
+            </div>
           </div>
         </div>
       )}
 
+      {/* 2. DOORSTEP BILL INVOICE MODAL (Always Visible, Fits All Screens) */}
       {isInvoiceModalOpen && previewInvoice && (
-        <div style={{
-          position: 'fixed',
-          top: 0, left: 0, right: 0, bottom: 0,
-          background: 'rgba(15, 23, 42, 0.65)',
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-          zIndex: 9999,
-          padding: '1rem'
-        }}>
-          <div style={{
-            background: '#FFFFFF',
-            borderRadius: 16,
-            maxWidth: 520,
-            width: '100%',
-            padding: '1.5rem',
-            boxShadow: '0 20px 40px rgba(0,0,0,0.2)'
-          }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '1rem' }}>
+        <div
+          style={{
+            position: 'fixed',
+            top: 0, left: 0, right: 0, bottom: 0,
+            background: 'rgba(15, 23, 42, 0.65)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            zIndex: 9999,
+            padding: '1rem',
+            backdropFilter: 'blur(4px)'
+          }}
+          onClick={() => setIsInvoiceModalOpen(false)}
+        >
+          <div
+            style={{
+              background: '#FFFFFF',
+              borderRadius: 20,
+              maxWidth: 540,
+              width: '100%',
+              maxHeight: '90vh',
+              display: 'flex',
+              flexDirection: 'column',
+              boxShadow: '0 25px 50px -12px rgba(0,0,0,0.25)',
+              overflow: 'hidden'
+            }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            {/* Header - Fixed at Top */}
+            <div style={{
+              padding: '1.2rem 1.5rem',
+              borderBottom: '1px solid #E2E8F0',
+              background: '#FAFAFA',
+              display: 'flex',
+              justifyContent: 'space-between',
+              alignItems: 'center',
+              flexShrink: 0
+            }}>
               <div>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '0.45rem', flexWrap: 'wrap' }}>
                   <h4 style={{ margin: 0, fontSize: '1.15rem', fontWeight: 800, color: '#0F172A' }}>
@@ -2518,110 +2585,216 @@ export const NurseDashboard: React.FC<NurseDashboardProps> = ({
                       alignItems: 'center',
                       gap: 3
                     }}>
-                      ✓ Live Synced Bill
+                      ✓ Live Synced
                     </span>
                   )}
                 </div>
-                <div style={{ fontSize: '0.78rem', color: '#64748B', marginTop: 2 }}>
-                  Date: {previewInvoice.invoiceDate} • Assigned RN: {previewInvoice.assignedNurseName || nurse.name}
+                <div style={{ fontSize: '0.76rem', color: '#64748B', marginTop: 2 }}>
+                  Date: {previewInvoice.invoiceDate} • Staff RN: <strong>{previewInvoice.assignedNurseName || nurse.name}</strong>
                 </div>
               </div>
               <button
                 type="button"
                 onClick={() => setIsInvoiceModalOpen(false)}
-                style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#64748B' }}
+                title="Close"
+                style={{
+                  background: '#F1F5F9',
+                  border: 'none',
+                  borderRadius: '50%',
+                  width: 32,
+                  height: 32,
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  cursor: 'pointer',
+                  color: '#64748B'
+                }}
               >
-                <X size={20} />
+                <X size={18} />
               </button>
             </div>
 
-            <div style={{ background: '#F8FAFC', borderRadius: 10, padding: '1rem', marginBottom: '1rem', border: '1px solid #E2E8F0' }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                <span style={{ fontSize: '0.88rem', color: '#0F172A', fontWeight: 800 }}>{previewInvoice.patientName}</span>
-                {previewInvoice.patientPhone && (
-                  <span style={{ fontSize: '0.78rem', color: '#0284C7', fontWeight: 700 }}>{previewInvoice.patientPhone}</span>
-                )}
-              </div>
-              <div style={{ fontSize: '0.8rem', color: '#64748B', marginTop: 2 }}>{previewInvoice.fullAddress || previewInvoice.area}</div>
-
-              <div style={{ borderTop: '1px dashed #CBD5E1', margin: '0.75rem 0', paddingTop: '0.75rem' }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.85rem', color: '#334155' }}>
-                  <span>
-                    <strong>{previewInvoice.serviceTitle}</strong>
-                    {previewInvoice.serviceDate && <span style={{ display: 'block', fontSize: '0.75rem', color: '#64748B' }}>Date: {previewInvoice.serviceDate}</span>}
-                    {previewInvoice.timeSlot && <span style={{ display: 'block', fontSize: '0.75rem', color: '#64748B' }}>Slot: {previewInvoice.timeSlot}</span>}
+            {/* Body - Scrollable */}
+            <div style={{
+              padding: '1.25rem 1.5rem',
+              overflowY: 'auto',
+              flex: 1
+            }}>
+              <div style={{
+                background: '#F8FAFC',
+                borderRadius: 12,
+                padding: '1rem',
+                border: '1px solid #E2E8F0'
+              }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <span style={{ fontSize: '0.9rem', color: '#0F172A', fontWeight: 800 }}>
+                    {previewInvoice.patientName} {previewInvoice.patientAge ? `(${previewInvoice.patientAge} yrs)` : ''}
                   </span>
-                  <strong>₹{previewInvoice.baseAmount * (previewInvoice.numberOfVisits || 1)}</strong>
+                  {previewInvoice.patientPhone && (
+                    <span style={{ fontSize: '0.8rem', color: '#0284C7', fontWeight: 700 }}>
+                      📞 {previewInvoice.patientPhone}
+                    </span>
+                  )}
                 </div>
-                {Boolean(previewInvoice.discountRupees && previewInvoice.discountRupees > 0) && (
-                  <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.85rem', color: '#059669', marginTop: '4px' }}>
-                    <span>Coupon / Special Discount</span>
-                    <strong>-₹{previewInvoice.discountRupees}</strong>
-                  </div>
-                )}
-                {Boolean(previewInvoice.nightSurcharge && previewInvoice.nightSurcharge > 0) && (
-                  <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.85rem', color: '#B45309', marginTop: '4px' }}>
-                    <span>Night Surcharge</span>
-                    <strong>+₹{previewInvoice.nightSurcharge}</strong>
-                  </div>
-                )}
-                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '1.1rem', fontWeight: 900, color: '#0F172A', marginTop: '0.6rem', paddingTop: '0.6rem', borderTop: '1px solid #E2E8F0' }}>
-                  <span>Total Amount Due:</span>
-                  <span style={{ color: '#059669' }}>₹{previewInvoice.totalAmount}</span>
+                <div style={{ fontSize: '0.8rem', color: '#64748B', marginTop: 3 }}>
+                  📍 {previewInvoice.fullAddress || previewInvoice.area}
                 </div>
-                <div style={{ marginTop: '0.4rem', fontSize: '0.78rem', color: '#64748B', display: 'flex', justifyContent: 'space-between' }}>
-                  <span>Payment Status: <strong style={{ color: previewInvoice.paymentStatus === 'Paid' ? '#059669' : '#D97706' }}>{previewInvoice.paymentStatus || 'Pending'}</strong></span>
-                  <span>Nurse 70% Share: <strong style={{ color: '#0284C7' }}>₹{Math.round(previewInvoice.totalAmount * 0.70)}</strong></span>
-                </div>
-              </div>
 
-              {previewInvoice.notes && (
-                <div style={{ marginTop: '0.65rem', paddingTop: '0.5rem', borderTop: '1px dotted #CBD5E1', fontSize: '0.75rem', color: '#64748B' }}>
-                  <strong>Notes:</strong> {previewInvoice.notes}
+                <div style={{ borderTop: '1px dashed #CBD5E1', margin: '0.75rem 0', paddingTop: '0.75rem' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.86rem', color: '#334155' }}>
+                    <span>
+                      <strong>{previewInvoice.serviceTitle}</strong>
+                      {previewInvoice.serviceDate && (
+                        <span style={{ display: 'block', fontSize: '0.75rem', color: '#64748B' }}>
+                          Date: {previewInvoice.serviceDate}
+                        </span>
+                      )}
+                      {previewInvoice.timeSlot && (
+                        <span style={{ display: 'block', fontSize: '0.75rem', color: '#64748B' }}>
+                          Slot: {previewInvoice.timeSlot}
+                        </span>
+                      )}
+                    </span>
+                    <strong>₹{previewInvoice.baseAmount * (previewInvoice.numberOfVisits || 1)}</strong>
+                  </div>
+
+                  {Boolean(previewInvoice.discountRupees && previewInvoice.discountRupees > 0) && (
+                    <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.84rem', color: '#059669', marginTop: '4px' }}>
+                      <span>Coupon / Concession Discount</span>
+                      <strong>-₹{previewInvoice.discountRupees}</strong>
+                    </div>
+                  )}
+
+                  {Boolean(previewInvoice.nightSurcharge && previewInvoice.nightSurcharge > 0) && (
+                    <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.84rem', color: '#B45309', marginTop: '4px' }}>
+                      <span>Night Emergency Surcharge</span>
+                      <strong>+₹{previewInvoice.nightSurcharge}</strong>
+                    </div>
+                  )}
+
+                  <div style={{
+                    display: 'flex',
+                    justifyContent: 'space-between',
+                    fontSize: '1.15rem',
+                    fontWeight: 900,
+                    color: '#0F172A',
+                    marginTop: '0.65rem',
+                    paddingTop: '0.65rem',
+                    borderTop: '1px solid #E2E8F0'
+                  }}>
+                    <span>Total Amount Due:</span>
+                    <span style={{ color: '#059669' }}>₹{previewInvoice.totalAmount}</span>
+                  </div>
+
+                  <div style={{
+                    marginTop: '0.45rem',
+                    fontSize: '0.78rem',
+                    color: '#64748B',
+                    display: 'flex',
+                    justifyContent: 'space-between',
+                    flexWrap: 'wrap',
+                    gap: '0.35rem'
+                  }}>
+                    <span>
+                      Payment Status:{' '}
+                      <strong style={{ color: previewInvoice.paymentStatus === 'Paid' ? '#059669' : '#D97706' }}>
+                        {previewInvoice.paymentStatus || 'Pending'}
+                      </strong>
+                    </span>
+                    <span>
+                      Nurse 70% Share:{' '}
+                      <strong style={{ color: '#0284C7' }}>
+                        ₹{Math.round(previewInvoice.totalAmount * 0.70)}
+                      </strong>
+                    </span>
+                  </div>
                 </div>
-              )}
+
+                {previewInvoice.notes && (
+                  <div style={{
+                    marginTop: '0.65rem',
+                    paddingTop: '0.5rem',
+                    borderTop: '1px dotted #CBD5E1',
+                    fontSize: '0.75rem',
+                    color: '#64748B'
+                  }}>
+                    <strong>Notes:</strong> {previewInvoice.notes}
+                  </div>
+                )}
+              </div>
             </div>
 
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '0.5rem', flexWrap: 'wrap' }}>
-              <div style={{ display: 'flex', gap: '0.5rem' }}>
-                {previewInvoice.r2PublicUrl && (
-                  <a
-                    href={previewInvoice.r2PublicUrl}
-                    target="_blank"
-                    rel="noreferrer"
-                    className="btn"
-                    style={{
-                      borderRadius: 8,
-                      padding: '0.45rem 0.9rem',
-                      fontSize: '0.82rem',
-                      display: 'inline-flex',
-                      alignItems: 'center',
-                      gap: '0.35rem',
-                      background: '#0284C7',
-                      color: '#FFFFFF',
-                      textDecoration: 'none',
-                      fontWeight: 750
-                    }}
-                  >
-                    <ExternalLink size={14} />
-                    <span>Open Live R2 Bill</span>
-                  </a>
-                )}
+            {/* Footer - Fixed at Bottom with Print, Share & Close */}
+            <div style={{
+              padding: '0.9rem 1.5rem',
+              borderTop: '1px solid #E2E8F0',
+              background: '#FAFAFA',
+              display: 'flex',
+              justifyContent: 'space-between',
+              alignItems: 'center',
+              flexShrink: 0,
+              gap: '0.5rem',
+              flexWrap: 'wrap'
+            }}>
+              <div style={{ display: 'flex', gap: '0.45rem', flexWrap: 'wrap' }}>
                 <button
                   type="button"
                   onClick={() => openPrintableInvoiceWindow(previewInvoice)}
                   className="btn btn-outline"
-                  style={{ borderRadius: 8, padding: '0.45rem 0.9rem', fontSize: '0.82rem', display: 'inline-flex', alignItems: 'center', gap: '0.35rem', fontWeight: 700 }}
+                  title="View formatted bill or print/save as PDF"
+                  style={{
+                    borderRadius: 8,
+                    padding: '0.45rem 0.9rem',
+                    fontSize: '0.82rem',
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    gap: '0.35rem',
+                    fontWeight: 700,
+                    background: '#FFFFFF'
+                  }}
                 >
                   <Printer size={14} />
-                  <span>Print Bill</span>
+                  <span>Print / PDF Bill</span>
                 </button>
+
+                {previewInvoice.patientPhone && (
+                  <a
+                    href={`https://wa.me/91${previewInvoice.patientPhone.replace(/\D/g, '').slice(-10)}?text=${encodeURIComponent(`Namaste ${previewInvoice.patientName}, here is your official Xpress Nurse Doorstep Bill #${previewInvoice.invoiceNumber} for ${previewInvoice.serviceTitle}: Amount ₹${previewInvoice.totalAmount} (Status: ${previewInvoice.paymentStatus}). Thank you for choosing Xpress Nurse Hyderabad!`)}`}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="btn"
+                    title="Send Bill details directly to patient on WhatsApp"
+                    style={{
+                      borderRadius: 8,
+                      padding: '0.45rem 0.85rem',
+                      fontSize: '0.82rem',
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      gap: '0.35rem',
+                      background: '#F0FDF4',
+                      color: '#16A34A',
+                      border: '1px solid #BBF7D0',
+                      textDecoration: 'none',
+                      fontWeight: 700
+                    }}
+                  >
+                    <MessageCircle size={14} />
+                    <span>WhatsApp Bill</span>
+                  </a>
+                )}
               </div>
+
               <button
                 type="button"
                 onClick={() => setIsInvoiceModalOpen(false)}
                 className="btn btn-primary"
-                style={{ borderRadius: 8, padding: '0.45rem 1.25rem', fontSize: '0.82rem', fontWeight: 700 }}
+                style={{
+                  borderRadius: 8,
+                  padding: '0.45rem 1.4rem',
+                  fontSize: '0.85rem',
+                  fontWeight: 700,
+                  cursor: 'pointer'
+                }}
               >
                 Close
               </button>

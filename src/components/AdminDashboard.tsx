@@ -1973,7 +1973,9 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
     duration: '45 - 60 mins',
     badge: '',
     imageUrl: '',
-    thumbnailUrl: ''
+    thumbnailUrl: '',
+    zeroPriceMode: 'both' as 'free' | 'decided' | 'both' | 'custom',
+    customZeroPriceLabel: ''
   });
   const [isUploadingServiceImage, setIsUploadingServiceImage] = useState(false);
   const [isUploadingServiceThumbnail, setIsUploadingServiceThumbnail] = useState(false);
@@ -1992,13 +1994,29 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
       duration: '45 - 60 mins',
       badge: 'Popular',
       imageUrl: '',
-      thumbnailUrl: ''
+      thumbnailUrl: '',
+      zeroPriceMode: 'free',
+      customZeroPriceLabel: ''
     });
     setIsServiceModalOpen(true);
   };
 
   const handleOpenEditServiceModal = (s: ServiceItem) => {
     setEditingService(s);
+    let mode: 'free' | 'decided' | 'both' | 'custom' = 'both';
+    let customLabel = '';
+    const label = s.indicativePrice || '';
+    if (label.toLowerCase().includes('free / decided') || label.toLowerCase().includes('free or decided')) {
+      mode = 'both';
+    } else if (label.toLowerCase().startsWith('free')) {
+      mode = 'free';
+    } else if (label.toLowerCase().includes('decided')) {
+      mode = 'decided';
+    } else if (label && !label.startsWith('₹')) {
+      mode = 'custom';
+      customLabel = label.replace(/•\s*₹0/g, '').trim();
+    }
+
     setServiceForm({
       id: s.id,
       title: s.title,
@@ -2011,7 +2029,9 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
       duration: s.duration || '45 - 60 mins',
       badge: s.badge || '',
       imageUrl: s.imageUrl || '',
-      thumbnailUrl: s.thumbnailUrl || ''
+      thumbnailUrl: s.thumbnailUrl || '',
+      zeroPriceMode: mode,
+      customZeroPriceLabel: customLabel
     });
     setIsServiceModalOpen(true);
   };
@@ -2144,15 +2164,38 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
       showToast('Procedure title is required.', 'error');
       return;
     }
+
+    let indicativeStr = `₹${serviceForm.priceNumber} per visit`;
+    let pricingTag = '';
+    if (Number(serviceForm.priceNumber) === 0) {
+      if (serviceForm.zeroPriceMode === 'free') {
+        indicativeStr = 'Free • ₹0';
+        pricingTag = 'Free';
+      } else if (serviceForm.zeroPriceMode === 'decided') {
+        indicativeStr = 'To Be Decided at Service • ₹0';
+        pricingTag = 'To Be Decided at Service';
+      } else if (serviceForm.zeroPriceMode === 'custom') {
+        const customTxt = serviceForm.customZeroPriceLabel.trim() || 'Custom Pricing';
+        indicativeStr = `${customTxt} • ₹0`;
+        pricingTag = customTxt;
+      } else {
+        indicativeStr = 'Free / Decided at service • ₹0';
+        pricingTag = 'Free / Decided at service';
+      }
+    }
+
+    const baseDesc = serviceForm.description.replace(/\s*<!--pricing:[^>]+-->/g, '').trim();
+    const finalDesc = pricingTag ? `${baseDesc} <!--pricing:${pricingTag}-->` : baseDesc;
+
     const servicePayload: ServiceItem = {
       id: (editingService ? editingService.id : serviceForm.id.toLowerCase().replace(/[^a-z0-9-]/g, '-')) as ServiceId,
       title: serviceForm.title.trim(),
       subtitle: serviceForm.subtitle.trim(),
-      description: serviceForm.description.trim(),
-      indicativePrice: Number(serviceForm.priceNumber) === 0 ? 'Free / Decided at service • ₹0' : `₹${serviceForm.priceNumber} per visit`,
+      description: finalDesc,
+      indicativePrice: indicativeStr,
       priceNumber: Number(serviceForm.priceNumber),
       singleVisitPrice: Number(serviceForm.priceNumber),
-      multiVisitPrice: Number(serviceForm.multiVisitPrice),
+      multiVisitPrice: Number(serviceForm.priceNumber),
       nightSurcharge: Number(serviceForm.nightSurcharge),
       prescriptionRequired: serviceForm.prescriptionRequired,
       duration: serviceForm.duration.trim(),
@@ -4508,11 +4551,13 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                             <td>
                               <div style={{ fontWeight: 800, color: 'var(--primary-navy-950)', fontSize: '0.95rem' }}>
                                 {(s.priceNumber === 0 || s.singleVisitPrice === 0)
-                                  ? <span style={{ color: '#059669', fontSize: '0.85rem' }}>₹0 (Free / Decided at service)</span>
+                                  ? <span style={{ color: '#059669', fontSize: '0.85rem' }}>{s.indicativePrice || '₹0 (Free / Decided at service)'}</span>
                                   : `₹${s.priceNumber !== undefined ? s.priceNumber : (s.singleVisitPrice !== undefined ? s.singleVisitPrice : 0)}`}
                               </div>
                               <div style={{ fontSize: '0.72rem', color: 'var(--neutral-500)' }}>
-                                {(s.priceNumber === 0 || s.singleVisitPrice === 0) ? 'Complimentary or Decided at visit' : 'per home visit'}
+                                {(s.priceNumber === 0 || s.singleVisitPrice === 0) 
+                                  ? (s.indicativePrice ? s.indicativePrice.replace(/•\s*₹0/g, '').trim() : 'Complimentary or Decided at visit') 
+                                  : 'per home visit'}
                               </div>
                             </td>
                             <td>
@@ -8153,7 +8198,45 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
 
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem', marginBottom: '0.85rem' }}>
                 <div>
-                  <label className="form-label" style={{ fontSize: '0.78rem', fontWeight: 700 }}>PROCEDURE PRICE (₹) *</label>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.35rem' }}>
+                    <label className="form-label" style={{ fontSize: '0.78rem', fontWeight: 700, margin: 0 }}>PROCEDURE PRICE (₹) *</label>
+                    <div style={{ display: 'flex', gap: '4px' }}>
+                      <button
+                        type="button"
+                        onClick={() => setServiceForm({ ...serviceForm, priceNumber: 0, multiVisitPrice: 0, zeroPriceMode: 'free' })}
+                        style={{
+                          fontSize: '0.68rem',
+                          padding: '2px 7px',
+                          borderRadius: 6,
+                          border: serviceForm.priceNumber === 0 && serviceForm.zeroPriceMode === 'free' ? '1px solid #059669' : '1px solid #CBD5E1',
+                          background: serviceForm.priceNumber === 0 && serviceForm.zeroPriceMode === 'free' ? '#ECFDF5' : '#F8FAFC',
+                          color: serviceForm.priceNumber === 0 && serviceForm.zeroPriceMode === 'free' ? '#047857' : '#64748B',
+                          fontWeight: 700,
+                          cursor: 'pointer'
+                        }}
+                        title="Set as 100% Free / Complimentary"
+                      >
+                        ₹0 Free
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setServiceForm({ ...serviceForm, priceNumber: 0, multiVisitPrice: 0, zeroPriceMode: 'decided' })}
+                        style={{
+                          fontSize: '0.68rem',
+                          padding: '2px 7px',
+                          borderRadius: 6,
+                          border: serviceForm.priceNumber === 0 && serviceForm.zeroPriceMode === 'decided' ? '1px solid #0284C7' : '1px solid #CBD5E1',
+                          background: serviceForm.priceNumber === 0 && serviceForm.zeroPriceMode === 'decided' ? '#EFF6FF' : '#F8FAFC',
+                          color: serviceForm.priceNumber === 0 && serviceForm.zeroPriceMode === 'decided' ? '#0369A1' : '#64748B',
+                          fontWeight: 700,
+                          cursor: 'pointer'
+                        }}
+                        title="Set as To Be Decided At Service"
+                      >
+                        ₹0 Decided at visit
+                      </button>
+                    </div>
+                  </div>
                   <input
                     type="number"
                     min={0}
@@ -8162,7 +8245,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                     onChange={(e) => setServiceForm({ ...serviceForm, priceNumber: Number(e.target.value), multiVisitPrice: Number(e.target.value) })}
                     className="form-control"
                   />
-                  <span style={{ fontSize: '0.7rem', color: '#059669', fontWeight: 600 }}>Set ₹0 for Free or To Be Decided At Service</span>
+                  <span style={{ fontSize: '0.7rem', color: '#059669', fontWeight: 600 }}>Set ₹0 for Free, Decided at Service, or Custom Policy</span>
                 </div>
                 <div>
                   <label className="form-label" style={{ fontSize: '0.78rem', fontWeight: 700 }}>NIGHT SURCHARGE (₹)</label>
@@ -8175,6 +8258,151 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                   />
                 </div>
               </div>
+
+              {/* Zero-Price Customizer Policy Box */}
+              {serviceForm.priceNumber === 0 && (
+                <div style={{
+                  background: 'linear-gradient(135deg, #F0FDF4 0%, #ECFDF5 100%)',
+                  border: '1.5px solid #A7F3D0',
+                  borderRadius: 12,
+                  padding: '0.85rem',
+                  marginBottom: '0.85rem',
+                  animation: 'fadeIn 0.2s ease-in-out'
+                }}>
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '0.5rem', flexWrap: 'wrap', gap: '0.4rem' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                      <span style={{ fontSize: '0.95rem' }}>✨</span>
+                      <strong style={{ fontSize: '0.82rem', color: '#065F46' }}>Choose Zero-Price Display Policy:</strong>
+                    </div>
+                    <span style={{ fontSize: '0.72rem', background: '#D1FAE5', color: '#047857', padding: '3px 8px', borderRadius: 9999, fontWeight: 700, border: '1px solid #A7F3D0' }}>
+                      Live: {serviceForm.zeroPriceMode === 'free' ? 'Free • ₹0' : serviceForm.zeroPriceMode === 'decided' ? 'To Be Decided at Service • ₹0' : serviceForm.zeroPriceMode === 'both' ? 'Free / Decided at service • ₹0' : `${serviceForm.customZeroPriceLabel || 'Custom'} • ₹0`}
+                    </span>
+                  </div>
+
+                  {/* Radio Cards */}
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(130px, 1fr))', gap: '0.5rem' }}>
+                    <label style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '6px',
+                      padding: '7px 10px',
+                      borderRadius: 8,
+                      background: serviceForm.zeroPriceMode === 'free' ? '#059669' : '#FFFFFF',
+                      color: serviceForm.zeroPriceMode === 'free' ? '#FFFFFF' : '#334155',
+                      border: '1.5px solid',
+                      borderColor: serviceForm.zeroPriceMode === 'free' ? '#047857' : '#CBD5E1',
+                      fontSize: '0.78rem',
+                      fontWeight: 700,
+                      cursor: 'pointer',
+                      boxShadow: serviceForm.zeroPriceMode === 'free' ? '0 2px 6px rgba(5, 150, 105, 0.25)' : 'none',
+                      transition: 'all 0.15s ease'
+                    }}>
+                      <input
+                        type="radio"
+                        name="zeroPriceOption"
+                        checked={serviceForm.zeroPriceMode === 'free'}
+                        onChange={() => setServiceForm({ ...serviceForm, zeroPriceMode: 'free' })}
+                        style={{ accentColor: '#059669' }}
+                      />
+                      <span>🟢 Free Only</span>
+                    </label>
+
+                    <label style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '6px',
+                      padding: '7px 10px',
+                      borderRadius: 8,
+                      background: serviceForm.zeroPriceMode === 'decided' ? '#0284C7' : '#FFFFFF',
+                      color: serviceForm.zeroPriceMode === 'decided' ? '#FFFFFF' : '#334155',
+                      border: '1.5px solid',
+                      borderColor: serviceForm.zeroPriceMode === 'decided' ? '#0369A1' : '#CBD5E1',
+                      fontSize: '0.78rem',
+                      fontWeight: 700,
+                      cursor: 'pointer',
+                      boxShadow: serviceForm.zeroPriceMode === 'decided' ? '0 2px 6px rgba(2, 132, 199, 0.25)' : 'none',
+                      transition: 'all 0.15s ease'
+                    }}>
+                      <input
+                        type="radio"
+                        name="zeroPriceOption"
+                        checked={serviceForm.zeroPriceMode === 'decided'}
+                        onChange={() => setServiceForm({ ...serviceForm, zeroPriceMode: 'decided' })}
+                        style={{ accentColor: '#0284C7' }}
+                      />
+                      <span>🔵 To Be Decided</span>
+                    </label>
+
+                    <label style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '6px',
+                      padding: '7px 10px',
+                      borderRadius: 8,
+                      background: serviceForm.zeroPriceMode === 'both' ? '#4F46E5' : '#FFFFFF',
+                      color: serviceForm.zeroPriceMode === 'both' ? '#FFFFFF' : '#334155',
+                      border: '1.5px solid',
+                      borderColor: serviceForm.zeroPriceMode === 'both' ? '#4338CA' : '#CBD5E1',
+                      fontSize: '0.78rem',
+                      fontWeight: 700,
+                      cursor: 'pointer',
+                      boxShadow: serviceForm.zeroPriceMode === 'both' ? '0 2px 6px rgba(79, 70, 229, 0.25)' : 'none',
+                      transition: 'all 0.15s ease'
+                    }}>
+                      <input
+                        type="radio"
+                        name="zeroPriceOption"
+                        checked={serviceForm.zeroPriceMode === 'both'}
+                        onChange={() => setServiceForm({ ...serviceForm, zeroPriceMode: 'both' })}
+                        style={{ accentColor: '#4F46E5' }}
+                      />
+                      <span>🟣 Free / Decided</span>
+                    </label>
+
+                    <label style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '6px',
+                      padding: '7px 10px',
+                      borderRadius: 8,
+                      background: serviceForm.zeroPriceMode === 'custom' ? '#D97706' : '#FFFFFF',
+                      color: serviceForm.zeroPriceMode === 'custom' ? '#FFFFFF' : '#334155',
+                      border: '1.5px solid',
+                      borderColor: serviceForm.zeroPriceMode === 'custom' ? '#B45309' : '#CBD5E1',
+                      fontSize: '0.78rem',
+                      fontWeight: 700,
+                      cursor: 'pointer',
+                      boxShadow: serviceForm.zeroPriceMode === 'custom' ? '0 2px 6px rgba(217, 119, 6, 0.25)' : 'none',
+                      transition: 'all 0.15s ease'
+                    }}>
+                      <input
+                        type="radio"
+                        name="zeroPriceOption"
+                        checked={serviceForm.zeroPriceMode === 'custom'}
+                        onChange={() => setServiceForm({ ...serviceForm, zeroPriceMode: 'custom' })}
+                        style={{ accentColor: '#D97706' }}
+                      />
+                      <span>✏️ Customize...</span>
+                    </label>
+                  </div>
+
+                  {serviceForm.zeroPriceMode === 'custom' && (
+                    <div style={{ marginTop: '0.65rem', animation: 'fadeIn 0.2s ease-in-out' }}>
+                      <label style={{ fontSize: '0.74rem', fontWeight: 750, color: '#92400E', display: 'block', marginBottom: '4px' }}>
+                        CUSTOM PRICING TEXT DISPLAYED TO PATIENTS:
+                      </label>
+                      <input
+                        type="text"
+                        placeholder="e.g. Free Consultation, Included in Package, Decided after assessment..."
+                        value={serviceForm.customZeroPriceLabel}
+                        onChange={(e) => setServiceForm({ ...serviceForm, customZeroPriceLabel: e.target.value })}
+                        className="form-control"
+                        style={{ background: '#FFFFFF', borderColor: '#F59E0B', fontSize: '0.84rem', fontWeight: 600 }}
+                      />
+                    </div>
+                  )}
+                </div>
+              )}
 
               <div style={{ display: 'grid', gridTemplateColumns: '1.2fr 1fr', gap: '0.75rem', marginBottom: '0.85rem' }}>
                 <div>
@@ -9559,7 +9787,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
             </div>
 
             {/* Footer */}
-            <div style={{ padding: '1rem 1.4rem', background: '#FAFAFA', borderTop: '1px solid var(--neutral-200)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            <div style={{ position: 'sticky', bottom: 0, zIndex: 20, padding: '1rem 1.4rem', background: '#FAFAFA', borderTop: '1px solid var(--neutral-200)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
               <div style={{ fontSize: '0.74rem', color: '#64748B' }}>
                 Xpress Nurse Cloudflare Storage Protection • HIPAA & DISHA Compliant
               </div>

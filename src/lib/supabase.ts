@@ -96,18 +96,34 @@ export async function dbFetchServices(): Promise<ServiceItem[] | null> {
 
   if (data === null) return null;
 
-  return data.map((s: any) => ({
-    id: s.id,
-    title: s.title,
-    subtitle: s.subtitle || '',
-    description: s.description || '',
-    singleVisitPrice: s.single_visit_price !== undefined && s.single_visit_price !== null ? Number(s.single_visit_price) : 800,
-    multiVisitPrice: s.multi_visit_price !== undefined && s.multi_visit_price !== null ? Number(s.multi_visit_price) : (s.single_visit_price !== undefined && s.single_visit_price !== null ? Number(s.single_visit_price) : 800),
-    nightSurcharge: s.night_surcharge !== undefined && s.night_surcharge !== null ? Number(s.night_surcharge) : 399,
-    prescriptionRequired: Boolean(s.prescription_required),
-    duration: s.duration || '30 - 45 mins',
-    indicativePrice: (Number(s.single_visit_price) === 0 || Number(s.price_number) === 0) ? 'Free / Decided at service • ₹0' : `₹${Math.round(s.single_visit_price ?? s.price_number ?? 0)}`,
-    priceNumber: s.single_visit_price !== undefined && s.single_visit_price !== null ? Number(s.single_visit_price) : 800,
+  return data.map((s: any) => {
+    const rawDesc = s.description || '';
+    const match = rawDesc.match(/<!--pricing:([^>]+)-->/);
+    const pricingLabel = match ? match[1].trim() : undefined;
+    const cleanDesc = rawDesc.replace(/\s*<!--pricing:[^>]+-->/g, '').trim();
+    const isZero = Number(s.single_visit_price) === 0 || Number(s.price_number) === 0;
+
+    let computedIndicative = `₹${Math.round(s.single_visit_price ?? s.price_number ?? 0)}`;
+    if (isZero) {
+      if (pricingLabel) {
+        computedIndicative = pricingLabel.includes('₹') ? pricingLabel : `${pricingLabel} • ₹0`;
+      } else {
+        computedIndicative = 'Free / Decided at service • ₹0';
+      }
+    }
+
+    return {
+      id: s.id,
+      title: s.title,
+      subtitle: s.subtitle || '',
+      description: cleanDesc,
+      singleVisitPrice: s.single_visit_price !== undefined && s.single_visit_price !== null ? Number(s.single_visit_price) : 800,
+      multiVisitPrice: s.multi_visit_price !== undefined && s.multi_visit_price !== null ? Number(s.multi_visit_price) : (s.single_visit_price !== undefined && s.single_visit_price !== null ? Number(s.single_visit_price) : 800),
+      nightSurcharge: s.night_surcharge !== undefined && s.night_surcharge !== null ? Number(s.night_surcharge) : 399,
+      prescriptionRequired: Boolean(s.prescription_required),
+      duration: s.duration || '30 - 45 mins',
+      indicativePrice: computedIndicative,
+      priceNumber: s.single_visit_price !== undefined && s.single_visit_price !== null ? Number(s.single_visit_price) : 800,
     features: [
       'Doorstep clinical service across Hyderabad',
       'Certified & background-verified RN attending',
@@ -131,7 +147,8 @@ export async function dbFetchServices(): Promise<ServiceItem[] | null> {
     imageUrl: s.image_url || `/images/services/${s.id}.jpg`,
     thumbnailUrl: s.thumbnail_url || null,
     createdAt: s.created_at
-  }));
+  };
+  });
 }
 
 export async function dbInsertService(s: ServiceItem): Promise<boolean> {

@@ -717,7 +717,7 @@ export const BookingModal: React.FC<BookingModalProps> = ({
               >
                 {serviceList.map((srv) => {
                   const pNum = srv.priceNumber !== undefined && srv.priceNumber !== null ? srv.priceNumber : srv.singleVisitPrice;
-                  const priceLabel = pNum === 0 ? 'Free / Decided at service • ₹0' : srv.indicativePrice;
+                  const priceLabel = pNum === 0 ? (srv.indicativePrice || 'Free / Decided at service • ₹0') : srv.indicativePrice;
                   return (
                     <option key={srv.id} value={srv.id}>
                       {srv.title} — {priceLabel}

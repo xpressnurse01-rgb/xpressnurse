@@ -64,14 +64,15 @@ export const ServicesSection: React.FC<ServicesSectionProps> = ({ services = [],
       : (srv.singleVisitPrice !== undefined && srv.singleVisitPrice !== null ? srv.singleVisitPrice : null);
 
     if (price !== null) {
-      if (price === 0) return 'Free / Decided at service • ₹0';
+      if (price === 0) {
+        if (srv.indicativePrice) return srv.indicativePrice;
+        return 'Free / Decided at service • ₹0';
+      }
       if (srv.id === 'wound-dressing') return `Starts ₹${price.toLocaleString('en-IN')}*`;
       return `₹${price.toLocaleString('en-IN')}`;
     }
 
     if (srv.indicativePrice) {
-      const match = srv.indicativePrice.match(/₹[\d,]+/);
-      if (match) return match[0];
       return srv.indicativePrice;
     }
     return '₹799';
@@ -191,7 +192,7 @@ export const ServicesSection: React.FC<ServicesSectionProps> = ({ services = [],
                     <div className="district-price-value">{cleanPriceDisplay(service)}</div>
                     <div className="district-price-note">
                       {((service.priceNumber !== undefined && service.priceNumber === 0) || (service.singleVisitPrice !== undefined && service.singleVisitPrice === 0))
-                        ? 'Free or decided during home visit • ₹0'
+                        ? (service.indicativePrice ? service.indicativePrice.replace(/•\s*₹0/g, '').trim() : 'Free or decided during home visit')
                         : (service.id === 'wound-dressing' ? 'Depends on wound type & depth' : 'All-inclusive • Zero advance')}
                     </div>
                   </div>
