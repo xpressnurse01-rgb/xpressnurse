@@ -68,6 +68,7 @@ export const BookingModal: React.FC<BookingModalProps> = ({
 
   // Form Fields
   const [serviceId, setServiceId] = useState<ServiceId>(preSelectedServiceId);
+  const [customProcedureName, setCustomProcedureName] = useState('');
   const [patientName, setPatientName] = useState('');
   const [patientAge, setPatientAge] = useState('');
   const [patientGender, setPatientGender] = useState<'Male' | 'Female' | 'Other'>('Male');
@@ -129,7 +130,20 @@ export const BookingModal: React.FC<BookingModalProps> = ({
 
   if (!isOpen) return null;
 
-  const currentService = serviceList.find((s) => s.id === serviceId) || serviceList[0];
+  const currentService = (serviceId as string) === 'other'
+    ? ({
+        id: 'other' as ServiceId,
+        title: customProcedureName.trim() || 'Other Nursing Service',
+        subtitle: 'Custom home nursing care procedure',
+        description: 'Specific care evaluated by attending nurse at visit',
+        indicativePrice: 'Free / Decided at service • ₹0',
+        priceNumber: 0,
+        singleVisitPrice: 0,
+        prescriptionRequired: false,
+        duration: '45-60 Mins',
+        icon: 'Activity'
+      } as ServiceItem)
+    : (serviceList.find((s) => s.id === serviceId) || serviceList[0]);
 
   // Pricing & Promo Code Calculations
   const baseFee = (currentService.priceNumber !== undefined && currentService.priceNumber !== null)
@@ -371,6 +385,10 @@ export const BookingModal: React.FC<BookingModalProps> = ({
       }
     }
 
+    if ((serviceId as string) === 'other' && !customProcedureName.trim()) {
+      errs.customProcedure = 'Please enter the nursing service needed.';
+    }
+
     if (Object.keys(errs).length > 0) {
       setErrors(errs);
       return;
@@ -390,7 +408,7 @@ export const BookingModal: React.FC<BookingModalProps> = ({
           file: prescriptionFile,
           patientName: patientName.trim(),
           patientPhone: patientPhone.trim(),
-          serviceTitle: currentService.title,
+          serviceTitle: (serviceId as string) === 'other' ? (customProcedureName.trim() || 'Other Nursing Service') : currentService.title,
           bookingId: newBookingId
         });
         finalRxUrl = r2Obj.publicUrl;
@@ -412,7 +430,7 @@ export const BookingModal: React.FC<BookingModalProps> = ({
       patientAge: parseInt(patientAge) || 45,
       patientGender,
       serviceId,
-      serviceTitle: currentService.title,
+      serviceTitle: (serviceId as string) === 'other' ? (customProcedureName.trim() || 'Other Nursing Service') : currentService.title,
       area: resolvedArea,
       fullAddress: fullAddress.trim(),
       bookingType,
@@ -706,7 +724,35 @@ export const BookingModal: React.FC<BookingModalProps> = ({
                     </option>
                   );
                 })}
+                <option value="other">Other Nursing Service / Custom Care — Free / Decided at service • ₹0</option>
               </select>
+
+              {(serviceId as string) === 'other' && (
+                <div style={{ marginTop: '0.65rem', animation: 'fadeIn 0.2s ease-in-out' }}>
+                  <label style={{ display: 'block', fontSize: '0.78rem', fontWeight: 700, color: '#0369A1', marginBottom: '0.25rem' }}>
+                    Specify Nursing Service Needed *
+                  </label>
+                  <input
+                    type="text"
+                    required
+                    placeholder="e.g. Nebulization, Tracheostomy care, Bed bath, Enema, Chemo port flush..."
+                    value={customProcedureName}
+                    onChange={(e) => {
+                      setCustomProcedureName(e.target.value);
+                      if (errors.customProcedure) {
+                        setErrors((prev) => ({ ...prev, customProcedure: '' }));
+                      }
+                    }}
+                    className={`form-control ${errors.customProcedure ? 'is-invalid' : ''}`}
+                    style={{ padding: '0.55rem 0.75rem', fontSize: '0.86rem', borderRadius: 10, borderColor: '#38BDF8', backgroundColor: '#F0F9FF' }}
+                  />
+                  {errors.customProcedure && <span className="field-error">{errors.customProcedure}</span>}
+                  <span style={{ fontSize: '0.72rem', color: '#0284C7', marginTop: '0.25rem', display: 'block', fontWeight: 600 }}>
+                    Enter any required clinical care. Pricing is decided at home visit or complimentary.
+                  </span>
+                </div>
+              )}
+
               {serviceId === 'wound-dressing' && (
                 <div style={{ marginTop: '0.4rem', fontSize: '0.74rem', color: '#92400E', background: '#FEF3C7', padding: '0.35rem 0.65rem', borderRadius: 8, border: '1px solid #FDE68A', display: 'flex', alignItems: 'center', gap: '0.35rem' }}>
                   <span>ℹ️</span>

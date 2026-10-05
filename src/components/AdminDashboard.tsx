@@ -1326,6 +1326,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
   // --------------------------------------------------------------------------
   const [bookingSearch, setBookingSearch] = useState('');
   const [bookingStatusFilter, setBookingStatusFilter] = useState<string>('all');
+  const [bookingSourceFilter, setBookingSourceFilter] = useState<'all' | 'direct' | 'referred'>('all');
   const [isBookingModalOpen, setIsBookingModalOpen] = useState(false);
   const [editingBooking, setEditingBooking] = useState<Booking | null>(null);
 
@@ -1487,21 +1488,33 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
       b.area.toLowerCase().includes(bookingSearch.toLowerCase()) ||
       (b.assignedNurseName && b.assignedNurseName.toLowerCase().includes(bookingSearch.toLowerCase()));
 
+    const isReferred = Boolean(b.referringNurseId || b.referredByDoctorId || b.notes?.toLowerCase().includes('referred') || b.notes?.toLowerCase().includes('referral'));
+    const isDirect = !isReferred;
+
+    const matchesSource =
+      bookingSourceFilter === 'all'
+        ? true
+        : bookingSourceFilter === 'direct'
+          ? isDirect
+          : isReferred;
+
     const isNurseDeclined = b.rejectedBy === 'Nurse' || b.nurseAcceptanceStatus === 'Rejected' || (b.status === 'Rejected' && b.rejectionReason?.toLowerCase().includes('nurse'));
     const isNurseAccepted = (b.nurseAcceptanceStatus === 'Accepted' || b.status === 'In-Progress') && b.status !== 'Completed' && !isNurseDeclined;
 
     const matchesStatus =
       bookingStatusFilter === 'all'
         ? true
-        : bookingStatusFilter === 'Referrals'
-          ? Boolean(b.referringNurseId)
-          : bookingStatusFilter === 'Nurse-Declined'
-            ? isNurseDeclined
-            : bookingStatusFilter === 'Accepted'
-              ? isNurseAccepted
-              : b.status === bookingStatusFilter;
+        : bookingStatusFilter === 'Direct'
+          ? isDirect
+          : bookingStatusFilter === 'Referrals'
+            ? isReferred
+            : bookingStatusFilter === 'Nurse-Declined'
+              ? isNurseDeclined
+              : bookingStatusFilter === 'Accepted'
+                ? isNurseAccepted
+                : b.status === bookingStatusFilter;
 
-    return matchesSearch && matchesStatus;
+    return matchesSearch && matchesSource && matchesStatus;
   });
 
   // Export Bookings to CSV / Excel
@@ -1793,17 +1806,6 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
       );
     });
     const m = calculateNurseMetrics(n, bookings, leads, services, nurses);
-    const initialPoints = (n.pointsEarned !== undefined && n.pointsEarned !== null) ? Number(n.pointsEarned) : m.totalPoints;
-    const initialReferral = (n.referralEarningsRupees !== undefined && n.referralEarningsRupees !== null) ? Number(n.referralEarningsRupees) : m.referralEarnings;
-    const initialDuty = (m.completedVisitsCount > 0 && n.earningsPending !== undefined && n.earningsPending !== null)
-      ? Number(n.earningsPending)
-      : m.completedVisitsEarnings;
-    const initialTotalPayout = (m.completedVisitsCount === 0 && m.completedReferredVisitsCount === 0 && (!n.referralEarningsRupees || Number(n.referralEarningsRupees) <= 0))
-      ? 0
-      : (initialDuty + initialReferral);
-    const initialTotalLeads = m.totalLeadsCount;
-    const initialConvertedLeads = m.convertedLeadsCount;
-    const initialTotalReferrals = m.totalLeadsCount;
 
     setNurseForm({
       id: n.id,
@@ -1817,18 +1819,18 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
       certificateVerified: !!n.certificateVerified,
       rating: n.rating || 4.9,
       pin: (n.pin && n.pin.trim() !== '') ? n.pin.trim() : (existingUser?.pin ? String(existingUser.pin).trim() : ''),
-      totalLeads: initialTotalLeads,
-      convertedLeads: initialConvertedLeads,
+      totalLeads: m.totalLeadsCount,
+      convertedLeads: m.convertedLeadsCount,
       patientLeads: m.patientLeadsCount,
       patientConverted: m.patientConvertedCount,
       nurseLeads: m.nurseLeadsCount,
       nurseConverted: m.nurseConvertedCount,
-      totalReferrals: initialTotalReferrals,
-      pointsEarned: initialPoints,
-      referralEarningsRupees: initialReferral,
-      totalPayout: initialTotalPayout,
+      totalReferrals: m.totalLeadsCount,
+      pointsEarned: m.totalPoints,
+      referralEarningsRupees: m.referralEarnings,
+      totalPayout: m.totalMoney,
       earningsPaid: Number(n.earningsPaid) || 0,
-      earningsPending: initialDuty,
+      earningsPending: m.completedVisitsEarnings,
       avatarUrl: n.avatarUrl || ''
     });
     setIsNurseModalOpen(true);
@@ -2209,6 +2211,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
     patientName: '',
     patientPhone: '',
     serviceId: 'saline-infusion' as ServiceId,
+    customProcedure: '',
     area: 'LB Nagar' as HyderabadArea,
     nurseId: nurses[0]?.id || '',
     status: 'Pending Approval' as NurseLead['status'],
@@ -2223,6 +2226,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
       patientName: '',
       patientPhone: '',
       serviceId: (services[0]?.id as ServiceId) || 'saline-infusion',
+      customProcedure: '',
       area: 'LB Nagar',
       nurseId: nurses[0]?.id || '',
       status: 'Pending Approval',
@@ -2239,6 +2243,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
       patientName: l.patientName || l.referredNurseName || '',
       patientPhone: l.patientPhone || l.referredNursePhone || '',
       serviceId: l.serviceId || 'saline-infusion',
+      customProcedure: l.notes?.replace(/^Procedure:\s*/i, '') || '',
       area: l.area,
       nurseId: l.nurseId || 'nurse-101',
       status: l.status,
@@ -2264,7 +2269,8 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
       submittedAt: editingLead ? editingLead.submittedAt : new Date().toISOString(),
       status: leadForm.status,
       leadValueRupees: Number(leadForm.leadValueRupees),
-      pointsAwarded: Number(leadForm.pointsAwarded)
+      pointsAwarded: Number(leadForm.pointsAwarded),
+      notes: leadForm.customProcedure.trim() ? `Procedure: ${leadForm.customProcedure.trim()}` : (editingLead?.notes || undefined)
     };
 
     if (editingLead && onUpdateLead) {
@@ -2967,12 +2973,16 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                             <div style={{ fontSize: '0.76rem', color: '#64748B', fontFamily: 'monospace' }}>{b.patientPhone}</div>
                             <div style={{ marginTop: '0.2rem' }}>
                               {(b.bookingType?.toLowerCase() === 'scheduled' || (b.preferredTime && !b.preferredTime.toLowerCase().includes('immediate') && !b.preferredTime.toLowerCase().includes('asap') && !b.preferredTime.toLowerCase().includes('instant'))) ? (
-                                <span style={{ fontSize: '0.72rem', background: '#F0FDF4', color: '#166534', padding: '2px 7px', borderRadius: 9999, fontWeight: 700, border: '1px solid #BBF7D0', whiteSpace: 'nowrap' }}>
-                                  📅 {b.scheduledSlot || b.preferredTime || 'Scheduled Slot'}
+                                <span style={{ fontSize: '0.72rem', background: '#F0FDF4', color: '#166534', padding: '2px 8px', borderRadius: 9999, fontWeight: 700, border: '1px solid #BBF7D0', whiteSpace: 'nowrap', display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
+                                  <span>📅 {b.preferredDate || (b.createdAt ? new Date(b.createdAt).toLocaleDateString('en-IN') : 'Today')}</span>
+                                  <span>•</span>
+                                  <span>⏰ {b.scheduledSlot || b.preferredTime || 'Scheduled Slot'}</span>
                                 </span>
                               ) : (
-                                <span style={{ fontSize: '0.72rem', background: '#EFF6FF', color: '#1D4ED8', padding: '2px 7px', borderRadius: 9999, fontWeight: 700, border: '1px solid #BFDBFE', whiteSpace: 'nowrap' }}>
-                                  ⚡ Instant Request
+                                <span style={{ fontSize: '0.72rem', background: '#EFF6FF', color: '#1D4ED8', padding: '2px 8px', borderRadius: 9999, fontWeight: 700, border: '1px solid #BFDBFE', whiteSpace: 'nowrap', display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
+                                  <span>⚡ Instant</span>
+                                  <span>•</span>
+                                  <span>📅 {b.preferredDate || (b.createdAt ? new Date(b.createdAt).toLocaleDateString('en-IN') : 'Today')}</span>
                                 </span>
                               )}
                             </div>
@@ -3250,7 +3260,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
 
           {/* Filter & Search Toolbar */}
           <div style={{ padding: '0.85rem 1.25rem', borderBottom: '1px solid var(--neutral-200)', background: '#FAFAFA', display: 'flex', gap: '0.75rem', flexWrap: 'wrap', alignItems: 'center', justifyContent: 'space-between' }}>
-            <div style={{ position: 'relative', minWidth: 260, flex: 1 }}>
+            <div style={{ position: 'relative', minWidth: 240, flex: 1 }}>
               <input
                 type="text"
                 placeholder="Search patient, booking ID, area, or assigned nurse..."
@@ -3267,8 +3277,52 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
               <Search size={14} style={{ position: 'absolute', left: 8, top: '50%', transform: 'translateY(-50%)', color: 'var(--neutral-400)' }} />
             </div>
 
+            {/* Direct vs Referred Source Filter Pills */}
+            <div style={{ display: 'flex', gap: '0.35rem', alignItems: 'center', flexWrap: 'wrap' }}>
+              <button
+                type="button"
+                onClick={() => setBookingSourceFilter('all')}
+                className={`btn btn-sm ${bookingSourceFilter === 'all' ? 'btn-primary' : 'btn-outline'}`}
+                style={{ fontSize: '0.76rem', borderRadius: 9999, padding: '0.25rem 0.65rem', fontWeight: 700 }}
+              >
+                All ({bookings.length})
+              </button>
+              <button
+                type="button"
+                onClick={() => setBookingSourceFilter('direct')}
+                className={`btn btn-sm ${bookingSourceFilter === 'direct' ? 'btn-primary' : 'btn-outline'}`}
+                style={{
+                  fontSize: '0.76rem',
+                  borderRadius: 9999,
+                  padding: '0.25rem 0.65rem',
+                  fontWeight: 700,
+                  borderColor: bookingSourceFilter === 'direct' ? undefined : '#BAE6FD',
+                  color: bookingSourceFilter === 'direct' ? '#FFFFFF' : '#0284C7',
+                  background: bookingSourceFilter === 'direct' ? undefined : '#F0F9FF'
+                }}
+              >
+                🌐 Direct ({bookings.filter(b => !b.referringNurseId && !b.referredByDoctorId && !b.notes?.toLowerCase().includes('referred') && !b.notes?.toLowerCase().includes('referral')).length})
+              </button>
+              <button
+                type="button"
+                onClick={() => setBookingSourceFilter('referred')}
+                className={`btn btn-sm ${bookingSourceFilter === 'referred' ? 'btn-primary' : 'btn-outline'}`}
+                style={{
+                  fontSize: '0.76rem',
+                  borderRadius: 9999,
+                  padding: '0.25rem 0.65rem',
+                  fontWeight: 700,
+                  borderColor: bookingSourceFilter === 'referred' ? undefined : '#FDE68A',
+                  color: bookingSourceFilter === 'referred' ? '#FFFFFF' : '#92400E',
+                  background: bookingSourceFilter === 'referred' ? undefined : '#FEF3C7'
+                }}
+              >
+                ⭐ Referred ({bookings.filter(b => Boolean(b.referringNurseId || b.referredByDoctorId || b.notes?.toLowerCase().includes('referred') || b.notes?.toLowerCase().includes('referral'))).length})
+              </button>
+            </div>
+
             <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
-              <span style={{ fontSize: '0.8rem', color: 'var(--neutral-600)', fontWeight: 600 }}>Filter:</span>
+              <span style={{ fontSize: '0.8rem', color: 'var(--neutral-600)', fontWeight: 600 }}>Status:</span>
               <select
                 value={bookingStatusFilter}
                 onChange={(e) => setBookingStatusFilter(e.target.value)}
@@ -3282,9 +3336,12 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                   fontWeight: 700
                 }}
               >
-                <option value="all">All Bookings ({bookings.length})</option>
+                <option value="all">All Statuses ({bookings.length})</option>
+                <option value="Direct" style={{ color: '#0284C7', fontWeight: 700 }}>
+                  🌐 Direct Bookings ({bookings.filter(b => !b.referringNurseId && !b.referredByDoctorId && !b.notes?.toLowerCase().includes('referred') && !b.notes?.toLowerCase().includes('referral')).length})
+                </option>
                 <option value="Referrals" style={{ color: '#D97706', fontWeight: 700 }}>
-                  ⭐ Nurse Patient Referrals ({bookings.filter(b => Boolean(b.referringNurseId)).length})
+                  ⭐ All Referred Bookings ({bookings.filter(b => Boolean(b.referringNurseId || b.referredByDoctorId || b.notes?.toLowerCase().includes('referred') || b.notes?.toLowerCase().includes('referral'))).length})
                 </option>
                 {nurseDeclinedBookings.length > 0 && (
                   <option value="Nurse-Declined" style={{ color: '#DC2626', fontWeight: 800 }}>
@@ -3368,16 +3425,18 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                                   📅 Scheduled
                                 </span>
                                 <span style={{ fontSize: '0.74rem', color: '#475569', fontWeight: 600, whiteSpace: 'nowrap' }}>
-                                  {b.preferredDate ? `${b.preferredDate} | ${b.preferredTime || b.scheduledSlot || 'Standard Slot'}` : (b.scheduledSlot || 'Standard Slot')}
+                                  {b.preferredDate 
+                                    ? `📅 ${b.preferredDate} • ⏰ ${b.preferredTime || b.scheduledSlot || 'Standard Slot'}` 
+                                    : `📅 ${b.createdAt ? new Date(b.createdAt).toLocaleDateString('en-IN') : 'Today'} • ⏰ ${b.scheduledSlot || b.preferredTime || 'Standard Slot'}`}
                                 </span>
                               </div>
                             ) : (
                               <div style={{ display: 'inline-flex', alignItems: 'center', gap: '0.35rem', whiteSpace: 'nowrap' }}>
                                 <span style={{ fontSize: '0.74rem', background: '#EFF6FF', color: '#1D4ED8', padding: '2px 8px', borderRadius: 9999, fontWeight: 750, border: '1px solid #BFDBFE', whiteSpace: 'nowrap' }}>
-                                  ⚡ Instant (ASAP)
+                                  ⚡ Instant
                                 </span>
                                 <span style={{ fontSize: '0.72rem', color: '#64748B', fontWeight: 600, whiteSpace: 'nowrap' }}>
-                                  Emergency
+                                  📅 {b.preferredDate || (b.createdAt ? new Date(b.createdAt).toLocaleDateString('en-IN') : 'Today')} (ASAP)
                                 </span>
                               </div>
                             )}
@@ -4358,7 +4417,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
               <div>
                 <h3 className="card-title">Clinical Procedures Catalog & Tariff Rates</h3>
                 <p style={{ fontSize: '0.82rem', color: 'var(--neutral-500)', margin: 0 }}>
-                  Manage procedure prices, multi-visit packages, night surcharges, and Rx mandates synced with Supabase <code>services</code> table
+                  Manage procedure prices, night surcharges, and Rx mandates synced with Supabase <code>services</code> table
                 </p>
               </div>
 
@@ -4420,8 +4479,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                           />
                         </th>
                         <th>Procedure ID & Title</th>
-                        <th>Single Visit Price</th>
-                        <th>Multi-Visit Package</th>
+                        <th>Price / Visit</th>
                         <th>Night Surcharge</th>
                         <th>Prescription</th>
                         <th>Typical Duration</th>
@@ -4456,12 +4514,6 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                               <div style={{ fontSize: '0.72rem', color: 'var(--neutral-500)' }}>
                                 {(s.priceNumber === 0 || s.singleVisitPrice === 0) ? 'Complimentary or Decided at visit' : 'per home visit'}
                               </div>
-                            </td>
-                            <td>
-                              <div style={{ fontWeight: 700, color: '#059669', fontSize: '0.88rem' }}>
-                                ₹{s.multiVisitPrice !== undefined ? s.multiVisitPrice : (s.priceNumber !== undefined ? s.priceNumber : 0)}
-                              </div>
-                              <div style={{ fontSize: '0.72rem', color: 'var(--neutral-500)' }}>per visit package</div>
                             </td>
                             <td>
                               <div style={{ fontSize: '0.84rem', fontWeight: 600, color: '#D97706' }}>
@@ -7380,18 +7432,20 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                     className="form-control"
                     value={bookingForm.serviceId}
                     onChange={(e) => {
-                      const sel = services.find((s) => s.id === e.target.value);
+                      const selVal = e.target.value;
+                      const sel = services.find((s) => s.id === selVal);
                       setBookingForm({
                         ...bookingForm,
-                        serviceId: e.target.value as ServiceId,
-                        serviceTitle: sel ? sel.title : bookingForm.serviceTitle,
-                        estimatedFee: sel?.priceNumber ?? bookingForm.estimatedFee
+                        serviceId: selVal as ServiceId,
+                        serviceTitle: sel ? sel.title : (selVal === 'other' ? (bookingForm.serviceTitle === 'IV Saline Infusion' ? '' : bookingForm.serviceTitle) : bookingForm.serviceTitle),
+                        estimatedFee: sel?.priceNumber ?? (selVal === 'other' ? 0 : bookingForm.estimatedFee)
                       });
                     }}
                   >
                     {services.map((s) => (
                       <option key={s.id} value={s.id}>{s.title} (₹{s.priceNumber})</option>
                     ))}
+                    <option value="other">Other Nursing Service / Custom Care</option>
                   </select>
                 </div>
                 <div>
@@ -7403,8 +7457,28 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                     onChange={(e) => setBookingForm({ ...bookingForm, estimatedFee: Number(e.target.value) })}
                     className="form-control"
                   />
+                  {bookingForm.estimatedFee === 0 && (
+                    <span style={{ fontSize: '0.7rem', color: '#059669', fontWeight: 600 }}>Free / Decided at service</span>
+                  )}
                 </div>
               </div>
+
+              {(bookingForm.serviceId as string) === 'other' && (
+                <div style={{ marginBottom: '0.85rem', animation: 'fadeIn 0.2s ease-in-out' }}>
+                  <label className="form-label" style={{ fontSize: '0.78rem', fontWeight: 700, color: '#0369A1' }}>
+                    SPECIFY OTHER NURSING PROCEDURE *
+                  </label>
+                  <input
+                    type="text"
+                    required
+                    placeholder="Enter custom procedure name (e.g. Nebulization, Tracheostomy care, Bed bath...)"
+                    value={bookingForm.serviceTitle}
+                    onChange={(e) => setBookingForm({ ...bookingForm, serviceTitle: e.target.value })}
+                    className="form-control"
+                    style={{ borderColor: '#38BDF8', backgroundColor: '#F0F9FF' }}
+                  />
+                </div>
+              )}
 
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem', marginBottom: '0.85rem' }}>
                 <div>
@@ -8077,28 +8151,18 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                 />
               </div>
 
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '0.75rem', marginBottom: '0.85rem' }}>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem', marginBottom: '0.85rem' }}>
                 <div>
-                  <label className="form-label" style={{ fontSize: '0.78rem', fontWeight: 700 }}>SINGLE VISIT (₹) *</label>
+                  <label className="form-label" style={{ fontSize: '0.78rem', fontWeight: 700 }}>PROCEDURE PRICE (₹) *</label>
                   <input
                     type="number"
                     min={0}
                     required
                     value={serviceForm.priceNumber}
-                    onChange={(e) => setServiceForm({ ...serviceForm, priceNumber: Number(e.target.value) })}
+                    onChange={(e) => setServiceForm({ ...serviceForm, priceNumber: Number(e.target.value), multiVisitPrice: Number(e.target.value) })}
                     className="form-control"
                   />
                   <span style={{ fontSize: '0.7rem', color: '#059669', fontWeight: 600 }}>Set ₹0 for Free or To Be Decided At Service</span>
-                </div>
-                <div>
-                  <label className="form-label" style={{ fontSize: '0.78rem', fontWeight: 700 }}>PACKAGE / VISIT (₹)</label>
-                  <input
-                    type="number"
-                    min={0}
-                    value={serviceForm.multiVisitPrice}
-                    onChange={(e) => setServiceForm({ ...serviceForm, multiVisitPrice: Number(e.target.value) })}
-                    className="form-control"
-                  />
                 </div>
                 <div>
                   <label className="form-label" style={{ fontSize: '0.78rem', fontWeight: 700 }}>NIGHT SURCHARGE (₹)</label>
@@ -8420,6 +8484,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                     {services.map((s) => (
                       <option key={s.id} value={s.id}>{s.title}</option>
                     ))}
+                    <option value="other">Other Nursing Service / Custom Care</option>
                   </select>
                 </div>
                 <div>
@@ -8436,6 +8501,23 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                   </select>
                 </div>
               </div>
+
+              {(leadForm.serviceId as string) === 'other' && (
+                <div style={{ marginBottom: '0.85rem', animation: 'fadeIn 0.2s ease-in-out' }}>
+                  <label className="form-label" style={{ fontSize: '0.78rem', fontWeight: 700, color: '#0369A1' }}>
+                    SPECIFY OTHER NURSING PROCEDURE *
+                  </label>
+                  <input
+                    type="text"
+                    required
+                    placeholder="Enter custom procedure name (e.g. Nebulization, Bed bath, Tracheostomy care...)"
+                    value={leadForm.customProcedure}
+                    onChange={(e) => setLeadForm({ ...leadForm, customProcedure: e.target.value })}
+                    className="form-control"
+                    style={{ borderColor: '#38BDF8', backgroundColor: '#F0F9FF' }}
+                  />
+                </div>
+              )}
 
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem', marginBottom: '1.25rem' }}>
                 <div>

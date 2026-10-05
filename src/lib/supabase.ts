@@ -106,7 +106,7 @@ export async function dbFetchServices(): Promise<ServiceItem[] | null> {
     nightSurcharge: s.night_surcharge !== undefined && s.night_surcharge !== null ? Number(s.night_surcharge) : 399,
     prescriptionRequired: Boolean(s.prescription_required),
     duration: s.duration || '30 - 45 mins',
-    indicativePrice: `Single: ₹${Math.round(s.single_visit_price ?? 0)} / Multi: ₹${Math.round(s.multi_visit_price ?? s.single_visit_price ?? 0)}`,
+    indicativePrice: (Number(s.single_visit_price) === 0 || Number(s.price_number) === 0) ? 'Free / Decided at service • ₹0' : `₹${Math.round(s.single_visit_price ?? s.price_number ?? 0)}`,
     priceNumber: s.single_visit_price !== undefined && s.single_visit_price !== null ? Number(s.single_visit_price) : 800,
     features: [
       'Doorstep clinical service across Hyderabad',

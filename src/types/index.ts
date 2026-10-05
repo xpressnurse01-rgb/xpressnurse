@@ -62,6 +62,8 @@ export interface Booking {
   assignedNurseName?: string;
   referringNurseId?: string;
   referringNurseName?: string;
+  referredByDoctorId?: string;
+  referredByDoctorName?: string;
   estimatedFee: number;
   numberOfVisits?: number;
   nightSurcharge?: number;

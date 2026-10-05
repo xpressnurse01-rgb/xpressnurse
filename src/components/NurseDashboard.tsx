@@ -784,8 +784,10 @@ export const NurseDashboard: React.FC<NurseDashboardProps> = ({
                   <span style={{ fontSize: '0.8rem', fontWeight: 800, color: '#0284C7', textTransform: 'uppercase', letterSpacing: 0.5 }}>
                     🔔 Next Patient Visit
                   </span>
-                  <span style={{ background: '#EFF6FF', color: '#0284C7', fontSize: '0.75rem', fontWeight: 700, padding: '2px 8px', borderRadius: 9999 }}>
-                    {activeVisits[0].scheduledSlot || activeVisits[0].preferredTime || 'Today'}
+                  <span style={{ background: '#EFF6FF', color: '#0284C7', fontSize: '0.75rem', fontWeight: 700, padding: '3px 10px', borderRadius: 9999, display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
+                    <span>📅 {activeVisits[0].preferredDate || (activeVisits[0].createdAt ? new Date(activeVisits[0].createdAt).toLocaleDateString('en-IN') : 'Today')}</span>
+                    <span>•</span>
+                    <span>⏰ {activeVisits[0].scheduledSlot || activeVisits[0].preferredTime || 'Immediate'}</span>
                   </span>
                 </div>
 
@@ -1124,7 +1126,7 @@ export const NurseDashboard: React.FC<NurseDashboardProps> = ({
                           {(visit.scheduledSlot || visit.preferredTime) && (
                             <div style={{ fontSize: '0.82rem', color: '#64748B', marginTop: '0.2rem', display: 'flex', alignItems: 'center', gap: '0.35rem' }}>
                               <Clock size={13} style={{ color: '#0284C7', flexShrink: 0 }} />
-                              <span>Scheduled: {visit.preferredDate || 'Today'} | {visit.scheduledSlot || visit.preferredTime}</span>
+                              <span>Scheduled: 📅 {visit.preferredDate || (visit.createdAt ? new Date(visit.createdAt).toLocaleDateString('en-IN') : 'Today')} | ⏰ {visit.scheduledSlot || visit.preferredTime || 'Immediate'}</span>
                             </div>
                           )}
                           <div style={{ fontSize: '0.78rem', color: '#94A3B8', marginTop: '0.2rem' }}>
@@ -1550,7 +1552,7 @@ export const NurseDashboard: React.FC<NurseDashboardProps> = ({
                   <option value="injection-administration">Injection & Vitals (₹699)</option>
                   <option value="doctor-consult">Doctor Video Consultation (₹299)</option>
                   <option value="vitals-monitoring">General Health Check (₹699)</option>
-                  <option value="other">Other Nursing Servie</option>
+                  <option value="other">Other Nursing Service / Custom Care</option>
                 </select>
               </div>
 
