@@ -64,7 +64,17 @@ export const BookingModal: React.FC<BookingModalProps> = ({
   onBookingCreated,
   onNeedDoctorConsult
 }) => {
-  const serviceList = services;
+  const fallbackServices: ServiceItem[] = [
+    { id: 'saline-infusion', title: 'IV Saline / Antibiotic Infusion', priceNumber: 899, singleVisitPrice: 899, indicativePrice: '₹899' },
+    { id: 'wound-dressing', title: 'Wound Dressing & Bed Sore Care', priceNumber: 799, singleVisitPrice: 799, indicativePrice: '₹799' },
+    { id: 'foleys-catheter', title: 'Foley Catheter Placement / Wash', priceNumber: 1299, singleVisitPrice: 1299, indicativePrice: '₹1299' },
+    { id: 'ryles-tube', title: 'Ryles NG Tube Insertion', priceNumber: 1299, singleVisitPrice: 1299, indicativePrice: '₹1299' },
+    { id: 'suture-removal', title: 'Suture / Surgical Staple Removal', priceNumber: 999, singleVisitPrice: 999, indicativePrice: '₹999' },
+    { id: 'injection-administration', title: 'IM / IV Injection & Vitals', priceNumber: 699, singleVisitPrice: 699, indicativePrice: '₹699' },
+    { id: 'doctor-consult', title: 'Tele-Doctor Consult & Prescription', priceNumber: 299, singleVisitPrice: 299, indicativePrice: '₹299' },
+    { id: 'vitals-monitoring', title: 'Senior Citizen General Health Check', priceNumber: 699, singleVisitPrice: 699, indicativePrice: '₹699' }
+  ];
+  const serviceList: ServiceItem[] = (services && services.length > 0) ? services : fallbackServices;
   const couponList = coupons;
 
   // Form Fields
@@ -126,6 +136,16 @@ export const BookingModal: React.FC<BookingModalProps> = ({
     }
   }, [preSelectedServiceId, isOpen]);
 
+  // Auto-sync serviceId if catalog updates
+  useEffect(() => {
+    if (serviceList && serviceList.length > 0 && serviceId !== 'other') {
+      const exists = serviceList.some(s => s.id === serviceId);
+      if (!exists && serviceList[0]?.id) {
+        setServiceId(serviceList[0].id as ServiceId);
+      }
+    }
+  }, [serviceList, serviceId]);
+
   // Lock body scroll and halt Lenis momentum scrolling while modal is active
   useBodyScrollLock(isOpen);
 
@@ -144,7 +164,7 @@ export const BookingModal: React.FC<BookingModalProps> = ({
         duration: '45-60 Mins',
         icon: 'Activity'
       } as ServiceItem)
-    : (serviceList.find((s) => s.id === serviceId) || serviceList[0]);
+    : (serviceList.find((s) => s.id === serviceId) || serviceList[0] || fallbackServices[0]);
 
   // Pricing & Promo Code Calculations
   const baseFee = (currentService.priceNumber !== undefined && currentService.priceNumber !== null)
@@ -729,9 +749,9 @@ export const BookingModal: React.FC<BookingModalProps> = ({
                 onChange={(e) => setServiceId(e.target.value as ServiceId)}
                 style={{ width: '100%', padding: '0.6rem 0.85rem', borderRadius: 10, fontWeight: 600, fontSize: '0.88rem' }}
               >
-                {serviceList.map((srv) => {
+                {serviceList.filter(s => s.id !== 'other').map((srv) => {
                   const pNum = srv.priceNumber !== undefined && srv.priceNumber !== null ? srv.priceNumber : srv.singleVisitPrice;
-                  const priceLabel = pNum === 0 ? (srv.indicativePrice || '') : srv.indicativePrice;
+                  const priceLabel = pNum === 0 ? (srv.indicativePrice || '') : (srv.indicativePrice || (pNum ? `₹${pNum}` : ''));
                   return (
                     <option key={srv.id} value={srv.id}>
                       {srv.title}{priceLabel ? ` — ${priceLabel}` : ''}

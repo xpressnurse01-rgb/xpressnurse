@@ -8123,7 +8123,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                       });
                     }}
                   >
-                    {services.map((s) => (
+                    {services.filter(s => s.id !== 'other').map((s) => (
                       <option key={s.id} value={s.id}>{s.title} (₹{s.priceNumber})</option>
                     ))}
                     <option value="other">Other Nursing Service / Custom Care</option>
@@ -9353,7 +9353,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                     value={leadForm.serviceId}
                     onChange={(e) => setLeadForm({ ...leadForm, serviceId: e.target.value as ServiceId })}
                   >
-                    {services.map((s) => (
+                    {services.filter(s => s.id !== 'other').map((s) => (
                       <option key={s.id} value={s.id}>{s.title}</option>
                     ))}
                     <option value="other">Other Nursing Service / Custom Care</option>

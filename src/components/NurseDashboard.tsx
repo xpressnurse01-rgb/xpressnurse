@@ -128,7 +128,17 @@ export const NurseDashboard: React.FC<NurseDashboardProps> = ({
 }) => {
   const bookings = useMemo(() => deduplicateBookings(rawBookings), [rawBookings]);
   const leads = useMemo(() => deduplicateLeads(rawLeads), [rawLeads]);
-  const serviceList: ServiceItem[] = services;
+  const fallbackServices: ServiceItem[] = [
+    { id: 'saline-infusion', title: 'IV Saline / Antibiotic Infusion', priceNumber: 899, singleVisitPrice: 899, indicativePrice: '₹899' },
+    { id: 'wound-dressing', title: 'Wound Dressing & Bed Sore Care', priceNumber: 799, singleVisitPrice: 799, indicativePrice: '₹799' },
+    { id: 'foleys-catheter', title: 'Foley Catheter Placement / Wash', priceNumber: 1299, singleVisitPrice: 1299, indicativePrice: '₹1299' },
+    { id: 'ryles-tube', title: 'Ryles NG Tube Insertion', priceNumber: 1299, singleVisitPrice: 1299, indicativePrice: '₹1299' },
+    { id: 'suture-removal', title: 'Suture / Surgical Staple Removal', priceNumber: 999, singleVisitPrice: 999, indicativePrice: '₹999' },
+    { id: 'injection-administration', title: 'IM / IV Injection & Vitals', priceNumber: 699, singleVisitPrice: 699, indicativePrice: '₹699' },
+    { id: 'doctor-consult', title: 'Tele-Doctor Consult & Prescription', priceNumber: 299, singleVisitPrice: 299, indicativePrice: '₹299' },
+    { id: 'vitals-monitoring', title: 'Senior Citizen General Health Check', priceNumber: 699, singleVisitPrice: 699, indicativePrice: '₹699' }
+  ];
+  const serviceList: ServiceItem[] = (services && services.length > 0) ? services : fallbackServices;
   const liveNurse = (allNurses && currentNurse)
     ? (allNurses.find((n) => n.id === currentNurse.id || (n.phone && currentNurse.phone && n.phone.replace(/\D/g, '') === currentNurse.phone.replace(/\D/g, ''))) || currentNurse)
     : (currentNurse || (allNurses && allNurses.length > 0 ? allNurses[0] : null));
@@ -167,6 +177,16 @@ export const NurseDashboard: React.FC<NurseDashboardProps> = ({
   const [leadSuccessMsg, setLeadSuccessMsg] = useState('');
   const [leadErrorMsg, setLeadErrorMsg] = useState('');
   const [isSubmittingLead, setIsSubmittingLead] = useState(false);
+
+  // Auto-sync serviceId when catalog services update
+  useEffect(() => {
+    if (serviceList && serviceList.length > 0 && serviceId !== 'other') {
+      const exists = serviceList.some(s => s.id === serviceId);
+      if (!exists && serviceList[0]?.id) {
+        setServiceId(serviceList[0].id as ServiceId);
+      }
+    }
+  }, [serviceList, serviceId]);
 
   // Modals
   const [previewRxBooking, setPreviewRxBooking] = useState<Booking | null>(null);
@@ -427,8 +447,8 @@ export const NurseDashboard: React.FC<NurseDashboardProps> = ({
       return;
     }
 
-    const procedure = services.find(s => s.id === serviceId);
-    const procFee = serviceId === 'other' ? 800 : (procedure?.priceNumber || 800);
+    const procedure = serviceList.find(s => s.id === serviceId);
+    const procFee = serviceId === 'other' ? 0 : (procedure?.priceNumber ?? (procedure?.singleVisitPrice ?? 800));
     const finalServiceTitle = serviceId === 'other'
       ? (otherServiceName.trim() || 'Other Nursing Service')
       : (procedure?.title || 'Nursing Service');
@@ -1843,14 +1863,15 @@ export const NurseDashboard: React.FC<NurseDashboardProps> = ({
                   className="form-control"
                   style={{ width: '100%', height: 42, borderRadius: 8, fontSize: '0.9rem', fontWeight: 600 }}
                 >
-                  <option value="saline-infusion">IV Saline / Antibiotic Infusion (₹899)</option>
-                  <option value="wound-dressing">Wound Dressing (₹799)</option>
-                  <option value="foleys-catheter">Foley's Catheter Replacement (₹1299)</option>
-                  <option value="ryles-tube">Ryles / Food Tube Change (₹1299)</option>
-                  <option value="suture-removal">Suture / Staple Removal (₹999)</option>
-                  <option value="injection-administration">Injection & Vitals (₹699)</option>
-                  <option value="doctor-consult">Doctor Video Consultation (₹299)</option>
-                  <option value="vitals-monitoring">General Health Check (₹699)</option>
+                  {serviceList.filter(s => s.id !== 'other').map((srv) => {
+                    const pNum = srv.priceNumber !== undefined && srv.priceNumber !== null ? srv.priceNumber : srv.singleVisitPrice;
+                    const priceLabel = pNum === 0 ? (srv.indicativePrice || '') : (srv.indicativePrice || (pNum ? `₹${pNum}` : ''));
+                    return (
+                      <option key={srv.id} value={srv.id}>
+                        {srv.title}{priceLabel ? ` — ${priceLabel}` : ''}
+                      </option>
+                    );
+                  })}
                   <option value="other">Other Nursing Service / Custom Care</option>
                 </select>
               </div>
