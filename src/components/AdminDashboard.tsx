@@ -22,6 +22,7 @@ import {
   ShieldCheck,
   Shuffle,
   AlertCircle,
+  XCircle,
   FileText,
   CheckCircle,
   Award,
@@ -69,6 +70,7 @@ import {
 import { EmptyState } from './EmptyState';
 import { generateNurseReferralCode, dbLogAuditEvent } from '../lib/supabase';
 import { getSafeBlobUrl, HYDERABAD_AREAS } from './NurseDashboard';
+import { formatDateDDMMYY, formatDateTimeDDMMYY, formatTimeOnly } from '../lib/dateUtils';
 import {
   calculateNurseMetrics,
   deduplicateBookings,
@@ -91,6 +93,7 @@ import {
   saveInvoiceToCloudflareBucket,
   saveInvoiceDetailsToCloudflareBucket,
   cleanPatientFacingNotes,
+  cleanPatientNameOnly,
   openPrintableInvoiceWindow,
   getPrescriptionStorageObject,
   syncDatabaseRecordsToStorage,
@@ -286,7 +289,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
           {
             id: 'item-1',
             description: booking.serviceTitle || 'Clinical Nursing Care',
-            date: booking.preferredDate || new Date().toISOString().split('T')[0],
+            date: formatDateDDMMYY(booking.preferredDate || booking.createdAt || new Date()),
             slot: formatSlotForBill(booking.scheduledSlot || booking.preferredTime || 'M'),
             rate: fee,
             quantity: booking.numberOfVisits || 1,
@@ -300,11 +303,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
       const initialTitle = services[0]?.title || 'Clinical Nursing Care';
       const newInv: InvoiceDetails = {
         invoiceNumber: `XN-INV-2026-MANUAL-${Math.floor(1000 + Math.random() * 9000)}`,
-        invoiceDate: new Date().toLocaleDateString('en-IN', {
-          day: '2-digit',
-          month: 'short',
-          year: 'numeric'
-        }),
+        invoiceDate: formatDateDDMMYY(new Date()),
         bookingId: 'CUSTOM-' + Date.now().toString().slice(-4),
         patientName: '',
         patientPhone: '',
@@ -1131,10 +1130,35 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
 
   // Credentials State
   const [credentialSearch, setCredentialSearch] = useState('');
-  const [credentialRoleFilter, setCredentialRoleFilter] = useState<'all' | 'nurse' | 'doctor' | 'admin' | 'patient'>('all');
+  const [credentialRoleFilter, setCredentialRoleFilter] = useState<'all' | 'nurse' | 'doctor' | 'pending_doctors' | 'admin' | 'patient'>('all');
   const [showAllPins, setShowAllPins] = useState(false);
   const [revealedPinIds, setRevealedPinIds] = useState<Record<string, boolean>>({});
   const [copiedPinUserId, setCopiedPinUserId] = useState<string | null>(null);
+
+  const parseUserStatus = (u: AppUser): 'Active' | 'Pending Verification' | 'Rejected' => {
+    if (u.role === 'doctor') {
+      const des = u.designation || '';
+      if (des.includes('[PENDING_VERIFICATION]') || des.includes('[PENDING]')) return 'Pending Verification';
+      if (des.includes('[REJECTED]')) return 'Rejected';
+      if (des.includes('[ACTIVE]')) return 'Active';
+      if (u.id === 'user-doc-1' || (u.email && u.email.includes('dr.reddy'))) return 'Active';
+      if (u.status === 'Active') return 'Active';
+      if (u.status === 'Rejected') return 'Rejected';
+      return 'Pending Verification';
+    }
+    if (u.status === 'Rejected') return 'Rejected';
+    if (u.status === 'Pending' || u.status === 'Pending Verification') return 'Pending Verification';
+    return 'Active';
+  };
+
+  const cleanUserDesignation = (designation?: string | null): string => {
+    if (!designation) return '';
+    return designation.replace(/\[(PENDING_VERIFICATION|PENDING|REJECTED|ACTIVE)\]\s*/gi, '').trim();
+  };
+
+  const doctorsList = useMemo(() => appUsers.filter((u) => u.role === 'doctor'), [appUsers]);
+  const pendingDoctorsList = useMemo(() => doctorsList.filter((u) => parseUserStatus(u) === 'Pending Verification'), [doctorsList]);
+  const pendingDoctorsCount = pendingDoctorsList.length;
 
   const togglePinVisibility = (userId: string) => {
     setRevealedPinIds((prev) => ({ ...prev, [userId]: !prev[userId] }));
@@ -1317,7 +1341,12 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
       (u.phone && u.phone.includes(credentialSearch)) ||
       (u.serviceArea && u.serviceArea.toLowerCase().includes(credentialSearch.toLowerCase())) ||
       (u.designation && u.designation.toLowerCase().includes(credentialSearch.toLowerCase()));
-    const matchesRole = credentialRoleFilter === 'all' ? true : u.role === credentialRoleFilter;
+    let matchesRole = true;
+    if (credentialRoleFilter === 'pending_doctors') {
+      matchesRole = u.role === 'doctor' && parseUserStatus(u) === 'Pending Verification';
+    } else if (credentialRoleFilter !== 'all') {
+      matchesRole = u.role === credentialRoleFilter;
+    }
     return matchesSearch && matchesRole;
   });
 
@@ -1488,6 +1517,60 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
     });
   };
 
+  const handleRejectBookingFromRouting = async (b: Booking) => {
+    const reason = window.prompt(
+      `Reject and cancel Booking #${b.id} for ${b.patientName}?\n\nThis will remove it from pending dispatch and move it to the Bookings tab as "Rejected".\n\nEnter reason for rejection:`,
+      'Rejected by Office Admin during Dispatch'
+    );
+    if (reason === null) return; // user cancelled prompt
+
+    const finalReason = reason.trim() || 'Rejected by Office Admin during Dispatch';
+    try {
+      if (onUpdateBooking) {
+        await onUpdateBooking(b.id, {
+          status: 'Rejected',
+          nurseAcceptanceStatus: 'Rejected',
+          rejectedBy: 'Admin',
+          rejectionReason: finalReason,
+          rejectedAt: new Date().toISOString()
+        });
+      }
+      showToast(`✕ Booking #${b.id} rejected and moved to Bookings as "Rejected".`);
+    } catch (err) {
+      console.error('Failed to reject booking from routing:', err);
+      showToast(`Failed to reject booking: ${err instanceof Error ? err.message : 'Unknown error'}`, 'error');
+    }
+  };
+
+  const handleBulkRejectRoutingBookings = async () => {
+    const idsToReject = pendingBookings.map((b) => b.id).filter((id) => selectedRoutingBookingIds.has(id));
+    if (idsToReject.length === 0) return;
+
+    const reason = window.prompt(
+      `Reject ${idsToReject.length} selected pending booking(s)?\n\nThey will be removed from dispatch and moved to the Bookings tab as "Rejected".\n\nEnter reason for rejection:`,
+      'Rejected in bulk by Office Admin during Dispatch'
+    );
+    if (reason === null) return;
+
+    const finalReason = reason.trim() || 'Rejected in bulk by Office Admin during Dispatch';
+    try {
+      for (const id of idsToReject) {
+        await onUpdateBooking?.(id, {
+          status: 'Rejected',
+          nurseAcceptanceStatus: 'Rejected',
+          rejectedBy: 'Admin',
+          rejectionReason: finalReason,
+          rejectedAt: new Date().toISOString()
+        });
+      }
+      setSelectedRoutingBookingIds(new Set());
+      showToast(`✕ ${idsToReject.length} booking(s) rejected and moved to Bookings as "Rejected".`);
+    } catch (err) {
+      console.error('Failed to bulk reject bookings:', err);
+      showToast(`Failed to reject bookings: ${err instanceof Error ? err.message : 'Unknown error'}`, 'error');
+    }
+  };
+
   const handleVerifyAndAcceptService = async (b: Booking) => {
     const fee = Number(b.finalFee !== undefined ? b.finalFee : (b.estimatedFee || 800));
     const nursePayout = Math.round(fee * 0.70);
@@ -1590,7 +1673,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
 
     const rows = bookings.map((b) => [
       sanitizeCsvCell(b.id),
-      sanitizeCsvCell(b.createdAt ? new Date(b.createdAt).toLocaleDateString('en-IN') : 'N/A'),
+      sanitizeCsvCell(b.createdAt ? formatDateDDMMYY(b.createdAt) : 'N/A'),
       sanitizeCsvCell(b.bookingType?.toLowerCase() === 'scheduled' ? 'Scheduled Slot' : 'Instant (ASAP)'),
       sanitizeCsvCell(b.scheduledSlot || 'Immediate'),
       sanitizeCsvCell(b.patientName),
@@ -2208,7 +2291,11 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
 
     let indicativeStr = `₹${serviceForm.priceNumber} per visit`;
     let pricingTag = '';
-    if (Number(serviceForm.priceNumber) === 0) {
+    const currentServiceId = (editingService ? editingService.id : serviceForm.id.toLowerCase().replace(/[^a-z0-9-]/g, '-'));
+    if (currentServiceId === 'other') {
+      indicativeStr = '';
+      pricingTag = '';
+    } else if (Number(serviceForm.priceNumber) === 0) {
       if (serviceForm.zeroPriceMode === 'free') {
         indicativeStr = 'Free • ₹0';
         pricingTag = 'Free';
@@ -2667,7 +2754,8 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
     phone: '',
     email: '',
     designation: '',
-    serviceArea: 'Gachibowli'
+    serviceArea: 'Gachibowli',
+    status: 'Active' as 'Active' | 'Pending Verification' | 'Rejected'
   });
 
   const handleOpenCreateUserModal = () => {
@@ -2681,7 +2769,8 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
       phone: '',
       email: '',
       designation: 'Registered Nurse',
-      serviceArea: 'Gachibowli'
+      serviceArea: 'Gachibowli',
+      status: 'Active'
     });
     setIsUserModalOpen(true);
   };
@@ -2692,12 +2781,13 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
       id: u.id,
       name: u.name,
       role: u.role,
-      identifier: u.identifier,
+      identifier: u.identifier || u.email || u.phone || '',
       pin: u.pin,
       phone: u.phone || '',
       email: u.email || '',
-      designation: u.designation || '',
-      serviceArea: u.serviceArea || 'Hyderabad Multi-Zone'
+      designation: cleanUserDesignation(u.designation) || '',
+      serviceArea: u.serviceArea || 'Hyderabad Multi-Zone',
+      status: parseUserStatus(u)
     });
     setIsUserModalOpen(true);
   };
@@ -2712,6 +2802,11 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
       showToast('PIN must be exactly 4 digits (0-9).', 'error');
       return;
     }
+    const cleanDes = cleanUserDesignation(userForm.designation.trim());
+    const finalDesignation = userForm.role === 'doctor'
+      ? (userForm.status === 'Active' ? `[ACTIVE] ${cleanDes}` : userForm.status === 'Rejected' ? `[REJECTED] ${cleanDes}` : `[PENDING_VERIFICATION] ${cleanDes}`).trim()
+      : cleanDes;
+
     const userPayload: AppUser = {
       id: editingUser ? editingUser.id : userForm.id,
       name: userForm.name.trim(),
@@ -2720,8 +2815,9 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
       pin: userForm.pin.trim(),
       phone: userForm.phone.trim(),
       email: userForm.email.trim(),
-      designation: userForm.designation.trim(),
-      serviceArea: userForm.serviceArea.trim() as any
+      designation: finalDesignation,
+      serviceArea: userForm.serviceArea.trim() as any,
+      status: userForm.status
     };
 
     if (editingUser && onUpdateAppUser) {
@@ -2820,6 +2916,19 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
           >
             <Stethoscope size={14} />
             <span>🩺 Doctor Calls ({consultations.length})</span>
+            {pendingDoctorsCount > 0 && (
+              <span style={{
+                background: '#D97706',
+                color: '#FFF',
+                fontSize: '0.68rem',
+                fontWeight: 700,
+                padding: '1px 6px',
+                borderRadius: 9999,
+                marginLeft: '0.25rem'
+              }}>
+                ⏳ {pendingDoctorsCount} Doc
+              </span>
+            )}
           </button>
           <button
             className={`btn btn-sm ${activeTab === 'services' ? 'btn-primary' : 'btn-outline'}`}
@@ -2840,7 +2949,20 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
             onClick={() => setActiveTab('credentials')}
           >
             <KeyRound size={14} />
-            <span>🔐 Staff Passwords ({appUsers.length})</span>
+            <span>🔐 Staff Credentials ({appUsers.length})</span>
+            {pendingDoctorsCount > 0 && (
+              <span style={{
+                background: '#D97706',
+                color: '#FFF',
+                fontSize: '0.68rem',
+                fontWeight: 700,
+                padding: '1px 6px',
+                borderRadius: 9999,
+                marginLeft: '0.25rem'
+              }}>
+                ⏳ {pendingDoctorsCount} Pending Doc
+              </span>
+            )}
           </button>
           <button
             className={`btn btn-sm ${activeTab === 'storage' ? 'btn-primary' : 'btn-outline'}`}
@@ -3002,13 +3124,83 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
               </div>
             </div>
 
-            {renderBulkActionBar({
-              entityName: 'Unassigned Bookings',
-              filteredIds: pendingBookings.map((b) => b.id),
-              selectedSet: selectedRoutingBookingIds,
-              setSelectedSet: setSelectedRoutingBookingIds,
-              onDeleteMultiple: onDeleteMultipleBookings
-            })}
+            {pendingBookings.length > 0 && (
+              <div
+                style={{
+                  display: 'flex',
+                  flexWrap: 'wrap',
+                  alignItems: 'center',
+                  justifyContent: 'space-between',
+                  gap: '0.75rem',
+                  padding: '0.65rem 1rem',
+                  background: selectedRoutingBookingIds.size > 0 ? '#FEF2F2' : '#F8FAFC',
+                  border: selectedRoutingBookingIds.size > 0 ? '1px solid #FECDD3' : '1px solid #E2E8F0',
+                  borderRadius: '10px',
+                  marginBottom: '0.85rem',
+                  transition: 'all 0.2s ease'
+                }}
+              >
+                <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+                  <label style={{ display: 'inline-flex', alignItems: 'center', gap: '0.5rem', cursor: 'pointer', fontSize: '0.85rem', fontWeight: 600, color: '#334155' }}>
+                    <input
+                      type="checkbox"
+                      checked={pendingBookings.length > 0 && pendingBookings.every((b) => selectedRoutingBookingIds.has(b.id))}
+                      onChange={() => toggleSelectAll(pendingBookings.map((b) => b.id), selectedRoutingBookingIds, setSelectedRoutingBookingIds)}
+                      style={{ width: '16px', height: '16px', cursor: 'pointer', accentColor: '#DC2626' }}
+                    />
+                    <span>Select All ({pendingBookings.length})</span>
+                  </label>
+                  <span style={{ fontSize: '0.82rem', color: '#64748B' }}>
+                    | Selected: <strong style={{ color: selectedRoutingBookingIds.size > 0 ? '#DC2626' : '#0F172A' }}>{selectedRoutingBookingIds.size}</strong>
+                  </span>
+                  {selectedRoutingBookingIds.size > 0 && (
+                    <button
+                      type="button"
+                      onClick={() => setSelectedRoutingBookingIds(new Set())}
+                      style={{
+                        background: 'transparent',
+                        border: 'none',
+                        color: '#64748B',
+                        fontSize: '0.78rem',
+                        textDecoration: 'underline',
+                        cursor: 'pointer',
+                        padding: 0
+                      }}
+                    >
+                      Clear selection
+                    </button>
+                  )}
+                </div>
+
+                <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                  <button
+                    type="button"
+                    disabled={selectedRoutingBookingIds.size === 0}
+                    onClick={handleBulkRejectRoutingBookings}
+                    style={{
+                      padding: '0.38rem 0.9rem',
+                      fontSize: '0.82rem',
+                      fontWeight: 700,
+                      borderRadius: '6px',
+                      border: '1px solid',
+                      borderColor: selectedRoutingBookingIds.size > 0 ? '#DC2626' : '#CBD5E1',
+                      background: selectedRoutingBookingIds.size > 0 ? '#DC2626' : '#F1F5F9',
+                      color: selectedRoutingBookingIds.size > 0 ? '#FFFFFF' : '#94A3B8',
+                      cursor: selectedRoutingBookingIds.size > 0 ? 'pointer' : 'not-allowed',
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      gap: '0.35rem',
+                      boxShadow: selectedRoutingBookingIds.size > 0 ? '0 2px 6px rgba(220, 38, 38, 0.25)' : 'none',
+                      transition: 'all 0.15s ease'
+                    }}
+                    title="Reject selected bookings and move to Bookings tab as Rejected"
+                  >
+                    <XCircle size={14} />
+                    <span>Reject Selected ({selectedRoutingBookingIds.size})</span>
+                  </button>
+                </div>
+              </div>
+            )}
 
             <div className="table-responsive">
               <table className="data-table data-table-wide">
@@ -3058,7 +3250,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                             <div style={{ marginTop: '0.2rem' }}>
                               {(b.bookingType?.toLowerCase() === 'scheduled' || (b.preferredTime && !b.preferredTime.toLowerCase().includes('immediate') && !b.preferredTime.toLowerCase().includes('asap') && !b.preferredTime.toLowerCase().includes('instant'))) ? (
                                 <span style={{ fontSize: '0.72rem', background: '#F0FDF4', color: '#166534', padding: '2px 8px', borderRadius: 9999, fontWeight: 700, border: '1px solid #BBF7D0', whiteSpace: 'nowrap', display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
-                                  <span>📅 {b.preferredDate || (b.createdAt ? new Date(b.createdAt).toLocaleDateString('en-IN') : 'Today')}</span>
+                                  <span>📅 {formatDateDDMMYY(b.preferredDate || b.createdAt, 'Today')}</span>
                                   <span>•</span>
                                   <span>⏰ {b.scheduledSlot || b.preferredTime || 'Scheduled Slot'}</span>
                                 </span>
@@ -3066,7 +3258,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                                 <span style={{ fontSize: '0.72rem', background: '#EFF6FF', color: '#1D4ED8', padding: '2px 8px', borderRadius: 9999, fontWeight: 700, border: '1px solid #BFDBFE', whiteSpace: 'nowrap', display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
                                   <span>⚡ Instant</span>
                                   <span>•</span>
-                                  <span>📅 {b.preferredDate || (b.createdAt ? new Date(b.createdAt).toLocaleDateString('en-IN') : 'Today')}</span>
+                                  <span>📅 {formatDateDDMMYY(b.preferredDate || b.createdAt, 'Today')}</span>
                                 </span>
                               )}
                             </div>
@@ -3220,24 +3412,25 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
 
                               <button
                                 type="button"
-                                onClick={() => handleDeleteBookingClick(b)}
+                                onClick={() => handleRejectBookingFromRouting(b)}
                                 className="btn btn-sm"
                                 style={{
                                   fontSize: '0.75rem',
-                                  padding: '0.35rem 0.55rem',
+                                  padding: '0.35rem 0.65rem',
                                   display: 'inline-flex',
                                   alignItems: 'center',
-                                  gap: '0.25rem',
-                                  color: '#E11D48',
+                                  gap: '0.3rem',
+                                  color: '#DC2626',
                                   borderColor: '#FECDD3',
-                                  background: '#FFF1F2',
-                                  fontWeight: 700,
-                                  cursor: 'pointer'
+                                  background: '#FEF2F2',
+                                  fontWeight: 800,
+                                  cursor: 'pointer',
+                                  borderRadius: 6
                                 }}
-                                title={`Delete pending booking #${b.id} from Supabase`}
+                                title={`Reject pending booking #${b.id} — Moves to Bookings tab as "Rejected"`}
                               >
-                                <Trash2 size={13} />
-                                <span>Delete</span>
+                                <XCircle size={13} />
+                                <span>Reject</span>
                               </button>
                             </div>
                           </td>
@@ -3571,7 +3764,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                             <div style={{ display: 'flex', flexDirection: 'column', gap: '0.2rem' }}>
                               <strong style={{ fontFamily: 'monospace', fontSize: '0.86rem' }}>{b.id}</strong>
                               <span style={{ fontSize: '0.7rem', color: '#64748B' }}>
-                                Received: {b.createdAt ? new Date(b.createdAt).toLocaleString() : 'Unknown'}
+                                Received: {b.createdAt ? formatDateTimeDDMMYY(b.createdAt) : 'Unknown'}
                               </span>
                             </div>
                           </td>
@@ -3583,8 +3776,8 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                                 </span>
                                 <span style={{ fontSize: '0.74rem', color: '#475569', fontWeight: 600, whiteSpace: 'nowrap' }}>
                                   {b.preferredDate 
-                                    ? `📅 ${b.preferredDate} • ⏰ ${b.preferredTime || b.scheduledSlot || 'Standard Slot'}` 
-                                    : `📅 ${b.createdAt ? new Date(b.createdAt).toLocaleDateString('en-IN') : 'Today'} • ⏰ ${b.scheduledSlot || b.preferredTime || 'Standard Slot'}`}
+                                    ? `📅 ${formatDateDDMMYY(b.preferredDate)} • ⏰ ${b.preferredTime || b.scheduledSlot || 'Standard Slot'}` 
+                                    : `📅 ${formatDateDDMMYY(b.createdAt, 'Today')} • ⏰ ${b.scheduledSlot || b.preferredTime || 'Standard Slot'}`}
                                 </span>
                               </div>
                             ) : (
@@ -3593,18 +3786,16 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                                   ⚡ Instant
                                 </span>
                                 <span style={{ fontSize: '0.72rem', color: '#64748B', fontWeight: 600, whiteSpace: 'nowrap' }}>
-                                  📅 {b.preferredDate || (b.createdAt ? new Date(b.createdAt).toLocaleDateString('en-IN') : 'Today')} (ASAP)
+                                  📅 {formatDateDDMMYY(b.preferredDate || b.createdAt, 'Today')} (ASAP)
                                 </span>
                               </div>
                             )}
                           </td>
                           <td style={{ whiteSpace: 'nowrap' }}>
                             <div style={{ fontWeight: 750, color: 'var(--primary-navy-950)', whiteSpace: 'nowrap' }}>{b.patientName}</div>
-                            {b.status === 'Cancelled' || b.status === 'Rejected' ? (
-                              <span style={{ fontSize: '0.74rem', color: '#94A3B8', fontWeight: 600 }}>✕ Contact Hidden (Rejected)</span>
-                            ) : (
-                              <div style={{ fontSize: '0.76rem', color: '#64748B', fontFamily: 'monospace', whiteSpace: 'nowrap' }}>{b.patientPhone}</div>
-                            )}
+                            <div style={{ fontSize: '0.76rem', color: b.status === 'Cancelled' || b.status === 'Rejected' ? '#DC2626' : '#64748B', fontFamily: 'monospace', whiteSpace: 'nowrap' }}>
+                              {b.patientPhone || 'No Phone'} {b.status === 'Cancelled' || b.status === 'Rejected' ? '(Rejected)' : ''}
+                            </div>
                             {b.referringNurseId && (
                               <div style={{ marginTop: '0.2rem' }}>
                                 <span style={{ fontSize: '0.7rem', background: '#FEF3C7', color: '#92400E', padding: '2px 7px', borderRadius: 9999, fontWeight: 700, border: '1px solid #FDE68A', display: 'inline-flex', alignItems: 'center', gap: '3px', whiteSpace: 'nowrap' }}>
@@ -4706,14 +4897,22 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                             </td>
                             <td>
                               <div style={{ fontWeight: 800, color: 'var(--primary-navy-950)', fontSize: '0.95rem' }}>
-                                {(s.priceNumber === 0 || s.singleVisitPrice === 0)
-                                  ? <span style={{ color: '#059669', fontSize: '0.85rem' }}>{s.indicativePrice || '₹0 (Free / Decided at service)'}</span>
-                                  : `₹${s.priceNumber !== undefined ? s.priceNumber : (s.singleVisitPrice !== undefined ? s.singleVisitPrice : 0)}`}
+                                {s.id === 'other' ? (
+                                  <span style={{ color: '#64748B', fontSize: '0.85rem', fontWeight: 500 }}>—</span>
+                                ) : (s.priceNumber === 0 || s.singleVisitPrice === 0) ? (
+                                  <span style={{ color: '#059669', fontSize: '0.85rem' }}>{s.indicativePrice || '₹0'}</span>
+                                ) : (
+                                  `₹${s.priceNumber !== undefined ? s.priceNumber : (s.singleVisitPrice !== undefined ? s.singleVisitPrice : 0)}`
+                                )}
                               </div>
                               <div style={{ fontSize: '0.72rem', color: 'var(--neutral-500)' }}>
-                                {(s.priceNumber === 0 || s.singleVisitPrice === 0) 
-                                  ? (s.indicativePrice ? s.indicativePrice.replace(/•\s*₹0/g, '').trim() : 'Complimentary or Decided at visit') 
-                                  : 'per home visit'}
+                                {s.id === 'other' ? (
+                                  ''
+                                ) : (s.priceNumber === 0 || s.singleVisitPrice === 0) ? (
+                                  (s.indicativePrice ? s.indicativePrice.replace(/•\s*₹0/g, '').trim() : 'Decided at visit') 
+                                ) : (
+                                  'per home visit'
+                                )}
                               </div>
                             </td>
                             <td>
@@ -5136,15 +5335,15 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                           <td>
                             <strong style={{ fontFamily: 'monospace' }}>{l.id}</strong>
                             <div style={{ fontSize: '0.75rem', color: 'var(--neutral-500)', marginTop: '0.2rem' }}>
-                              {l.submittedAt && l.submittedAt.includes('T') ? (
+                              {l.submittedAt ? (
                                 <>
-                                  <div>{new Date(l.submittedAt).toLocaleDateString()}</div>
+                                  <div>{formatDateDDMMYY(l.submittedAt)}</div>
                                   <div style={{ fontSize: '0.68rem', color: 'var(--neutral-400)' }}>
-                                    {new Date(l.submittedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                                    {formatTimeOnly(l.submittedAt)}
                                   </div>
                                 </>
                               ) : (
-                                l.submittedAt || 'Recent'
+                                'Recent'
                               )}
                             </div>
                           </td>
@@ -5438,6 +5637,50 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
       {/* DOCTOR TELECONSULTATIONS TAB (FULL SUPABASE CRUD) */}
       {activeTab === 'consultations' && (
         <div style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
+          {pendingDoctorsCount > 0 && (
+            <div style={{
+              background: '#FFFBEB',
+              border: '1px solid #FDE68A',
+              borderRadius: 10,
+              padding: '0.85rem 1.25rem',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              gap: '1rem',
+              flexWrap: 'wrap'
+            }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '0.65rem' }}>
+                <Clock size={18} style={{ color: '#D97706', flexShrink: 0 }} />
+                <div>
+                  <div style={{ fontWeight: 700, color: '#92400E', fontSize: '0.88rem' }}>
+                    {pendingDoctorsCount} Doctor Registration{pendingDoctorsCount > 1 ? 's' : ''} Awaiting Admin Approval
+                  </div>
+                  <div style={{ fontSize: '0.78rem', color: '#B45309' }}>
+                    Doctors cannot log in to the medical panel until you verify and approve their Medical Council credentials.
+                  </div>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => {
+                  setCredentialRoleFilter('pending_doctors');
+                  setActiveTab('credentials');
+                }}
+                className="btn btn-sm"
+                style={{
+                  background: '#D97706',
+                  color: '#FFFFFF',
+                  border: 'none',
+                  fontWeight: 700,
+                  fontSize: '0.8rem',
+                  borderRadius: 6,
+                  padding: '0.35rem 0.85rem'
+                }}
+              >
+                Review & Approve Doctors →
+              </button>
+            </div>
+          )}
           <div className="card">
             <div className="card-header" style={{ flexWrap: 'wrap', gap: '0.75rem' }}>
               <div>
@@ -5897,7 +6140,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                               </div>
                               {c.validUntil && (
                                 <div style={{ fontSize: '0.72rem', color: isExpired ? '#DC2626' : 'var(--neutral-500)', marginTop: '0.2rem' }}>
-                                  Valid till: {new Date(c.validUntil).toLocaleDateString([], { month: 'short', day: 'numeric', year: 'numeric' })}
+                                  Valid till: {formatDateDDMMYY(c.validUntil)}
                                 </div>
                               )}
                             </td>
@@ -6044,19 +6287,56 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                 <Search size={14} style={{ position: 'absolute', left: 10, top: '50%', transform: 'translateY(-50%)', color: 'var(--neutral-400)' }} />
               </div>
 
-              <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center', flexWrap: 'wrap' }}>
-                <span style={{ fontSize: '0.8rem', color: 'var(--neutral-600)', fontWeight: 600 }}>Role Filter:</span>
-                {(['all', 'nurse', 'doctor', 'admin', 'patient'] as const).map((r) => (
-                  <button
-                    key={r}
-                    type="button"
-                    onClick={() => setCredentialRoleFilter(r)}
-                    className={`btn btn-sm ${credentialRoleFilter === r ? 'btn-primary' : 'btn-outline'}`}
-                    style={{ textTransform: 'capitalize', fontSize: '0.78rem', padding: '0.3rem 0.65rem' }}
-                  >
-                    {r === 'all' ? `All (${appUsers.length})` : r}
-                  </button>
-                ))}
+              <div style={{ display: 'flex', gap: '0.45rem', alignItems: 'center', flexWrap: 'wrap' }}>
+                <span style={{ fontSize: '0.8rem', color: 'var(--neutral-600)', fontWeight: 600 }}>Filter By:</span>
+                <button
+                  type="button"
+                  onClick={() => setCredentialRoleFilter('all')}
+                  className={`btn btn-sm ${credentialRoleFilter === 'all' ? 'btn-primary' : 'btn-outline'}`}
+                  style={{ fontSize: '0.78rem', padding: '0.3rem 0.65rem' }}
+                >
+                  All ({appUsers.length})
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setCredentialRoleFilter('doctor')}
+                  className={`btn btn-sm ${credentialRoleFilter === 'doctor' ? 'btn-primary' : 'btn-outline'}`}
+                  style={{ fontSize: '0.78rem', padding: '0.3rem 0.65rem' }}
+                >
+                  🩺 Doctors ({doctorsList.length})
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setCredentialRoleFilter('pending_doctors')}
+                  className="btn btn-sm"
+                  style={{
+                    fontSize: '0.78rem',
+                    padding: '0.3rem 0.65rem',
+                    background: credentialRoleFilter === 'pending_doctors' ? '#D97706' : (pendingDoctorsCount > 0 ? '#FEF3C7' : '#FFFFFF'),
+                    borderColor: credentialRoleFilter === 'pending_doctors' ? '#B45309' : (pendingDoctorsCount > 0 ? '#FDE68A' : 'var(--neutral-300)'),
+                    color: credentialRoleFilter === 'pending_doctors' ? '#FFFFFF' : (pendingDoctorsCount > 0 ? '#B45309' : 'var(--neutral-700)'),
+                    fontWeight: pendingDoctorsCount > 0 ? 700 : 500,
+                    boxShadow: pendingDoctorsCount > 0 && credentialRoleFilter !== 'pending_doctors' ? '0 0 0 1px #F59E0B' : undefined
+                  }}
+                >
+                  ⏳ Pending Doctors ({pendingDoctorsCount})
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setCredentialRoleFilter('nurse')}
+                  className={`btn btn-sm ${credentialRoleFilter === 'nurse' ? 'btn-primary' : 'btn-outline'}`}
+                  style={{ fontSize: '0.78rem', padding: '0.3rem 0.65rem' }}
+                >
+                  👩‍⚕️ Nurses ({appUsers.filter((u) => u.role === 'nurse').length})
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setCredentialRoleFilter('admin')}
+                  className={`btn btn-sm ${credentialRoleFilter === 'admin' ? 'btn-primary' : 'btn-outline'}`}
+                  style={{ fontSize: '0.78rem', padding: '0.3rem 0.65rem' }}
+                >
+                  🛡️ Admin ({appUsers.filter((u) => u.role === 'admin').length})
+                </button>
               </div>
             </div>
 
@@ -6108,9 +6388,10 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                             u.role === 'doctor' ? 'doctor' :
                               u.role === 'nurse' ? 'nurse' : 'patient';
                         const isSelected = selectedUserIds.has(u.id);
+                        const userStatus = parseUserStatus(u);
 
                         return (
-                          <tr key={u.id} style={{ background: isSelected ? '#FFF1F2' : undefined }}>
+                          <tr key={u.id} style={{ background: isSelected ? '#FFF1F2' : (userStatus === 'Pending Verification' && u.role === 'doctor' ? '#FFFBEB' : undefined) }}>
                             <td style={{ textAlign: 'center', width: 40 }}>
                               <input
                                 type="checkbox"
@@ -6138,7 +6419,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                                 </div>
                                 <div>
                                   <div style={{ fontWeight: 700, color: 'var(--primary-navy-950)' }}>{u.name}</div>
-                                  <div style={{ fontSize: '0.75rem', color: 'var(--neutral-500)' }}>{u.designation || u.role}</div>
+                                  <div style={{ fontSize: '0.75rem', color: 'var(--neutral-500)' }}>{cleanUserDesignation(u.designation) || u.role}</div>
                                 </div>
                               </div>
                             </td>
@@ -6203,15 +6484,113 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
 
                             {/* Status */}
                             <td>
-                              <span className="status-pill success">
-                                <ShieldCheck size={12} />
-                                <span>Authorized</span>
-                              </span>
+                              {userStatus === 'Active' ? (
+                                <span className="status-pill success" style={{ display: 'inline-flex', alignItems: 'center', gap: '0.3rem' }}>
+                                  <ShieldCheck size={12} />
+                                  <span>✓ Active</span>
+                                </span>
+                              ) : userStatus === 'Pending Verification' ? (
+                                <span className="status-pill warning" style={{ background: '#FEF3C7', color: '#B45309', border: '1px solid #FDE68A', display: 'inline-flex', alignItems: 'center', gap: '0.3rem', fontWeight: 700 }}>
+                                  <Clock size={12} />
+                                  <span>⏳ Pending Approval</span>
+                                </span>
+                              ) : (
+                                <span className="status-pill error" style={{ background: '#FEE2E2', color: '#DC2626', border: '1px solid #FECACA', display: 'inline-flex', alignItems: 'center', gap: '0.3rem' }}>
+                                  <XCircle size={12} />
+                                  <span>✕ Rejected</span>
+                                </span>
+                              )}
                             </td>
 
                             {/* Actions */}
                             <td style={{ textAlign: 'right' }}>
-                              <div style={{ display: 'inline-flex', alignItems: 'center', gap: '0.35rem' }}>
+                              <div style={{ display: 'inline-flex', alignItems: 'center', gap: '0.35rem', flexWrap: 'wrap', justifyContent: 'flex-end' }}>
+                                {/* Doctor Approval / Rejection Controls */}
+                                {u.role === 'doctor' && userStatus !== 'Active' && (
+                                  <button
+                                    type="button"
+                                    onClick={async () => {
+                                      const cleanDes = cleanUserDesignation(u.designation);
+                                      const updatedDesignation = `[ACTIVE] ${cleanDes}`.trim();
+                                      if (onUpdateAppUser) {
+                                        await onUpdateAppUser(u.id, {
+                                          status: 'Active',
+                                          designation: updatedDesignation
+                                        });
+                                        showToast(`✓ Dr. ${u.name.replace(/^Dr\.\s*/i, '')} has been Approved! They can now log in with email/phone and PIN.`);
+                                      }
+                                    }}
+                                    className="btn btn-sm"
+                                    style={{
+                                      background: '#059669',
+                                      color: '#ffffff',
+                                      border: 'none',
+                                      fontSize: '0.75rem',
+                                      fontWeight: 700,
+                                      padding: '0.3rem 0.65rem',
+                                      borderRadius: 6,
+                                      cursor: 'pointer',
+                                      display: 'inline-flex',
+                                      alignItems: 'center',
+                                      gap: '0.25rem'
+                                    }}
+                                    title="Approve doctor credentials and grant immediate portal login access"
+                                  >
+                                    <CheckCircle size={13} />
+                                    <span>Approve</span>
+                                  </button>
+                                )}
+
+                                {u.role === 'doctor' && userStatus !== 'Rejected' && (
+                                  <button
+                                    type="button"
+                                    onClick={async () => {
+                                      const cleanDes = cleanUserDesignation(u.designation);
+                                      const updatedDesignation = `[REJECTED] ${cleanDes}`.trim();
+                                      if (onUpdateAppUser) {
+                                        await onUpdateAppUser(u.id, {
+                                          status: 'Rejected',
+                                          designation: updatedDesignation
+                                        });
+                                        showToast(`✕ Doctor ${u.name} marked as Rejected. Login access revoked.`);
+                                      }
+                                    }}
+                                    className="btn btn-sm"
+                                    style={{
+                                      background: '#FEF2F2',
+                                      color: '#DC2626',
+                                      border: '1px solid #FECACA',
+                                      fontSize: '0.75rem',
+                                      fontWeight: 600,
+                                      padding: '0.3rem 0.55rem',
+                                      borderRadius: 6,
+                                      cursor: 'pointer',
+                                      display: 'inline-flex',
+                                      alignItems: 'center',
+                                      gap: '0.2rem'
+                                    }}
+                                    title="Reject doctor application and block login access"
+                                  >
+                                    <X size={13} />
+                                    <span>Reject</span>
+                                  </button>
+                                )}
+
+                                {/* View Doctor Certificate if available */}
+                                {u.avatarUrl && (
+                                  <a
+                                    href={u.avatarUrl}
+                                    target="_blank"
+                                    rel="noreferrer"
+                                    className="btn btn-outline btn-sm"
+                                    style={{ fontSize: '0.72rem', padding: '0.3rem 0.45rem', textDecoration: 'none', display: 'inline-flex', alignItems: 'center', gap: '0.2rem' }}
+                                    title="View Uploaded Medical Certificate"
+                                  >
+                                    <FileText size={12} />
+                                    <span>Cert</span>
+                                  </a>
+                                )}
+
                                 <button
                                   type="button"
                                   onClick={() => {
@@ -6613,12 +6992,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                             {/* Upload Date */}
                             <td>
                               <span style={{ fontSize: '0.78rem', color: 'var(--neutral-500)' }}>
-                                {new Date(obj.uploadedAt).toLocaleDateString('en-IN', {
-                                  day: '2-digit',
-                                  month: 'short',
-                                  hour: '2-digit',
-                                  minute: '2-digit'
-                                })}
+                                {formatDateTimeDDMMYY(obj.uploadedAt)}
                               </span>
                             </td>
 
@@ -7658,7 +8032,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                     onChange={(e) => setBookingForm({ ...bookingForm, estimatedFee: Number(e.target.value) })}
                     className="form-control"
                   />
-                  {bookingForm.estimatedFee === 0 && (
+                  {bookingForm.estimatedFee === 0 && (bookingForm.serviceId as string) !== 'other' && (
                     <span style={{ fontSize: '0.7rem', color: '#059669', fontWeight: 600 }}>Free / Decided at service</span>
                   )}
                 </div>
@@ -8370,7 +8744,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                           fontWeight: 700,
                           cursor: 'pointer'
                         }}
-                        title="Set as 100% Free / Complimentary"
+                        title="Set as 100% Free"
                       >
                         ₹0 Free
                       </button>
@@ -9059,7 +9433,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                             Fee: ₹{procedureFee}
                           </div>
                           <div style={{ fontSize: '0.72rem', color: 'var(--neutral-500)', marginTop: '0.15rem' }}>
-                            Submitted: {approvalModalLead.submittedAt ? (approvalModalLead.submittedAt.includes('T') ? new Date(approvalModalLead.submittedAt).toLocaleDateString() : approvalModalLead.submittedAt) : 'Recent'}
+                            Submitted: {formatDateDDMMYY(approvalModalLead.submittedAt, 'Recent')}
                           </div>
                         </div>
                       </div>
@@ -9584,7 +9958,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                 </div>
               </div>
 
-              <div style={{ display: 'grid', gridTemplateColumns: '1.2fr 1fr', gap: '0.75rem', marginBottom: '1.25rem' }}>
+              <div style={{ display: 'grid', gridTemplateColumns: '1.2fr 1fr', gap: '0.75rem', marginBottom: '0.85rem' }}>
                 <div>
                   <label className="form-label" style={{ fontSize: '0.78rem', fontWeight: 700 }}>DESIGNATION / CLINICAL TITLE</label>
                   <input
@@ -9604,6 +9978,28 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                     onChange={(e) => setUserForm({ ...userForm, serviceArea: e.target.value })}
                     className="form-control"
                   />
+                </div>
+              </div>
+
+              <div style={{ marginBottom: '1.25rem' }}>
+                <label className="form-label" style={{ fontSize: '0.78rem', fontWeight: 700 }}>ACCOUNT APPROVAL STATUS *</label>
+                <select
+                  className="form-control"
+                  value={userForm.status}
+                  onChange={(e) => setUserForm({ ...userForm, status: e.target.value as any })}
+                  style={{
+                    fontWeight: 700,
+                    background: userForm.status === 'Active' ? '#ECFDF5' : userForm.status === 'Pending Verification' ? '#FFFBEB' : '#FEF2F2',
+                    borderColor: userForm.status === 'Active' ? '#10B981' : userForm.status === 'Pending Verification' ? '#F59E0B' : '#EF4444',
+                    color: userForm.status === 'Active' ? '#047857' : userForm.status === 'Pending Verification' ? '#B45309' : '#DC2626'
+                  }}
+                >
+                  <option value="Active">✓ Active (Approved to Log In)</option>
+                  <option value="Pending Verification">⏳ Pending Verification (Doctor Login Blocked until Approved)</option>
+                  <option value="Rejected">✕ Rejected (Login Blocked)</option>
+                </select>
+                <div style={{ fontSize: '0.74rem', color: 'var(--neutral-500)', marginTop: '0.25rem' }}>
+                  Doctors can only log in to the medical portal when set to <strong>Active</strong>.
                 </div>
               </div>
 
@@ -9822,7 +10218,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                             ✓ Valid Clinical Rx
                           </span>
                           <div style={{ fontSize: '0.72rem', color: '#64748B', marginTop: '0.35rem' }}>
-                            Issued: {new Date(previewPrescriptionConsultation?.requestedAt || previewPrescriptionObject?.uploadedAt || Date.now()).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' })}
+                            Issued: {formatDateDDMMYY(previewPrescriptionConsultation?.requestedAt || previewPrescriptionObject?.uploadedAt || Date.now())}
                           </div>
                         </div>
                       </div>
@@ -10075,7 +10471,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                       const initialTitle = services[0]?.title || 'Clinical Home Care';
                       setPreviewInvoice({
                         invoiceNumber: `XN-INV-2026-MANUAL-${Math.floor(1000 + Math.random() * 9000)}`,
-                        invoiceDate: new Date().toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' }),
+                        invoiceDate: formatDateDDMMYY(new Date()),
                         bookingId: 'CUSTOM-' + Date.now().toString().slice(-4),
                         patientName: '',
                         patientPhone: '',
@@ -10084,7 +10480,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                         fullAddress: '',
                         area: 'Banjara Hills',
                         serviceTitle: initialTitle,
-                        serviceDate: new Date().toISOString().split('T')[0],
+                        serviceDate: formatDateDDMMYY(new Date()),
                         timeSlot: 'Morning (09:00 AM - 01:00 PM)',
                         numberOfVisits: 1,
                         serviceId: services[0]?.id || 'saline-infusion',
@@ -10094,7 +10490,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                           {
                             id: 'item-1',
                             description: initialTitle,
-                            date: new Date().toISOString().split('T')[0],
+                            date: formatDateDDMMYY(new Date()),
                             slot: 'Morning (09:00 AM - 01:00 PM)',
                             rate: initialRate,
                             quantity: 1,
@@ -10119,7 +10515,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                             {
                               id: 'item-' + Date.now(),
                               description: found.serviceTitle || 'Clinical Nursing Care',
-                              date: found.preferredDate || new Date().toISOString().split('T')[0],
+                              date: formatDateDDMMYY(found.preferredDate || found.createdAt || new Date()),
                               slot: found.scheduledSlot || found.preferredTime || 'Morning (09:00 AM - 01:00 PM)',
                               rate: fee,
                               quantity: found.numberOfVisits || 1,
@@ -10854,7 +11250,15 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                     <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1.25rem', marginBottom: '1.5rem', background: '#F8FAFC', padding: '1.2rem', borderRadius: 12, border: '1px solid #E2E8F0' }}>
                       <div>
                         <div style={{ fontSize: '0.72rem', fontWeight: 800, color: '#64748B', textTransform: 'uppercase', marginBottom: '6px' }}>BILLED TO (PATIENT)</div>
-                        <div style={{ fontSize: '0.98rem', fontWeight: 800, color: '#0F172A' }}>{previewInvoice.patientName}</div>
+                        <div style={{ fontSize: '0.98rem', fontWeight: 800, color: '#0F172A' }}>
+                          {cleanPatientNameOnly(previewInvoice.patientName) || previewInvoice.patientName}
+                          {(() => {
+                            const details: string[] = [];
+                            if (previewInvoice.patientGender && previewInvoice.patientGender !== 'Patient') details.push(previewInvoice.patientGender);
+                            if (previewInvoice.patientAge) details.push(`${previewInvoice.patientAge} Yrs`);
+                            return details.length > 0 ? ` (${details.join(', ')})` : '';
+                          })()}
+                        </div>
                         <div style={{ fontSize: '0.8rem', color: '#475569', marginTop: '2px' }}>Phone: {previewInvoice.patientPhone}</div>
                         <div style={{ fontSize: '0.8rem', color: '#475569', marginTop: '2px' }}>Address: {previewInvoice.fullAddress}</div>
                         <div style={{ fontSize: '0.8rem', color: '#0284C7', fontWeight: 700, marginTop: '2px' }}>Zone: {previewInvoice.area}, Hyderabad</div>

@@ -104,7 +104,9 @@ export async function dbFetchServices(): Promise<ServiceItem[] | null> {
     const isZero = Number(s.single_visit_price) === 0 || Number(s.price_number) === 0;
 
     let computedIndicative = `₹${Math.round(s.single_visit_price ?? s.price_number ?? 0)}`;
-    if (isZero) {
+    if (s.id === 'other') {
+      computedIndicative = '';
+    } else if (isZero) {
       if (pricingLabel) {
         computedIndicative = pricingLabel.includes('₹') ? pricingLabel : `${pricingLabel} • ₹0`;
       } else {
@@ -1276,18 +1278,37 @@ export async function dbFetchAppUsers(): Promise<AppUser[]> {
   try {
     const { data, error } = await supabase.from('app_users').select('*');
     if (!error && data) {
-      return data.map((u: any) => ({
-        id: u.id,
-        role: u.role,
-        identifier: u.identifier,
-        name: u.name,
-        pin: u.pin ? String(u.pin).trim() : '', // Real PIN from Supabase
-        phone: u.phone,
-        email: u.email,
-        designation: u.designation,
-        serviceArea: u.service_area,
-        avatarUrl: u.avatar_url
-      }));
+      return data.map((u: any) => {
+        let status: 'Active' | 'Pending Verification' | 'Rejected' = 'Active';
+        if (u.role === 'doctor') {
+          const des = u.designation || '';
+          if (des.includes('[PENDING_VERIFICATION]') || des.includes('[PENDING]')) {
+            status = 'Pending Verification';
+          } else if (des.includes('[REJECTED]')) {
+            status = 'Rejected';
+          } else if (des.includes('[ACTIVE]')) {
+            status = 'Active';
+          } else if (u.id === 'user-doc-1' || (u.email && u.email.includes('dr.reddy'))) {
+            status = 'Active';
+          } else {
+            status = 'Pending Verification';
+          }
+        }
+        return {
+          id: u.id,
+          role: u.role,
+          identifier: u.identifier,
+          name: u.name,
+          pin: u.pin ? String(u.pin).trim() : '', // Real PIN from Supabase
+          phone: u.phone,
+          email: u.email,
+          designation: u.designation,
+          serviceArea: u.service_area,
+          avatarUrl: u.avatar_url,
+          status: u.status || status,
+          createdAt: u.created_at
+        };
+      });
     }
   } catch {
     // If database unavailable or empty, return empty list

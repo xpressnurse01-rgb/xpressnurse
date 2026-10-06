@@ -30,6 +30,7 @@ import { HyderabadArea, ServiceId, Booking, ServiceItem, Coupon, CloudflareStora
 import { useBodyScrollLock } from '../hooks/useBodyScrollLock';
 import { dbIncrementCouponUsage, dbSaveBooking, dbSaveConsultation } from '../lib/supabase';
 import { uploadPrescriptionToCloudflareBucket, getCloudflareConfig } from '../lib/cloudflareStorage';
+import { formatDateDDMMYY } from '../lib/dateUtils';
 
 interface BookingModalProps {
   isOpen: boolean;
@@ -136,7 +137,7 @@ export const BookingModal: React.FC<BookingModalProps> = ({
         title: customProcedureName.trim() || 'Other Nursing Service',
         subtitle: 'Custom home nursing care procedure',
         description: 'Specific care evaluated by attending nurse at visit',
-        indicativePrice: 'Free / Decided at service • ₹0',
+        indicativePrice: '',
         priceNumber: 0,
         singleVisitPrice: 0,
         prescriptionRequired: false,
@@ -425,7 +426,7 @@ export const BookingModal: React.FC<BookingModalProps> = ({
     const newBooking: Booking = {
       id: newBookingId,
       createdAt: new Date().toISOString(),
-      patientName: `${patientName.trim()} (${patientAge} yrs, ${patientGender})`,
+      patientName: patientName.trim(),
       patientPhone: patientPhone.trim(),
       patientAge: parseInt(patientAge) || 45,
       patientGender,
@@ -434,7 +435,7 @@ export const BookingModal: React.FC<BookingModalProps> = ({
       area: resolvedArea,
       fullAddress: fullAddress.trim(),
       bookingType,
-      preferredDate: bookingType === 'Instant' ? 'Today (Instant ASAP)' : selectedScheduledDate,
+      preferredDate: bookingType === 'Instant' ? 'Today (Instant ASAP)' : formatDateDDMMYY(selectedScheduledDate),
       preferredTime: bookingType === 'Instant' ? 'Immediate (ASAP Dispatch)' : selectedSlot,
       scheduledSlot: bookingType === 'Scheduled' ? selectedSlot : undefined,
       hasPrescription: isPrescriptionRequired ? true : Boolean(prescriptionFileName || prescriptionFile),
@@ -503,14 +504,19 @@ export const BookingModal: React.FC<BookingModalProps> = ({
       : (createdBooking.serviceId === 'doctor-consult' ? 'Requires Teleconsult Rx Issuance' : 'Attached & Verified');
 
     const finalVal = createdBooking.finalFee !== undefined ? createdBooking.finalFee : createdBooking.estimatedFee;
-    const feeStr = finalVal === 0 ? 'Free / Decided at service (₹0)' : `₹${finalVal}`;
-    const promoInfo = createdBooking.promoCode
-      ? `%0A*Promo Code:* ${createdBooking.promoCode} (-₹${createdBooking.discountRupees})%0A*Payable Amount:* ${feeStr}`
-      : `%0A*Payable Amount:* ${feeStr}`;
+    const feeStr = createdBooking.serviceId === 'other'
+      ? 'Custom Care'
+      : (finalVal === 0 ? 'Free / Decided at service (₹0)' : `₹${finalVal}`);
+    const promoInfo = createdBooking.serviceId === 'other'
+      ? ''
+      : (createdBooking.promoCode
+          ? `%0A*Promo Code:* ${createdBooking.promoCode} (-₹${createdBooking.discountRupees})%0A*Payable Amount:* ${feeStr}`
+          : `%0A*Payable Amount:* ${feeStr}`);
 
     const text = `*New Home Care Booking - Xpress Nurse*%0A%0A` +
       `*Booking Ref:* ${createdBooking.id}%0A` +
       `*Service:* ${createdBooking.serviceTitle}%0A` +
+      `*Date & Slot:* ${formatDateDDMMYY(createdBooking.preferredDate, 'Today')} (${createdBooking.preferredTime || 'Immediate'})%0A` +
       `*Patient:* ${createdBooking.patientName}%0A` +
       `*Phone:* ${createdBooking.patientPhone}%0A` +
       `*Area:* ${createdBooking.area}%0A` +
@@ -641,6 +647,12 @@ export const BookingModal: React.FC<BookingModalProps> = ({
                 <span style={{ fontSize: '0.8rem', color: 'var(--neutral-500)', fontWeight: 600 }}>Location</span>
                 <span style={{ fontSize: '0.84rem', color: 'var(--neutral-700)' }}>{createdBooking.area}</span>
               </div>
+              <div style={{ display: 'flex', justifyContent: 'space-between', paddingBottom: '0.5rem', borderBottom: '1px solid var(--neutral-200)', marginBottom: '0.5rem' }}>
+                <span style={{ fontSize: '0.8rem', color: 'var(--neutral-500)', fontWeight: 600 }}>Date & Slot</span>
+                <span style={{ fontSize: '0.84rem', fontWeight: 700, color: '#0369A1' }}>
+                  {formatDateDDMMYY(createdBooking.preferredDate || createdBooking.createdAt, 'Today')} • {createdBooking.preferredTime || 'Immediate'}
+                </span>
+              </div>
               {createdBooking.prescriptionFileName && (
                 <div style={{ display: 'flex', justifyContent: 'space-between', paddingBottom: '0.5rem', borderBottom: '1px solid var(--neutral-200)', marginBottom: '0.5rem', alignItems: 'center' }}>
                   <span style={{ fontSize: '0.8rem', color: 'var(--neutral-500)', fontWeight: 600 }}>Doctor's Prescription</span>
@@ -705,9 +717,11 @@ export const BookingModal: React.FC<BookingModalProps> = ({
                 <label style={{ fontSize: '0.8rem', fontWeight: 700, color: 'var(--primary-navy-950)', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
                   Care Procedure
                 </label>
-                <span style={{ fontSize: '0.85rem', fontWeight: 800, color: '#0F172A', background: '#F1F5F9', padding: '0.15rem 0.65rem', borderRadius: 9999 }}>
-                  {baseFee === 0 ? 'Free / Decided at service (₹0)' : `₹${baseFee}`}
-                </span>
+                {(serviceId as string) !== 'other' && baseFee > 0 && (
+                  <span style={{ fontSize: '0.85rem', fontWeight: 800, color: '#0F172A', background: '#F1F5F9', padding: '0.15rem 0.65rem', borderRadius: 9999 }}>
+                    ₹{baseFee}
+                  </span>
+                )}
               </div>
               <select
                 className="form-control"
@@ -717,14 +731,14 @@ export const BookingModal: React.FC<BookingModalProps> = ({
               >
                 {serviceList.map((srv) => {
                   const pNum = srv.priceNumber !== undefined && srv.priceNumber !== null ? srv.priceNumber : srv.singleVisitPrice;
-                  const priceLabel = pNum === 0 ? (srv.indicativePrice || 'Free / Decided at service • ₹0') : srv.indicativePrice;
+                  const priceLabel = pNum === 0 ? (srv.indicativePrice || '') : srv.indicativePrice;
                   return (
                     <option key={srv.id} value={srv.id}>
-                      {srv.title} — {priceLabel}
+                      {srv.title}{priceLabel ? ` — ${priceLabel}` : ''}
                     </option>
                   );
                 })}
-                <option value="other">Other Nursing Service / Custom Care — Free / Decided at service • ₹0</option>
+                <option value="other">Other Nursing Service / Custom Care</option>
               </select>
 
               {(serviceId as string) === 'other' && (
@@ -748,7 +762,7 @@ export const BookingModal: React.FC<BookingModalProps> = ({
                   />
                   {errors.customProcedure && <span className="field-error">{errors.customProcedure}</span>}
                   <span style={{ fontSize: '0.72rem', color: '#0284C7', marginTop: '0.25rem', display: 'block', fontWeight: 600 }}>
-                    Enter any required clinical care. Pricing is decided at home visit or complimentary.
+                    Enter details of custom nursing procedure or care needed.
                   </span>
                 </div>
               )}
@@ -1169,6 +1183,9 @@ export const BookingModal: React.FC<BookingModalProps> = ({
                         className="form-control"
                         style={{ fontSize: '0.82rem', padding: '0.45rem 0.65rem', borderRadius: 8 }}
                       />
+                      <div style={{ fontSize: '0.72rem', color: '#0284C7', fontWeight: 700, marginTop: '0.25rem' }}>
+                        📅 Date: {formatDateDDMMYY(selectedScheduledDate)}
+                      </div>
                     </div>
                     <div>
                       <label style={{ fontSize: '0.72rem', fontWeight: 700, color: '#475569', marginBottom: '0.2rem', display: 'block' }}>
@@ -1363,8 +1380,8 @@ export const BookingModal: React.FC<BookingModalProps> = ({
               ) : (
                 <>
                   <span>
-                    Confirm Booking • {finalFee === 0 ? 'Free / Decided at service (₹0)' : `₹${finalFee}`}
-                    {appliedPromo && (
+                    Confirm Booking{(serviceId as string) === 'other' ? '' : (finalFee > 0 ? ` • ₹${finalFee}` : '')}
+                    {appliedPromo && (serviceId as string) !== 'other' && (
                       <span style={{ fontSize: '0.8rem', opacity: 0.85, marginLeft: '0.4rem', fontWeight: 500, textDecoration: 'line-through' }}>
                         ₹{baseFee}
                       </span>
@@ -1378,7 +1395,7 @@ export const BookingModal: React.FC<BookingModalProps> = ({
             {/* Minimalist Micro Reassurance */}
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.45rem', marginTop: '0.65rem', fontSize: '0.74rem', color: 'var(--neutral-500)' }}>
               <ShieldCheck size={14} style={{ color: '#059669' }} />
-              <span>Zero advance deposit • {baseFee === 0 ? 'Free / Decided at service' : 'Pay after visit completed'} • Sterile sealed consumables</span>
+              <span>Zero advance deposit • {(serviceId as string) === 'other' ? 'Verified clinical care' : (baseFee === 0 ? 'Verified clinical care' : 'Pay after visit completed')} • Sterile sealed consumables</span>
             </div>
           </form>
         )}

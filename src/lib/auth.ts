@@ -173,14 +173,20 @@ export async function authenticateUserSecure(
           const uName = (u.name || '').toLowerCase().trim();
 
           const phoneMatch = Boolean(
-            (last10 && last10.length === 10 && uPhoneLast10 === last10) ||
-            (cleanDigits && cleanDigits.length >= 7 && uPhone === cleanDigits)
+            (last10 && last10.length === 10 && (uPhoneLast10 === last10 || (uId.replace(/\D/g, '').length >= 10 && uId.replace(/\D/g, '').slice(-10) === last10))) ||
+            (cleanDigits && cleanDigits.length >= 7 && (uPhone === cleanDigits || uId.replace(/\D/g, '') === cleanDigits))
+          );
+
+          const emailMatch = Boolean(
+            cleanId.includes('@') &&
+            (uEmail === cleanId || uId === cleanId)
           );
 
           return (
+            emailMatch ||
+            phoneMatch ||
             uId === cleanId ||
             uEmail === cleanId ||
-            phoneMatch ||
             uPhone === cleanId ||
             uUid === cleanId ||
             uName === cleanId ||
@@ -244,6 +250,54 @@ export async function authenticateUserSecure(
             }
           }
 
+          // STRICT DATABASE CROSS-CHECK FOR DOCTORS:
+          // Doctor must be verified and approved by admin before logging in (same as nurse)
+          if (matchedUser.role === 'doctor') {
+            const { data: liveDoc } = await supabase
+              .from('app_users')
+              .select('id, name, designation, role, email, phone')
+              .eq('id', matchedUser.id)
+              .limit(1)
+              .maybeSingle();
+
+            const designation = liveDoc?.designation || matchedUser.designation || '';
+            let docStatus = matchedUser.status;
+            if (designation.includes('[PENDING_VERIFICATION]') || designation.includes('[PENDING]')) {
+              docStatus = 'Pending Verification';
+            } else if (designation.includes('[REJECTED]')) {
+              docStatus = 'Rejected';
+            } else if (designation.includes('[ACTIVE]')) {
+              docStatus = 'Active';
+            } else if (!docStatus) {
+              if (matchedUser.id === 'user-doc-1' || (matchedUser.email && matchedUser.email.includes('dr.reddy'))) {
+                docStatus = 'Active';
+              } else {
+                docStatus = 'Pending Verification';
+              }
+            }
+
+            if (docStatus === 'Pending' || docStatus === 'Pending Verification') {
+              return {
+                success: false,
+                message: 'Your doctor profile is pending Admin approval. Please wait for clinical verification before logging in.'
+              };
+            }
+
+            if (docStatus === 'Rejected' || docStatus === 'Inactive' || docStatus === 'Suspended') {
+              return {
+                success: false,
+                message: `Access denied. Doctor account is ${docStatus.toLowerCase()}. Please contact administration.`
+              };
+            }
+
+            if (docStatus !== 'Active') {
+              return {
+                success: false,
+                message: `Access denied. Doctor account status is "${docStatus}". Only approved Active doctors can log in.`
+              };
+            }
+          }
+
           clearFailedAttempts(cleanId);
           if (cleanDigits) clearFailedAttempts(cleanDigits);
           if (matchedUser.identifier) clearFailedAttempts(matchedUser.identifier.toLowerCase());
@@ -259,6 +313,7 @@ export async function authenticateUserSecure(
               pin: '••••', // Never expose plaintext pin
               phone: matchedUser.phone,
               email: matchedUser.email,
+              status: matchedUser.status || 'Active',
               designation: matchedUser.designation,
               serviceArea: matchedUser.service_area || matchedUser.serviceArea
             },

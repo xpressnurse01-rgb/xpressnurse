@@ -59,6 +59,7 @@ export const ServicesSection: React.FC<ServicesSectionProps> = ({ services = [],
   });
 
   const cleanPriceDisplay = (srv: ServiceItem) => {
+    if (srv.id === 'other') return '';
     const price = srv.priceNumber !== undefined && srv.priceNumber !== null
       ? srv.priceNumber
       : (srv.singleVisitPrice !== undefined && srv.singleVisitPrice !== null ? srv.singleVisitPrice : null);
@@ -189,12 +190,16 @@ export const ServicesSection: React.FC<ServicesSectionProps> = ({ services = [],
                 {/* District by Zomato Neat Bottom Bar */}
                 <div className="service-district-bottom-row">
                   <div className="district-price-col">
-                    <div className="district-price-value">{cleanPriceDisplay(service)}</div>
-                    <div className="district-price-note">
-                      {((service.priceNumber !== undefined && service.priceNumber === 0) || (service.singleVisitPrice !== undefined && service.singleVisitPrice === 0))
-                        ? (service.indicativePrice ? service.indicativePrice.replace(/•\s*₹0/g, '').trim() : 'Free or decided during home visit')
-                        : (service.id === 'wound-dressing' ? 'Depends on wound type & depth' : 'All-inclusive • Zero advance')}
-                    </div>
+                    {service.id !== 'other' && (
+                      <>
+                        <div className="district-price-value">{cleanPriceDisplay(service)}</div>
+                        <div className="district-price-note">
+                          {((service.priceNumber !== undefined && service.priceNumber === 0) || (service.singleVisitPrice !== undefined && service.singleVisitPrice === 0))
+                            ? (service.indicativePrice ? service.indicativePrice.replace(/•\s*₹0/g, '').trim() : 'Decided during home visit')
+                            : (service.id === 'wound-dressing' ? 'Depends on wound type & depth' : 'All-inclusive • Zero advance')}
+                        </div>
+                      </>
+                    )}
                   </div>
 
                   <button

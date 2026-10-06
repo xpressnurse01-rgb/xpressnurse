@@ -9,6 +9,7 @@ import {
 } from '../types';
 
 import { AwsClient } from 'aws4fetch';
+import { formatDateDDMMYY } from './dateUtils';
 
 // ============================================================================
 // CLOUDFLARE R2 STORAGE BUCKET CONFIGURATION & SERVICE
@@ -742,6 +743,15 @@ export const cleanPatientFacingNotes = (notes?: string | null): string => {
   return cleaned;
 };
 
+export const cleanPatientNameOnly = (name?: string): string => {
+  if (!name) return '';
+  return name
+    .replace(/\s*\(\s*\d+\s*(?:yrs|years)?\s*,\s*(?:male|female|other)\s*\)/gi, '')
+    .replace(/\s*\(\s*(?:male|female|other)\s*,\s*\d+\s*(?:yrs|years)?\s*\)/gi, '')
+    .replace(/\s*\(\s*\d+\s*(?:yrs|years)\s*\)/gi, '')
+    .trim();
+};
+
 export const generateInvoiceDetails = (booking: Booking): InvoiceDetails => {
   const config = getCloudflareConfig();
   const cleanBookingId = booking.id.replace(/[^a-zA-Z0-9]/g, '');
@@ -771,20 +781,16 @@ export const generateInvoiceDetails = (booking: Booking): InvoiceDetails => {
 
   return {
     invoiceNumber,
-    invoiceDate: new Date(booking.createdAt || Date.now()).toLocaleDateString('en-IN', {
-      day: '2-digit',
-      month: 'short',
-      year: 'numeric'
-    }),
+    invoiceDate: formatDateDDMMYY(booking.createdAt || Date.now()),
     bookingId: booking.id,
-    patientName: booking.patientName,
+    patientName: cleanPatientNameOnly(booking.patientName) || booking.patientName,
     patientPhone: booking.patientPhone,
     patientAge: booking.patientAge,
     patientGender: booking.patientGender,
     fullAddress: booking.fullAddress,
     area: booking.area,
     serviceTitle: booking.serviceTitle,
-    serviceDate: booking.preferredDate,
+    serviceDate: formatDateDDMMYY(booking.preferredDate || booking.createdAt),
     timeSlot: formatSlotForBill(booking.scheduledSlot || booking.preferredTime || 'M'),
     numberOfVisits: booking.numberOfVisits || 1,
     serviceId: booking.serviceId,
@@ -794,7 +800,7 @@ export const generateInvoiceDetails = (booking: Booking): InvoiceDetails => {
       {
         id: 'item-1',
         description: booking.serviceTitle || 'Clinical Nursing Care',
-        date: booking.preferredDate || new Date().toISOString().split('T')[0],
+        date: formatDateDDMMYY(booking.preferredDate || booking.createdAt || new Date()),
         slot: formatSlotForBill(booking.scheduledSlot || booking.preferredTime || 'M'),
         rate: baseFee,
         quantity: booking.numberOfVisits || 1,
@@ -844,6 +850,12 @@ export const saveInvoiceToCloudflareBucket = async (booking: Booking): Promise<C
 
 // Clean Printable HTML Invoice for Direct View / PDF Save
 export const generatePrintableInvoiceHtml = (inv: InvoiceDetails): string => {
+  const cleanName = cleanPatientNameOnly(inv.patientName) || inv.patientName;
+  const detailsArr: string[] = [];
+  if (inv.patientGender && inv.patientGender !== 'Patient') detailsArr.push(inv.patientGender);
+  if (inv.patientAge) detailsArr.push(`${inv.patientAge} Yrs`);
+  const ageGenderSuffix = detailsArr.length > 0 ? ` (${detailsArr.join(', ')})` : '';
+
   return `<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -904,7 +916,7 @@ export const generatePrintableInvoiceHtml = (inv: InvoiceDetails): string => {
       <div class="info-box">
         <h4>Billed To (Patient)</h4>
         <p>
-          <strong style="font-size: 15px;">${inv.patientName}</strong> (${inv.patientGender || 'Patient'}, ${inv.patientAge || 45} Yrs)<br>
+          <strong style="font-size: 15px;">${cleanName}</strong>${ageGenderSuffix}<br>
           Phone: ${inv.patientPhone}<br>
           Address: ${inv.fullAddress}<br>
           Area: <strong>${inv.area}, Hyderabad</strong>

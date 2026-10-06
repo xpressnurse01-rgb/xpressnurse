@@ -23,6 +23,7 @@ import {
 } from 'lucide-react';
 import confetti from 'canvas-confetti';
 import { EmptyState } from './EmptyState';
+import { formatDateTimeDDMMYY } from '../lib/dateUtils';
 
 interface DoctorDashboardProps {
   consultations: DoctorConsultation[];
@@ -309,7 +310,7 @@ export const DoctorDashboard: React.FC<DoctorDashboardProps> = ({
                   </p>
                   <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.78rem', color: 'var(--neutral-500)' }}>
                     <span><MapPin size={12} style={{ display: 'inline', verticalAlign: -2 }} /> {c.area}</span>
-                    <span><Clock size={12} style={{ display: 'inline', verticalAlign: -2 }} /> {c.requestedAt}</span>
+                    <span><Clock size={12} style={{ display: 'inline', verticalAlign: -2 }} /> {formatDateTimeDDMMYY(c.requestedAt)}</span>
                   </div>
                 </div>
               ))

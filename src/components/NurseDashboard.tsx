@@ -44,6 +44,7 @@ import confetti from 'canvas-confetti';
 import { EmptyState } from './EmptyState';
 import {
   generateInvoiceDetails,
+  cleanPatientNameOnly,
   openPrintableInvoiceWindow,
   saveInvoiceToCloudflareBucket,
   cleanPatientFacingNotes,
@@ -53,6 +54,7 @@ import {
 import { generateNurseReferralCode } from '../lib/supabase';
 import { calculateNurseMetrics, deduplicateBookings, deduplicateLeads } from '../lib/nurseCalculations';
 import { useBodyScrollLock } from '../hooks/useBodyScrollLock';
+import { formatDateDDMMYY, formatDateTimeDDMMYY } from '../lib/dateUtils';
 
 // Helper to convert base64 data URLs to safe Blob URLs that modern browsers won't block
 export function getSafeBlobUrl(dataUrl: string): string {
@@ -176,6 +178,7 @@ export const NurseDashboard: React.FC<NurseDashboardProps> = ({
   const [certUploading, setCertUploading] = useState(false);
   const [isHistoryModalOpen, setIsHistoryModalOpen] = useState(false);
   const [historyFilter, setHistoryFilter] = useState<'all' | 'duty' | 'referral' | 'pending' | 'points'>('all');
+  const [visitFilter, setVisitFilter] = useState<'all' | 'active' | 'completed' | 'rejected'>('all');
 
   // Lock body scroll and pause Lenis momentum scroll while any modal is open
   useBodyScrollLock(isHistoryModalOpen || isRxModalOpen || isInvoiceModalOpen || certModalOpen);
@@ -251,7 +254,7 @@ export const NurseDashboard: React.FC<NurseDashboardProps> = ({
         category: 'duty',
         title: `Clinical Care: ${v.serviceTitle}`,
         description: `Patient: ${v.patientName} (${v.area || 'Hyderabad'}) • Doorstep Care Completed`,
-        date: v.preferredDate || (v.createdAt ? new Date(v.createdAt).toLocaleDateString('en-IN') : 'Recent'),
+        date: formatDateDDMMYY(v.preferredDate || v.createdAt, 'Recent'),
         amount: payout,
         status: 'Settled',
         bookingId: v.id
@@ -265,9 +268,9 @@ export const NurseDashboard: React.FC<NurseDashboardProps> = ({
       list.push({
         id: `TX-PEND-${v.id}`,
         category: 'pending',
-        title: `Duty Finished: ${v.serviceTitle}`,
+        title: `Duty Completed: ${v.serviceTitle}`,
         description: `Patient: ${v.patientName} • Service Done, Awaiting Admin Verification`,
-        date: v.preferredDate || (v.createdAt ? new Date(v.createdAt).toLocaleDateString('en-IN') : 'Today'),
+        date: formatDateDDMMYY(v.preferredDate || v.createdAt, 'Today'),
         amount: payout,
         status: 'Pending Approval',
         bookingId: v.id
@@ -283,7 +286,7 @@ export const NurseDashboard: React.FC<NurseDashboardProps> = ({
         category: 'referral',
         title: `10% Referral Commission: ${v.serviceTitle}`,
         description: `Referred Patient: ${v.patientName} • Care Completed & Billed`,
-        date: v.preferredDate || (v.createdAt ? new Date(v.createdAt).toLocaleDateString('en-IN') : 'Recent'),
+        date: formatDateDDMMYY(v.preferredDate || v.createdAt, 'Recent'),
         amount: commission,
         status: 'Settled',
         bookingId: v.id
@@ -298,7 +301,7 @@ export const NurseDashboard: React.FC<NurseDashboardProps> = ({
         category: 'points',
         title: isNurse ? `Colleague Nurse Referral: ${lead.referredNurseName || lead.patientName || 'Nurse'}` : `Patient Referral Converted: ${lead.patientName || 'Patient'}`,
         description: isNurse ? `Verified & Active on Staff Roster (+50 Points)` : `Appointment Booked & Converted (+50 Points)`,
-        date: lead.submittedAt ? new Date(lead.submittedAt).toLocaleDateString('en-IN') : 'Recent',
+        date: formatDateDDMMYY(lead.submittedAt, 'Recent'),
         points: lead.pointsAwarded || 50,
         status: 'Credited'
       });
@@ -385,7 +388,7 @@ export const NurseDashboard: React.FC<NurseDashboardProps> = ({
       try {
         confetti({ particleCount: 70, spread: 70, origin: { y: 0.5 } });
       } catch { }
-      alert(`Duty Finished! Service marked as done and sent for Admin Approval. Your ₹${payoutRupees} duty earnings will be credited once verified by office.`);
+      alert(`Duty Completed! Service marked as completed and sent for Admin Approval. Your ₹${payoutRupees} duty earnings will be credited once verified by office.`);
     }
   };
 
@@ -889,7 +892,7 @@ export const NurseDashboard: React.FC<NurseDashboardProps> = ({
                     🔔 Next Patient Visit
                   </span>
                   <span style={{ background: '#EFF6FF', color: '#0284C7', fontSize: '0.75rem', fontWeight: 700, padding: '3px 10px', borderRadius: 9999, display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
-                    <span>📅 {activeVisits[0].preferredDate || (activeVisits[0].createdAt ? new Date(activeVisits[0].createdAt).toLocaleDateString('en-IN') : 'Today')}</span>
+                    <span>📅 {formatDateDDMMYY(activeVisits[0].preferredDate || activeVisits[0].createdAt, 'Today')}</span>
                     <span>•</span>
                     <span>⏰ {activeVisits[0].scheduledSlot || activeVisits[0].preferredTime || 'Immediate'}</span>
                   </span>
@@ -898,7 +901,7 @@ export const NurseDashboard: React.FC<NurseDashboardProps> = ({
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: '0.75rem' }}>
                   <div>
                     <h4 style={{ margin: 0, fontSize: '1.15rem', fontWeight: 800, color: '#0F172A' }}>
-                      {activeVisits[0].patientName} ({activeVisits[0].patientAge || 45} yrs, {activeVisits[0].patientGender || 'Patient'})
+                      {cleanPatientNameOnly(activeVisits[0].patientName)} ({activeVisits[0].patientAge || 45} yrs, {activeVisits[0].patientGender || 'Patient'})
                     </h4>
                     <div style={{ fontSize: '0.9rem', color: '#334155', fontWeight: 600, marginTop: '0.2rem' }}>
                       Service: <strong style={{ color: '#0284C7' }}>{activeVisits[0].serviceTitle}</strong>
@@ -906,6 +909,10 @@ export const NurseDashboard: React.FC<NurseDashboardProps> = ({
                     <div style={{ fontSize: '0.84rem', color: '#64748B', display: 'flex', alignItems: 'center', gap: '0.35rem', marginTop: '0.25rem' }}>
                       <MapPin size={14} style={{ color: '#EF4444' }} />
                       <span>{activeVisits[0].fullAddress || activeVisits[0].area}</span>
+                    </div>
+                    <div style={{ fontSize: '0.84rem', color: '#0F172A', display: 'flex', alignItems: 'center', gap: '0.35rem', marginTop: '0.25rem', fontWeight: 700 }}>
+                      <Phone size={13} style={{ color: '#0284C7' }} />
+                      <span>Patient Contact: <strong style={{ color: '#0284C7' }}>{activeVisits[0].patientPhone}</strong></span>
                     </div>
                   </div>
 
@@ -1010,7 +1017,7 @@ export const NurseDashboard: React.FC<NurseDashboardProps> = ({
                             cursor: 'pointer'
                           }}
                         >
-                          ✓ Accept Job
+                          ✓ Accept
                         </button>
                         <button
                           type="button"
@@ -1045,7 +1052,7 @@ export const NurseDashboard: React.FC<NurseDashboardProps> = ({
                           cursor: 'pointer'
                         }}
                       >
-                        ✓ Finish & Bill
+                        ✓ Completed
                       </button>
                     )}
                   </div>
@@ -1071,7 +1078,7 @@ export const NurseDashboard: React.FC<NurseDashboardProps> = ({
                   </span>
                 </div>
                 <p style={{ margin: 0, fontSize: '0.86rem', color: '#78350F' }}>
-                  You have finished <strong>{pendingApprovalVisitsCount} visit(s)</strong>. The office admin will verify and accept the service, after which your 70% earnings will be directly added to your balance.
+                  You have completed <strong>{pendingApprovalVisitsCount} visit(s)</strong>. The office admin will verify and accept the service, after which your 70% earnings will be directly added to your balance.
                 </p>
                 <div style={{ marginTop: '0.85rem' }}>
                   <button
@@ -1088,7 +1095,7 @@ export const NurseDashboard: React.FC<NurseDashboardProps> = ({
                       cursor: 'pointer'
                     }}
                   >
-                    View Finished Visits
+                    View Completed Visits
                   </button>
                 </div>
               </div>
@@ -1161,232 +1168,377 @@ export const NurseDashboard: React.FC<NurseDashboardProps> = ({
         )}
 
         {/* ================================================================= */}
-        {/* TAB 2: 🚗 MY VISITS (Dead Simple List with Call, Map & Finish) */}
+        {/* TAB 2: 🚗 MY VISITS (Dead Simple List with Call, Map & Complete) */}
         {/* ================================================================= */}
-        {activeTab === 'visits' && (
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-              <div>
-                <h3 style={{ margin: 0, fontSize: '1.2rem', fontWeight: 800, color: '#0F172A' }}>
-                  My Patient Visits ({myVisits.length})
-                </h3>
-                <p style={{ margin: '0.2rem 0 0', fontSize: '0.84rem', color: '#64748B' }}>
-                  Jobs assigned to you by the office. Accept, start, and complete duty.
-                </p>
+        {activeTab === 'visits' && (() => {
+          const rejectedVisitsCount = myVisits.filter(v => v.status === 'Rejected' || v.status === 'Cancelled' || Boolean(v.rejectionReason)).length;
+          const completedVisitsTotalCount = completedVisits.length + pendingApprovalVisitsCount;
+
+          const displayedVisits = myVisits.filter((v) => {
+            const isDone = v.status === 'Completed';
+            const isWaitingApproval = !isDone && (v.nurseAcceptanceStatus === 'Service Done' || Boolean(v.notes && v.notes.includes('Waiting for Admin Approval')));
+            const isRejected = v.status === 'Rejected' || v.status === 'Cancelled' || Boolean(v.rejectionReason);
+            const isAct = !isRejected && !isWaitingApproval && !isDone && (v.status === 'Assigned' || v.status === 'In-Progress' || v.status === 'Pending');
+
+            if (visitFilter === 'active') return isAct;
+            if (visitFilter === 'completed') return isDone || isWaitingApproval;
+            if (visitFilter === 'rejected') return isRejected;
+            return true;
+          });
+
+          return (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '0.75rem' }}>
+                <div>
+                  <h3 style={{ margin: 0, fontSize: '1.2rem', fontWeight: 800, color: '#0F172A' }}>
+                    My Patient Visits ({myVisits.length})
+                  </h3>
+                  <p style={{ margin: '0.2rem 0 0', fontSize: '0.84rem', color: '#64748B' }}>
+                    Visits assigned to you by the office. Accept, start, and complete duty.
+                  </p>
+                </div>
+
+                {/* Filter Pills */}
+                {myVisits.length > 0 && (
+                  <div style={{ display: 'flex', gap: '0.35rem', flexWrap: 'wrap' }}>
+                    {[
+                      { id: 'all', label: `All (${myVisits.length})` },
+                      { id: 'active', label: `Active (${activeVisits.length})` },
+                      { id: 'completed', label: `Completed (${completedVisitsTotalCount})` },
+                      { id: 'rejected', label: `Rejected (${rejectedVisitsCount})` }
+                    ].map((tab) => {
+                      const isActive = visitFilter === tab.id;
+                      return (
+                        <button
+                          key={tab.id}
+                          type="button"
+                          onClick={() => setVisitFilter(tab.id as any)}
+                          style={{
+                            background: isActive 
+                              ? (tab.id === 'rejected' ? '#EF4444' : '#0284C7') 
+                              : '#F1F5F9',
+                            color: isActive ? '#FFFFFF' : '#475569',
+                            border: isActive 
+                              ? `1px solid ${tab.id === 'rejected' ? '#DC2626' : '#0284C7'}` 
+                              : '1px solid #CBD5E1',
+                            padding: '0.35rem 0.8rem',
+                            borderRadius: 20,
+                            fontSize: '0.78rem',
+                            fontWeight: 700,
+                            cursor: 'pointer',
+                            transition: 'all 0.15s ease'
+                          }}
+                        >
+                          {tab.label}
+                        </button>
+                      );
+                    })}
+                  </div>
+                )}
               </div>
-            </div>
 
-            {myVisits.length === 0 ? (
-              <div style={{ background: '#FFFFFF', borderRadius: 16, padding: '3rem 1.5rem', border: '1px solid #E2E8F0', textAlign: 'center' }}>
-                <EmptyState
-                  title="No visits assigned yet"
-                  description="When patients near your area book care, the office will assign them here. You will see their address and phone."
-                  actionText="Add a Patient Referral"
-                  onAction={() => setActiveTab('add-patient')}
-                />
-              </div>
-            ) : (
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '0.85rem' }}>
-                {myVisits.map((visit) => {
-                  const isDone = visit.status === 'Completed';
-                  const isWaitingApproval = !isDone && (visit.nurseAcceptanceStatus === 'Service Done' || Boolean(visit.notes && visit.notes.includes('Waiting for Admin Approval')));
-                  const isInProgress = visit.status === 'In-Progress' && !isWaitingApproval;
-                  const isRejected = visit.status === 'Rejected' || visit.status === 'Cancelled' || Boolean(visit.rejectionReason);
-                  const isAssigned = !isRejected && !isWaitingApproval && (visit.status === 'Assigned' || visit.status === 'Pending');
+              {displayedVisits.length === 0 ? (
+                <div style={{ background: '#FFFFFF', borderRadius: 16, padding: '3rem 1.5rem', border: '1px solid #E2E8F0', textAlign: 'center' }}>
+                  <EmptyState
+                    title={
+                      visitFilter === 'rejected'
+                        ? 'No rejected visits'
+                        : visitFilter === 'active'
+                        ? 'No active visits right now'
+                        : visitFilter === 'completed'
+                        ? 'No completed visits yet'
+                        : 'No visits assigned yet'
+                    }
+                    description={
+                      visitFilter === 'rejected'
+                        ? 'You do not have any cancelled or rejected patient visits.'
+                        : 'When patients near your area book care, the office will assign them here. You will see their address and contact.'
+                    }
+                    actionText={visitFilter !== 'all' ? 'View All Visits' : 'Add a Patient Referral'}
+                    onAction={() => {
+                      if (visitFilter !== 'all') {
+                        setVisitFilter('all');
+                      } else {
+                        setActiveTab('add-patient');
+                      }
+                    }}
+                  />
+                </div>
+              ) : (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '0.85rem' }}>
+                  {displayedVisits.map((visit) => {
+                    const isDone = visit.status === 'Completed';
+                    const isWaitingApproval = !isDone && (visit.nurseAcceptanceStatus === 'Service Done' || Boolean(visit.notes && visit.notes.includes('Waiting for Admin Approval')));
+                    const isInProgress = visit.status === 'In-Progress' && !isWaitingApproval;
+                    const isRejected = visit.status === 'Rejected' || visit.status === 'Cancelled' || Boolean(visit.rejectionReason);
+                    const isAssigned = !isRejected && !isWaitingApproval && (visit.status === 'Assigned' || visit.status === 'Pending');
 
-                  return (
-                    <div
-                      key={visit.id}
-                      style={{
-                        background: '#FFFFFF',
-                        borderRadius: 16,
-                        border: isRejected ? '1.5px solid #FECDD3' : (isWaitingApproval ? '1.5px solid #F59E0B' : isInProgress ? '2px solid #0284C7' : isDone ? '1px solid #DCFCE7' : '1px solid #E2E8F0'),
-                        padding: '1.25rem',
-                        boxShadow: isInProgress ? '0 4px 12px rgba(2, 132, 199, 0.08)' : (isWaitingApproval ? '0 4px 12px rgba(245, 158, 11, 0.08)' : 'none'),
-                        position: 'relative'
-                      }}
-                    >
-                      {/* Status Tag */}
-                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.6rem' }}>
-                        <span style={{
-                          fontSize: '0.74rem',
-                          fontWeight: 800,
-                          padding: '3px 9px',
-                          borderRadius: 9999,
-                          background: isRejected ? '#FEE2E2' : (isWaitingApproval ? '#FEF3C7' : isInProgress ? '#EFF6FF' : isDone ? '#F0FDF4' : '#FFFBEB'),
-                          color: isRejected ? '#DC2626' : (isWaitingApproval ? '#92400E' : isInProgress ? '#0284C7' : isDone ? '#16A34A' : '#D97706'),
-                          border: `1px solid ${isRejected ? '#FCA5A5' : (isWaitingApproval ? '#FDE68A' : isInProgress ? '#BFDBFE' : isDone ? '#BBF7D0' : '#FDE68A')}`
-                        }}>
-                          {isRejected
-                            ? `✕ ${visit.status === 'Cancelled' ? 'Duty Cancelled' : 'Duty / Patient Rejected'}`
-                            : (isWaitingApproval ? '⏳ Service Done — Waiting for Admin Approval' : isInProgress ? '⚡ Duty in Progress' : isDone ? '✓ Visit Completed' : '🔔 New Assignment')}
-                        </span>
-                        <span style={{ fontSize: '0.78rem', color: '#64748B', fontWeight: 600 }}>
-                          ID: {visit.id}
-                        </span>
-                      </div>
+                    return (
+                      <div
+                        key={visit.id}
+                        style={{
+                          background: '#FFFFFF',
+                          borderRadius: 16,
+                          border: isRejected ? '1.5px solid #FECDD3' : (isWaitingApproval ? '1.5px solid #F59E0B' : isInProgress ? '2px solid #0284C7' : isDone ? '1px solid #DCFCE7' : '1px solid #E2E8F0'),
+                          padding: '1.25rem',
+                          boxShadow: isInProgress ? '0 4px 12px rgba(2, 132, 199, 0.08)' : (isWaitingApproval ? '0 4px 12px rgba(245, 158, 11, 0.08)' : 'none'),
+                          position: 'relative'
+                        }}
+                      >
+                        {/* Status Tag */}
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.6rem' }}>
+                          <span style={{
+                            fontSize: '0.74rem',
+                            fontWeight: 800,
+                            padding: '3px 9px',
+                            borderRadius: 9999,
+                            background: isRejected ? '#FEE2E2' : (isWaitingApproval ? '#FEF3C7' : isInProgress ? '#EFF6FF' : isDone ? '#F0FDF4' : '#FFFBEB'),
+                            color: isRejected ? '#DC2626' : (isWaitingApproval ? '#92400E' : isInProgress ? '#0284C7' : isDone ? '#16A34A' : '#D97706'),
+                            border: `1px solid ${isRejected ? '#FCA5A5' : (isWaitingApproval ? '#FDE68A' : isInProgress ? '#BFDBFE' : isDone ? '#BBF7D0' : '#FDE68A')}`
+                          }}>
+                            {isRejected
+                              ? `✕ ${visit.status === 'Cancelled' ? 'Duty Cancelled' : 'Duty / Patient Rejected'}`
+                              : (isWaitingApproval ? '⏳ Service Done — Waiting for Admin Approval' : isInProgress ? '⚡ Duty in Progress' : isDone ? '✓ Visit Completed' : '🔔 New Assignment')}
+                          </span>
+                          <span style={{ fontSize: '0.78rem', color: '#64748B', fontWeight: 600 }}>
+                            ID: {visit.id}
+                          </span>
+                        </div>
 
-                      {/* Patient & Service details */}
-                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: '0.75rem' }}>
-                        <div>
-                          <h4 style={{ margin: 0, fontSize: '1.15rem', fontWeight: 800, color: '#0F172A' }}>
-                            {visit.patientName} {visit.patientAge ? `(${visit.patientAge} yrs, ${visit.patientGender})` : ''}
-                          </h4>
-                          <div style={{ fontSize: '0.92rem', color: '#0F172A', fontWeight: 700, marginTop: '0.25rem' }}>
-                            Service: <span style={{ color: '#0284C7' }}>{visit.serviceTitle}</span> (₹{visit.finalFee !== undefined ? visit.finalFee : (visit.estimatedFee || 899)})
-                            {visit.promoCode && (
-                              <span style={{ fontSize: '0.75rem', color: '#10B981', fontWeight: 700, marginLeft: '0.5rem', background: '#ECFDF5', padding: '2px 6px', borderRadius: 4, display: 'inline-block', border: '1px solid #A7F3D0' }}>
-                                🎉 {visit.promoCode} (-₹{visit.discountRupees})
+                        {/* Patient & Service details */}
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: '0.75rem' }}>
+                          <div>
+                            <h4 style={{ margin: 0, fontSize: '1.15rem', fontWeight: 800, color: '#0F172A' }}>
+                              {cleanPatientNameOnly(visit.patientName)} {visit.patientAge ? `(${visit.patientAge} yrs, ${visit.patientGender})` : ''}
+                            </h4>
+                            <div style={{ fontSize: '0.92rem', color: '#0F172A', fontWeight: 700, marginTop: '0.25rem' }}>
+                              Service: <span style={{ color: '#0284C7' }}>{visit.serviceTitle}</span> (₹{visit.finalFee !== undefined ? visit.finalFee : (visit.estimatedFee || 899)})
+                              {visit.promoCode && (
+                                <span style={{ fontSize: '0.75rem', color: '#10B981', fontWeight: 700, marginLeft: '0.5rem', background: '#ECFDF5', padding: '2px 6px', borderRadius: 4, display: 'inline-block', border: '1px solid #A7F3D0' }}>
+                                  🎉 {visit.promoCode} (-₹{visit.discountRupees})
+                                </span>
+                              )}
+                            </div>
+                            <div style={{ marginTop: '0.35rem', display: 'flex', alignItems: 'center', gap: '0.4rem', flexWrap: 'wrap' }}>
+                              <span style={{
+                                fontSize: '0.76rem',
+                                fontWeight: 800,
+                                background: isRejected ? '#F1F5F9' : '#ECFDF5',
+                                color: isRejected ? '#64748B' : '#059669',
+                                border: `1px solid ${isRejected ? '#CBD5E1' : '#A7F3D0'}`,
+                                padding: '2px 8px',
+                                borderRadius: 6,
+                                display: 'inline-flex',
+                                alignItems: 'center',
+                                gap: '0.3rem'
+                              }}>
+                                <span>💰 Your 70% Payout:</span>
+                                <strong style={{ fontSize: '0.84rem' }}>
+                                  {isRejected ? '₹0' : `₹${Math.round(Number(visit.finalFee !== undefined ? visit.finalFee : (visit.estimatedFee || 899)) * 0.70)}`}
+                                </strong>
+                                <span style={{ fontSize: '0.68rem', color: isRejected ? '#64748B' : (isWaitingApproval ? '#B45309' : '#047857'), fontWeight: 600 }}>
+                                  {isRejected ? '(Cancelled/Rejected)' : (isWaitingApproval ? '(⏳ Waiting Admin Approval)' : (isDone ? 'Credited to earnings' : 'Credited after admin approval'))}
+                                </span>
                               </span>
+                            </div>
+
+                            {/* Prominently Show Patient Contact Information */}
+                            <div style={{ fontSize: '0.84rem', color: isRejected ? '#991B1B' : '#0F172A', marginTop: '0.35rem', display: 'flex', alignItems: 'center', gap: '0.35rem', fontWeight: 700 }}>
+                              <Phone size={13} style={{ color: isRejected ? '#DC2626' : '#0284C7', flexShrink: 0 }} />
+                              <span>Patient Contact: <strong style={{ color: isRejected ? '#DC2626' : '#0284C7' }}>{visit.patientPhone}</strong></span>
+                            </div>
+
+                            <div style={{ fontSize: '0.84rem', color: '#475569', marginTop: '0.35rem', display: 'flex', alignItems: 'center', gap: '0.35rem' }}>
+                              <MapPin size={14} style={{ color: '#EF4444', flexShrink: 0 }} />
+                              <span><strong>Address:</strong> {visit.fullAddress || visit.area || 'Hyderabad'}</span>
+                            </div>
+                            {(visit.scheduledSlot || visit.preferredTime) && (
+                              <div style={{ fontSize: '0.82rem', color: '#64748B', marginTop: '0.2rem', display: 'flex', alignItems: 'center', gap: '0.35rem' }}>
+                                <Clock size={13} style={{ color: '#0284C7', flexShrink: 0 }} />
+                                <span>Scheduled: 📅 {formatDateDDMMYY(visit.preferredDate || visit.createdAt, 'Today')} | ⏰ {visit.scheduledSlot || visit.preferredTime || 'Immediate'}</span>
+                              </div>
+                            )}
+                            <div style={{ fontSize: '0.78rem', color: '#94A3B8', marginTop: '0.2rem' }}>
+                              Received: {visit.createdAt ? formatDateTimeDDMMYY(visit.createdAt) : 'Unknown'}
+                            </div>
+
+                            {/* Rejection Alert Box with Prominent Patient Contact & Action Links */}
+                            {isRejected && (
+                              <div style={{
+                                marginTop: '0.55rem',
+                                background: '#FEF2F2',
+                                border: '1.5px solid #FCA5A5',
+                                borderRadius: 10,
+                                padding: '0.65rem 0.9rem',
+                                display: 'flex',
+                                flexDirection: 'column',
+                                gap: '0.4rem'
+                              }}>
+                                <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', fontSize: '0.82rem', color: '#991B1B', fontWeight: 700 }}>
+                                  <AlertCircle size={15} style={{ color: '#DC2626', flexShrink: 0 }} />
+                                  <span><strong>Duty Rejection Status:</strong> {visit.rejectionReason || (visit.notes && visit.notes.includes('Rejection:') ? visit.notes.split('Rejection:')[1]?.trim() : (visit.notes && visit.notes.includes('[Referral rejected') ? visit.notes : 'Patient cancelled or duty rejected by office'))}</span>
+                                </div>
+                                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '0.5rem', paddingTop: '0.35rem', borderTop: '1px dashed #FECDD3' }}>
+                                  <div style={{ fontSize: '0.82rem', color: '#7F1D1D', display: 'flex', alignItems: 'center', gap: '0.35rem' }}>
+                                    <Phone size={13} style={{ color: '#DC2626' }} />
+                                    <span><strong>Patient Phone:</strong> <a href={`tel:${visit.patientPhone}`} style={{ color: '#DC2626', fontWeight: 800 }}>{visit.patientPhone}</a></span>
+                                  </div>
+                                  <div style={{ display: 'flex', gap: '0.4rem' }}>
+                                    <a
+                                      href={`tel:${visit.patientPhone}`}
+                                      style={{
+                                        background: '#DC2626',
+                                        color: '#FFFFFF',
+                                        padding: '0.25rem 0.65rem',
+                                        borderRadius: 6,
+                                        fontSize: '0.76rem',
+                                        fontWeight: 750,
+                                        textDecoration: 'none',
+                                        display: 'inline-flex',
+                                        alignItems: 'center',
+                                        gap: '0.25rem'
+                                      }}
+                                    >
+                                      <Phone size={12} /> Call Patient
+                                    </a>
+                                    <a
+                                      href={`https://wa.me/91${visit.patientPhone.replace(/\D/g, '').slice(-10)}?text=${encodeURIComponent(`Namaste ${visit.patientName}, I am ${nurse.name} from Xpress Nurse regarding your booking #${visit.id}.`)}`}
+                                      target="_blank"
+                                      rel="noreferrer"
+                                      style={{
+                                        background: '#16A34A',
+                                        color: '#FFFFFF',
+                                        padding: '0.25rem 0.65rem',
+                                        borderRadius: 6,
+                                        fontSize: '0.76rem',
+                                        fontWeight: 750,
+                                        textDecoration: 'none',
+                                        display: 'inline-flex',
+                                        alignItems: 'center',
+                                        gap: '0.25rem'
+                                      }}
+                                    >
+                                      <MessageCircle size={12} /> WhatsApp
+                                    </a>
+                                  </div>
+                                </div>
+                              </div>
                             )}
                           </div>
-                          <div style={{ marginTop: '0.35rem', display: 'flex', alignItems: 'center', gap: '0.4rem', flexWrap: 'wrap' }}>
-                            <span style={{
-                              fontSize: '0.76rem',
-                              fontWeight: 800,
-                              background: isRejected ? '#F1F5F9' : '#ECFDF5',
-                              color: isRejected ? '#64748B' : '#059669',
-                              border: `1px solid ${isRejected ? '#CBD5E1' : '#A7F3D0'}`,
-                              padding: '2px 8px',
-                              borderRadius: 6,
-                              display: 'inline-flex',
-                              alignItems: 'center',
-                              gap: '0.3rem'
-                            }}>
-                              <span>💰 Your 70% Payout:</span>
-                              <strong style={{ fontSize: '0.84rem' }}>
-                                {isRejected ? '₹0' : `₹${Math.round(Number(visit.finalFee !== undefined ? visit.finalFee : (visit.estimatedFee || 899)) * 0.70)}`}
-                              </strong>
-                              <span style={{ fontSize: '0.68rem', color: isRejected ? '#64748B' : (isWaitingApproval ? '#B45309' : '#047857'), fontWeight: 600 }}>
-                                {isRejected ? '(Cancelled/Rejected)' : (isWaitingApproval ? '(⏳ Waiting Admin Approval)' : (isDone ? 'Credited to earnings' : 'Credited after admin approval'))}
-                              </span>
-                            </span>
-                          </div>
-                          <div style={{ fontSize: '0.84rem', color: '#475569', marginTop: '0.35rem', display: 'flex', alignItems: 'center', gap: '0.35rem' }}>
-                            <MapPin size={14} style={{ color: '#EF4444', flexShrink: 0 }} />
-                            <span><strong>Address:</strong> {visit.fullAddress || visit.area || 'Hyderabad'}</span>
-                          </div>
-                          {(visit.scheduledSlot || visit.preferredTime) && (
-                            <div style={{ fontSize: '0.82rem', color: '#64748B', marginTop: '0.2rem', display: 'flex', alignItems: 'center', gap: '0.35rem' }}>
-                              <Clock size={13} style={{ color: '#0284C7', flexShrink: 0 }} />
-                              <span>Scheduled: 📅 {visit.preferredDate || (visit.createdAt ? new Date(visit.createdAt).toLocaleDateString('en-IN') : 'Today')} | ⏰ {visit.scheduledSlot || visit.preferredTime || 'Immediate'}</span>
-                            </div>
-                          )}
-                          <div style={{ fontSize: '0.78rem', color: '#94A3B8', marginTop: '0.2rem' }}>
-                            Received: {visit.createdAt ? new Date(visit.createdAt).toLocaleString() : 'Unknown'}
-                          </div>
 
-                          {/* Rejection Reason Alert if rejected/cancelled */}
-                          {isRejected && (
-                            <div style={{
-                              marginTop: '0.5rem',
-                              background: '#FEF2F2',
-                              border: '1px solid #FECDD3',
-                              borderRadius: 8,
-                              padding: '0.45rem 0.8rem',
-                              fontSize: '0.8rem',
-                              color: '#991B1B',
-                              display: 'flex',
-                              alignItems: 'center',
-                              gap: '0.4rem'
-                            }}>
-                              <AlertCircle size={14} style={{ color: '#DC2626', flexShrink: 0 }} />
-                              <span><strong>Reason:</strong> {visit.rejectionReason || (visit.notes && visit.notes.includes('Rejection:') ? visit.notes.split('Rejection:')[1]?.trim() : (visit.notes && visit.notes.includes('[Referral rejected') ? visit.notes : 'Patient cancelled or visit rejected by office'))}</span>
-                            </div>
-                          )}
+                          {/* Direct Action Buttons */}
+                          <div style={{ display: 'flex', gap: '0.4rem', flexWrap: 'wrap', alignItems: 'center' }}>
+                            <a
+                              href={`tel:${visit.patientPhone}`}
+                              style={{
+                                background: '#F1F5F9',
+                                border: '1px solid #CBD5E1',
+                                color: '#0F172A',
+                                padding: '0.45rem 0.75rem',
+                                borderRadius: 8,
+                                fontSize: '0.8rem',
+                                fontWeight: 700,
+                                textDecoration: 'none',
+                                display: 'inline-flex',
+                                alignItems: 'center',
+                                gap: '0.3rem'
+                              }}
+                            >
+                              <Phone size={13} style={{ color: '#0284C7' }} />
+                              <span>Call</span>
+                            </a>
+
+                            <a
+                              href={`https://wa.me/91${visit.patientPhone.replace(/\D/g, '').slice(-10)}?text=${encodeURIComponent(`Namaste ${visit.patientName}, I am ${nurse.name} from Xpress Nurse for your scheduled ${visit.serviceTitle} visit.`)}`}
+                              target="_blank"
+                              rel="noreferrer"
+                              style={{
+                                background: '#F0FDF4',
+                                border: '1px solid #BBF7D0',
+                                color: '#16A34A',
+                                padding: '0.45rem 0.75rem',
+                                borderRadius: 8,
+                                fontSize: '0.8rem',
+                                fontWeight: 700,
+                                textDecoration: 'none',
+                                display: 'inline-flex',
+                                alignItems: 'center',
+                                gap: '0.3rem'
+                              }}
+                            >
+                              <MessageCircle size={13} />
+                              <span>WhatsApp</span>
+                            </a>
+
+                            <a
+                              href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent((visit.fullAddress || visit.area || 'Hyderabad') + ', Hyderabad')}`}
+                              target="_blank"
+                              rel="noreferrer"
+                              style={{
+                                background: '#FFFBEB',
+                                border: '1px solid #FDE68A',
+                                color: '#B45309',
+                                padding: '0.45rem 0.75rem',
+                                borderRadius: 8,
+                                fontSize: '0.8rem',
+                                fontWeight: 700,
+                                textDecoration: 'none',
+                                display: 'inline-flex',
+                                alignItems: 'center',
+                                gap: '0.3rem'
+                              }}
+                            >
+                              <Navigation size={13} />
+                              <span>Map</span>
+                            </a>
+                          </div>
                         </div>
 
-                        {/* Direct Action Buttons */}
-                        <div style={{ display: 'flex', gap: '0.4rem', flexWrap: 'wrap', alignItems: 'center' }}>
-                          <a
-                            href={`tel:${visit.patientPhone}`}
-                            style={{
-                              background: '#F1F5F9',
-                              border: '1px solid #CBD5E1',
-                              color: '#0F172A',
-                              padding: '0.45rem 0.75rem',
-                              borderRadius: 8,
-                              fontSize: '0.8rem',
-                              fontWeight: 700,
-                              textDecoration: 'none',
-                              display: 'inline-flex',
-                              alignItems: 'center',
-                              gap: '0.3rem'
-                            }}
-                          >
-                            <Phone size={13} style={{ color: '#0284C7' }} />
-                            <span>Call</span>
-                          </a>
-
-                          <a
-                            href={`https://wa.me/91${visit.patientPhone.replace(/\D/g, '').slice(-10)}?text=${encodeURIComponent(`Namaste ${visit.patientName}, I am ${nurse.name} from Xpress Nurse for your scheduled ${visit.serviceTitle} visit.`)}`}
-                            target="_blank"
-                            rel="noreferrer"
-                            style={{
-                              background: '#F0FDF4',
-                              border: '1px solid #BBF7D0',
-                              color: '#16A34A',
-                              padding: '0.45rem 0.75rem',
-                              borderRadius: 8,
-                              fontSize: '0.8rem',
-                              fontWeight: 700,
-                              textDecoration: 'none',
-                              display: 'inline-flex',
-                              alignItems: 'center',
-                              gap: '0.3rem'
-                            }}
-                          >
-                            <MessageCircle size={13} />
-                            <span>WhatsApp</span>
-                          </a>
-
-                          <a
-                            href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent((visit.fullAddress || visit.area || 'Hyderabad') + ', Hyderabad')}`}
-                            target="_blank"
-                            rel="noreferrer"
-                            style={{
-                              background: '#FFFBEB',
-                              border: '1px solid #FDE68A',
-                              color: '#B45309',
-                              padding: '0.45rem 0.75rem',
-                              borderRadius: 8,
-                              fontSize: '0.8rem',
-                              fontWeight: 700,
-                              textDecoration: 'none',
-                              display: 'inline-flex',
-                              alignItems: 'center',
-                              gap: '0.3rem'
-                            }}
-                          >
-                            <Navigation size={13} />
-                            <span>Map</span>
-                          </a>
-                        </div>
-                      </div>
-
-                      {/* Bottom Duty Action Bar */}
-                      <div style={{
-                        marginTop: '0.9rem',
-                        paddingTop: '0.75rem',
-                        borderTop: '1px solid #F1F5F9',
-                        display: 'flex',
-                        justifyContent: 'space-between',
-                        alignItems: 'center',
-                        flexWrap: 'wrap',
-                        gap: '0.5rem'
-                      }}>
-                        <div style={{ display: 'flex', gap: '0.5rem' }}>
-                          {visit.hasPrescription && (
+                        {/* Bottom Duty Action Bar */}
+                        <div style={{
+                          marginTop: '0.9rem',
+                          paddingTop: '0.75rem',
+                          borderTop: '1px solid #F1F5F9',
+                          display: 'flex',
+                          justifyContent: 'space-between',
+                          alignItems: 'center',
+                          flexWrap: 'wrap',
+                          gap: '0.5rem'
+                        }}>
+                          <div style={{ display: 'flex', gap: '0.5rem' }}>
+                            {visit.hasPrescription && (
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setPreviewRxBooking(visit);
+                                  setIsRxModalOpen(true);
+                                }}
+                                style={{
+                                  background: '#EFF6FF',
+                                  border: '1px solid #BFDBFE',
+                                  color: '#0284C7',
+                                  padding: '0.35rem 0.7rem',
+                                  borderRadius: 6,
+                                  fontSize: '0.76rem',
+                                  fontWeight: 700,
+                                  cursor: 'pointer',
+                                  display: 'inline-flex',
+                                  alignItems: 'center',
+                                  gap: '0.25rem'
+                                }}
+                              >
+                                <FileText size={12} />
+                                <span>View Doctor Note / Rx</span>
+                              </button>
+                            )}
                             <button
                               type="button"
-                              onClick={() => {
-                                setPreviewRxBooking(visit);
-                                setIsRxModalOpen(true);
-                              }}
+                              onClick={() => handleViewInvoice(visit)}
+                              title={visit.invoiceUrl ? `View Synced Doorstep Bill (${visit.invoiceNumber || 'Official'})` : 'View Doorstep Bill'}
                               style={{
-                                background: '#EFF6FF',
-                                border: '1px solid #BFDBFE',
-                                color: '#0284C7',
+                                background: visit.invoiceUrl ? '#F0F9FF' : '#F8FAFC',
+                                border: visit.invoiceUrl ? '1px solid #BAE6FD' : '1px solid #E2E8F0',
+                                color: visit.invoiceUrl ? '#0284C7' : '#475569',
                                 padding: '0.35rem 0.7rem',
                                 borderRadius: 6,
                                 fontSize: '0.76rem',
@@ -1397,89 +1549,91 @@ export const NurseDashboard: React.FC<NurseDashboardProps> = ({
                                 gap: '0.25rem'
                               }}
                             >
-                              <FileText size={12} />
-                              <span>View Doctor Note / Rx</span>
+                              <Receipt size={12} style={{ color: visit.invoiceUrl ? '#0284C7' : undefined }} />
+                              <span>Doorstep Bill {visit.invoiceNumber ? `(#${visit.invoiceNumber.replace('XN-INV-2026-', '')})` : ''}</span>
                             </button>
-                          )}
-                          <button
-                            type="button"
-                            onClick={() => handleViewInvoice(visit)}
-                            title={visit.invoiceUrl ? `View Synced Doorstep Bill (${visit.invoiceNumber || 'Official'})` : 'View Doorstep Bill'}
-                            style={{
-                              background: visit.invoiceUrl ? '#F0F9FF' : '#F8FAFC',
-                              border: visit.invoiceUrl ? '1px solid #BAE6FD' : '1px solid #E2E8F0',
-                              color: visit.invoiceUrl ? '#0284C7' : '#475569',
-                              padding: '0.35rem 0.7rem',
-                              borderRadius: 6,
-                              fontSize: '0.76rem',
-                              fontWeight: 700,
-                              cursor: 'pointer',
-                              display: 'inline-flex',
-                              alignItems: 'center',
-                              gap: '0.25rem'
-                            }}
-                          >
-                            <Receipt size={12} style={{ color: visit.invoiceUrl ? '#0284C7' : undefined }} />
-                            <span>Doorstep Bill {visit.invoiceNumber ? `(#${visit.invoiceNumber.replace('XN-INV-2026-', '')})` : ''}</span>
-                          </button>
-                          {visit.invoiceUrl && (
-                            <a
-                              href={visit.invoiceUrl}
-                              target="_blank"
-                              rel="noreferrer"
-                              title="Open Official Synced Bill on Cloudflare R2"
-                              style={{
-                                background: '#ECFDF5',
-                                border: '1px solid #A7F3D0',
-                                color: '#059669',
-                                padding: '0.35rem 0.6rem',
-                                borderRadius: 6,
-                                fontSize: '0.74rem',
-                                fontWeight: 750,
-                                textDecoration: 'none',
-                                display: 'inline-flex',
-                                alignItems: 'center',
-                                gap: '0.2rem'
-                              }}
-                            >
-                              <ExternalLink size={12} />
-                              <span>Live Bill</span>
-                            </a>
-                          )}
-                        </div>
-
-                        {/* State Change Buttons */}
-                        <div>
-                          {isAssigned && (
-                            <>
-                              <button
-                                type="button"
-                                onClick={() => handleAcceptVisit(visit)}
+                            {visit.invoiceUrl && (
+                              <a
+                                href={visit.invoiceUrl}
+                                target="_blank"
+                                rel="noreferrer"
+                                title="Open Official Synced Bill on Cloudflare R2"
                                 style={{
-                                  background: '#16A34A',
-                                  color: '#FFFFFF',
-                                  border: 'none',
-                                  padding: '0.5rem 1.1rem',
-                                  borderRadius: 8,
-                                  fontSize: '0.84rem',
-                                  fontWeight: 800,
-                                  cursor: 'pointer',
+                                  background: '#ECFDF5',
+                                  border: '1px solid #A7F3D0',
+                                  color: '#059669',
+                                  padding: '0.35rem 0.6rem',
+                                  borderRadius: 6,
+                                  fontSize: '0.74rem',
+                                  fontWeight: 750,
+                                  textDecoration: 'none',
                                   display: 'inline-flex',
                                   alignItems: 'center',
-                                  gap: '0.35rem'
+                                  gap: '0.2rem'
                                 }}
                               >
-                                <CheckCircle2 size={15} />
-                                <span>Accept Job</span>
-                              </button>
+                                <ExternalLink size={12} />
+                                <span>Live Bill</span>
+                              </a>
+                            )}
+                          </div>
+
+                          {/* State Change Buttons */}
+                          <div>
+                            {isAssigned && (
+                              <>
+                                <button
+                                  type="button"
+                                  onClick={() => handleAcceptVisit(visit)}
+                                  style={{
+                                    background: '#16A34A',
+                                    color: '#FFFFFF',
+                                    border: 'none',
+                                    padding: '0.5rem 1.1rem',
+                                    borderRadius: 8,
+                                    fontSize: '0.84rem',
+                                    fontWeight: 800,
+                                    cursor: 'pointer',
+                                    display: 'inline-flex',
+                                    alignItems: 'center',
+                                    gap: '0.35rem'
+                                  }}
+                                >
+                                  <CheckCircle2 size={15} />
+                                  <span>Accept</span>
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => handleRejectVisit(visit)}
+                                  style={{
+                                    background: 'transparent',
+                                    color: '#EF4444',
+                                    border: '1px solid #EF4444',
+                                    padding: '0.5rem 1.1rem',
+                                    borderRadius: 8,
+                                    fontSize: '0.84rem',
+                                    fontWeight: 800,
+                                    cursor: 'pointer',
+                                    display: 'inline-flex',
+                                    alignItems: 'center',
+                                    gap: '0.35rem',
+                                    marginLeft: '0.5rem'
+                                  }}
+                                >
+                                  ✕ Reject
+                                </button>
+                              </>
+                            )}
+
+                            {isInProgress && (
                               <button
                                 type="button"
-                                onClick={() => handleRejectVisit(visit)}
+                                onClick={() => handleFinishVisit(visit)}
                                 style={{
-                                  background: 'transparent',
-                                  color: '#EF4444',
-                                  border: '1px solid #EF4444',
-                                  padding: '0.5rem 1.1rem',
+                                  background: '#059669',
+                                  color: '#FFFFFF',
+                                  border: 'none',
+                                  padding: '0.5rem 1.25rem',
                                   borderRadius: 8,
                                   fontSize: '0.84rem',
                                   fontWeight: 800,
@@ -1487,77 +1641,54 @@ export const NurseDashboard: React.FC<NurseDashboardProps> = ({
                                   display: 'inline-flex',
                                   alignItems: 'center',
                                   gap: '0.35rem',
-                                  marginLeft: '0.5rem'
+                                  boxShadow: '0 4px 10px rgba(5, 150, 105, 0.25)'
                                 }}
                               >
-                                ✕ Reject
+                                <CheckCircle2 size={15} />
+                                <span>Completed</span>
                               </button>
-                            </>
-                          )}
+                            )}
 
-                          {isInProgress && (
-                            <button
-                              type="button"
-                              onClick={() => handleFinishVisit(visit)}
-                              style={{
-                                background: '#059669',
-                                color: '#FFFFFF',
-                                border: 'none',
-                                padding: '0.5rem 1.25rem',
-                                borderRadius: 8,
-                                fontSize: '0.84rem',
+                            {isWaitingApproval && (
+                              <span style={{
+                                fontSize: '0.82rem',
+                                color: '#92400E',
                                 fontWeight: 800,
-                                cursor: 'pointer',
+                                background: '#FEF3C7',
+                                border: '1px solid #FDE68A',
+                                padding: '5px 12px',
+                                borderRadius: 8,
                                 display: 'inline-flex',
                                 alignItems: 'center',
-                                gap: '0.35rem',
-                                boxShadow: '0 4px 10px rgba(5, 150, 105, 0.25)'
-                              }}
-                            >
-                              <CheckCircle2 size={15} />
-                              <span>Finish Duty (Care Done)</span>
-                            </button>
-                          )}
+                                gap: '0.35rem'
+                              }}>
+                                <Clock size={15} style={{ color: '#D97706' }} />
+                                <span>⏳ Service Done — Waiting for Admin Approval (+₹{Math.round(Number(visit.finalFee !== undefined ? visit.finalFee : (visit.estimatedFee || 899)) * 0.70)} pending)</span>
+                              </span>
+                            )}
 
-                          {isWaitingApproval && (
-                            <span style={{
-                              fontSize: '0.82rem',
-                              color: '#92400E',
-                              fontWeight: 800,
-                              background: '#FEF3C7',
-                              border: '1px solid #FDE68A',
-                              padding: '5px 12px',
-                              borderRadius: 8,
-                              display: 'inline-flex',
-                              alignItems: 'center',
-                              gap: '0.35rem'
-                            }}>
-                              <Clock size={15} style={{ color: '#D97706' }} />
-                              <span>⏳ Service Done — Waiting for Admin Approval (+₹{Math.round(Number(visit.finalFee !== undefined ? visit.finalFee : (visit.estimatedFee || 899)) * 0.70)} pending)</span>
-                            </span>
-                          )}
+                            {isDone && (
+                              <span style={{ fontSize: '0.82rem', color: '#16A34A', fontWeight: 800, background: '#DCFCE7', padding: '4px 10px', borderRadius: 6, display: 'inline-flex', alignItems: 'center', gap: '0.3rem' }}>
+                                <CheckCircle2 size={14} />
+                                <span>✓ Completed & Billed (+₹{Math.round(Number(visit.finalFee !== undefined ? visit.finalFee : (visit.estimatedFee || 899)) * 0.70)} Earned)</span>
+                              </span>
+                            )}
 
-                          {isDone && (
-                            <span style={{ fontSize: '0.82rem', color: '#16A34A', fontWeight: 800, background: '#DCFCE7', padding: '4px 10px', borderRadius: 6, display: 'inline-flex', alignItems: 'center', gap: '0.3rem' }}>
-                              <CheckCircle2 size={14} />
-                              <span>✓ Finished & Billed (+₹{Math.round(Number(visit.finalFee !== undefined ? visit.finalFee : (visit.estimatedFee || 899)) * 0.70)} Earned)</span>
-                            </span>
-                          )}
-
-                          {isRejected && (
-                            <span style={{ fontSize: '0.82rem', color: '#DC2626', fontWeight: 800, background: '#FEE2E2', padding: '4px 10px', borderRadius: 6, display: 'inline-flex', alignItems: 'center', gap: '0.3rem' }}>
-                              <span>✕ Duty Cancelled / Closed</span>
-                            </span>
-                          )}
+                            {isRejected && (
+                              <span style={{ fontSize: '0.82rem', color: '#DC2626', fontWeight: 800, background: '#FEE2E2', padding: '4px 10px', borderRadius: 6, display: 'inline-flex', alignItems: 'center', gap: '0.3rem' }}>
+                                <span>✕ Duty Cancelled / Closed</span>
+                              </span>
+                            )}
+                          </div>
                         </div>
                       </div>
-                    </div>
-                  );
-                })}
-              </div>
-            )}
-          </div>
-        )}
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+          );
+        })()}
 
         {/* ================================================================= */}
         {/* TAB 3: ➕ ADD PATIENT (Easiest Patient Referral Form) */}
@@ -1828,10 +1959,10 @@ export const NurseDashboard: React.FC<NurseDashboardProps> = ({
                 </div>
                 <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap', marginTop: '0.4rem' }}>
                   <span style={{ fontSize: '0.76rem', background: 'rgba(255,255,255,0.2)', padding: '2px 8px', borderRadius: 6, color: '#FFFFFF', fontWeight: 700 }}>
-                    💰 ₹{completedVisitsEarnings} from {completedVisits.length} Finished Visits (70%)
+                    💰 ₹{completedVisitsEarnings} from {completedVisits.length} Completed Visits (70%)
                   </span>
                   <span style={{ fontSize: '0.76rem', background: 'rgba(255,255,255,0.2)', padding: '2px 8px', borderRadius: 6, color: '#FFFFFF', fontWeight: 700 }}>
-                    👥 ₹{calculatedMoney} from {completedReferredVisits.length} Finished Patient Referrals (10%)
+                    👥 ₹{calculatedMoney} from {completedReferredVisits.length} Completed Patient Referrals (10%)
                   </span>
                   {pendingApprovalVisitsEarnings > 0 && (
                     <span style={{ fontSize: '0.76rem', background: '#FEF3C7', border: '1px solid #FDE68A', padding: '2px 8px', borderRadius: 6, color: '#92400E', fontWeight: 800 }}>
@@ -2108,18 +2239,65 @@ export const NurseDashboard: React.FC<NurseDashboardProps> = ({
                                   background: '#FFF1F2',
                                   border: '1px dashed #FDA4AF',
                                   borderRadius: 8,
-                                  padding: '0.5rem 0.75rem',
+                                  padding: '0.6rem 0.75rem',
                                   fontSize: '0.78rem',
                                   color: '#9F1239',
                                   display: 'flex',
-                                  alignItems: 'flex-start',
+                                  flexDirection: 'column',
                                   gap: '0.45rem',
                                   marginTop: '0.2rem'
                                 }}>
-                                  <AlertCircle size={15} style={{ marginTop: '1px', flexShrink: 0, color: '#E11D48' }} />
-                                  <div>
-                                    <span style={{ fontWeight: 800 }}>Rejection Reason: </span>
-                                    <span>{lead.rejectionReason || lead.adminNotes || 'Patient cancelled, unserviceable location, or rejected during office review'}</span>
+                                  <div style={{ display: 'flex', alignItems: 'flex-start', gap: '0.45rem' }}>
+                                    <AlertCircle size={15} style={{ marginTop: '1px', flexShrink: 0, color: '#E11D48' }} />
+                                    <div>
+                                      <span style={{ fontWeight: 800 }}>Rejection Reason: </span>
+                                      <span>{lead.rejectionReason || lead.adminNotes || 'Patient cancelled, unserviceable location, or rejected during office review'}</span>
+                                    </div>
+                                  </div>
+                                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '0.5rem', paddingTop: '0.35rem', borderTop: '1px solid #FECDD3' }}>
+                                    <span style={{ fontWeight: 700, color: '#991B1B' }}>
+                                      Patient Contact: <strong style={{ color: '#E11D48' }}>{lead.patientPhone || 'Not provided'}</strong>
+                                    </span>
+                                    {lead.patientPhone && (
+                                      <div style={{ display: 'flex', gap: '0.4rem' }}>
+                                        <a
+                                          href={`tel:${lead.patientPhone}`}
+                                          style={{
+                                            padding: '3px 9px',
+                                            borderRadius: 6,
+                                            fontSize: '0.74rem',
+                                            fontWeight: 800,
+                                            background: '#0284C7',
+                                            color: '#FFFFFF',
+                                            textDecoration: 'none',
+                                            display: 'inline-flex',
+                                            alignItems: 'center',
+                                            gap: '4px'
+                                          }}
+                                        >
+                                          <Phone size={12} /> Call
+                                        </a>
+                                        <a
+                                          href={`https://wa.me/91${lead.patientPhone.replace(/\D/g, '').slice(-10)}`}
+                                          target="_blank"
+                                          rel="noopener noreferrer"
+                                          style={{
+                                            padding: '3px 9px',
+                                            borderRadius: 6,
+                                            fontSize: '0.74rem',
+                                            fontWeight: 800,
+                                            background: '#059669',
+                                            color: '#FFFFFF',
+                                            textDecoration: 'none',
+                                            display: 'inline-flex',
+                                            alignItems: 'center',
+                                            gap: '4px'
+                                          }}
+                                        >
+                                          WhatsApp
+                                        </a>
+                                      </div>
+                                    )}
                                   </div>
                                 </div>
                               )}
@@ -2570,7 +2748,7 @@ export const NurseDashboard: React.FC<NurseDashboardProps> = ({
                   <div>
                     <div style={{ fontSize: '0.7rem', color: '#64748B', fontWeight: 700, textTransform: 'uppercase' }}>Patient Info</div>
                     <div style={{ fontSize: '0.92rem', fontWeight: 800, color: '#0F172A' }}>
-                      {previewRxBooking.patientName} {previewRxBooking.patientAge ? `(${previewRxBooking.patientAge} yrs, ${previewRxBooking.patientGender || 'Patient'})` : ''}
+                      {cleanPatientNameOnly(previewRxBooking.patientName)} {previewRxBooking.patientAge ? `(${previewRxBooking.patientAge} yrs, ${previewRxBooking.patientGender || 'Patient'})` : ''}
                     </div>
                     {previewRxBooking.patientPhone && (
                       <div style={{ fontSize: '0.78rem', color: '#0284C7', fontWeight: 600, marginTop: 2 }}>
@@ -2815,7 +2993,7 @@ export const NurseDashboard: React.FC<NurseDashboardProps> = ({
                   )}
                 </div>
                 <div style={{ fontSize: '0.76rem', color: '#64748B', marginTop: 2 }}>
-                  Date: {previewInvoice.invoiceDate} • Staff RN: <strong>{previewInvoice.assignedNurseName || nurse.name}</strong>
+                  Date: {formatDateDDMMYY(previewInvoice.invoiceDate)} • Staff RN: <strong>{previewInvoice.assignedNurseName || nurse.name}</strong>
                 </div>
               </div>
               <button
@@ -2858,7 +3036,7 @@ export const NurseDashboard: React.FC<NurseDashboardProps> = ({
               }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                   <span style={{ fontSize: '0.9rem', color: '#0F172A', fontWeight: 800 }}>
-                    {previewInvoice.patientName} {previewInvoice.patientAge ? `(${previewInvoice.patientAge} yrs)` : ''}
+                    {cleanPatientNameOnly(previewInvoice.patientName)} {previewInvoice.patientAge ? `(${previewInvoice.patientAge} yrs)` : ''}
                   </span>
                   {previewInvoice.patientPhone && (
                     <span style={{ fontSize: '0.8rem', color: '#0284C7', fontWeight: 700 }}>
@@ -2876,7 +3054,7 @@ export const NurseDashboard: React.FC<NurseDashboardProps> = ({
                       <strong>{previewInvoice.serviceTitle}</strong>
                       {previewInvoice.serviceDate && (
                         <span style={{ display: 'block', fontSize: '0.75rem', color: '#64748B' }}>
-                          Date: {previewInvoice.serviceDate}
+                          Date: {formatDateDDMMYY(previewInvoice.serviceDate)}
                         </span>
                       )}
                       {previewInvoice.timeSlot && (
@@ -3284,7 +3462,7 @@ export const NurseDashboard: React.FC<NurseDashboardProps> = ({
                     ₹{pendingApprovalVisitsEarnings}
                   </div>
                   <div style={{ fontSize: '0.72rem', color: '#64748B' }}>
-                    {pendingApprovalVisitsCount} Visit{pendingApprovalVisitsCount !== 1 ? 's' : ''} Finished by Nurse
+                    {pendingApprovalVisitsCount} Visit{pendingApprovalVisitsCount !== 1 ? 's' : ''} Completed by Nurse
                   </div>
                 </div>
 

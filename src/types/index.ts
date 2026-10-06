@@ -201,6 +201,12 @@ export interface AppUser {
   designation?: string;
   serviceArea?: string;
   avatarUrl?: string;
+  status?: 'Active' | 'Pending Verification' | 'Pending' | 'Rejected' | 'Inactive' | string;
+  specialization?: string;
+  councilRegistrationNumber?: string;
+  certificateUrl?: string;
+  experienceYears?: number | string;
+  createdAt?: string;
 }
 
 export interface Coupon {

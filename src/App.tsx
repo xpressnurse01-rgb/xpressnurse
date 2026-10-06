@@ -77,6 +77,7 @@ import {
   Coupon
 } from './types';
 import { uploadToCloudflareStorage } from './lib/cloudflareStorage';
+import { formatDateDDMMYY } from './lib/dateUtils';
 import {
   deduplicateBookings,
   deduplicateLeads,
@@ -1303,7 +1304,9 @@ export const App: React.FC = () => {
             const isZero = Number(raw.single_visit_price) === 0 || Number(raw.price_number) === 0;
 
             let computedIndicative = raw.indicative_price || `₹${Math.round(raw.single_visit_price ?? raw.price_number ?? 0)}`;
-            if (isZero) {
+            if (raw.id === 'other') {
+              computedIndicative = '';
+            } else if (isZero) {
               if (pricingLabel) {
                 computedIndicative = pricingLabel.includes('₹') ? pricingLabel : `${pricingLabel} • ₹0`;
               } else {
@@ -1986,7 +1989,7 @@ export const App: React.FC = () => {
         patientGender: 'Female',
         area: targetConsult.area,
         fullAddress: `${targetConsult.area}, Hyderabad (Doctor Tele-Consult Order)`,
-        preferredDate: new Date().toISOString().split('T')[0],
+        preferredDate: formatDateDDMMYY(new Date()),
         preferredTime: 'Immediate (Doctor Prescribed)',
         bookingType: 'Instant',
         status: 'Pending',
