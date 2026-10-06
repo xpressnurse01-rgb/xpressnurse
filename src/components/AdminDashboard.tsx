@@ -2372,7 +2372,9 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
 
     let indicativeStr = `₹${serviceForm.priceNumber} per visit`;
     let pricingTag = '';
-    const currentServiceId = (editingService ? editingService.id : serviceForm.id.toLowerCase().replace(/[^a-z0-9-]/g, '-'));
+    const currentServiceId = (serviceForm.id.trim()
+      ? serviceForm.id.trim().toLowerCase().replace(/[^a-z0-9-]/g, '-')
+      : (editingService ? editingService.id : serviceForm.title.toLowerCase().replace(/[^a-z0-9-]/g, '-')));
     if (currentServiceId === 'other') {
       indicativeStr = '';
       pricingTag = '';
@@ -2397,7 +2399,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
     const finalDesc = pricingTag ? `${baseDesc} <!--pricing:${pricingTag}-->` : baseDesc;
 
     const servicePayload: ServiceItem = {
-      id: (editingService ? editingService.id : serviceForm.id.toLowerCase().replace(/[^a-z0-9-]/g, '-')) as ServiceId,
+      id: currentServiceId as ServiceId,
       title: serviceForm.title.trim(),
       subtitle: serviceForm.subtitle.trim(),
       description: finalDesc,
@@ -4973,8 +4975,31 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                             </td>
                             <td>
                               <div><strong>{s.title}</strong></div>
-                              <div style={{ fontSize: '0.75rem', color: 'var(--neutral-500)', fontFamily: 'monospace' }}>{s.id}</div>
-                              {s.subtitle && <div style={{ fontSize: '0.74rem', color: 'var(--neutral-600)' }}>{s.subtitle}</div>}
+                              <div style={{ display: 'flex', alignItems: 'center', gap: '0.35rem', marginTop: '2px' }}>
+                                <code style={{ fontSize: '0.75rem', color: '#0369A1', background: '#F0F9FF', padding: '1px 6px', borderRadius: 4, border: '1px solid #BAE6FD', fontWeight: 600 }}>
+                                  {s.id}
+                                </code>
+                                <button
+                                  type="button"
+                                  onClick={() => handleOpenEditServiceModal(s)}
+                                  style={{
+                                    border: 'none',
+                                    background: 'transparent',
+                                    color: '#64748B',
+                                    padding: '0 2px',
+                                    cursor: 'pointer',
+                                    display: 'inline-flex',
+                                    alignItems: 'center',
+                                    fontSize: '0.68rem',
+                                    fontWeight: 600
+                                  }}
+                                  title={`Edit SLUG / CODE ID (${s.id})`}
+                                >
+                                  <Edit2 size={11} style={{ marginRight: 2 }} />
+                                  <span>Edit Slug</span>
+                                </button>
+                              </div>
+                              {s.subtitle && <div style={{ fontSize: '0.74rem', color: 'var(--neutral-600)', marginTop: '2px' }}>{s.subtitle}</div>}
                             </td>
                             <td>
                               <div style={{ fontWeight: 800, color: 'var(--primary-navy-950)', fontSize: '0.95rem' }}>
@@ -8783,16 +8808,24 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                   />
                 </div>
                 <div>
-                  <label className="form-label" style={{ fontSize: '0.78rem', fontWeight: 700 }}>SLUG / CODE ID</label>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '2px' }}>
+                    <label className="form-label" style={{ fontSize: '0.78rem', fontWeight: 700, margin: 0 }}>SLUG / CODE ID *</label>
+                    <span style={{ fontSize: '0.68rem', color: '#059669', fontWeight: 700 }}>
+                      Editable
+                    </span>
+                  </div>
                   <input
                     type="text"
-                    disabled={!!editingService}
+                    required
                     placeholder="saline-infusion"
                     value={serviceForm.id}
                     onChange={(e) => setServiceForm({ ...serviceForm, id: e.target.value.toLowerCase().replace(/[^a-z0-9-]/g, '-') })}
                     className="form-control"
-                    style={{ fontFamily: 'monospace' }}
+                    style={{ fontFamily: 'monospace', fontWeight: 600, color: '#0F172A', background: '#FFFFFF' }}
                   />
+                  <div style={{ fontSize: '0.68rem', color: '#64748B', marginTop: '2px' }}>
+                    System slug identifier (e.g. <code>wound-dressing</code>, <code>saline-infusion</code>)
+                  </div>
                 </div>
               </div>
 

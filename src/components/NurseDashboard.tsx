@@ -1272,6 +1272,7 @@ export const NurseDashboard: React.FC<NurseDashboardProps> = ({
                     const isInProgress = visit.status === 'In-Progress' && !isWaitingApproval;
                     const isRejected = visit.status === 'Rejected' || visit.status === 'Cancelled' || Boolean(visit.rejectionReason);
                     const isAssigned = !isRejected && !isWaitingApproval && (visit.status === 'Assigned' || visit.status === 'Pending');
+                    const isCompletedOrServiceDone = isDone || isWaitingApproval;
 
                     return (
                       <div
@@ -1342,11 +1343,13 @@ export const NurseDashboard: React.FC<NurseDashboardProps> = ({
                               </span>
                             </div>
 
-                            {/* Prominently Show Patient Contact Information */}
-                            <div style={{ fontSize: '0.84rem', color: isRejected ? '#991B1B' : '#0F172A', marginTop: '0.35rem', display: 'flex', alignItems: 'center', gap: '0.35rem', fontWeight: 700 }}>
-                              <Phone size={13} style={{ color: isRejected ? '#DC2626' : '#0284C7', flexShrink: 0 }} />
-                              <span>Patient Contact: <strong style={{ color: isRejected ? '#DC2626' : '#0284C7' }}>{visit.patientPhone}</strong></span>
-                            </div>
+                            {/* Prominently Show Patient Contact Information (hidden after completing service) */}
+                            {!isCompletedOrServiceDone && (
+                              <div style={{ fontSize: '0.84rem', color: isRejected ? '#991B1B' : '#0F172A', marginTop: '0.35rem', display: 'flex', alignItems: 'center', gap: '0.35rem', fontWeight: 700 }}>
+                                <Phone size={13} style={{ color: isRejected ? '#DC2626' : '#0284C7', flexShrink: 0 }} />
+                                <span>Patient Contact: <strong style={{ color: isRejected ? '#DC2626' : '#0284C7' }}>{visit.patientPhone}</strong></span>
+                              </div>
+                            )}
 
                             <div style={{ fontSize: '0.84rem', color: '#475569', marginTop: '0.35rem', display: 'flex', alignItems: 'center', gap: '0.35rem' }}>
                               <MapPin size={14} style={{ color: '#EF4444', flexShrink: 0 }} />
@@ -1428,47 +1431,51 @@ export const NurseDashboard: React.FC<NurseDashboardProps> = ({
 
                           {/* Direct Action Buttons */}
                           <div style={{ display: 'flex', gap: '0.4rem', flexWrap: 'wrap', alignItems: 'center' }}>
-                            <a
-                              href={`tel:${visit.patientPhone}`}
-                              style={{
-                                background: '#F1F5F9',
-                                border: '1px solid #CBD5E1',
-                                color: '#0F172A',
-                                padding: '0.45rem 0.75rem',
-                                borderRadius: 8,
-                                fontSize: '0.8rem',
-                                fontWeight: 700,
-                                textDecoration: 'none',
-                                display: 'inline-flex',
-                                alignItems: 'center',
-                                gap: '0.3rem'
-                              }}
-                            >
-                              <Phone size={13} style={{ color: '#0284C7' }} />
-                              <span>Call</span>
-                            </a>
+                            {!isCompletedOrServiceDone && (
+                              <>
+                                <a
+                                  href={`tel:${visit.patientPhone}`}
+                                  style={{
+                                    background: '#F1F5F9',
+                                    border: '1px solid #CBD5E1',
+                                    color: '#0F172A',
+                                    padding: '0.45rem 0.75rem',
+                                    borderRadius: 8,
+                                    fontSize: '0.8rem',
+                                    fontWeight: 700,
+                                    textDecoration: 'none',
+                                    display: 'inline-flex',
+                                    alignItems: 'center',
+                                    gap: '0.3rem'
+                                  }}
+                                >
+                                  <Phone size={13} style={{ color: '#0284C7' }} />
+                                  <span>Call</span>
+                                </a>
 
-                            <a
-                              href={`https://wa.me/91${visit.patientPhone.replace(/\D/g, '').slice(-10)}?text=${encodeURIComponent(`Namaste ${visit.patientName}, I am ${nurse.name} from Xpress Nurse for your scheduled ${visit.serviceTitle} visit.`)}`}
-                              target="_blank"
-                              rel="noreferrer"
-                              style={{
-                                background: '#F0FDF4',
-                                border: '1px solid #BBF7D0',
-                                color: '#16A34A',
-                                padding: '0.45rem 0.75rem',
-                                borderRadius: 8,
-                                fontSize: '0.8rem',
-                                fontWeight: 700,
-                                textDecoration: 'none',
-                                display: 'inline-flex',
-                                alignItems: 'center',
-                                gap: '0.3rem'
-                              }}
-                            >
-                              <MessageCircle size={13} />
-                              <span>WhatsApp</span>
-                            </a>
+                                <a
+                                  href={`https://wa.me/91${visit.patientPhone.replace(/\D/g, '').slice(-10)}?text=${encodeURIComponent(`Namaste ${visit.patientName}, I am ${nurse.name} from Xpress Nurse for your scheduled ${visit.serviceTitle} visit.`)}`}
+                                  target="_blank"
+                                  rel="noreferrer"
+                                  style={{
+                                    background: '#F0FDF4',
+                                    border: '1px solid #BBF7D0',
+                                    color: '#16A34A',
+                                    padding: '0.45rem 0.75rem',
+                                    borderRadius: 8,
+                                    fontSize: '0.8rem',
+                                    fontWeight: 700,
+                                    textDecoration: 'none',
+                                    display: 'inline-flex',
+                                    alignItems: 'center',
+                                    gap: '0.3rem'
+                                  }}
+                                >
+                                  <MessageCircle size={13} />
+                                  <span>WhatsApp</span>
+                                </a>
+                              </>
+                            )}
 
                             <a
                               href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent((visit.fullAddress || visit.area || 'Hyderabad') + ', Hyderabad')}`}

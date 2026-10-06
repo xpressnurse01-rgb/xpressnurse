@@ -180,6 +180,14 @@ export async function dbInsertService(s: ServiceItem): Promise<boolean> {
 
 export async function dbUpdateServiceById(id: string, updates: Partial<ServiceItem>): Promise<boolean> {
   const payload: any = {};
+  if (updates.id !== undefined && updates.id.trim() && updates.id.trim() !== id) {
+    const newId = updates.id.trim().toLowerCase().replace(/[^a-z0-9-]/g, '-');
+    payload.id = newId;
+    try {
+      await supabase.from('bookings').update({ service_id: newId }).eq('service_id', id);
+      await supabase.from('leads').update({ service_id: newId }).eq('service_id', id);
+    } catch { }
+  }
   if (updates.title !== undefined) payload.title = updates.title;
   if (updates.subtitle !== undefined) payload.subtitle = updates.subtitle;
   if (updates.description !== undefined) payload.description = updates.description;
