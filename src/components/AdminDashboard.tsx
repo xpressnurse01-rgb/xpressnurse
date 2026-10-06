@@ -225,6 +225,8 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
   const [isInvoicePreviewModalOpen, setIsInvoicePreviewModalOpen] = useState(false);
   const [previewInvoice, setPreviewInvoice] = useState<InvoiceDetails | null>(null);
   const [invoiceModalTab, setInvoiceModalTab] = useState<'edit' | 'preview'>('edit');
+  const [customInvoicePatientSearch, setCustomInvoicePatientSearch] = useState('');
+  const [isPatientSearchDropdownOpen, setIsPatientSearchDropdownOpen] = useState(false);
   const [adminCertModalOpen, setAdminCertModalOpen] = useState(false);
   const [adminCertModalNurse, setAdminCertModalNurse] = useState<NurseProfile | null>(null);
   const [isR2ConfigModalOpen, setIsR2ConfigModalOpen] = useState(false);
@@ -345,6 +347,85 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
 
   const handleViewBookingInvoice = (booking: Booking) => {
     handleOpenCustomInvoiceModal(booking);
+  };
+
+  const searchedExistingPatients = useMemo(() => {
+    const q = customInvoicePatientSearch.trim().toLowerCase();
+    if (!q) return bookings.slice(0, 10);
+    const cleanQPhone = q.replace(/\D/g, '');
+    return bookings.filter((b) => {
+      const name = (b.patientName || '').toLowerCase();
+      const phone = (b.patientPhone || '').replace(/\D/g, '');
+      const id = (b.id || '').toLowerCase();
+      const area = (b.area || '').toLowerCase();
+      const service = (b.serviceTitle || '').toLowerCase();
+      return name.includes(q) || (cleanQPhone.length >= 3 && phone.includes(cleanQPhone)) || id.includes(q) || area.includes(q) || service.includes(q);
+    });
+  }, [bookings, customInvoicePatientSearch]);
+
+  const handleSelectExistingPatientBooking = (found: Booking) => {
+    const inv = generateInvoiceDetails(found);
+    const fee = Number(found.finalFee !== undefined ? found.finalFee : (found.estimatedFee || 800));
+    if (!inv.items || inv.items.length === 0) {
+      inv.items = [
+        {
+          id: 'item-' + Date.now(),
+          description: found.serviceTitle || 'Clinical Nursing Care',
+          date: formatDateDDMMYY(found.preferredDate || found.createdAt || new Date()),
+          slot: found.scheduledSlot || found.preferredTime || 'Morning (09:00 AM - 01:00 PM)',
+          rate: fee,
+          quantity: found.numberOfVisits || 1,
+          amount: fee * (found.numberOfVisits || 1)
+        }
+      ];
+    }
+    setPreviewInvoice(inv);
+    setCustomInvoicePatientSearch('');
+    setIsPatientSearchDropdownOpen(false);
+    showToast(`Loaded details for ${cleanPatientNameOnly(found.patientName)} (#${found.id})`);
+  };
+
+  const handleResetToBlankInvoice = () => {
+    const initialRate = services[0]?.priceNumber || services[0]?.singleVisitPrice || 800;
+    const initialTitle = services[0]?.title || 'Clinical Home Care';
+    setPreviewInvoice({
+      invoiceNumber: `XN-INV-2026-MANUAL-${Math.floor(1000 + Math.random() * 9000)}`,
+      invoiceDate: formatDateDDMMYY(new Date()),
+      bookingId: 'CUSTOM-' + Date.now().toString().slice(-4),
+      patientName: '',
+      patientPhone: '',
+      patientAge: 45,
+      patientGender: 'Female',
+      fullAddress: '',
+      area: 'Banjara Hills',
+      serviceTitle: initialTitle,
+      serviceDate: formatDateDDMMYY(new Date()),
+      timeSlot: 'Morning (09:00 AM - 01:00 PM)',
+      numberOfVisits: 1,
+      serviceId: services[0]?.id || 'saline-infusion',
+      assignedNurseName: nurses[0]?.name || 'Assigned Fleet RN',
+      baseAmount: initialRate,
+      items: [
+        {
+          id: 'item-1',
+          description: initialTitle,
+          date: formatDateDDMMYY(new Date()),
+          slot: 'Morning (09:00 AM - 01:00 PM)',
+          rate: initialRate,
+          quantity: 1,
+          amount: initialRate
+        }
+      ],
+      nightSurcharge: 0,
+      discountRupees: 0,
+      totalAmount: initialRate,
+      paymentStatus: 'Paid',
+      paymentMode: 'UPI / Online',
+      r2StorageKey: `invoices/custom_${Date.now()}.html`,
+      r2PublicUrl: `${(r2Config.publicDomain && r2Config.publicDomain.startsWith('http')) ? r2Config.publicDomain.replace(/\/+$/, '') : 'https://pub-830eaa9d07034c8d985d7d00577f77e9.r2.dev'}/invoices/custom_${Date.now()}.html`
+    });
+    setCustomInvoicePatientSearch('');
+    setIsPatientSearchDropdownOpen(false);
   };
 
   const updateInvoiceCalculation = (fields: Partial<InvoiceDetails>) => {
@@ -10458,7 +10539,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
 
             {/* 2. Source Selector & Tab Switcher Bar */}
             <div style={{ padding: '0.75rem 1.4rem', background: '#F8FAFC', borderBottom: '1px solid #E2E8F0', display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '0.75rem', flexWrap: 'wrap', flexShrink: 0 }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', flex: 1, minWidth: 280 }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', flex: 1, minWidth: 280, position: 'relative' }}>
                 <span style={{ fontSize: '0.78rem', fontWeight: 800, color: 'var(--primary-navy-950)', whiteSpace: 'nowrap' }}>Order Source:</span>
                 <select
                   className="form-control"
@@ -10467,76 +10548,47 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                   onChange={(e) => {
                     const selectedId = e.target.value;
                     if (selectedId === 'custom') {
-                      const initialRate = services[0]?.priceNumber || services[0]?.singleVisitPrice || 800;
-                      const initialTitle = services[0]?.title || 'Clinical Home Care';
-                      setPreviewInvoice({
-                        invoiceNumber: `XN-INV-2026-MANUAL-${Math.floor(1000 + Math.random() * 9000)}`,
-                        invoiceDate: formatDateDDMMYY(new Date()),
-                        bookingId: 'CUSTOM-' + Date.now().toString().slice(-4),
-                        patientName: '',
-                        patientPhone: '',
-                        patientAge: 45,
-                        patientGender: 'Female',
-                        fullAddress: '',
-                        area: 'Banjara Hills',
-                        serviceTitle: initialTitle,
-                        serviceDate: formatDateDDMMYY(new Date()),
-                        timeSlot: 'Morning (09:00 AM - 01:00 PM)',
-                        numberOfVisits: 1,
-                        serviceId: services[0]?.id || 'saline-infusion',
-                        assignedNurseName: nurses[0]?.name || 'Assigned Fleet RN',
-                        baseAmount: initialRate,
-                        items: [
-                          {
-                            id: 'item-1',
-                            description: initialTitle,
-                            date: formatDateDDMMYY(new Date()),
-                            slot: 'Morning (09:00 AM - 01:00 PM)',
-                            rate: initialRate,
-                            quantity: 1,
-                            amount: initialRate
-                          }
-                        ],
-                        nightSurcharge: 0,
-                        discountRupees: 0,
-                        totalAmount: initialRate,
-                        paymentStatus: 'Paid',
-                        paymentMode: 'UPI / Online',
-                        r2StorageKey: `invoices/custom_${Date.now()}.html`,
-                        r2PublicUrl: `${(r2Config.publicDomain && r2Config.publicDomain.startsWith('http')) ? r2Config.publicDomain.replace(/\/+$/, '') : 'https://pub-830eaa9d07034c8d985d7d00577f77e9.r2.dev'}/invoices/custom_${Date.now()}.html`
-                      });
+                      handleResetToBlankInvoice();
                     } else {
                       const found = bookings.find((b) => b.id === selectedId);
                       if (found) {
-                        const inv = generateInvoiceDetails(found);
-                        const fee = Number(found.finalFee !== undefined ? found.finalFee : (found.estimatedFee || 800));
-                        if (!inv.items || inv.items.length === 0) {
-                          inv.items = [
-                            {
-                              id: 'item-' + Date.now(),
-                              description: found.serviceTitle || 'Clinical Nursing Care',
-                              date: formatDateDDMMYY(found.preferredDate || found.createdAt || new Date()),
-                              slot: found.scheduledSlot || found.preferredTime || 'Morning (09:00 AM - 01:00 PM)',
-                              rate: fee,
-                              quantity: found.numberOfVisits || 1,
-                              amount: fee * (found.numberOfVisits || 1)
-                            }
-                          ];
-                        }
-                        setPreviewInvoice(inv);
+                        handleSelectExistingPatientBooking(found);
                       }
                     }
                   }}
                 >
                   <option value="custom">✏️ Custom / Manual Invoice (Blank Template)</option>
-                  <optgroup label="Active Patient Bookings">
+                  <optgroup label={`Active Patient Bookings (${bookings.length})`}>
                     {bookings.map((b) => (
                       <option key={b.id} value={b.id}>
-                        #{b.id} — {b.patientName} ({b.serviceTitle}) • ₹{b.finalFee || b.estimatedFee} • {b.area}
+                        #{b.id} — {cleanPatientNameOnly(b.patientName)} ({b.serviceTitle}) • ₹{b.finalFee !== undefined ? b.finalFee : (b.estimatedFee || 800)} • {b.area}
                       </option>
                     ))}
                   </optgroup>
                 </select>
+                <button
+                  type="button"
+                  onClick={handleResetToBlankInvoice}
+                  style={{
+                    height: 34,
+                    padding: '0 0.75rem',
+                    fontSize: '0.75rem',
+                    fontWeight: 700,
+                    borderRadius: 8,
+                    border: '1px solid #CBD5E1',
+                    background: (previewInvoice.bookingId && previewInvoice.bookingId.startsWith('CUSTOM-')) ? '#EFF6FF' : '#FFFFFF',
+                    color: (previewInvoice.bookingId && previewInvoice.bookingId.startsWith('CUSTOM-')) ? '#0284C7' : '#475569',
+                    cursor: 'pointer',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '0.3rem',
+                    whiteSpace: 'nowrap'
+                  }}
+                  title="Create new blank invoice"
+                >
+                  <Plus size={13} />
+                  <span>Blank</span>
+                </button>
               </div>
 
               {/* View Switcher Pills */}
@@ -10608,6 +10660,148 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                     <div style={{ fontSize: '0.8rem', fontWeight: 800, color: '#334155', textTransform: 'uppercase', marginBottom: '0.75rem', display: 'flex', alignItems: 'center', gap: '0.35rem' }}>
                       <User size={15} style={{ color: '#0284C7' }} />
                       <span>Patient & Attending Staff Details</span>
+                    </div>
+
+                    {/* Dedicated Search Field for Existing Patients */}
+                    <div style={{ marginBottom: '1rem', background: '#F0F9FF', border: '1px solid #BAE6FD', borderRadius: 12, padding: '0.85rem 1rem', position: 'relative' }}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.45rem', flexWrap: 'wrap', gap: '0.35rem' }}>
+                        <label style={{ fontSize: '0.78rem', fontWeight: 800, color: '#0369A1', display: 'flex', alignItems: 'center', gap: '0.35rem', margin: 0 }}>
+                          <Search size={14} style={{ color: '#0284C7' }} />
+                          <span>Search Existing Patients</span>
+                          <span style={{ fontSize: '0.7rem', fontWeight: 600, color: '#0284C7', background: '#E0F2FE', padding: '1px 6px', borderRadius: 4 }}>
+                            Autofill Name, Phone, Area & History
+                          </span>
+                        </label>
+                        {previewInvoice.bookingId && !previewInvoice.bookingId.startsWith('CUSTOM-') && (
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
+                            <span style={{ fontSize: '0.72rem', color: '#059669', fontWeight: 700, background: '#DCFCE7', padding: '2px 8px', borderRadius: 6, border: '1px solid #86EFAC' }}>
+                              ✓ Linked to Booking #{previewInvoice.bookingId}
+                            </span>
+                            <button
+                              type="button"
+                              onClick={handleResetToBlankInvoice}
+                              style={{ fontSize: '0.7rem', color: '#64748B', background: '#FFFFFF', border: '1px solid #CBD5E1', padding: '2px 7px', borderRadius: 6, cursor: 'pointer', fontWeight: 600 }}
+                            >
+                              Clear
+                            </button>
+                          </div>
+                        )}
+                      </div>
+
+                      <div style={{ position: 'relative' }}>
+                        <input
+                          type="text"
+                          value={customInvoicePatientSearch}
+                          onChange={(e) => {
+                            setCustomInvoicePatientSearch(e.target.value);
+                            setIsPatientSearchDropdownOpen(true);
+                          }}
+                          onFocus={() => setIsPatientSearchDropdownOpen(true)}
+                          onBlur={() => setTimeout(() => setIsPatientSearchDropdownOpen(false), 250)}
+                          placeholder="Search patient by full name, phone number, booking ref (#BK-...), or area..."
+                          className="form-control"
+                          style={{
+                            minHeight: 40,
+                            height: 40,
+                            fontSize: '0.86rem',
+                            fontWeight: 500,
+                            paddingLeft: '2.3rem',
+                            paddingRight: '2rem',
+                            background: '#FFFFFF',
+                            borderColor: isPatientSearchDropdownOpen ? '#0284C7' : '#BAE6FD',
+                            boxShadow: isPatientSearchDropdownOpen ? '0 0 0 3px rgba(2, 132, 199, 0.15)' : 'none'
+                          }}
+                        />
+                        <Search size={15} style={{ position: 'absolute', left: 11, top: 12, color: '#0284C7', pointerEvents: 'none' }} />
+                        {customInvoicePatientSearch && (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setCustomInvoicePatientSearch('');
+                              setIsPatientSearchDropdownOpen(false);
+                            }}
+                            style={{ position: 'absolute', right: 9, top: 11, background: 'none', border: 'none', cursor: 'pointer', color: '#94A3B8' }}
+                            title="Clear search"
+                          >
+                            <X size={15} />
+                          </button>
+                        )}
+
+                        {/* Search Results Dropdown */}
+                        {isPatientSearchDropdownOpen && (
+                          <div style={{
+                            position: 'absolute',
+                            top: '100%',
+                            left: 0,
+                            right: 0,
+                            marginTop: 5,
+                            background: '#FFFFFF',
+                            borderRadius: 12,
+                            boxShadow: '0 12px 30px -4px rgba(0,0,0,0.18), 0 4px 8px -2px rgba(0,0,0,0.08)',
+                            border: '1px solid #CBD5E1',
+                            maxHeight: 280,
+                            overflowY: 'auto',
+                            zIndex: 150
+                          }}>
+                            {searchedExistingPatients.length === 0 ? (
+                              <div style={{ padding: '1rem', fontSize: '0.82rem', color: '#64748B', textAlign: 'center' }}>
+                                No existing patient matching "{customInvoicePatientSearch}". You can enter custom details below.
+                              </div>
+                            ) : (
+                              <div>
+                                <div style={{ padding: '0.5rem 0.95rem', background: '#F8FAFC', borderBottom: '1px solid #E2E8F0', fontSize: '0.7rem', fontWeight: 800, color: '#64748B', textTransform: 'uppercase', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                                  <span>{customInvoicePatientSearch.trim() ? `Found ${searchedExistingPatients.length} Matching Patient${searchedExistingPatients.length > 1 ? 's' : ''}` : `Recent Patients (${searchedExistingPatients.length})`}</span>
+                                  <span style={{ fontSize: '0.67rem', color: '#0284C7', fontWeight: 700 }}>Click to autofill invoice</span>
+                                </div>
+                                {searchedExistingPatients.map((b) => (
+                                  <div
+                                    key={b.id}
+                                    onMouseDown={(e) => {
+                                      e.preventDefault();
+                                      handleSelectExistingPatientBooking(b);
+                                    }}
+                                    style={{
+                                      padding: '0.7rem 0.95rem',
+                                      borderBottom: '1px solid #F1F5F9',
+                                      cursor: 'pointer',
+                                      display: 'flex',
+                                      justifyContent: 'space-between',
+                                      alignItems: 'center',
+                                      transition: 'background 0.15s ease'
+                                    }}
+                                    onMouseEnter={(e) => (e.currentTarget.style.background = '#F0F9FF')}
+                                    onMouseLeave={(e) => (e.currentTarget.style.background = '#FFFFFF')}
+                                  >
+                                    <div>
+                                      <div style={{ fontWeight: 800, fontSize: '0.88rem', color: '#0F172A', display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
+                                        <span>{cleanPatientNameOnly(b.patientName)}</span>
+                                        {b.patientAge && (
+                                          <span style={{ fontSize: '0.72rem', fontWeight: 600, color: '#64748B', background: '#F1F5F9', padding: '1px 6px', borderRadius: 4 }}>
+                                            {b.patientAge} yrs{b.patientGender ? `, ${b.patientGender}` : ''}
+                                          </span>
+                                        )}
+                                      </div>
+                                      <div style={{ fontSize: '0.76rem', color: '#475569', marginTop: 3, display: 'flex', gap: '0.6rem', flexWrap: 'wrap', alignItems: 'center' }}>
+                                        <span>📞 <strong>{b.patientPhone}</strong></span>
+                                        <span>📍 {b.area}</span>
+                                        <span style={{ color: '#0284C7', fontWeight: 600, fontFamily: 'monospace' }}>#{b.id}</span>
+                                      </div>
+                                    </div>
+                                    <div style={{ textAlign: 'right', flexShrink: 0, marginLeft: '0.75rem' }}>
+                                      <div style={{ fontSize: '0.86rem', fontWeight: 800, color: '#059669' }}>
+                                        ₹{b.finalFee !== undefined ? b.finalFee : (b.estimatedFee || 800)}
+                                      </div>
+                                      <div style={{ fontSize: '0.7rem', color: '#64748B', maxWidth: 140, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                                        {b.serviceTitle}
+                                      </div>
+                                    </div>
+                                  </div>
+                                ))}
+                              </div>
+                            )}
+                          </div>
+                        )}
+                      </div>
                     </div>
 
                     <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '0.75rem', marginBottom: '0.75rem' }}>
