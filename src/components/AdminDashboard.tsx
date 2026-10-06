@@ -1346,6 +1346,13 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
     b.nurseAcceptanceStatus === 'Rejected' ||
     (b.status === 'Rejected' && b.rejectionReason?.toLowerCase().includes('nurse'))
   );
+
+  const serviceDoneBookings = bookings.filter((b) =>
+    b.status !== 'Completed' &&
+    b.status !== 'Cancelled' &&
+    b.status !== 'Rejected' &&
+    (b.nurseAcceptanceStatus === 'Service Done' || Boolean(b.notes && b.notes.includes('Waiting for Admin Approval')))
+  );
   const [bookingForm, setBookingForm] = useState({
     id: '',
     patientName: '',
@@ -1481,6 +1488,37 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
     });
   };
 
+  const handleVerifyAndAcceptService = async (b: Booking) => {
+    const fee = Number(b.finalFee !== undefined ? b.finalFee : (b.estimatedFee || 800));
+    const nursePayout = Math.round(fee * 0.70);
+    const confirmed = window.confirm(
+      `Verify and accept service completion for booking #${b.id}?\n\nPatient: ${b.patientName}\nNurse: ${b.assignedNurseName || 'Assigned Nurse'}\nDuty Earnings to Credit (70%): ₹${nursePayout}\n\nClick OK to finalize booking and release earnings to nurse.`
+    );
+    if (!confirmed) return;
+
+    try {
+      const cleanNotes = b.notes
+        ? b.notes.replace('[Service Done by Nurse - Waiting for Admin Approval]', '').trim()
+        : '';
+      const updatedNotes = cleanNotes
+        ? `${cleanNotes} [Admin Verified & Approved - Service Completed]`
+        : '[Admin Verified & Approved - Service Completed]';
+
+      if (onUpdateBooking) {
+        await onUpdateBooking(b.id, {
+          status: 'Completed',
+          nurseAcceptanceStatus: 'Accepted',
+          nursePayoutRupees: nursePayout,
+          notes: updatedNotes
+        });
+      }
+      showToast(`✓ Service for ${b.patientName} verified! ₹${nursePayout} added to nurse earnings.`);
+    } catch (err) {
+      console.error('Failed to verify and accept service:', err);
+      showToast(`Failed to verify service: ${err instanceof Error ? err.message : 'Unknown error'}`, 'error');
+    }
+  };
+
   const filteredBookings = bookings.filter((b) => {
     const matchesSearch =
       b.patientName.toLowerCase().includes(bookingSearch.toLowerCase()) ||
@@ -1498,8 +1536,9 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
           ? isDirect
           : isReferred;
 
+    const isServiceDone = b.status !== 'Completed' && b.status !== 'Cancelled' && b.status !== 'Rejected' && (b.nurseAcceptanceStatus === 'Service Done' || Boolean(b.notes && b.notes.includes('Waiting for Admin Approval')));
     const isNurseDeclined = b.rejectedBy === 'Nurse' || b.nurseAcceptanceStatus === 'Rejected' || (b.status === 'Rejected' && b.rejectionReason?.toLowerCase().includes('nurse'));
-    const isNurseAccepted = (b.nurseAcceptanceStatus === 'Accepted' || b.status === 'In-Progress') && b.status !== 'Completed' && !isNurseDeclined;
+    const isNurseAccepted = (b.nurseAcceptanceStatus === 'Accepted' || b.status === 'In-Progress') && b.status !== 'Completed' && !isNurseDeclined && !isServiceDone;
 
     const matchesStatus =
       bookingStatusFilter === 'all'
@@ -1508,11 +1547,13 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
           ? isDirect
           : bookingStatusFilter === 'Referrals'
             ? isReferred
-            : bookingStatusFilter === 'Nurse-Declined'
-              ? isNurseDeclined
-              : bookingStatusFilter === 'Accepted'
-                ? isNurseAccepted
-                : b.status === bookingStatusFilter;
+            : bookingStatusFilter === 'Service-Done'
+              ? isServiceDone
+              : bookingStatusFilter === 'Nurse-Declined'
+                ? isNurseDeclined
+                : bookingStatusFilter === 'Accepted'
+                  ? isNurseAccepted
+                  : b.status === bookingStatusFilter;
 
     return matchesSearch && matchesSource && matchesStatus;
   });
@@ -3251,6 +3292,56 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
             </div>
           </div>
 
+          {/* Clinical Service Done Alert Banner */}
+          {serviceDoneBookings.length > 0 && (
+            <div style={{
+              background: 'linear-gradient(135deg, #ECFDF5 0%, #D1FAE5 100%)',
+              border: '2px solid #10B981',
+              borderRadius: 12,
+              padding: '1rem 1.25rem',
+              margin: '1.25rem 1.25rem 0 1.25rem',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              flexWrap: 'wrap',
+              gap: '0.75rem',
+              boxShadow: '0 4px 12px rgba(16, 185, 129, 0.15)'
+            }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+                <div style={{ width: 38, height: 38, borderRadius: '50%', background: '#10B981', color: '#FFF', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                  <CheckCircle size={22} />
+                </div>
+                <div>
+                  <div style={{ fontWeight: 800, color: '#065F46', fontSize: '0.96rem', display: 'flex', alignItems: 'center', gap: '0.4rem', flexWrap: 'wrap' }}>
+                    <span>Clinical Completion: {serviceDoneBookings.length} Visit(s) Finished by Nurse!</span>
+                    <span className="status-pill warning" style={{ fontSize: '0.72rem', padding: '2px 8px', background: '#FEF3C7', color: '#92400E', border: '1px solid #FDE68A' }}>Action Needed: Verify & Accept</span>
+                  </div>
+                  <div style={{ fontSize: '0.82rem', color: '#047857', marginTop: '2px' }}>
+                    Nurses have completed the doorstep care and submitted the duty. Review notes and click <strong>"Verify & Accept"</strong> to finalize and release their 70% earnings.
+                  </div>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setBookingStatusFilter('Service-Done')}
+                className="btn btn-sm"
+                style={{
+                  background: '#059669',
+                  color: '#FFFFFF',
+                  border: 'none',
+                  fontWeight: 800,
+                  fontSize: '0.8rem',
+                  padding: '0.45rem 1rem',
+                  borderRadius: 8,
+                  cursor: 'pointer',
+                  boxShadow: '0 2px 4px rgba(5, 150, 105, 0.25)'
+                }}
+              >
+                View Finished Orders ({serviceDoneBookings.length})
+              </button>
+            </div>
+          )}
+
           {/* Urgent Dispatch Alert: Nurse Declined Visits */}
           {nurseDeclinedBookings.length > 0 && (
             <div style={{
@@ -3362,6 +3453,24 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
               >
                 ⭐ Referred ({bookings.filter(b => Boolean(b.referringNurseId || b.referredByDoctorId || b.notes?.toLowerCase().includes('referred') || b.notes?.toLowerCase().includes('referral'))).length})
               </button>
+              {serviceDoneBookings.length > 0 && (
+                <button
+                  type="button"
+                  onClick={() => setBookingStatusFilter('Service-Done')}
+                  className={`btn btn-sm ${bookingStatusFilter === 'Service-Done' ? 'btn-primary' : 'btn-outline'}`}
+                  style={{
+                    fontSize: '0.76rem',
+                    borderRadius: 9999,
+                    padding: '0.25rem 0.65rem',
+                    fontWeight: 700,
+                    borderColor: bookingStatusFilter === 'Service-Done' ? undefined : '#A7F3D0',
+                    color: bookingStatusFilter === 'Service-Done' ? '#FFFFFF' : '#047857',
+                    background: bookingStatusFilter === 'Service-Done' ? '#059669' : '#ECFDF5'
+                  }}
+                >
+                  🩺 Service Done ({serviceDoneBookings.length})
+                </button>
+              )}
             </div>
 
             <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
@@ -3373,9 +3482,9 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                   padding: '0.4rem 0.75rem',
                   fontSize: '0.82rem',
                   borderRadius: 8,
-                  border: bookingStatusFilter === 'Nurse-Declined' ? '2px solid #DC2626' : '1px solid #CBD5E1',
-                  background: bookingStatusFilter === 'Nurse-Declined' ? '#FFF1F2' : '#FFFFFF',
-                  color: bookingStatusFilter === 'Nurse-Declined' ? '#991B1B' : '#0F172A',
+                  border: bookingStatusFilter === 'Nurse-Declined' ? '2px solid #DC2626' : (bookingStatusFilter === 'Service-Done' ? '2px solid #059669' : '1px solid #CBD5E1'),
+                  background: bookingStatusFilter === 'Nurse-Declined' ? '#FFF1F2' : (bookingStatusFilter === 'Service-Done' ? '#ECFDF5' : '#FFFFFF'),
+                  color: bookingStatusFilter === 'Nurse-Declined' ? '#991B1B' : (bookingStatusFilter === 'Service-Done' ? '#065F46' : '#0F172A'),
                   fontWeight: 700
                 }}
               >
@@ -3386,6 +3495,11 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                 <option value="Referrals" style={{ color: '#D97706', fontWeight: 700 }}>
                   ⭐ All Referred Bookings ({bookings.filter(b => Boolean(b.referringNurseId || b.referredByDoctorId || b.notes?.toLowerCase().includes('referred') || b.notes?.toLowerCase().includes('referral'))).length})
                 </option>
+                {serviceDoneBookings.length > 0 && (
+                  <option value="Service-Done" style={{ color: '#059669', fontWeight: 800 }}>
+                    🩺 Service Done (Pending Approval) ({serviceDoneBookings.length})
+                  </option>
+                )}
                 {nurseDeclinedBookings.length > 0 && (
                   <option value="Nurse-Declined" style={{ color: '#DC2626', fontWeight: 800 }}>
                     ⚠️ Nurse Declined (Referral Needed) ({nurseDeclinedBookings.length})
@@ -3592,9 +3706,10 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                           <td style={{ whiteSpace: 'nowrap' }}>
                             {(() => {
                               const isCompleted = b.status === 'Completed';
+                              const isServiceDone = !isCompleted && b.status !== 'Cancelled' && b.status !== 'Rejected' && (b.nurseAcceptanceStatus === 'Service Done' || Boolean(b.notes && b.notes.includes('Waiting for Admin Approval')));
                               const isDeclinedByNurse = b.rejectedBy === 'Nurse' || b.nurseAcceptanceStatus === 'Rejected' || (b.status === 'Rejected' && b.rejectionReason?.toLowerCase().includes('nurse'));
-                              const isAcceptedByNurse = !isCompleted && !isDeclinedByNurse && (b.nurseAcceptanceStatus === 'Accepted' || b.status === 'In-Progress');
-                              const isAwaitingNurse = !isCompleted && !isAcceptedByNurse && !isDeclinedByNurse && b.status === 'Assigned';
+                              const isAcceptedByNurse = !isCompleted && !isDeclinedByNurse && !isServiceDone && (b.nurseAcceptanceStatus === 'Accepted' || b.status === 'In-Progress');
+                              const isAwaitingNurse = !isCompleted && !isAcceptedByNurse && !isDeclinedByNurse && !isServiceDone && b.status === 'Assigned';
 
                               if (isCompleted) {
                                 const fee = Number(b.finalFee !== undefined ? b.finalFee : (b.estimatedFee || 800));
@@ -3607,6 +3722,21 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                                     </span>
                                     <div style={{ fontSize: '0.72rem', color: '#059669', marginTop: '2px', fontWeight: 700 }}>
                                       Work done & settled (₹{nurseCut} nurse payout)
+                                    </div>
+                                  </div>
+                                );
+                              }
+
+                              if (isServiceDone) {
+                                const fee = Number(b.finalFee !== undefined ? b.finalFee : (b.estimatedFee || 800));
+                                const pendingPayout = Math.round(fee * 0.70);
+                                return (
+                                  <div>
+                                    <span className="status-pill warning" style={{ background: '#FEF3C7', color: '#92400E', border: '1px solid #FDE68A', display: 'inline-flex', alignItems: 'center', gap: '0.3rem', fontWeight: 800 }}>
+                                      <span>🩺 Service Done (Pending Approval)</span>
+                                    </span>
+                                    <div style={{ fontSize: '0.72rem', color: '#B45309', marginTop: '2px', fontWeight: 700 }}>
+                                      Care completed by nurse • ₹{pendingPayout} payout pending verification
                                     </div>
                                   </div>
                                 );
@@ -3666,10 +3796,36 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                           </td>
                           <td style={{ textAlign: 'right' }}>
                             {(() => {
+                              const isServiceDone = b.status !== 'Completed' && b.status !== 'Cancelled' && b.status !== 'Rejected' && (b.nurseAcceptanceStatus === 'Service Done' || Boolean(b.notes && b.notes.includes('Waiting for Admin Approval')));
                               const isDeclinedByNurse = b.rejectedBy === 'Nurse' || b.nurseAcceptanceStatus === 'Rejected' || (b.status === 'Rejected' && b.rejectionReason?.toLowerCase().includes('nurse'));
 
                               return (
                                 <div style={{ display: 'flex', flexWrap: 'wrap', justifyContent: 'flex-end', alignItems: 'center', gap: '0.35rem' }}>
+                                  {isServiceDone && (
+                                    <button
+                                      type="button"
+                                      onClick={() => handleVerifyAndAcceptService(b)}
+                                      className="btn btn-sm"
+                                      style={{
+                                        background: '#059669',
+                                        border: '1px solid #059669',
+                                        color: '#FFFFFF',
+                                        fontWeight: 800,
+                                        padding: '0.3rem 0.65rem',
+                                        borderRadius: 6,
+                                        display: 'inline-flex',
+                                        alignItems: 'center',
+                                        gap: '0.3rem',
+                                        fontSize: '0.75rem',
+                                        cursor: 'pointer',
+                                        boxShadow: '0 1px 3px rgba(5, 150, 105, 0.3)'
+                                      }}
+                                      title="Verify duty completion & release nurse earnings"
+                                    >
+                                      <CheckCircle size={13} />
+                                      <span>Verify & Accept</span>
+                                    </button>
+                                  )}
                                   {isDeclinedByNurse && (
                                     <>
                                       <button

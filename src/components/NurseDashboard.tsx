@@ -52,6 +52,7 @@ import {
 } from '../lib/cloudflareStorage';
 import { generateNurseReferralCode } from '../lib/supabase';
 import { calculateNurseMetrics, deduplicateBookings, deduplicateLeads } from '../lib/nurseCalculations';
+import { useBodyScrollLock } from '../hooks/useBodyScrollLock';
 
 // Helper to convert base64 data URLs to safe Blob URLs that modern browsers won't block
 export function getSafeBlobUrl(dataUrl: string): string {
@@ -174,6 +175,10 @@ export const NurseDashboard: React.FC<NurseDashboardProps> = ({
   const [certUploadSuccess, setCertUploadSuccess] = useState('');
   const [certUploading, setCertUploading] = useState(false);
   const [isHistoryModalOpen, setIsHistoryModalOpen] = useState(false);
+  const [historyFilter, setHistoryFilter] = useState<'all' | 'duty' | 'referral' | 'pending' | 'points'>('all');
+
+  // Lock body scroll and pause Lenis momentum scroll while any modal is open
+  useBodyScrollLock(isHistoryModalOpen || isRxModalOpen || isInvoiceModalOpen || certModalOpen);
 
   // Profile Name & Experience Edit State
   const [isEditingProfile, setIsEditingProfile] = useState(false);
@@ -201,6 +206,9 @@ export const NurseDashboard: React.FC<NurseDashboardProps> = ({
     myVisits,
     activeVisits,
     completedVisits,
+    pendingApprovalVisits,
+    pendingApprovalVisitsCount,
+    pendingApprovalVisitsEarnings,
     completedVisitsEarnings,
     myLeads,
     myConvertedLeads,
@@ -218,6 +226,91 @@ export const NurseDashboard: React.FC<NurseDashboardProps> = ({
     totalPoints,
     referralCode
   } = metrics;
+
+  interface TransactionLedgerItem {
+    id: string;
+    category: 'duty' | 'pending' | 'referral' | 'points';
+    title: string;
+    description: string;
+    date: string;
+    amount?: number;
+    points?: number;
+    status: 'Settled' | 'Pending Approval' | 'Credited';
+    bookingId?: string;
+  }
+
+  const transactions: TransactionLedgerItem[] = useMemo(() => {
+    const list: TransactionLedgerItem[] = [];
+
+    // 1. Completed Duty Visits (70%)
+    completedVisits.forEach((v) => {
+      const fee = Number(v.finalFee !== undefined ? v.finalFee : (v.estimatedFee || 899));
+      const payout = v.nursePayoutRupees || Math.round(fee * 0.70);
+      list.push({
+        id: `TX-DUTY-${v.id}`,
+        category: 'duty',
+        title: `Clinical Care: ${v.serviceTitle}`,
+        description: `Patient: ${v.patientName} (${v.area || 'Hyderabad'}) • Doorstep Care Completed`,
+        date: v.preferredDate || (v.createdAt ? new Date(v.createdAt).toLocaleDateString('en-IN') : 'Recent'),
+        amount: payout,
+        status: 'Settled',
+        bookingId: v.id
+      });
+    });
+
+    // 2. Pending Approval Duty Visits (70%)
+    pendingApprovalVisits.forEach((v) => {
+      const fee = Number(v.finalFee !== undefined ? v.finalFee : (v.estimatedFee || 899));
+      const payout = Math.round(fee * 0.70);
+      list.push({
+        id: `TX-PEND-${v.id}`,
+        category: 'pending',
+        title: `Duty Finished: ${v.serviceTitle}`,
+        description: `Patient: ${v.patientName} • Service Done, Awaiting Admin Verification`,
+        date: v.preferredDate || (v.createdAt ? new Date(v.createdAt).toLocaleDateString('en-IN') : 'Today'),
+        amount: payout,
+        status: 'Pending Approval',
+        bookingId: v.id
+      });
+    });
+
+    // 3. Completed Patient Referrals (10% Cash)
+    completedReferredVisits.forEach((v) => {
+      const fee = Number(v.finalFee !== undefined ? v.finalFee : (v.estimatedFee || 899));
+      const commission = Math.round(fee * 0.10);
+      list.push({
+        id: `TX-REF-${v.id}`,
+        category: 'referral',
+        title: `10% Referral Commission: ${v.serviceTitle}`,
+        description: `Referred Patient: ${v.patientName} • Care Completed & Billed`,
+        date: v.preferredDate || (v.createdAt ? new Date(v.createdAt).toLocaleDateString('en-IN') : 'Recent'),
+        amount: commission,
+        status: 'Settled',
+        bookingId: v.id
+      });
+    });
+
+    // 4. Converted Leads (50 Reward Points each)
+    myConvertedLeads.forEach((lead) => {
+      const isNurse = lead.referralType === 'nurse' || Boolean(lead.referredNurseName) || Boolean(lead.qualification);
+      list.push({
+        id: `TX-PTS-${lead.id}`,
+        category: 'points',
+        title: isNurse ? `Colleague Nurse Referral: ${lead.referredNurseName || lead.patientName || 'Nurse'}` : `Patient Referral Converted: ${lead.patientName || 'Patient'}`,
+        description: isNurse ? `Verified & Active on Staff Roster (+50 Points)` : `Appointment Booked & Converted (+50 Points)`,
+        date: lead.submittedAt ? new Date(lead.submittedAt).toLocaleDateString('en-IN') : 'Recent',
+        points: lead.pointsAwarded || 50,
+        status: 'Credited'
+      });
+    });
+
+    return list;
+  }, [completedVisits, pendingApprovalVisits, completedReferredVisits, myConvertedLeads]);
+
+  const filteredTransactions = useMemo(() => {
+    if (historyFilter === 'all') return transactions;
+    return transactions.filter((tx) => tx.category === historyFilter);
+  }, [transactions, historyFilter]);
 
   const handleSync = async () => {
     if (onRefreshData) {
@@ -277,10 +370,12 @@ export const NurseDashboard: React.FC<NurseDashboardProps> = ({
       const fee = Number(booking.finalFee !== undefined ? booking.finalFee : (booking.estimatedFee || (procedure ? procedure.priceNumber : 899)));
       const payoutRupees = Math.round(fee * 0.70);
 
+      const notesPrefix = booking.notes ? `${booking.notes} | ` : '';
       await onUpdateBooking(booking.id, {
-        status: 'Completed',
-        nurseAcceptanceStatus: 'Accepted',
-        nursePayoutRupees: payoutRupees
+        status: 'In-Progress',
+        nurseAcceptanceStatus: 'Service Done',
+        nursePayoutRupees: payoutRupees,
+        notes: `${notesPrefix}[Service Done by Nurse - Waiting for Admin Approval]`
       });
       if (onRefreshData) {
         try {
@@ -290,7 +385,7 @@ export const NurseDashboard: React.FC<NurseDashboardProps> = ({
       try {
         confetti({ particleCount: 70, spread: 70, origin: { y: 0.5 } });
       } catch { }
-      alert(`Duty Completed! ₹${payoutRupees} (70% service charge) has been added to your earnings.`);
+      alert(`Duty Finished! Service marked as done and sent for Admin Approval. Your ₹${payoutRupees} duty earnings will be credited once verified by office.`);
     }
   };
 
@@ -610,7 +705,9 @@ export const NurseDashboard: React.FC<NurseDashboardProps> = ({
                 <p style={{ margin: '0.35rem 0 0', fontSize: '0.9rem', color: '#CBD5E1' }}>
                   {activeVisits.length > 0
                     ? `You have ${activeVisits.length} patient visit waiting. Please check your visits.`
-                    : 'No pending visits right now. You can add a patient or share your code to earn cash!'}
+                    : pendingApprovalVisitsCount > 0
+                      ? `You have ${pendingApprovalVisitsCount} visit completed — awaiting admin approval for earnings.`
+                      : 'No pending visits right now. You can add a patient or share your code to earn cash!'}
                 </p>
               </div>
 
@@ -764,10 +861,17 @@ export const NurseDashboard: React.FC<NurseDashboardProps> = ({
                 <div style={{ fontSize: '2rem', fontWeight: 900, color: '#059669', margin: '0.4rem 0' }}>
                   ₹{totalMoney}
                 </div>
-                <div style={{ fontSize: '0.82rem', color: '#059669', fontWeight: 700, display: 'flex', alignItems: 'center', gap: '0.25rem' }}>
-                  <span>70% Duty + 10% Referrals</span>
-                  <ChevronRight size={14} />
-                </div>
+                {pendingApprovalVisitsEarnings > 0 ? (
+                  <div style={{ fontSize: '0.78rem', color: '#D97706', fontWeight: 700, display: 'flex', alignItems: 'center', gap: '0.25rem' }}>
+                    <span>+₹{pendingApprovalVisitsEarnings} waiting admin approval</span>
+                    <ChevronRight size={14} />
+                  </div>
+                ) : (
+                  <div style={{ fontSize: '0.82rem', color: '#059669', fontWeight: 700, display: 'flex', alignItems: 'center', gap: '0.25rem' }}>
+                    <span>70% Duty + 10% Referrals</span>
+                    <ChevronRight size={14} />
+                  </div>
+                )}
               </div>
             </div>
 
@@ -949,8 +1053,46 @@ export const NurseDashboard: React.FC<NurseDashboardProps> = ({
               </div>
             )}
 
-
-            {/* Quick Share Code Banner */}
+            {/* If there are visits waiting admin approval and no active visits */}
+            {activeVisits.length === 0 && pendingApprovalVisitsCount > 0 && (
+              <div style={{
+                background: '#FFFBEB',
+                borderRadius: 16,
+                padding: '1.25rem',
+                border: '1.5px solid #F59E0B',
+                boxShadow: '0 4px 12px rgba(245, 158, 11, 0.08)'
+              }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.5rem', flexWrap: 'wrap', gap: '0.5rem' }}>
+                  <span style={{ fontSize: '0.82rem', fontWeight: 800, color: '#92400E', textTransform: 'uppercase', letterSpacing: 0.5, display: 'inline-flex', alignItems: 'center', gap: '0.35rem' }}>
+                    <Clock size={16} style={{ color: '#D97706' }} /> Service Done — Waiting for Admin Approval
+                  </span>
+                  <span style={{ background: '#FEF3C7', color: '#B45309', fontSize: '0.78rem', fontWeight: 800, padding: '3px 10px', borderRadius: 9999, border: '1px solid #FDE68A' }}>
+                    ₹{pendingApprovalVisitsEarnings} Pending Verification ({pendingApprovalVisitsCount} visit{pendingApprovalVisitsCount > 1 ? 's' : ''})
+                  </span>
+                </div>
+                <p style={{ margin: 0, fontSize: '0.86rem', color: '#78350F' }}>
+                  You have finished <strong>{pendingApprovalVisitsCount} visit(s)</strong>. The office admin will verify and accept the service, after which your 70% earnings will be directly added to your balance.
+                </p>
+                <div style={{ marginTop: '0.85rem' }}>
+                  <button
+                    type="button"
+                    onClick={() => setActiveTab('visits')}
+                    style={{
+                      background: '#D97706',
+                      color: '#FFFFFF',
+                      border: 'none',
+                      padding: '0.45rem 1rem',
+                      borderRadius: 8,
+                      fontSize: '0.8rem',
+                      fontWeight: 700,
+                      cursor: 'pointer'
+                    }}
+                  >
+                    View Finished Visits
+                  </button>
+                </div>
+              </div>
+            )}
             <div style={{
               background: '#FFFFFF',
               borderRadius: 16,
@@ -1047,9 +1189,10 @@ export const NurseDashboard: React.FC<NurseDashboardProps> = ({
               <div style={{ display: 'flex', flexDirection: 'column', gap: '0.85rem' }}>
                 {myVisits.map((visit) => {
                   const isDone = visit.status === 'Completed';
-                  const isInProgress = visit.status === 'In-Progress';
+                  const isWaitingApproval = !isDone && (visit.nurseAcceptanceStatus === 'Service Done' || Boolean(visit.notes && visit.notes.includes('Waiting for Admin Approval')));
+                  const isInProgress = visit.status === 'In-Progress' && !isWaitingApproval;
                   const isRejected = visit.status === 'Rejected' || visit.status === 'Cancelled' || Boolean(visit.rejectionReason);
-                  const isAssigned = !isRejected && (visit.status === 'Assigned' || visit.status === 'Pending');
+                  const isAssigned = !isRejected && !isWaitingApproval && (visit.status === 'Assigned' || visit.status === 'Pending');
 
                   return (
                     <div
@@ -1057,9 +1200,9 @@ export const NurseDashboard: React.FC<NurseDashboardProps> = ({
                       style={{
                         background: '#FFFFFF',
                         borderRadius: 16,
-                        border: isRejected ? '1.5px solid #FECDD3' : (isInProgress ? '2px solid #0284C7' : isDone ? '1px solid #DCFCE7' : '1px solid #E2E8F0'),
+                        border: isRejected ? '1.5px solid #FECDD3' : (isWaitingApproval ? '1.5px solid #F59E0B' : isInProgress ? '2px solid #0284C7' : isDone ? '1px solid #DCFCE7' : '1px solid #E2E8F0'),
                         padding: '1.25rem',
-                        boxShadow: isInProgress ? '0 4px 12px rgba(2, 132, 199, 0.08)' : 'none',
+                        boxShadow: isInProgress ? '0 4px 12px rgba(2, 132, 199, 0.08)' : (isWaitingApproval ? '0 4px 12px rgba(245, 158, 11, 0.08)' : 'none'),
                         position: 'relative'
                       }}
                     >
@@ -1070,13 +1213,13 @@ export const NurseDashboard: React.FC<NurseDashboardProps> = ({
                           fontWeight: 800,
                           padding: '3px 9px',
                           borderRadius: 9999,
-                          background: isRejected ? '#FEE2E2' : (isInProgress ? '#EFF6FF' : isDone ? '#F0FDF4' : '#FFFBEB'),
-                          color: isRejected ? '#DC2626' : (isInProgress ? '#0284C7' : isDone ? '#16A34A' : '#D97706'),
-                          border: `1px solid ${isRejected ? '#FCA5A5' : (isInProgress ? '#BFDBFE' : isDone ? '#BBF7D0' : '#FDE68A')}`
+                          background: isRejected ? '#FEE2E2' : (isWaitingApproval ? '#FEF3C7' : isInProgress ? '#EFF6FF' : isDone ? '#F0FDF4' : '#FFFBEB'),
+                          color: isRejected ? '#DC2626' : (isWaitingApproval ? '#92400E' : isInProgress ? '#0284C7' : isDone ? '#16A34A' : '#D97706'),
+                          border: `1px solid ${isRejected ? '#FCA5A5' : (isWaitingApproval ? '#FDE68A' : isInProgress ? '#BFDBFE' : isDone ? '#BBF7D0' : '#FDE68A')}`
                         }}>
                           {isRejected
                             ? `✕ ${visit.status === 'Cancelled' ? 'Duty Cancelled' : 'Duty / Patient Rejected'}`
-                            : (isInProgress ? '⚡ Duty in Progress' : isDone ? '✓ Visit Completed' : '🔔 New Assignment')}
+                            : (isWaitingApproval ? '⏳ Service Done — Waiting for Admin Approval' : isInProgress ? '⚡ Duty in Progress' : isDone ? '✓ Visit Completed' : '🔔 New Assignment')}
                         </span>
                         <span style={{ fontSize: '0.78rem', color: '#64748B', fontWeight: 600 }}>
                           ID: {visit.id}
@@ -1114,8 +1257,8 @@ export const NurseDashboard: React.FC<NurseDashboardProps> = ({
                               <strong style={{ fontSize: '0.84rem' }}>
                                 {isRejected ? '₹0' : `₹${Math.round(Number(visit.finalFee !== undefined ? visit.finalFee : (visit.estimatedFee || 899)) * 0.70)}`}
                               </strong>
-                              <span style={{ fontSize: '0.68rem', color: isRejected ? '#64748B' : '#047857', fontWeight: 600 }}>
-                                {isRejected ? '(Cancelled/Rejected)' : (isDone ? 'Credited to earnings' : 'Credited on finishing job')}
+                              <span style={{ fontSize: '0.68rem', color: isRejected ? '#64748B' : (isWaitingApproval ? '#B45309' : '#047857'), fontWeight: 600 }}>
+                                {isRejected ? '(Cancelled/Rejected)' : (isWaitingApproval ? '(⏳ Waiting Admin Approval)' : (isDone ? 'Credited to earnings' : 'Credited after admin approval'))}
                               </span>
                             </span>
                           </div>
@@ -1374,6 +1517,24 @@ export const NurseDashboard: React.FC<NurseDashboardProps> = ({
                               <CheckCircle2 size={15} />
                               <span>Finish Duty (Care Done)</span>
                             </button>
+                          )}
+
+                          {isWaitingApproval && (
+                            <span style={{
+                              fontSize: '0.82rem',
+                              color: '#92400E',
+                              fontWeight: 800,
+                              background: '#FEF3C7',
+                              border: '1px solid #FDE68A',
+                              padding: '5px 12px',
+                              borderRadius: 8,
+                              display: 'inline-flex',
+                              alignItems: 'center',
+                              gap: '0.35rem'
+                            }}>
+                              <Clock size={15} style={{ color: '#D97706' }} />
+                              <span>⏳ Service Done — Waiting for Admin Approval (+₹{Math.round(Number(visit.finalFee !== undefined ? visit.finalFee : (visit.estimatedFee || 899)) * 0.70)} pending)</span>
+                            </span>
                           )}
 
                           {isDone && (
@@ -1672,6 +1833,11 @@ export const NurseDashboard: React.FC<NurseDashboardProps> = ({
                   <span style={{ fontSize: '0.76rem', background: 'rgba(255,255,255,0.2)', padding: '2px 8px', borderRadius: 6, color: '#FFFFFF', fontWeight: 700 }}>
                     👥 ₹{calculatedMoney} from {completedReferredVisits.length} Finished Patient Referrals (10%)
                   </span>
+                  {pendingApprovalVisitsEarnings > 0 && (
+                    <span style={{ fontSize: '0.76rem', background: '#FEF3C7', border: '1px solid #FDE68A', padding: '2px 8px', borderRadius: 6, color: '#92400E', fontWeight: 800 }}>
+                      ⏳ ₹{pendingApprovalVisitsEarnings} from {pendingApprovalVisitsCount} Visits (Pending Admin Approval)
+                    </span>
+                  )}
                 </div>
               </div>
 
@@ -1748,25 +1914,63 @@ export const NurseDashboard: React.FC<NurseDashboardProps> = ({
 
 
             <button
+              type="button"
               onClick={() => setIsHistoryModalOpen(true)}
               className="btn"
               style={{
                 width: '100%',
                 background: '#FFFFFF',
-                border: '1px solid #E2E8F0',
-                color: '#1E293B',
-                fontWeight: 700,
-                padding: '0.85rem',
-                borderRadius: 12,
+                border: '1.5px solid #CBD5E1',
+                color: '#0F172A',
+                fontWeight: 750,
+                padding: '0.85rem 1.1rem',
+                borderRadius: 14,
                 display: 'flex',
                 alignItems: 'center',
-                justifyContent: 'center',
+                justifyContent: 'space-between',
                 gap: '0.5rem',
-                cursor: 'pointer'
+                cursor: 'pointer',
+                boxShadow: '0 2px 4px rgba(0,0,0,0.03)',
+                transition: 'all 0.15s ease'
               }}
             >
-              <Clock size={16} style={{ color: '#059669' }} />
-              View Transaction History
+              <div style={{ display: 'flex', alignItems: 'center', gap: '0.55rem' }}>
+                <div style={{
+                  width: 30,
+                  height: 30,
+                  borderRadius: 8,
+                  background: '#ECFDF5',
+                  color: '#059669',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center'
+                }}>
+                  <Clock size={16} />
+                </div>
+                <div style={{ textAlign: 'left' }}>
+                  <div style={{ fontSize: '0.9rem', fontWeight: 800, color: '#0F172A' }}>
+                    View Transaction History & Ledger
+                  </div>
+                  <div style={{ fontSize: '0.74rem', color: '#64748B' }}>
+                    Detailed statement of 70% duties, 10% referrals & points
+                  </div>
+                </div>
+              </div>
+              <span style={{
+                background: '#F1F5F9',
+                color: '#0284C7',
+                border: '1px solid #CBD5E1',
+                fontSize: '0.76rem',
+                fontWeight: 800,
+                padding: '3px 10px',
+                borderRadius: 9999,
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: '0.25rem'
+              }}>
+                <span>{transactions.length} records</span>
+                <ChevronRight size={14} />
+              </span>
             </button>
 
             {/* List of Referred Patients */}
@@ -2252,6 +2456,8 @@ export const NurseDashboard: React.FC<NurseDashboardProps> = ({
       {/* 1. UNIFIED DOCTOR PRESCRIPTION & CLINICAL ORDERS MODAL */}
       {isRxModalOpen && previewRxBooking && (
         <div
+          className="modal-overlay"
+          data-lenis-prevent="true"
           style={{
             position: 'fixed',
             top: 0, left: 0, right: 0, bottom: 0,
@@ -2261,11 +2467,15 @@ export const NurseDashboard: React.FC<NurseDashboardProps> = ({
             justifyContent: 'center',
             zIndex: 9999,
             padding: '1rem',
-            backdropFilter: 'blur(4px)'
+            backdropFilter: 'blur(4px)',
+            overscrollBehavior: 'contain'
           }}
           onClick={() => setIsRxModalOpen(false)}
+          onWheel={(e) => e.stopPropagation()}
         >
           <div
+            className="modal-box"
+            data-lenis-prevent="true"
             style={{
               background: '#FFFFFF',
               borderRadius: 20,
@@ -2275,9 +2485,11 @@ export const NurseDashboard: React.FC<NurseDashboardProps> = ({
               display: 'flex',
               flexDirection: 'column',
               boxShadow: '0 25px 50px -12px rgba(0,0,0,0.25)',
-              overflow: 'hidden'
+              overflow: 'hidden',
+              overscrollBehavior: 'contain'
             }}
             onClick={(e) => e.stopPropagation()}
+            onWheel={(e) => e.stopPropagation()}
           >
             {/* Header - Always Fixed at Top */}
             <div style={{
@@ -2334,14 +2546,19 @@ export const NurseDashboard: React.FC<NurseDashboardProps> = ({
             </div>
 
             {/* Body - Scrollable */}
-            <div style={{
-              padding: '1.25rem 1.5rem',
-              overflowY: 'auto',
-              flex: 1,
-              display: 'flex',
-              flexDirection: 'column',
-              gap: '0.9rem'
-            }}>
+            <div
+              data-lenis-prevent="true"
+              style={{
+                padding: '1.25rem 1.5rem',
+                overflowY: 'auto',
+                flex: 1,
+                display: 'flex',
+                flexDirection: 'column',
+                gap: '0.9rem',
+                overscrollBehavior: 'contain'
+              }}
+              onWheel={(e) => e.stopPropagation()}
+            >
               {/* Patient & Procedure Summary Box */}
               <div style={{
                 background: '#F8FAFC',
@@ -2530,6 +2747,8 @@ export const NurseDashboard: React.FC<NurseDashboardProps> = ({
       {/* 2. DOORSTEP BILL INVOICE MODAL (Always Visible, Fits All Screens) */}
       {isInvoiceModalOpen && previewInvoice && (
         <div
+          className="modal-overlay"
+          data-lenis-prevent="true"
           style={{
             position: 'fixed',
             top: 0, left: 0, right: 0, bottom: 0,
@@ -2539,11 +2758,15 @@ export const NurseDashboard: React.FC<NurseDashboardProps> = ({
             justifyContent: 'center',
             zIndex: 9999,
             padding: '1rem',
-            backdropFilter: 'blur(4px)'
+            backdropFilter: 'blur(4px)',
+            overscrollBehavior: 'contain'
           }}
           onClick={() => setIsInvoiceModalOpen(false)}
+          onWheel={(e) => e.stopPropagation()}
         >
           <div
+            className="modal-box"
+            data-lenis-prevent="true"
             style={{
               background: '#FFFFFF',
               borderRadius: 20,
@@ -2553,9 +2776,11 @@ export const NurseDashboard: React.FC<NurseDashboardProps> = ({
               display: 'flex',
               flexDirection: 'column',
               boxShadow: '0 25px 50px -12px rgba(0,0,0,0.25)',
-              overflow: 'hidden'
+              overflow: 'hidden',
+              overscrollBehavior: 'contain'
             }}
             onClick={(e) => e.stopPropagation()}
+            onWheel={(e) => e.stopPropagation()}
           >
             {/* Header - Fixed at Top */}
             <div style={{
@@ -2615,11 +2840,16 @@ export const NurseDashboard: React.FC<NurseDashboardProps> = ({
             </div>
 
             {/* Body - Scrollable */}
-            <div style={{
-              padding: '1.25rem 1.5rem',
-              overflowY: 'auto',
-              flex: 1
-            }}>
+            <div
+              data-lenis-prevent="true"
+              style={{
+                padding: '1.25rem 1.5rem',
+                overflowY: 'auto',
+                flex: 1,
+                overscrollBehavior: 'contain'
+              }}
+              onWheel={(e) => e.stopPropagation()}
+            >
               <div style={{
                 background: '#F8FAFC',
                 borderRadius: 12,
@@ -2805,24 +3035,38 @@ export const NurseDashboard: React.FC<NurseDashboardProps> = ({
 
       {/* Certificate Modal */}
       {certModalOpen && (
-        <div style={{
-          position: 'fixed',
-          top: 0, left: 0, right: 0, bottom: 0,
-          background: 'rgba(15, 23, 42, 0.65)',
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-          zIndex: 9999,
-          padding: '1rem'
-        }}>
-          <div style={{
-            background: '#FFFFFF',
-            borderRadius: 16,
-            maxWidth: 480,
-            width: '100%',
-            padding: '1.5rem',
-            boxShadow: '0 20px 40px rgba(0,0,0,0.2)'
-          }}>
+        <div
+          className="modal-overlay"
+          data-lenis-prevent="true"
+          style={{
+            position: 'fixed',
+            top: 0, left: 0, right: 0, bottom: 0,
+            background: 'rgba(15, 23, 42, 0.65)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            zIndex: 9999,
+            padding: '1rem',
+            overscrollBehavior: 'contain'
+          }}
+          onClick={() => setCertModalOpen(false)}
+          onWheel={(e) => e.stopPropagation()}
+        >
+          <div
+            className="modal-box"
+            data-lenis-prevent="true"
+            style={{
+              background: '#FFFFFF',
+              borderRadius: 16,
+              maxWidth: 480,
+              width: '100%',
+              padding: '1.5rem',
+              boxShadow: '0 20px 40px rgba(0,0,0,0.2)',
+              overscrollBehavior: 'contain'
+            }}
+            onClick={(e) => e.stopPropagation()}
+            onWheel={(e) => e.stopPropagation()}
+          >
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
               <h4 style={{ margin: 0, fontSize: '1.15rem', fontWeight: 800, color: '#0F172A' }}>
                 Nursing Council Certificate
@@ -2890,6 +3134,364 @@ export const NurseDashboard: React.FC<NurseDashboardProps> = ({
                 onClick={() => setCertModalOpen(false)}
                 className="btn btn-primary"
                 style={{ borderRadius: 8, padding: '0.45rem 1.25rem', fontSize: '0.82rem' }}
+              >
+                Close
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ================================================================= */}
+      {/* 4. TRANSACTION HISTORY & EARNINGS LEDGER MODAL */}
+      {/* ================================================================= */}
+      {isHistoryModalOpen && (
+        <div
+          className="modal-overlay"
+          data-lenis-prevent="true"
+          style={{
+            position: 'fixed',
+            top: 0,
+            left: 0,
+            right: 0,
+            bottom: 0,
+            background: 'rgba(15, 23, 42, 0.72)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            zIndex: 9999,
+            padding: '1rem',
+            backdropFilter: 'blur(5px)',
+            overflowY: 'auto',
+            overscrollBehavior: 'contain'
+          }}
+          onClick={() => setIsHistoryModalOpen(false)}
+          onWheel={(e) => e.stopPropagation()}
+        >
+          <div
+            className="modal-box"
+            data-lenis-prevent="true"
+            style={{
+              background: '#FFFFFF',
+              borderRadius: 20,
+              maxWidth: 740,
+              width: '100%',
+              height: '86vh',
+              maxHeight: 780,
+              display: 'flex',
+              flexDirection: 'column',
+              boxShadow: '0 25px 50px -12px rgba(0,0,0,0.35)',
+              overflow: 'hidden',
+              margin: 'auto',
+              overscrollBehavior: 'contain'
+            }}
+            onClick={(e) => e.stopPropagation()}
+            onWheel={(e) => e.stopPropagation()}
+          >
+            {/* Header - Fixed at Top */}
+            <div style={{
+              padding: '1.25rem 1.5rem',
+              borderBottom: '1px solid #E2E8F0',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              background: 'linear-gradient(135deg, #0A192F 0%, #1E3A5F 100%)',
+              color: '#FFFFFF',
+              flexShrink: 0
+            }}>
+              <div>
+                <h3 style={{ margin: 0, fontSize: '1.25rem', fontWeight: 800, color: '#FFFFFF', display: 'flex', alignItems: 'center', gap: '0.45rem' }}>
+                  <Coins size={22} style={{ color: '#34D399' }} />
+                  <span>Earnings & Transaction Ledger</span>
+                </h3>
+                <p style={{ margin: '0.2rem 0 0', fontSize: '0.8rem', color: '#CBD5E1' }}>
+                  Official provider ledger for {nurse.name} • 70% Duty Share & 10% Referrals
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setIsHistoryModalOpen(false)}
+                style={{
+                  background: 'rgba(255,255,255,0.12)',
+                  border: 'none',
+                  color: '#FFFFFF',
+                  borderRadius: '50%',
+                  width: 32,
+                  height: 32,
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  cursor: 'pointer'
+                }}
+              >
+                <X size={18} />
+              </button>
+            </div>
+
+            {/* Scrollable Content Viewport (Whole Interior Scrolls Smoothly) */}
+            <div
+              data-lenis-prevent="true"
+              style={{
+                flex: '1 1 auto',
+                minHeight: 0,
+                overflowY: 'auto',
+                WebkitOverflowScrolling: 'touch',
+                display: 'flex',
+                flexDirection: 'column',
+                overscrollBehavior: 'contain'
+              }}
+              onWheel={(e) => e.stopPropagation()}
+            >
+              {/* Financial Summary Row */}
+              <div style={{
+                display: 'grid',
+                gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))',
+                gap: '0.75rem',
+                padding: '1rem 1.5rem',
+                background: '#F8FAFC',
+                borderBottom: '1px solid #E2E8F0',
+                flexShrink: 0
+              }}>
+                <div style={{
+                  background: '#FFFFFF',
+                  borderRadius: 12,
+                  padding: '0.75rem 1rem',
+                  border: '1.5px solid #A7F3D0',
+                  boxShadow: '0 2px 4px rgba(16, 185, 129, 0.06)'
+                }}>
+                  <div style={{ fontSize: '0.72rem', color: '#065F46', fontWeight: 700, textTransform: 'uppercase' }}>
+                    Finalized Earnings
+                  </div>
+                  <div style={{ fontSize: '1.45rem', fontWeight: 900, color: '#059669', margin: '0.15rem 0' }}>
+                    ₹{totalMoney}
+                  </div>
+                  <div style={{ fontSize: '0.72rem', color: '#64748B' }}>
+                    {completedVisits.length} Duties + {completedReferredVisits.length} Referrals
+                  </div>
+                </div>
+
+                <div style={{
+                  background: '#FFFFFF',
+                  borderRadius: 12,
+                  padding: '0.75rem 1rem',
+                  border: '1.5px solid #FDE68A',
+                  boxShadow: '0 2px 4px rgba(245, 158, 11, 0.06)'
+                }}>
+                  <div style={{ fontSize: '0.72rem', color: '#92400E', fontWeight: 700, textTransform: 'uppercase' }}>
+                    Pending Admin Approval
+                  </div>
+                  <div style={{ fontSize: '1.45rem', fontWeight: 900, color: '#D97706', margin: '0.15rem 0' }}>
+                    ₹{pendingApprovalVisitsEarnings}
+                  </div>
+                  <div style={{ fontSize: '0.72rem', color: '#64748B' }}>
+                    {pendingApprovalVisitsCount} Visit{pendingApprovalVisitsCount !== 1 ? 's' : ''} Finished by Nurse
+                  </div>
+                </div>
+
+                <div style={{
+                  background: '#FFFFFF',
+                  borderRadius: 12,
+                  padding: '0.75rem 1rem',
+                  border: '1.5px solid #DDD6FE',
+                  boxShadow: '0 2px 4px rgba(147, 51, 234, 0.06)'
+                }}>
+                  <div style={{ fontSize: '0.72rem', color: '#6B21A8', fontWeight: 700, textTransform: 'uppercase' }}>
+                    Reward Points Ledger
+                  </div>
+                  <div style={{ fontSize: '1.45rem', fontWeight: 900, color: '#7C3AED', margin: '0.15rem 0' }}>
+                    ⭐ {totalPoints} Pts
+                  </div>
+                  <div style={{ fontSize: '0.72rem', color: '#64748B' }}>
+                    {myConvertedLeads.length} Converted Leads (+50 each)
+                  </div>
+                </div>
+              </div>
+
+              {/* Sticky Filter Pills */}
+              <div style={{
+                position: 'sticky',
+                top: 0,
+                zIndex: 20,
+                display: 'flex',
+                gap: '0.4rem',
+                padding: '0.75rem 1.5rem',
+                borderBottom: '1px solid #E2E8F0',
+                overflowX: 'auto',
+                background: '#FFFFFF',
+                boxShadow: '0 2px 4px rgba(0,0,0,0.03)',
+                flexShrink: 0
+              }}>
+                {[
+                  { id: 'all', label: `All (${transactions.length})` },
+                  { id: 'duty', label: `70% Duties (${transactions.filter(t => t.category === 'duty').length})` },
+                  { id: 'referral', label: `10% Referrals (${transactions.filter(t => t.category === 'referral').length})` },
+                  { id: 'pending', label: `Pending Approval (${transactions.filter(t => t.category === 'pending').length})` },
+                  { id: 'points', label: `Points (${transactions.filter(t => t.category === 'points').length})` }
+                ].map((tab) => {
+                  const isActive = historyFilter === tab.id;
+                  return (
+                    <button
+                      key={tab.id}
+                      type="button"
+                      onClick={() => setHistoryFilter(tab.id as any)}
+                      style={{
+                        background: isActive ? '#0284C7' : '#F1F5F9',
+                        color: isActive ? '#FFFFFF' : '#475569',
+                        border: 'none',
+                        borderRadius: 9999,
+                        padding: '0.35rem 0.85rem',
+                        fontSize: '0.78rem',
+                        fontWeight: 750,
+                        cursor: 'pointer',
+                        whiteSpace: 'nowrap',
+                        transition: 'all 0.15s ease'
+                      }}
+                    >
+                      {tab.label}
+                    </button>
+                  );
+                })}
+              </div>
+
+              {/* Transaction List Items */}
+              <div style={{
+                padding: '1rem 1.5rem',
+                display: 'flex',
+                flexDirection: 'column',
+                gap: '0.65rem'
+              }}>
+                {filteredTransactions.length === 0 ? (
+                  <div style={{
+                    padding: '3rem 1rem',
+                    textAlign: 'center',
+                    color: '#64748B',
+                    background: '#F8FAFC',
+                    borderRadius: 14,
+                    border: '1.5px dashed #CBD5E1'
+                  }}>
+                    <Coins size={36} style={{ color: '#94A3B8', margin: '0 auto 0.5rem' }} />
+                    <div style={{ fontWeight: 800, color: '#334155', fontSize: '0.95rem' }}>No Transactions In This Category</div>
+                    <div style={{ fontSize: '0.8rem', color: '#64748B', marginTop: '0.25rem' }}>
+                      Transactions will appear automatically as you complete patient visits and convert referrals.
+                    </div>
+                  </div>
+                ) : (
+                  filteredTransactions.map((tx) => {
+                    const isPending = tx.category === 'pending';
+                    const isPoints = tx.category === 'points';
+                    const isDuty = tx.category === 'duty';
+                    const isReferral = tx.category === 'referral';
+
+                    return (
+                      <div
+                        key={tx.id}
+                        style={{
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'space-between',
+                          gap: '0.75rem',
+                          padding: '0.85rem 1rem',
+                          borderRadius: 12,
+                          background: isPending ? '#FFFBEB' : '#FFFFFF',
+                          border: isPending ? '1.5px solid #FDE68A' : '1px solid #E2E8F0',
+                          boxShadow: '0 1px 3px rgba(0,0,0,0.03)',
+                          flexWrap: 'wrap'
+                        }}
+                      >
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+                          <div style={{
+                            width: 40,
+                            height: 40,
+                            borderRadius: 10,
+                            background: isPending ? '#FEF3C7' : (isPoints ? '#FAF5FF' : (isReferral ? '#EFF6FF' : '#ECFDF5')),
+                            color: isPending ? '#D97706' : (isPoints ? '#9333EA' : (isReferral ? '#0284C7' : '#059669')),
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            flexShrink: 0
+                          }}>
+                            {isPending && <Clock size={20} />}
+                            {isPoints && <Sparkles size={20} />}
+                            {isReferral && <TrendingUp size={20} />}
+                            {isDuty && <CheckCircle2 size={20} />}
+                          </div>
+                          <div>
+                            <div style={{ fontSize: '0.88rem', fontWeight: 800, color: '#0F172A' }}>
+                              {tx.title}
+                            </div>
+                            <div style={{ fontSize: '0.78rem', color: '#64748B', marginTop: '0.15rem' }}>
+                              {tx.description}
+                            </div>
+                            <div style={{ fontSize: '0.72rem', color: '#94A3B8', marginTop: '0.2rem', display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
+                              <span>📅 {tx.date}</span>
+                              {tx.bookingId && <span>• ID: #{tx.bookingId}</span>}
+                            </div>
+                          </div>
+                        </div>
+
+                        <div style={{ textAlign: 'right', display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: '0.25rem' }}>
+                          {tx.amount !== undefined && (
+                            <div style={{
+                              fontSize: '1.05rem',
+                              fontWeight: 900,
+                              color: isPending ? '#D97706' : '#059669'
+                            }}>
+                              +{isPending ? `₹${tx.amount}` : `₹${tx.amount}`}
+                            </div>
+                          )}
+                          {tx.points !== undefined && (
+                            <div style={{
+                              fontSize: '1.05rem',
+                              fontWeight: 900,
+                              color: '#7C3AED'
+                            }}>
+                              +{tx.points} Pts
+                            </div>
+                          )}
+                          <span style={{
+                            fontSize: '0.7rem',
+                            fontWeight: 800,
+                            padding: '2px 8px',
+                            borderRadius: 9999,
+                            background: isPending ? '#FEF3C7' : (isPoints ? '#FAF5FF' : '#ECFDF5'),
+                            color: isPending ? '#92400E' : (isPoints ? '#6B21A8' : '#047857'),
+                            border: `1px solid ${isPending ? '#FDE68A' : (isPoints ? '#E9D5FF' : '#A7F3D0')}`
+                          }}>
+                            {tx.status === 'Pending Approval' ? '⏳ Pending Approval' : (isPoints ? '⭐ 50 Pts Credited' : '✓ Credited')}
+                          </span>
+                        </div>
+                      </div>
+                    );
+                  })
+                )}
+              </div>
+            </div>
+
+            {/* Footer - Fixed at Bottom */}
+            <div style={{
+              padding: '0.9rem 1.5rem',
+              borderTop: '1px solid #E2E8F0',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              background: '#F8FAFC',
+              flexWrap: 'wrap',
+              gap: '0.5rem',
+              flexShrink: 0
+            }}>
+              <div style={{ fontSize: '0.76rem', color: '#64748B' }}>
+                All duty earnings are calculated at 70% and referrals at 10% under provider policy.
+              </div>
+              <button
+                type="button"
+                onClick={() => setIsHistoryModalOpen(false)}
+                className="btn btn-primary"
+                style={{
+                  borderRadius: 8,
+                  padding: '0.45rem 1.25rem',
+                  fontSize: '0.82rem',
+                  fontWeight: 700
+                }}
               >
                 Close
               </button>

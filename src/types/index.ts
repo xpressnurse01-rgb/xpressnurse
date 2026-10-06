@@ -57,7 +57,7 @@ export interface Booking {
   prescriptionUrl?: string;
   prescriptionIssued?: boolean;
   status: 'Pending' | 'Assigned' | 'In-Progress' | 'Completed' | 'Cancelled' | 'Rejected';
-  nurseAcceptanceStatus?: 'Pending' | 'Accepted' | 'Rejected';
+  nurseAcceptanceStatus?: 'Pending' | 'Accepted' | 'Rejected' | 'Service Done';
   assignedNurseId?: string;
   assignedNurseName?: string;
   referringNurseId?: string;

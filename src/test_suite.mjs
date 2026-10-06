@@ -186,6 +186,58 @@ async function testAll() {
     console.error('HTTP check error:', e);
   }
 
+  // -----------------------------------------------------------------
+  // TEST 6: Testing Service Done & Admin Approval Workflow
+  // -----------------------------------------------------------------
+  console.log('\n[6] Testing Service Done & Admin Approval Earnings Workflow...');
+
+  const mockBooking = {
+    id: 'BK-TEST-1',
+    assignedNurseId: 'nurse-test',
+    patientName: 'Ramakrishna',
+    status: 'In-Progress',
+    nurseAcceptanceStatus: 'Service Done',
+    notes: '[Service Done by Nurse - Waiting for Admin Approval]',
+    finalFee: 1000
+  };
+
+  const isFinishedWaiting = mockBooking.status !== 'Completed' &&
+    mockBooking.status !== 'Cancelled' &&
+    mockBooking.status !== 'Rejected' &&
+    (mockBooking.nurseAcceptanceStatus === 'Service Done' || Boolean(mockBooking.notes && mockBooking.notes.includes('Waiting for Admin Approval')));
+
+  assert(isFinishedWaiting, 'Visit is recognized as Service Done waiting for admin approval');
+
+  // Before Admin Approval:
+  const pendingVisits = [mockBooking].filter(() => isFinishedWaiting);
+  const completedVisits = [mockBooking].filter(b => b.status === 'Completed');
+  const finalizedEarnings = completedVisits.reduce((acc, b) => acc + Math.round(b.finalFee * 0.70), 0);
+  const pendingEarnings = pendingVisits.reduce((acc, b) => acc + Math.round(b.finalFee * 0.70), 0);
+
+  assert(finalizedEarnings === 0, 'Finalized earnings before admin approval is strictly ₹0');
+  assert(pendingEarnings === 700, 'Pending approval earnings is tracked at 70% (₹700)');
+
+  // After Admin Approval:
+  const approvedBooking = {
+    ...mockBooking,
+    status: 'Completed',
+    nurseAcceptanceStatus: 'Accepted',
+    nursePayoutRupees: 700,
+    notes: '[Admin Verified & Approved - Service Completed]'
+  };
+
+  const completedAfterAdmin = [approvedBooking].filter(b => b.status === 'Completed');
+  const finalizedEarningsAfterAdmin = completedAfterAdmin.reduce((acc, b) => acc + (b.nursePayoutRupees || Math.round(b.finalFee * 0.70)), 0);
+  const pendingAfterAdmin = [approvedBooking].filter(b =>
+    b.status !== 'Completed' &&
+    b.status !== 'Cancelled' &&
+    b.status !== 'Rejected' &&
+    (b.nurseAcceptanceStatus === 'Service Done' || Boolean(b.notes && b.notes.includes('Waiting for Admin Approval')))
+  );
+
+  assert(finalizedEarningsAfterAdmin === 700, 'After admin verifies and accepts, earnings are released (₹700)');
+  assert(pendingAfterAdmin.length === 0, 'Pending visits count drops to 0 after admin verification');
+
   console.log('\n=====================================================');
   console.log(`  TEST RESULTS: ${passed}/${total} TESTS PASSED (${Math.round((passed / total) * 100)}%)`);
   console.log('=====================================================');

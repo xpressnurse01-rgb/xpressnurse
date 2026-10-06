@@ -6,9 +6,12 @@ export interface NurseFinancialMetrics {
   myVisits: Booking[];
   activeVisits: Booking[];
   completedVisits: Booking[];
+  pendingApprovalVisits: Booking[];
   activeVisitsCount: number;
   completedVisitsCount: number;
-  completedVisitsEarnings: number; // Strictly 70% service charge for visits completed by this nurse
+  pendingApprovalVisitsCount: number;
+  completedVisitsEarnings: number; // Strictly 70% service charge for visits verified & completed by this nurse
+  pendingApprovalVisitsEarnings: number; // 70% for visits finished by nurse awaiting admin approval
 
   // Referrals
   myLeads: NurseLead[];
@@ -273,7 +276,20 @@ export function calculateNurseMetrics(
     return false;
   });
 
-  const activeVisits = myVisits.filter((b) => b.status === 'Assigned' || b.status === 'In-Progress');
+  // Visits finished by nurse but awaiting admin verification
+  const pendingApprovalVisits = myVisits.filter((b) =>
+    b.status !== 'Completed' &&
+    b.status !== 'Cancelled' &&
+    b.status !== 'Rejected' &&
+    (b.nurseAcceptanceStatus === 'Service Done' || (b.notes && b.notes.includes('Waiting for Admin Approval')))
+  );
+
+  const activeVisits = myVisits.filter((b) =>
+    (b.status === 'Assigned' || b.status === 'In-Progress') &&
+    b.nurseAcceptanceStatus !== 'Service Done' &&
+    !(b.notes && b.notes.includes('Waiting for Admin Approval'))
+  );
+
   const completedVisits = myVisits.filter((b) => b.status === 'Completed');
 
   // 1. Completed visit earnings: strictly 70% of service charge for completed visits assigned to this nurse
@@ -282,6 +298,14 @@ export function calculateNurseMetrics(
     const procedure = services.find((s) => s.id === visit.serviceId);
     const fee = Number(visit.finalFee !== undefined && visit.finalFee !== null ? visit.finalFee : (visit.estimatedFee || (procedure ? procedure.priceNumber : 800)));
     completedVisitsEarnings += Math.round(fee * 0.70);
+  });
+
+  // Pending approval earnings (70% service charge awaiting admin verification)
+  let pendingApprovalVisitsEarnings = 0;
+  pendingApprovalVisits.forEach((visit) => {
+    const procedure = services.find((s) => s.id === visit.serviceId);
+    const fee = Number(visit.finalFee !== undefined && visit.finalFee !== null ? visit.finalFee : (visit.estimatedFee || (procedure ? procedure.priceNumber : 800)));
+    pendingApprovalVisitsEarnings += Math.round(fee * 0.70);
   });
 
   // 2. Filter Leads submitted by THIS nurse
@@ -510,9 +534,12 @@ export function calculateNurseMetrics(
     myVisits,
     activeVisits,
     completedVisits,
+    pendingApprovalVisits,
     activeVisitsCount: activeVisits.length,
     completedVisitsCount: completedVisits.length,
+    pendingApprovalVisitsCount: pendingApprovalVisits.length,
     completedVisitsEarnings: finalCompletedVisitsEarnings,
+    pendingApprovalVisitsEarnings,
     myLeads: myAllLeadsCombined,
     myConvertedLeads,
     myPatientLeads,
