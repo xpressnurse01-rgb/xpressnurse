@@ -22,6 +22,8 @@ import { LoginPage } from './components/LoginPage';
 import { PolicyModal, PolicyType } from './components/PolicyModal';
 import { AuthGuard } from './components/AuthGuard';
 import { PullToRefresh } from './components/PullToRefresh';
+import { LocalSeoPage } from './components/LocalSeoPage';
+import { findSeoPageBySlug } from './data/hyderabadSeoPages';
 import {
   supabase,
   dbFetchBookings,
@@ -103,7 +105,12 @@ export const App: React.FC = () => {
     let title = 'Xpress Nurse | Home Nursing & Medical Care at Your Doorstep';
     let metaDesc = 'Xpress Nurse connects patients and families with trained nursing professionals for safe, compassionate care at home in Hyderabad. IV saline infusion, wound dressing, catheter care, Ryles tube, and online doctor consultation. Call 75696 57371.';
 
-    if (currentPath === '/nurse') {
+    const seoPage = findSeoPageBySlug(currentPath);
+
+    if (seoPage) {
+      title = seoPage.title;
+      metaDesc = seoPage.metaDescription;
+    } else if (currentPath === '/nurse') {
       title = 'Nurse Staff Portal & Rewards | Xpress Nurse';
       metaDesc = 'Xpress Nurse Staff Portal - Manage assigned home visits, patient referrals, points ledger, and service dispatch in Hyderabad.';
     } else if (currentPath === '/doctor') {
@@ -118,6 +125,32 @@ export const App: React.FC = () => {
     } else if (currentPath === '/login') {
       title = 'Staff & Patient Portal Login | Xpress Nurse';
       metaDesc = 'Secure portal login for patients, registered nurses, doctors, and operational staff of Xpress Nurse.';
+    } else if (currentPath === '/about') {
+      title = 'About Us | Xpress Nurse — Hyderabad Home Care';
+      metaDesc = 'Learn about Xpress Nurse, Hyderabad’s premier home nursing and clinical procedure service provider with certified nurses.';
+      setTimeout(() => {
+        const el = document.getElementById('about');
+        if (el) el.scrollIntoView({ behavior: 'smooth' });
+      }, 150);
+    } else if (currentPath === '/services') {
+      title = 'Home Nursing Services in Hyderabad | Xpress Nurse';
+      metaDesc = 'Complete catalog of doorstep nursing services in Hyderabad: IV saline infusion, wound dressing, catheter insertion, Ryles tube, and lab testing.';
+      setTimeout(() => {
+        const el = document.getElementById('services');
+        if (el) el.scrollIntoView({ behavior: 'smooth' });
+      }, 150);
+    } else if (currentPath === '/contact') {
+      title = 'Contact & 24/7 Helpline | Xpress Nurse Hyderabad';
+      metaDesc = 'Get in touch with Xpress Nurse Hyderabad. Call or WhatsApp 75696 57371 for instant doorstep nurse booking.';
+    } else if (currentPath === '/blog') {
+      title = 'Home Healthcare & Clinical Guide | Xpress Nurse';
+      metaDesc = 'Clinical insights, patient guides, and expert home nursing advice from Xpress Nurse Hyderabad.';
+    } else if (currentPath === '/privacy-policy') {
+      setActivePolicy('privacy');
+    } else if (currentPath === '/terms-and-conditions') {
+      setActivePolicy('terms');
+    } else if (currentPath === '/refund-policy') {
+      setActivePolicy('refund');
     } else if (currentPath !== '/' && currentPath !== '') {
       title = '404 - Page Not Found | Xpress Nurse';
       metaDesc = 'The requested healthcare page could not be found on Xpress Nurse.';
@@ -2791,6 +2824,8 @@ export const App: React.FC = () => {
     setIsBookingOpen(true);
   };
 
+  const currentSeoPage = findSeoPageBySlug(currentPath);
+
   const isKnownRoute =
     currentPath === '/' ||
     currentPath === '' ||
@@ -2798,7 +2833,15 @@ export const App: React.FC = () => {
     currentPath === '/admin' ||
     currentPath === '/doctor' ||
     currentPath === '/empty' ||
-    currentPath === '/login';
+    currentPath === '/login' ||
+    currentPath === '/about' ||
+    currentPath === '/services' ||
+    currentPath === '/contact' ||
+    currentPath === '/blog' ||
+    currentPath === '/privacy-policy' ||
+    currentPath === '/terms-and-conditions' ||
+    currentPath === '/refund-policy' ||
+    Boolean(currentSeoPage);
 
   return (
     <div className="app-root">
@@ -2812,11 +2855,11 @@ export const App: React.FC = () => {
       {/* Main Routed Views with Mobile Drag-Scroll Pull to Refresh (Disabled on Staff/Admin portals to prevent reload loops) */}
       <PullToRefresh 
         onRefresh={async () => { await refreshAllDataFromDb(true); }}
-        disabled={currentPath === '/admin' || currentPath === '/nurse' || currentPath === '/doctor' || currentPath === '/login'}
+        disabled={currentPath === '/admin' || currentPath === '/nurse' || currentPath === '/doctor' || currentPath === '/login' || Boolean(currentSeoPage)}
       >
         <main>
           {/* Route: / -> Public Marketing Website */}
-          {(currentPath === '/' || currentPath === '') && (
+          {(currentPath === '/' || currentPath === '' || currentPath === '/about' || currentPath === '/services' || currentPath === '/contact' || currentPath === '/blog' || currentPath === '/privacy-policy' || currentPath === '/terms-and-conditions' || currentPath === '/refund-policy') && !currentSeoPage && (
             <>
               <Hero
                 onOpenBooking={() => setIsBookingOpen(true)}
@@ -2942,6 +2985,18 @@ export const App: React.FC = () => {
                 ]);
                 if (remoteNurses) setNurses(remoteNurses);
                 if (remoteLeads) setLeads(remoteLeads);
+              }}
+            />
+          )}
+
+          {/* Route: 280 Programmatic Hyderabad Service & Area Landing Pages */}
+          {currentSeoPage && (
+            <LocalSeoPage
+              page={currentSeoPage}
+              onNavigate={navigate}
+              onOpenBookingForService={(serviceId) => {
+                setPreSelectedServiceId(serviceId);
+                setIsBookingOpen(true);
               }}
             />
           )}

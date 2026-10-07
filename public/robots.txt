@@ -1,0 +1,13 @@
+# ============================================================================
+# XPRESS NURSE - ROBOTS.TXT
+# https://www.xpressnurse.in
+# ============================================================================
+
+User-agent: *
+Allow: /
+Disallow: /admin
+Disallow: /nurse
+Disallow: /doctor
+
+Sitemap: https://www.xpressnurse.in/sitemap.xml
+Sitemap: https://www.xpressnurse.in/sitemap-hyderabad.xml

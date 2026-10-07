@@ -105,6 +105,39 @@ export const AboutSection: React.FC<AboutSectionProps> = ({ onOpenBooking }) => 
 
           {/* Right Column: Standards & Verification Card */}
           <div className="about-side-cards">
+            {/* Official Branded Team Photo */}
+            <div className="reveal-on-scroll reveal-delay-1" style={{
+              borderRadius: 16,
+              overflow: 'hidden',
+              marginBottom: 16,
+              boxShadow: '0 12px 28px rgba(0,0,0,0.08)',
+              border: '1px solid #E2E8F0',
+              position: 'relative'
+            }}>
+              <img
+                src="/images/xpressnurse_team_uniforms.jpg"
+                alt="Xpress Nurse Verified Medical & Nursing Staff in Official Uniforms"
+                style={{ width: '100%', height: 230, objectFit: 'cover', display: 'block' }}
+              />
+              <div style={{
+                position: 'absolute',
+                bottom: 0,
+                left: 0,
+                right: 0,
+                background: 'linear-gradient(to top, rgba(4, 13, 26, 0.9) 0%, transparent 100%)',
+                padding: '14px 16px 10px',
+                color: '#fff',
+                fontSize: '0.84rem',
+                fontWeight: 600,
+                display: 'flex',
+                alignItems: 'center',
+                gap: 8
+              }}>
+                <span style={{ width: 8, height: 8, borderRadius: '50%', background: '#22C55E', display: 'inline-block' }}></span>
+                Verified Xpress Nurse Registered Staff in Official Branded Scrubs
+              </div>
+            </div>
+
             <div className="about-standards-card reveal-on-scroll reveal-delay-2">
               <div className="trust-card-header">
                 <div className="standards-icon-box">
