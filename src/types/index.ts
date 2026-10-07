@@ -33,6 +33,7 @@ export interface ServiceItem {
   imageUrl?: string;
   thumbnailUrl?: string;
   createdAt?: string;
+  displayOrder?: number;
 }
 
 export type HyderabadArea = string;

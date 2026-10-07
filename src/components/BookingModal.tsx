@@ -396,9 +396,9 @@ export const BookingModal: React.FC<BookingModalProps> = ({
     }
 
     if (!fullAddress.trim()) {
-      errs.fullAddress = 'Please enter house/flat address or click Auto-Detect.';
+      errs.fullAddress = 'Please enter area and doorstep address or click Auto-Detect.';
     } else if (fullAddress.trim().length < 5) {
-      errs.fullAddress = 'Please provide detailed address (flat/house no. & street).';
+      errs.fullAddress = 'Please provide detailed area/address (e.g. Madhapur, Flat 402).';
     }
 
     // MANDATORY PRESCRIPTION ENFORCEMENT:
@@ -1072,11 +1072,11 @@ export const BookingModal: React.FC<BookingModalProps> = ({
                 {errors.patientPhone && <span className="field-error">{errors.patientPhone}</span>}
               </div>
 
-              {/* Home Visit Address */}
+              {/* Area / Address */}
               <div>
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.25rem' }}>
                   <label className="form-label" style={{ fontSize: '0.76rem', fontWeight: 700, margin: 0 }}>
-                    Home Visit Address in Hyderabad *
+                    Area / Address in Hyderabad *
                   </label>
                   <button
                     type="button"
@@ -1119,6 +1119,7 @@ export const BookingModal: React.FC<BookingModalProps> = ({
                 <input
                   type="text"
                   className={`form-control ${errors.fullAddress ? 'is-invalid' : ''}`}
+                  placeholder="e.g. Madhapur / Flat 402, Sunshine Apts, Near Metro Pillar 17"
                   value={fullAddress}
                   onChange={(e) => setFullAddress(e.target.value)}
                   style={{ padding: '0.6rem 0.85rem', fontSize: '0.88rem', borderRadius: 10 }}

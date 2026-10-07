@@ -133,6 +133,7 @@ interface AdminDashboardProps {
   onCreateService?: (service: ServiceItem) => Promise<void>;
   onUpdateService?: (id: string, updates: Partial<ServiceItem>) => Promise<void>;
   onDeleteService?: (id: string) => Promise<void>;
+  onReorderServices?: (services: ServiceItem[]) => Promise<void> | void;
   // Consultations CRUD
   onCreateConsultation?: (consult: DoctorConsultation) => Promise<void>;
   onUpdateConsultation?: (id: string, updates: Partial<DoctorConsultation>) => Promise<void>;
@@ -179,6 +180,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
   onCreateService,
   onUpdateService,
   onDeleteService,
+  onReorderServices,
   onCreateConsultation,
   onUpdateConsultation,
   onDeleteConsultation,
@@ -2188,6 +2190,22 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
   });
   const [isUploadingServiceImage, setIsUploadingServiceImage] = useState(false);
   const [isUploadingServiceThumbnail, setIsUploadingServiceThumbnail] = useState(false);
+
+  const handleMoveServiceOrder = async (serviceId: string, direction: 'up' | 'down') => {
+    const currentIndex = services.findIndex((s) => s.id === serviceId);
+    if (currentIndex === -1) return;
+    const targetIndex = direction === 'up' ? currentIndex - 1 : currentIndex + 1;
+    if (targetIndex < 0 || targetIndex >= services.length) return;
+
+    const reordered = [...services];
+    const [moved] = reordered.splice(currentIndex, 1);
+    reordered.splice(targetIndex, 0, moved);
+
+    if (onReorderServices) {
+      await onReorderServices(reordered);
+    }
+    showToast(`Updated Homepage Order: "${moved.title}" is now #${targetIndex + 1}`);
+  };
 
   const handleOpenCreateServiceModal = () => {
     setEditingService(null);
@@ -4957,6 +4975,32 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
               </div>
             </div>
 
+            {/* Reorder Information Banner */}
+            <div style={{
+              margin: '0.75rem 1.25rem 0',
+              padding: '0.65rem 1rem',
+              background: '#EFF6FF',
+              border: '1px solid #BFDBFE',
+              borderRadius: 10,
+              fontSize: '0.82rem',
+              color: '#1E40AF',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              flexWrap: 'wrap',
+              gap: '0.5rem'
+            }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '0.45rem' }}>
+                <span style={{ fontSize: '1rem' }}>↕️</span>
+                <span>
+                  <strong>Homepage Display Sequence:</strong> Use the <strong>▲ Up</strong> and <strong>▼ Down</strong> buttons in the <strong>Home Order</strong> column to change the order services appear on the main website.
+                </span>
+              </div>
+              <span style={{ fontSize: '0.75rem', background: '#DBEAFE', color: '#1E40AF', padding: '2px 8px', borderRadius: 9999, fontWeight: 700 }}>
+                Live Synced with Homepage
+              </span>
+            </div>
+
             {filteredServices.length === 0 ? (
               <EmptyState
                 title="No Services Found"
@@ -4984,6 +5028,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                             title="Select / Deselect All Services"
                           />
                         </th>
+                        <th style={{ width: 110, textAlign: 'center' }}>Home Order</th>
                         <th>Procedure ID & Title</th>
                         <th>Price / Visit</th>
                         <th>Night Surcharge</th>
@@ -4996,6 +5041,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                     <tbody>
                       {filteredServices.map((s) => {
                         const isSelected = selectedServiceIds.has(s.id);
+                        const orderIndex = services.findIndex((srv) => srv.id === s.id);
                         return (
                           <tr key={s.id} style={{ background: isSelected ? '#FFF1F2' : undefined }}>
                             <td style={{ textAlign: 'center', width: 40 }}>
@@ -5005,6 +5051,59 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                                 onChange={() => toggleItemSelection(s.id, setSelectedServiceIds)}
                                 style={{ cursor: 'pointer', accentColor: '#E11D48', width: 16, height: 16 }}
                               />
+                            </td>
+                            <td style={{ textAlign: 'center', width: 110 }}>
+                              <div style={{ display: 'inline-flex', alignItems: 'center', gap: '0.25rem' }}>
+                                <span style={{
+                                  fontSize: '0.78rem',
+                                  fontWeight: 800,
+                                  background: '#F1F5F9',
+                                  border: '1px solid #CBD5E1',
+                                  padding: '2px 6px',
+                                  borderRadius: 6,
+                                  color: '#0F172A',
+                                  minWidth: 26,
+                                  textAlign: 'center'
+                                }}>
+                                  #{orderIndex >= 0 ? orderIndex + 1 : '—'}
+                                </span>
+                                <button
+                                  type="button"
+                                  disabled={orderIndex <= 0}
+                                  onClick={() => handleMoveServiceOrder(s.id, 'up')}
+                                  style={{
+                                    border: '1px solid #CBD5E1',
+                                    background: '#FFFFFF',
+                                    borderRadius: 4,
+                                    padding: '2px 6px',
+                                    cursor: orderIndex <= 0 ? 'not-allowed' : 'pointer',
+                                    fontSize: '0.72rem',
+                                    fontWeight: 800,
+                                    color: orderIndex <= 0 ? '#CBD5E1' : '#0284C7'
+                                  }}
+                                  title="Move Up on Home Screen"
+                                >
+                                  ▲
+                                </button>
+                                <button
+                                  type="button"
+                                  disabled={orderIndex < 0 || orderIndex >= services.length - 1}
+                                  onClick={() => handleMoveServiceOrder(s.id, 'down')}
+                                  style={{
+                                    border: '1px solid #CBD5E1',
+                                    background: '#FFFFFF',
+                                    borderRadius: 4,
+                                    padding: '2px 6px',
+                                    cursor: (orderIndex < 0 || orderIndex >= services.length - 1) ? 'not-allowed' : 'pointer',
+                                    fontSize: '0.72rem',
+                                    fontWeight: 800,
+                                    color: (orderIndex < 0 || orderIndex >= services.length - 1) ? '#CBD5E1' : '#0284C7'
+                                  }}
+                                  title="Move Down on Home Screen"
+                                >
+                                  ▼
+                                </button>
+                              </div>
                             </td>
                             <td>
                               <div><strong>{s.title}</strong></div>
@@ -10131,10 +10230,10 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                   />
                 </div>
                 <div>
-                  <label className="form-label" style={{ fontSize: '0.78rem', fontWeight: 700 }}>STATION / SERVICE AREA</label>
+                  <label className="form-label" style={{ fontSize: '0.78rem', fontWeight: 700 }}>STATION / STAY AREA</label>
                   <input
                     type="text"
-                    placeholder="e.g. Gachibowli or Hyderabad Central"
+                    placeholder="e.g. LB Nagar, Gachibowli, or Hyderabad Central"
                     value={userForm.serviceArea}
                     onChange={(e) => setUserForm({ ...userForm, serviceArea: e.target.value })}
                     className="form-control"

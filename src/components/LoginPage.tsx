@@ -988,11 +988,12 @@ export const LoginPage: React.FC<LoginPageProps> = ({
                     )}
                   </div>
 
-                  {/* Service Area & Years of Experience */}
+                  {/* Stay Area & Years of Experience */}
                   <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem', marginBottom: '0.75rem' }}>
                     <div className="form-group">
-                      <label className="form-label">Service Area (Hyderabad) *</label>
+                      <label className="form-label">Stay Area (Hyderabad) *</label>
                       <input list="hyderabad-areas"
+                        placeholder="e.g. LB Nagar, Madhapur, Kukatpally"
                         value={regServiceArea}
                         onChange={(e) => setRegServiceArea(e.target.value)}
                         className="form-control"

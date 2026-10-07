@@ -94,11 +94,18 @@ export const LocalSeoPage: React.FC<LocalSeoPageProps> = ({
           "@type": "MedicalBusiness",
           "@id": `https://www.xpressnurse.in/${page.slug}#localbusiness`,
           "name": `Xpress Nurse — ${page.service} in ${page.area}`,
+          "alternateName": [
+            `Express Nurse ${page.area}`,
+            `ExpressNurse ${page.area}`,
+            "Express Nurse Hyderabad",
+            "ExpressNurse",
+            `Express Nurse — ${page.service} in ${page.area}`
+          ],
           "url": `https://www.xpressnurse.in/${page.slug}`,
           "telephone": "+917569657371",
           "priceRange": `₹${page.indicativePrice}`,
           "image": "https://www.xpressnurse.in/images/Xpressnurse%20Healthcare%20Logo.png",
-          "description": page.metaDescription,
+          "description": `${page.metaDescription} Also known as Express Nurse ${page.area}.`,
           "address": {
             "@type": "PostalAddress",
             "streetAddress": `${page.area}`,
@@ -124,6 +131,14 @@ export const LocalSeoPage: React.FC<LocalSeoPageProps> = ({
           "@type": "FAQPage",
           "@id": `https://www.xpressnurse.in/${page.slug}#faq`,
           "mainEntity": [
+            {
+              "@type": "Question",
+              "name": `Is Xpress Nurse also called Express Nurse in ${page.area}?`,
+              "acceptedAnswer": {
+                "@type": "Answer",
+                "text": `Yes! Many patients search for "Express Nurse" or "ExpressNurse" when looking for immediate home healthcare in ${page.area}. Xpress Nurse is the official registered service delivering qualified doorstep nurses across Hyderabad.`
+              }
+            },
             {
               "@type": "Question",
               "name": `How soon can a nurse reach my home in ${page.area}?`,
@@ -180,6 +195,10 @@ export const LocalSeoPage: React.FC<LocalSeoPageProps> = ({
   const whatsappUrl = `https://wa.me/917569657371?text=${whatsappMessage}`;
 
   const faqs = [
+    {
+      q: `Is Xpress Nurse also known as Express Nurse in ${page.area}?`,
+      a: `Yes! Many Hyderabad families search for "Express Nurse" or "ExpressNurse" when looking for fast home nursing care. Xpress Nurse is the official verified platform providing certified doorstep nurses, IV saline therapy, and doctor consultations across ${page.area}.`
+    },
     {
       q: `How soon can a verified nurse reach my address in ${page.area}?`,
       a: `Our Hyderabad dispatch team coordinates with nursing staff stationed across ${page.area} and adjacent ${page.zone} hubs. Once your booking is confirmed, the nearest available certified nurse is assigned to visit your home without requiring hospital travel.`
@@ -893,7 +912,7 @@ export const LocalSeoPage: React.FC<LocalSeoPageProps> = ({
             </h4>
             <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.45rem' }}>
               {HYDERABAD_AREAS.map((area) => {
-                const areaGeneralSlug = `nursing-services-${area.toLowerCase().replace(/\\s+/g, '-')}`;
+                const areaGeneralSlug = `nursing-services-${area.toLowerCase().trim().replace(/\s+/g, '-')}`;
                 return (
                   <a
                     key={area}

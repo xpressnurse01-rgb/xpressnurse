@@ -6799,8 +6799,96 @@ export const HYDERABAD_SERVICES = [
 ];
 
 export function findSeoPageBySlug(rawSlug: string): HyderabadSeoPage | undefined {
-  const clean = rawSlug.replace(/^\/+/, '').replace(/\/+$/, '').toLowerCase().trim();
-  return HYDERABAD_SEO_PAGES.find((p) => p.slug.toLowerCase() === clean);
+  if (!rawSlug) return undefined;
+  
+  let clean = '';
+  try {
+    clean = decodeURIComponent(rawSlug);
+  } catch {
+    clean = rawSlug;
+  }
+
+  // Remove leading/trailing slashes, lowercase and trim
+  clean = clean.replace(/^\/+/, '').replace(/\/+$/, '').toLowerCase().trim();
+
+  // Normalize spaces and underscores to hyphens
+  clean = clean.replace(/[\s_]+/g, '-');
+
+  // Strip trailing noise like "-all", "-services", "-nurse", "-home-care"
+  clean = clean.replace(/-all$/, '');
+
+  // 1. Direct match on exact slug
+  const directMatch = HYDERABAD_SEO_PAGES.find((p) => p.slug.toLowerCase() === clean);
+  if (directMatch) return directMatch;
+
+  // 2. Common area typos, abbreviations & aliases normalization dictionary
+  const ALIAS_MAP: Record<string, string> = {
+    'kphb': 'kphb-colony',
+    'kphbcolony': 'kphb-colony',
+    'jubliee-hills': 'jubilee-hills',
+    'jublieehills': 'jubilee-hills',
+    'jubliee': 'jubilee-hills',
+    'jubilee': 'jubilee-hills',
+    'banjara': 'banjara-hills',
+    'banjarahills': 'banjara-hills',
+    'l-b-nagar': 'lb-nagar',
+    'lbnagar': 'lb-nagar',
+    'lb_nagar': 'lb-nagar',
+    'hitec-city': 'hitech-city',
+    'hiteccity': 'hitech-city',
+    'hitech': 'hitech-city',
+    'hitec': 'hitech-city',
+    'gachibowly': 'gachibowli',
+    'dilsuknagar': 'dilsukhnagar',
+    'vanasthalipuram': 'vanasthalipuram',
+    'vanasthali': 'vanasthalipuram',
+    'bachupally': 'bachupally'
+  };
+
+  // Replace aliases in clean slug (e.g. 'saline-infusion-kphb' -> 'saline-infusion-kphb-colony')
+  let aliasNormalized = clean;
+  for (const [alias, canonical] of Object.entries(ALIAS_MAP)) {
+    if (aliasNormalized === alias) {
+      aliasNormalized = canonical;
+      break;
+    }
+    const suffixRegex = new RegExp(`-${alias}$`);
+    if (suffixRegex.test(aliasNormalized)) {
+      aliasNormalized = aliasNormalized.replace(suffixRegex, `-${canonical}`);
+      break;
+    }
+  }
+
+  if (aliasNormalized !== clean) {
+    const aliasMatch = HYDERABAD_SEO_PAGES.find((p) => p.slug.toLowerCase() === aliasNormalized);
+    if (aliasMatch) return aliasMatch;
+  }
+
+  // 3. Normalize "express-nurse", "expressnurse", "home-nursing" prefixes
+  const expressNormalized = aliasNormalized
+    .replace(/^express-nurse-/, 'nursing-services-')
+    .replace(/^expressnurse-/, 'nursing-services-')
+    .replace(/^home-nursing-services-/, 'nursing-services-')
+    .replace(/^home-nursing-/, 'nursing-services-')
+    .replace(/^nurse-in-/, 'nursing-services-')
+    .replace(/^nurses-in-/, 'nursing-services-')
+    .replace(/^nursing-/, 'nursing-services-');
+
+  if (expressNormalized !== aliasNormalized) {
+    const exprMatch = HYDERABAD_SEO_PAGES.find((p) => p.slug.toLowerCase() === expressNormalized);
+    if (exprMatch) return exprMatch;
+  }
+
+  // 4. Check if the URL is an area slug or alias (e.g. /kphb, /jubliee-hills, /banjara-hills, /bachupally, /lb-nagar)
+  const candidateArea = ALIAS_MAP[clean] || aliasNormalized;
+  const areaPage = HYDERABAD_SEO_PAGES.find((p) => {
+    const areaSlug = p.area.toLowerCase().replace(/[\s_]+/g, '-');
+    return (areaSlug === candidateArea || areaSlug === clean) && p.slug.startsWith('nursing-services-');
+  });
+
+  if (areaPage) return areaPage;
+
+  return undefined;
 }
 
 export function getRelatedServicesForArea(area: string, currentSlug: string): HyderabadSeoPage[] {

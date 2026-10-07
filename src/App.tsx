@@ -91,6 +91,23 @@ import {
   findMatchingLeadForPatientBooking
 } from './lib/nurseCalculations';
 
+function sortServicesWithCustomOrder(rawList: ServiceItem[]): ServiceItem[] {
+  if (!Array.isArray(rawList) || rawList.length === 0) return rawList;
+  try {
+    const savedOrderRaw = localStorage.getItem('xn_services_order');
+    if (savedOrderRaw) {
+      const orderList: { id: string; order: number }[] = JSON.parse(savedOrderRaw);
+      const orderMap = new Map(orderList.map((item) => [item.id, item.order]));
+      return [...rawList].sort((a, b) => {
+        const orderA = orderMap.has(a.id) ? orderMap.get(a.id)! : (a.displayOrder ?? 9999);
+        const orderB = orderMap.has(b.id) ? orderMap.get(b.id)! : (b.displayOrder ?? 9999);
+        return orderA - orderB;
+      });
+    }
+  } catch { }
+  return [...rawList].sort((a, b) => (a.displayOrder ?? 9999) - (b.displayOrder ?? 9999));
+}
+
 export const App: React.FC = () => {
   // URL Routing State
   const [currentPath, setCurrentPath] = useState<string>(() => {
@@ -202,7 +219,7 @@ export const App: React.FC = () => {
       const cached = localStorage.getItem('xn_cached_services');
       if (cached !== null) {
         const parsed = JSON.parse(cached);
-        if (Array.isArray(parsed)) return parsed;
+        if (Array.isArray(parsed)) return sortServicesWithCustomOrder(parsed);
       }
     } catch { }
     return [];
@@ -772,7 +789,7 @@ export const App: React.FC = () => {
         ]);
 
         if (remoteServices !== null) {
-          setServices(remoteServices);
+          setServices(sortServicesWithCustomOrder(remoteServices));
         }
         if (remoteBookings !== null) {
           setBookings(remoteBookings);
@@ -2545,6 +2562,21 @@ export const App: React.FC = () => {
     broadcastRealtimeUpdate('SERVICE_DELETE', { id });
     await dbDeleteService(id);
   };
+  const handleReorderServices = async (newOrderedServices: ServiceItem[]) => {
+    const updated = newOrderedServices.map((s, idx) => ({ ...s, displayOrder: idx + 1 }));
+    setServices(updated);
+    try {
+      localStorage.setItem('xn_cached_services', JSON.stringify(updated));
+      const idOrder = updated.map((s, idx) => ({ id: s.id, order: idx }));
+      localStorage.setItem('xn_services_order', JSON.stringify(idOrder));
+    } catch { }
+    broadcastRealtimeUpdate('SERVICE_REORDER', updated);
+    for (let i = 0; i < updated.length; i++) {
+      try {
+        await dbUpdateServiceById(updated[i].id, { display_order: i + 1 } as any);
+      } catch { }
+    }
+  };
 
   // 5. Consultations CRUD Handlers
   const handleCreateConsultation = async (c: DoctorConsultation) => {
@@ -2934,6 +2966,7 @@ export const App: React.FC = () => {
                 onCreateService={handleCreateService}
                 onUpdateService={handleUpdateService}
                 onDeleteService={handleDeleteService}
+                onReorderServices={handleReorderServices}
                 onCreateConsultation={handleCreateConsultation}
                 onUpdateConsultation={handleUpdateConsultation}
                 onDeleteConsultation={handleDeleteConsultation}
