@@ -59,13 +59,7 @@ export const Footer: React.FC<FooterProps> = ({
               <img
                 src="/images/Xpressnurse Healthcare Logo.png"
                 alt="Xpress Nurse Healthcare"
-                style={{ 
-                  height: '52px', 
-                  width: 'auto', 
-                  objectFit: 'contain', 
-                  display: 'block',
-                  filter: 'brightness(0) invert(1)'
-                }}
+                className="footer-main-logo"
               />
             </div>
 

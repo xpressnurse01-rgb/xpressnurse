@@ -18,7 +18,7 @@ export const QrCodeModal: React.FC<QrCodeModalProps> = ({ isOpen, onClose }) => 
           <img
             src="/images/Xpressnurse Healthcare Logo.png"
             alt="Xpress Nurse"
-            style={{ height: '44px', width: 'auto', objectFit: 'contain' }}
+            className="modal-header-logo"
           />
           <button className="close-btn" onClick={onClose} aria-label="Close modal">
             <X size={20} />

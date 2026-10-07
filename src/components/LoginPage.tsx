@@ -537,7 +537,7 @@ export const LoginPage: React.FC<LoginPageProps> = ({
               <img
                 src="/images/Xpressnurse Healthcare Logo.png"
                 alt="Xpress Nurse Healthcare"
-                style={{ height: '62px', width: 'auto', objectFit: 'contain', display: 'block' }}
+                className="login-brand-logo"
               />
             </div>
 

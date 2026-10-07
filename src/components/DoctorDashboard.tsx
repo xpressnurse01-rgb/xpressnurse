@@ -164,7 +164,7 @@ export const DoctorDashboard: React.FC<DoctorDashboardProps> = ({
           <img
             src="/images/Xpressnurse Healthcare Logo.png"
             alt="Xpress Nurse"
-            style={{ height: '48px', width: 'auto', objectFit: 'contain' }}
+            className="panel-header-logo"
           />
           <div>
             <h2 style={{ fontSize: '1.35rem', color: 'var(--primary-navy-900)', margin: 0 }}>

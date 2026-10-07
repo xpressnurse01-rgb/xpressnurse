@@ -2963,7 +2963,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
           <img
             src="/images/Xpressnurse Healthcare Logo.png"
             alt="Xpress Nurse"
-            style={{ height: '48px', width: 'auto', objectFit: 'contain' }}
+            className="panel-header-logo"
           />
           <div>
             <h2 style={{ fontSize: '1.4rem', color: 'var(--primary-navy-900)', fontWeight: 800, margin: 0 }}>

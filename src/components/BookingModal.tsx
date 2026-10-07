@@ -571,11 +571,11 @@ export const BookingModal: React.FC<BookingModalProps> = ({
       >
         {/* Deep Dive Luxury Healthtech Header */}
         <div className="booking-modal-header">
-          <div style={{ display: 'flex', alignItems: 'center', gap: '0.85rem' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', minWidth: 0, flexShrink: 1 }}>
             <img
               src="/images/Xpressnurse Healthcare Logo.png"
               alt="Xpress Nurse"
-              style={{ height: '48px', width: 'auto', objectFit: 'contain', display: 'block', flexShrink: 0 }}
+              className="booking-header-logo"
             />
             <div>
               <h2 style={{ fontSize: '1.2rem', fontWeight: 850, color: 'var(--primary-navy-950)', margin: 0, letterSpacing: '-0.025em' }}>
