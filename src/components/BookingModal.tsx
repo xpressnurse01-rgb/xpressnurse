@@ -24,7 +24,11 @@ import {
   FileCheck,
   Trash2,
   Paperclip,
-  ExternalLink
+  ExternalLink,
+  ChevronDown,
+  ChevronUp,
+  Search,
+  Activity
 } from 'lucide-react';
 import { HyderabadArea, ServiceId, Booking, ServiceItem, Coupon, CloudflareStorageObject } from '../types';
 import { useBodyScrollLock } from '../hooks/useBodyScrollLock';
@@ -80,6 +84,8 @@ export const BookingModal: React.FC<BookingModalProps> = ({
   // Form Fields
   const [serviceId, setServiceId] = useState<ServiceId>(preSelectedServiceId);
   const [customProcedureName, setCustomProcedureName] = useState('');
+  const [isProcedurePickerOpen, setIsProcedurePickerOpen] = useState(false);
+  const [procedureSearchQuery, setProcedureSearchQuery] = useState('');
   const [patientName, setPatientName] = useState('');
   const [patientAge, setPatientAge] = useState('');
   const [patientGender, setPatientGender] = useState<'Male' | 'Female' | 'Other'>('Male');
@@ -565,23 +571,12 @@ export const BookingModal: React.FC<BookingModalProps> = ({
       >
         {/* Deep Dive Luxury Healthtech Header */}
         <div className="booking-modal-header">
-          <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
-            <div 
-              style={{ 
-                width: 38, 
-                height: 38, 
-                borderRadius: 12, 
-                background: 'linear-gradient(135deg, #0A192F 0%, #1E3A8A 100%)',
-                color: '#FFFFFF',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                boxShadow: '0 4px 12px rgba(10, 25, 47, 0.25)',
-                border: '1px solid rgba(255, 255, 255, 0.2)'
-              }}
-            >
-              <HeartPulse size={19} />
-            </div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.85rem' }}>
+            <img
+              src="/images/Xpressnurse Healthcare Logo.png"
+              alt="Xpress Nurse"
+              style={{ height: '48px', width: 'auto', objectFit: 'contain', display: 'block', flexShrink: 0 }}
+            />
             <div>
               <h2 style={{ fontSize: '1.2rem', fontWeight: 850, color: 'var(--primary-navy-950)', margin: 0, letterSpacing: '-0.025em' }}>
                 {createdBooking ? 'Booking Confirmed' : 'Book a Home Visit'}
@@ -730,46 +725,242 @@ export const BookingModal: React.FC<BookingModalProps> = ({
         ) : (
           /* Streamlined, Ultra-Clean Single View Booking Form */
           <form onSubmit={handleFormSubmit} className="modal-body" style={{ padding: '1.25rem 1.4rem' }}>
-            
-            {/* 1. Care Procedure Selector with Integrated Price Pill */}
-            <div style={{ marginBottom: '1rem' }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.35rem' }}>
-                <label style={{ fontSize: '0.8rem', fontWeight: 700, color: 'var(--primary-navy-950)', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
-                  Care Procedure
+            {/* 1. Care Procedure Selection Section */}
+            <div style={{ marginBottom: '1.15rem' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.45rem' }}>
+                <label style={{ fontSize: '0.78rem', fontWeight: 800, color: 'var(--primary-navy-950)', textTransform: 'uppercase', letterSpacing: '0.04em', display: 'flex', alignItems: 'center', gap: '0.35rem' }}>
+                  <span style={{ display: 'inline-flex', width: 20, height: 20, borderRadius: '50%', background: '#0284C7', color: '#FFF', fontSize: '0.7rem', fontWeight: 800, alignItems: 'center', justifyContent: 'center' }}>1</span>
+                  <span>Select Care Procedure *</span>
                 </label>
                 {(serviceId as string) !== 'other' && baseFee > 0 && (
-                  <span style={{ fontSize: '0.85rem', fontWeight: 800, color: '#0F172A', background: '#F1F5F9', padding: '0.15rem 0.65rem', borderRadius: 9999 }}>
+                  <span style={{ fontSize: '0.86rem', fontWeight: 850, color: '#059669', background: '#ECFDF5', border: '1px solid #A7F3D0', padding: '0.15rem 0.65rem', borderRadius: 9999 }}>
                     ₹{baseFee}
                   </span>
                 )}
               </div>
-              <select
-                className="form-control"
-                value={serviceId}
-                onChange={(e) => setServiceId(e.target.value as ServiceId)}
-                style={{ width: '100%', padding: '0.6rem 0.85rem', borderRadius: 10, fontWeight: 600, fontSize: '0.88rem' }}
+
+              {/* Selected Procedure Active Summary Card */}
+              <div 
+                onClick={() => setIsProcedurePickerOpen(!isProcedurePickerOpen)}
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'space-between',
+                  padding: '0.75rem 0.9rem',
+                  background: isProcedurePickerOpen ? '#F8FAFC' : '#F0F9FF',
+                  border: isProcedurePickerOpen ? '1.5px solid #0284C7' : '1.5px solid #BAE6FD',
+                  borderRadius: 14,
+                  cursor: 'pointer',
+                  transition: 'all 0.2s ease',
+                  boxShadow: '0 2px 8px rgba(2, 132, 199, 0.08)'
+                }}
               >
-                {serviceList.filter(s => s.id !== 'other').map((srv) => {
-                  const pNum = srv.priceNumber !== undefined && srv.priceNumber !== null ? srv.priceNumber : srv.singleVisitPrice;
-                  const priceLabel = pNum === 0 ? (srv.indicativePrice || '') : (srv.indicativePrice || (pNum ? `₹${pNum}` : ''));
-                  return (
-                    <option key={srv.id} value={srv.id}>
-                      {srv.title}{priceLabel ? ` — ${priceLabel}` : ''}
-                    </option>
-                  );
-                })}
-                <option value="other">Other Nursing Service / Custom Care</option>
-              </select>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '0.7rem', minWidth: 0, flex: 1 }}>
+                  <div style={{
+                    width: 38,
+                    height: 38,
+                    borderRadius: 10,
+                    background: '#0284C7',
+                    color: '#FFFFFF',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    flexShrink: 0
+                  }}>
+                    <Activity size={19} />
+                  </div>
+                  <div style={{ minWidth: 0, flex: 1 }}>
+                    <div style={{ fontSize: '0.92rem', fontWeight: 850, color: '#0F172A', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                      {currentService.title}
+                    </div>
+                    <div style={{ fontSize: '0.73rem', color: '#64748B', marginTop: '0.1rem' }}>
+                      Registered Nurse Home Visit
+                    </div>
+                  </div>
+                </div>
+
+                <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', flexShrink: 0, marginLeft: '0.5rem' }}>
+                  <span
+                    style={{
+                      background: '#FFFFFF',
+                      border: '1px solid #CBD5E1',
+                      color: '#0284C7',
+                      fontSize: '0.76rem',
+                      fontWeight: 750,
+                      padding: '0.3rem 0.65rem',
+                      borderRadius: 9999,
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      gap: '0.3rem'
+                    }}
+                  >
+                    <span>{isProcedurePickerOpen ? 'Done' : 'Change'}</span>
+                    {isProcedurePickerOpen ? <ChevronUp size={13} /> : <ChevronDown size={13} />}
+                  </span>
+                </div>
+              </div>
+
+              {/* Expandable Procedure Selection Drawer */}
+              {isProcedurePickerOpen && (
+                <div style={{
+                  marginTop: '0.65rem',
+                  background: '#FFFFFF',
+                  border: '1.5px solid #CBD5E1',
+                  borderRadius: 14,
+                  padding: '0.75rem',
+                  boxShadow: '0 10px 25px -5px rgba(0,0,0,0.1)',
+                  animation: 'fadeIn 0.2s ease-in-out'
+                }}>
+                  {/* Search query input */}
+                  <div style={{ position: 'relative', marginBottom: '0.65rem' }}>
+                    <Search size={14} style={{ position: 'absolute', left: 10, top: '50%', transform: 'translateY(-50%)', color: '#94A3B8' }} />
+                    <input
+                      type="text"
+                      placeholder="Search procedure..."
+                      value={procedureSearchQuery}
+                      onChange={(e) => setProcedureSearchQuery(e.target.value)}
+                      style={{
+                        width: '100%',
+                        padding: '0.5rem 0.75rem 0.5rem 2rem',
+                        fontSize: '0.84rem',
+                        borderRadius: 8,
+                        border: '1px solid #E2E8F0',
+                        background: '#F8FAFC'
+                      }}
+                    />
+                  </div>
+
+                  {/* Procedures List */}
+                  <div style={{ maxHeight: 250, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '0.45rem', paddingRight: '0.2rem' }}>
+                    {serviceList.filter(s => {
+                      if (s.id === 'other') return false;
+                      if (!procedureSearchQuery.trim()) return true;
+                      const q = procedureSearchQuery.toLowerCase();
+                      return s.title.toLowerCase().includes(q) || (s.subtitle && s.subtitle.toLowerCase().includes(q)) || (s.description && s.description.toLowerCase().includes(q));
+                    }).map((srv) => {
+                      const isSelected = serviceId === srv.id;
+                      const pNum = srv.priceNumber !== undefined && srv.priceNumber !== null ? srv.priceNumber : srv.singleVisitPrice;
+                      const priceTag = pNum === 0 ? (srv.indicativePrice || 'Custom') : (srv.indicativePrice || (pNum ? `₹${pNum}` : ''));
+                      return (
+                        <div
+                          key={srv.id}
+                          onClick={() => {
+                            setServiceId(srv.id as ServiceId);
+                            setIsProcedurePickerOpen(false);
+                          }}
+                          style={{
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'space-between',
+                            padding: '0.6rem 0.75rem',
+                            borderRadius: 10,
+                            border: isSelected ? '2px solid #0284C7' : '1px solid #E2E8F0',
+                            background: isSelected ? '#EFF6FF' : '#FFFFFF',
+                            cursor: 'pointer',
+                            transition: 'all 0.15s ease'
+                          }}
+                        >
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '0.55rem', minWidth: 0, flex: 1 }}>
+                            <div style={{
+                              width: 18,
+                              height: 18,
+                              borderRadius: '50%',
+                              border: isSelected ? '5px solid #0284C7' : '2px solid #CBD5E1',
+                              background: '#FFFFFF',
+                              flexShrink: 0
+                            }} />
+                            <div style={{ minWidth: 0 }}>
+                              <div style={{ fontSize: '0.84rem', fontWeight: isSelected ? 800 : 600, color: '#0F172A', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                                {srv.title}
+                              </div>
+                            </div>
+                          </div>
+                          <span style={{
+                            fontSize: '0.84rem',
+                            fontWeight: 800,
+                            color: isSelected ? '#0369A1' : '#334155',
+                            background: isSelected ? '#DBEAFE' : '#F1F5F9',
+                            padding: '0.15rem 0.55rem',
+                            borderRadius: 9999,
+                            flexShrink: 0,
+                            marginLeft: '0.5rem'
+                          }}>
+                            {priceTag}
+                          </span>
+                        </div>
+                      );
+                    })}
+
+                    {/* Option for Other Nursing Service */}
+                    <div
+                      onClick={() => {
+                        setServiceId('other');
+                        setIsProcedurePickerOpen(false);
+                      }}
+                      style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'space-between',
+                        padding: '0.6rem 0.75rem',
+                        borderRadius: 10,
+                        border: serviceId === 'other' ? '2px solid #0284C7' : '1px dashed #CBD5E1',
+                        background: serviceId === 'other' ? '#EFF6FF' : '#F8FAFC',
+                        cursor: 'pointer'
+                      }}
+                    >
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '0.55rem' }}>
+                        <div style={{
+                          width: 18,
+                          height: 18,
+                          borderRadius: '50%',
+                          border: serviceId === 'other' ? '5px solid #0284C7' : '2px solid #CBD5E1',
+                          background: '#FFFFFF',
+                          flexShrink: 0
+                        }} />
+                        <div>
+                          <div style={{ fontSize: '0.84rem', fontWeight: serviceId === 'other' ? 800 : 600, color: '#0F172A' }}>
+                            ✨ Other Nursing Service / Custom Care
+                          </div>
+                          <div style={{ fontSize: '0.7rem', color: '#64748B' }}>
+                            Enter custom home procedure details
+                          </div>
+                        </div>
+                      </div>
+                      <span style={{ fontSize: '0.74rem', fontWeight: 700, color: '#0284C7', background: '#E0F2FE', padding: '0.15rem 0.5rem', borderRadius: 9999 }}>
+                        Custom
+                      </span>
+                    </div>
+                  </div>
+
+                  <div style={{ marginTop: '0.55rem', display: 'flex', justifyContent: 'flex-end' }}>
+                    <button
+                      type="button"
+                      onClick={() => setIsProcedurePickerOpen(false)}
+                      style={{
+                        background: '#0F172A',
+                        color: '#FFFFFF',
+                        border: 'none',
+                        borderRadius: 8,
+                        padding: '0.35rem 0.85rem',
+                        fontSize: '0.76rem',
+                        fontWeight: 700,
+                        cursor: 'pointer'
+                      }}
+                    >
+                      Close Selector
+                    </button>
+                  </div>
+                </div>
+              )}
 
               {(serviceId as string) === 'other' && (
-                <div style={{ marginTop: '0.65rem', animation: 'fadeIn 0.2s ease-in-out' }}>
-                  <label style={{ display: 'block', fontSize: '0.78rem', fontWeight: 700, color: '#0369A1', marginBottom: '0.25rem' }}>
+                <div style={{ marginTop: '0.65rem', padding: '0.75rem', background: '#F0F9FF', border: '1px solid #BAE6FD', borderRadius: 12, animation: 'fadeIn 0.2s ease-in-out' }}>
+                  <label style={{ display: 'block', fontSize: '0.78rem', fontWeight: 700, color: '#0369A1', marginBottom: '0.3rem' }}>
                     Specify Nursing Service Needed *
                   </label>
                   <input
                     type="text"
                     required
-                    placeholder="e.g. Nebulization, Tracheostomy care, Bed bath, Enema, Chemo port flush..."
                     value={customProcedureName}
                     onChange={(e) => {
                       setCustomProcedureName(e.target.value);
@@ -778,150 +969,165 @@ export const BookingModal: React.FC<BookingModalProps> = ({
                       }
                     }}
                     className={`form-control ${errors.customProcedure ? 'is-invalid' : ''}`}
-                    style={{ padding: '0.55rem 0.75rem', fontSize: '0.86rem', borderRadius: 10, borderColor: '#38BDF8', backgroundColor: '#F0F9FF' }}
+                    style={{ padding: '0.6rem 0.85rem', fontSize: '0.88rem', borderRadius: 10, borderColor: '#38BDF8', backgroundColor: '#FFFFFF' }}
                   />
                   {errors.customProcedure && <span className="field-error">{errors.customProcedure}</span>}
-                  <span style={{ fontSize: '0.72rem', color: '#0284C7', marginTop: '0.25rem', display: 'block', fontWeight: 600 }}>
-                    Enter details of custom nursing procedure or care needed.
-                  </span>
                 </div>
               )}
 
               {serviceId === 'wound-dressing' && (
-                <div style={{ marginTop: '0.4rem', fontSize: '0.74rem', color: '#92400E', background: '#FEF3C7', padding: '0.35rem 0.65rem', borderRadius: 8, border: '1px solid #FDE68A', display: 'flex', alignItems: 'center', gap: '0.35rem' }}>
+                <div style={{ marginTop: '0.5rem', fontSize: '0.74rem', color: '#92400E', background: '#FEF3C7', padding: '0.45rem 0.75rem', borderRadius: 10, border: '1px solid #FDE68A', display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
                   <span>ℹ️</span>
                   <span><strong>Pricing Notice:</strong> Wound dressing starts from ₹799. Final pricing depends on wound type, depth & complexity.</span>
                 </div>
               )}
             </div>
 
-            {/* 2. Patient Details Grid: Name (flex), Age, Gender */}
-            <div style={{ display: 'grid', gridTemplateColumns: '1.7fr 0.8fr 1.1fr', gap: '0.65rem', marginBottom: '0.85rem' }}>
-              <div>
-                <label className="form-label" style={{ fontSize: '0.78rem', fontWeight: 600, marginBottom: '0.25rem' }}>
-                  Patient Name *
+            {/* 2. Patient Details Section */}
+            <div style={{ marginBottom: '1rem' }}>
+              <label style={{ fontSize: '0.78rem', fontWeight: 800, color: 'var(--primary-navy-950)', textTransform: 'uppercase', letterSpacing: '0.04em', display: 'flex', alignItems: 'center', gap: '0.35rem', marginBottom: '0.45rem' }}>
+                <span style={{ display: 'inline-flex', width: 20, height: 20, borderRadius: '50%', background: '#0284C7', color: '#FFF', fontSize: '0.7rem', fontWeight: 800, alignItems: 'center', justifyContent: 'center' }}>2</span>
+                <span>Patient Details & Location</span>
+              </label>
+
+              {/* Patient Name, Age, Gender Grid (Responsive) */}
+              <div className="booking-patient-grid">
+                <div className="booking-patient-name-field">
+                  <label className="form-label" style={{ fontSize: '0.76rem', fontWeight: 700, marginBottom: '0.25rem' }}>
+                    Patient Name *
+                  </label>
+                  <input
+                    type="text"
+                    className={`form-control ${errors.patientName ? 'is-invalid' : ''}`}
+                    value={patientName}
+                    onChange={(e) => setPatientName(e.target.value)}
+                    style={{ padding: '0.6rem 0.85rem', fontSize: '0.88rem', borderRadius: 10 }}
+                  />
+                  {errors.patientName && <span className="field-error">{errors.patientName}</span>}
+                </div>
+
+                <div>
+                  <label className="form-label" style={{ fontSize: '0.76rem', fontWeight: 700, marginBottom: '0.25rem' }}>
+                    Age (Years) *
+                  </label>
+                  <input
+                    type="number"
+                    min={1}
+                    max={120}
+                    className={`form-control ${errors.patientAge ? 'is-invalid' : ''}`}
+                    value={patientAge}
+                    onChange={(e) => setPatientAge(e.target.value)}
+                    style={{ padding: '0.6rem 0.85rem', fontSize: '0.88rem', borderRadius: 10 }}
+                  />
+                  {errors.patientAge && <span className="field-error">{errors.patientAge}</span>}
+                </div>
+
+                <div>
+                  <label className="form-label" style={{ fontSize: '0.76rem', fontWeight: 700, marginBottom: '0.25rem' }}>
+                    Gender *
+                  </label>
+                  <select
+                    className="form-control"
+                    value={patientGender}
+                    onChange={(e) => setPatientGender(e.target.value as any)}
+                    style={{ padding: '0.6rem 0.85rem', fontSize: '0.88rem', borderRadius: 10 }}
+                  >
+                    <option value="Male">Male</option>
+                    <option value="Female">Female</option>
+                    <option value="Other">Other</option>
+                  </select>
+                </div>
+              </div>
+
+              {/* Mobile Number with India Prefix */}
+              <div style={{ marginBottom: '0.75rem' }}>
+                <label className="form-label" style={{ fontSize: '0.76rem', fontWeight: 700, marginBottom: '0.25rem' }}>
+                  Mobile Number *
                 </label>
+                <div style={{ position: 'relative', display: 'flex', alignItems: 'center' }}>
+                  <div style={{
+                    position: 'absolute',
+                    left: 10,
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '4px',
+                    fontSize: '0.85rem',
+                    fontWeight: 700,
+                    color: '#475569',
+                    borderRight: '1px solid #CBD5E1',
+                    paddingRight: '8px',
+                    pointerEvents: 'none'
+                  }}>
+                    <span>+91</span>
+                  </div>
+                  <input
+                    type="tel"
+                    maxLength={10}
+                    className={`form-control ${errors.patientPhone ? 'is-invalid' : ''}`}
+                    value={patientPhone}
+                    onChange={(e) => setPatientPhone(e.target.value.replace(/\D/g, ''))}
+                    style={{ padding: '0.6rem 0.85rem 0.6rem 3.6rem', fontSize: '0.88rem', borderRadius: 10, width: '100%' }}
+                  />
+                </div>
+                {errors.patientPhone && <span className="field-error">{errors.patientPhone}</span>}
+              </div>
+
+              {/* Home Visit Address */}
+              <div>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.25rem' }}>
+                  <label className="form-label" style={{ fontSize: '0.76rem', fontWeight: 700, margin: 0 }}>
+                    Home Visit Address in Hyderabad *
+                  </label>
+                  <button
+                    type="button"
+                    onClick={handleAutoDetectLocation}
+                    disabled={isDetectingLocation}
+                    style={{ 
+                      padding: '0.22rem 0.6rem', 
+                      fontSize: '0.72rem', 
+                      fontWeight: 700,
+                      gap: '0.3rem', 
+                      color: '#0284C7',
+                      border: '1px solid #BAE6FD',
+                      background: '#F0F9FF',
+                      borderRadius: 9999,
+                      cursor: 'pointer',
+                      display: 'inline-flex',
+                      alignItems: 'center'
+                    }}
+                  >
+                    {isDetectingLocation ? (
+                      <>
+                        <Loader2 size={12} className="spin" />
+                        <span>Detecting GPS...</span>
+                      </>
+                    ) : (
+                      <>
+                        <Navigation size={12} />
+                        <span>Auto-Detect GPS</span>
+                      </>
+                    )}
+                  </button>
+                </div>
+
+                {locationSuccessMsg && (
+                  <div style={{ fontSize: '0.73rem', color: '#059669', marginBottom: '0.25rem', fontWeight: 600 }}>
+                    {locationSuccessMsg}
+                  </div>
+                )}
+
                 <input
                   type="text"
-                  placeholder="Full name"
-                  className={`form-control ${errors.patientName ? 'is-invalid' : ''}`}
-                  value={patientName}
-                  onChange={(e) => setPatientName(e.target.value)}
-                  style={{ padding: '0.55rem 0.75rem', fontSize: '0.86rem', borderRadius: 10 }}
+                  className={`form-control ${errors.fullAddress ? 'is-invalid' : ''}`}
+                  value={fullAddress}
+                  onChange={(e) => setFullAddress(e.target.value)}
+                  style={{ padding: '0.6rem 0.85rem', fontSize: '0.88rem', borderRadius: 10 }}
                 />
-                {errors.patientName && <span className="field-error">{errors.patientName}</span>}
-              </div>
-
-              <div>
-                <label className="form-label" style={{ fontSize: '0.78rem', fontWeight: 600, marginBottom: '0.25rem' }}>
-                  Age *
-                </label>
-                <input
-                  type="number"
-                  placeholder="Yrs"
-                  min={1}
-                  max={120}
-                  className={`form-control ${errors.patientAge ? 'is-invalid' : ''}`}
-                  value={patientAge}
-                  onChange={(e) => setPatientAge(e.target.value)}
-                  style={{ padding: '0.55rem 0.75rem', fontSize: '0.86rem', borderRadius: 10 }}
-                />
-                {errors.patientAge && <span className="field-error">{errors.patientAge}</span>}
-              </div>
-
-              <div>
-                <label className="form-label" style={{ fontSize: '0.78rem', fontWeight: 600, marginBottom: '0.25rem' }}>
-                  Gender
-                </label>
-                <select
-                  className="form-control"
-                  value={patientGender}
-                  onChange={(e) => setPatientGender(e.target.value as any)}
-                  style={{ padding: '0.55rem 0.75rem', fontSize: '0.86rem', borderRadius: 10 }}
-                >
-                  <option value="Male">Male</option>
-                  <option value="Female">Female</option>
-                  <option value="Other">Other</option>
-                </select>
+                {errors.fullAddress && <span className="field-error">{errors.fullAddress}</span>}
               </div>
             </div>
 
-            {/* 3. Phone Row */}
-            <div style={{ marginBottom: '0.85rem' }}>
-              <label className="form-label" style={{ fontSize: '0.78rem', fontWeight: 600, marginBottom: '0.25rem' }}>
-                Mobile Number *
-              </label>
-              <div style={{ position: 'relative' }}>
-                <input
-                  type="tel"
-                  placeholder="10-digit mobile"
-                  maxLength={10}
-                  className={`form-control ${errors.patientPhone ? 'is-invalid' : ''}`}
-                  value={patientPhone}
-                  onChange={(e) => setPatientPhone(e.target.value.replace(/\\D/g, ''))}
-                  style={{ padding: '0.55rem 0.75rem 0.55rem 2rem', fontSize: '0.86rem', borderRadius: 10 }}
-                />
-                <Phone size={14} style={{ position: 'absolute', left: 8, top: '50%', transform: 'translateY(-50%)', color: 'var(--neutral-400)' }} />
-              </div>
-              {errors.patientPhone && <span className="field-error">{errors.patientPhone}</span>}
-            </div>
-
-            {/* 4. Home Address with Auto-Detect GPS Button */}
-            <div style={{ marginBottom: '0.85rem' }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.25rem' }}>
-                <label className="form-label" style={{ fontSize: '0.78rem', fontWeight: 600, margin: 0 }}>
-                  Home Visit Address *
-                </label>
-                <button
-                  type="button"
-                  onClick={handleAutoDetectLocation}
-                  disabled={isDetectingLocation}
-                  style={{ 
-                    padding: '0.2rem 0.55rem', 
-                    fontSize: '0.74rem', 
-                    fontWeight: 700,
-                    gap: '0.3rem', 
-                    color: '#0284C7',
-                    border: '1px solid #BAE6FD',
-                    background: '#F0F9FF',
-                    borderRadius: 9999,
-                    cursor: 'pointer',
-                    display: 'inline-flex',
-                    alignItems: 'center'
-                  }}
-                >
-                  {isDetectingLocation ? (
-                    <>
-                      <Loader2 size={12} className="spin" />
-                      <span>Detecting GPS...</span>
-                    </>
-                  ) : (
-                    <>
-                      <Navigation size={12} />
-                      <span>Auto-Detect GPS</span>
-                    </>
-                  )}
-                </button>
-              </div>
-
-              {locationSuccessMsg && (
-                <div style={{ fontSize: '0.74rem', color: '#059669', marginBottom: '0.25rem', fontWeight: 600 }}>
-                  {locationSuccessMsg}
-                </div>
-              )}
-
-              <input
-                type="text"
-                placeholder="Flat / House No, Apartment, Street name"
-                className={`form-control ${errors.fullAddress ? 'is-invalid' : ''}`}
-                value={fullAddress}
-                onChange={(e) => setFullAddress(e.target.value)}
-                style={{ padding: '0.55rem 0.75rem', fontSize: '0.86rem', borderRadius: 10 }}
-              />
-              {errors.fullAddress && <span className="field-error">{errors.fullAddress}</span>}
-            </div>
-
-            {/* 5. Mandatory Prescription Attachment */}
+            {/* 3. Prescription Attachment */}
             <div 
               style={{ 
                 background: errors.prescription ? '#FFF5F5' : '#F8FAFC', 
@@ -934,9 +1140,9 @@ export const BookingModal: React.FC<BookingModalProps> = ({
             >
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.45rem', flexWrap: 'wrap', gap: '0.4rem' }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '0.35rem' }}>
-                  <FileText size={15} style={{ color: '#E11D48' }} />
+                  <span style={{ display: 'inline-flex', width: 20, height: 20, borderRadius: '50%', background: '#0284C7', color: '#FFF', fontSize: '0.7rem', fontWeight: 800, alignItems: 'center', justifyContent: 'center' }}>3</span>
                   <label className="form-label" style={{ fontSize: '0.82rem', fontWeight: 800, margin: 0, color: 'var(--primary-navy-950)' }}>
-                    Doctor's Prescription {currentService.prescriptionRequired !== false && serviceId !== 'doctor-consult' && serviceId !== 'vitals-monitoring' ? <span style={{ color: '#E11D48' }}>* (Mandatory)</span> : <span style={{ color: '#059669', fontWeight: 600 }}>(Optional for this service)</span>}
+                    Doctor's Prescription {currentService.prescriptionRequired !== false && serviceId !== 'doctor-consult' && serviceId !== 'vitals-monitoring' ? <span style={{ color: '#E11D48' }}>* (Mandatory)</span> : <span style={{ color: '#059669', fontWeight: 600 }}>(Optional)</span>}
                   </label>
                 </div>
                 <div style={{ display: 'inline-flex', alignItems: 'center', gap: '0.3rem', background: '#F0FDF4', border: '1px solid #BBF7D0', padding: '2px 8px', borderRadius: 9999, fontSize: '0.7rem', color: '#166534', fontWeight: 700 }}>
@@ -1117,12 +1323,15 @@ export const BookingModal: React.FC<BookingModalProps> = ({
               )}
             </div>
 
-            {/* Visit Timing: Instant (ASAP Dispatch) vs Scheduled (2-hr slots) */}
+            {/* 4. Visit Timing */}
             <div style={{ marginBottom: '1.15rem' }}>
-              <label className="form-label" style={{ fontSize: '0.78rem', fontWeight: 700, marginBottom: '0.35rem', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                <span>Visit Timing & Slot *</span>
-                <span style={{ fontSize: '0.72rem', color: '#64748B', fontWeight: 500 }}>Instant or Scheduled</span>
-              </label>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.45rem' }}>
+                <label style={{ fontSize: '0.78rem', fontWeight: 800, color: 'var(--primary-navy-950)', textTransform: 'uppercase', letterSpacing: '0.04em', display: 'flex', alignItems: 'center', gap: '0.35rem' }}>
+                  <span style={{ display: 'inline-flex', width: 20, height: 20, borderRadius: '50%', background: '#0284C7', color: '#FFF', fontSize: '0.7rem', fontWeight: 800, alignItems: 'center', justifyContent: 'center' }}>4</span>
+                  <span>Visit Timing & Slot *</span>
+                </label>
+                <span style={{ fontSize: '0.72rem', color: '#64748B', fontWeight: 600 }}>Instant or Scheduled</span>
+              </div>
 
               {/* Instant vs Schedule Toggle Buttons */}
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.5rem', marginBottom: '0.75rem' }}>
@@ -1232,7 +1441,7 @@ export const BookingModal: React.FC<BookingModalProps> = ({
               )}
             </div>
 
-            {/* 6. Promo Code Section (District / Zomato Minimalist Style) */}
+            {/* 5. Promo Code Section */}
             <div 
               style={{ 
                 background: '#F8FAFC', 
@@ -1294,7 +1503,6 @@ export const BookingModal: React.FC<BookingModalProps> = ({
                   <div style={{ display: 'flex', gap: '0.45rem', marginBottom: '0.45rem' }}>
                     <input
                       type="text"
-                      placeholder="e.g. FIRST100, CARE15"
                       value={promoInput}
                       onChange={(e) => {
                         setPromoInput(e.target.value.toUpperCase());

@@ -16,30 +16,42 @@ export const AuthGuard: React.FC<AuthGuardProps> = ({
   children
 }) => {
   // Priority 1: Check if the currently supplied user satisfies the required role or is superuser admin
-  const directAccess = user && (user.role === requiredRole || user.role === 'admin');
+  const directAccess = user && (user.role === requiredRole || (requiredRole !== 'admin' && user.role === 'admin'));
 
-  // Priority 2: If currently supplied user is not authorized, check role-scoped session storage
+  // Priority 2: If currently supplied user is not authorized, check role-scoped session storage safely
   let effectiveUser = user;
   if (!directAccess) {
     try {
-      const roleKey = `xn_auth_user_${requiredRole}`;
-      const rawRole =
-        sessionStorage.getItem(roleKey) ||
-        localStorage.getItem(roleKey) ||
-        (requiredRole !== 'admin' ? localStorage.getItem('xn_auth_user_admin') : null);
+      let rawRole: string | null = null;
+      if (requiredRole === 'admin') {
+        rawRole =
+          sessionStorage.getItem('xn_auth_user_admin') ||
+          localStorage.getItem('xn_auth_user_admin');
+        if (!rawRole) {
+          const tabU = sessionStorage.getItem('xn_auth_user') || localStorage.getItem('xn_auth_user');
+          if (tabU && tabU.includes('"role":"admin"')) {
+            rawRole = tabU;
+          }
+        }
+      } else {
+        const roleKey = `xn_auth_user_${requiredRole}`;
+        rawRole =
+          sessionStorage.getItem(roleKey) ||
+          localStorage.getItem(roleKey) ||
+          sessionStorage.getItem('xn_auth_user_admin') ||
+          localStorage.getItem('xn_auth_user_admin');
+      }
+
       if (rawRole) {
         const parsed = JSON.parse(rawRole);
-        if (parsed && (parsed.role === requiredRole || parsed.role === 'admin')) {
+        if (parsed && (parsed.role === requiredRole || (requiredRole !== 'admin' && parsed.role === 'admin'))) {
           effectiveUser = parsed;
-          try {
-            sessionStorage.setItem('xn_auth_user', JSON.stringify(parsed));
-          } catch {}
         }
       }
     } catch {}
   }
 
-  const hasAccess = effectiveUser && (effectiveUser.role === requiredRole || effectiveUser.role === 'admin');
+  const hasAccess = effectiveUser && (effectiveUser.role === requiredRole || (requiredRole !== 'admin' && effectiveUser.role === 'admin'));
 
   if (hasAccess) {
     return <>{children}</>;

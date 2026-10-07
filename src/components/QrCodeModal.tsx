@@ -14,9 +14,13 @@ export const QrCodeModal: React.FC<QrCodeModalProps> = ({ isOpen, onClose }) => 
   return (
     <div className="modal-overlay" data-lenis-prevent="true" onClick={onClose}>
       <div className="modal-box" data-lenis-prevent="true" style={{ maxWidth: 420, textAlign: 'center' }} onClick={(e) => e.stopPropagation()}>
-        <div className="modal-header">
-          <h3 style={{ fontSize: '1.15rem' }}>Scan to Book on WhatsApp</h3>
-          <button className="close-btn" onClick={onClose}>
+        <div className="modal-header" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+          <img
+            src="/images/Xpressnurse Healthcare Logo.png"
+            alt="Xpress Nurse"
+            style={{ height: '44px', width: 'auto', objectFit: 'contain' }}
+          />
+          <button className="close-btn" onClick={onClose} aria-label="Close modal">
             <X size={20} />
           </button>
         </div>

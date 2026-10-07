@@ -173,10 +173,6 @@ export const ServicesSection: React.FC<ServicesSectionProps> = ({ services = [],
               <div className="service-editorial-body">
                 <div className="service-card-header-row">
                   <h3 className="service-card-title">{service.title}</h3>
-                  <div className="service-inline-time">
-                    <Clock size={12} />
-                    <span>{service.duration}</span>
-                  </div>
                 </div>
 
                 <p className="service-card-desc">{service.subtitle}</p>

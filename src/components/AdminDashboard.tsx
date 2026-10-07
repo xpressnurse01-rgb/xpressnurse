@@ -1962,7 +1962,8 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
     referralEarningsRupees: 0,
     totalPayout: 0,
     earningsPaid: 0,
-    earningsPending: 0
+    earningsPending: 0,
+    currentlyWorkingAt: ''
   });
 
   const handleOpenCreateNurseModal = () => {
@@ -1991,7 +1992,8 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
       totalPayout: 0,
       earningsPaid: 0,
       earningsPending: 0,
-      avatarUrl: ''
+      avatarUrl: '',
+      currentlyWorkingAt: ''
     });
     setIsNurseModalOpen(true);
   };
@@ -2036,7 +2038,8 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
       totalPayout: m.totalMoney,
       earningsPaid: Number(n.earningsPaid) || 0,
       earningsPending: m.completedVisitsEarnings,
-      avatarUrl: n.avatarUrl || ''
+      avatarUrl: n.avatarUrl || '',
+      currentlyWorkingAt: n.currentlyWorkingAt || ''
     });
     setIsNurseModalOpen(true);
   };
@@ -2073,6 +2076,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
       earningsPending: Number(nurseForm.earningsPending) || 0,
       rating: Number(nurseForm.rating) || 4.9,
       avatarUrl: nurseForm.avatarUrl || (editingNurse ? editingNurse.avatarUrl : undefined),
+      currentlyWorkingAt: nurseForm.currentlyWorkingAt?.trim() || undefined,
       certificateVerified: nurseForm.certificateVerified
     };
 
@@ -2955,13 +2959,20 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
     <div className="panel-container container">
       {/* Admin Panel Header */}
       <div className="panel-header">
-        <div>
-          <h2 style={{ fontSize: '1.5rem', color: 'var(--primary-navy-900)', fontWeight: 800 }}>
-            Office Care Desk
-          </h2>
-          <p style={{ fontSize: '0.88rem', color: 'var(--neutral-600)', margin: '0.2rem 0 0' }}>
-            Simple office manager for bookings, nurses, referrals, and doctor calls
-          </p>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '0.85rem' }}>
+          <img
+            src="/images/Xpressnurse Healthcare Logo.png"
+            alt="Xpress Nurse"
+            style={{ height: '48px', width: 'auto', objectFit: 'contain' }}
+          />
+          <div>
+            <h2 style={{ fontSize: '1.4rem', color: 'var(--primary-navy-900)', fontWeight: 800, margin: 0 }}>
+              Office Care Desk
+            </h2>
+            <p style={{ fontSize: '0.82rem', color: 'var(--neutral-600)', margin: '0.15rem 0 0' }}>
+              Simple office manager for bookings, nurses, referrals, and doctor calls
+            </p>
+          </div>
         </div>
 
         <div className="panel-header-buttons">
@@ -4447,6 +4458,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                           </th>
                           <th>Service Area (Rule 2)</th>
                           <th>Qualification</th>
+                          <th>Currently Working At</th>
                           <th>Experience</th>
                           <th>Visits & Referrals (Ref Done)</th>
                           <th>Points</th>
@@ -4631,6 +4643,27 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                                 </span>
                               </td>
                               <td>{n.qualification}</td>
+                              <td>
+                                {n.currentlyWorkingAt ? (
+                                  <span style={{
+                                    display: 'inline-flex',
+                                    alignItems: 'center',
+                                    gap: '0.25rem',
+                                    background: '#F0F9FF',
+                                    color: '#0369A1',
+                                    border: '1px solid #BAE6FD',
+                                    borderRadius: 6,
+                                    padding: '2px 8px',
+                                    fontSize: '0.78rem',
+                                    fontWeight: 700,
+                                    whiteSpace: 'nowrap'
+                                  }}>
+                                    🏥 {n.currentlyWorkingAt}
+                                  </span>
+                                ) : (
+                                  <span style={{ color: '#94A3B8', fontSize: '0.78rem' }}>—</span>
+                                )}
+                              </td>
                               <td>{n.experienceYears} Years</td>
                               <td style={{ minWidth: 205, verticalAlign: 'top' }}>
                                 <div style={{ display: 'flex', flexDirection: 'column', gap: '0.35rem' }}>
@@ -8407,7 +8440,18 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                 </div>
               </div>
 
-              <div style={{ display: 'grid', gridTemplateColumns: '1.3fr 1fr 1fr', gap: '0.75rem', marginBottom: '0.85rem' }}>
+              <div style={{ display: 'grid', gridTemplateColumns: '1.2fr 1.2fr', gap: '0.75rem', marginBottom: '0.85rem' }}>
+                <div>
+                  <label className="form-label" style={{ fontSize: '0.78rem', fontWeight: 700 }}>WHERE CURRENTLY WORKING *</label>
+                  <input
+                    type="text"
+                    required
+                    placeholder="e.g. Apollo Hospital, Yashoda..."
+                    value={nurseForm.currentlyWorkingAt}
+                    onChange={(e) => setNurseForm({ ...nurseForm, currentlyWorkingAt: e.target.value })}
+                    className="form-control"
+                  />
+                </div>
                 <div>
                   <label className="form-label" style={{ fontSize: '0.78rem', fontWeight: 700 }}>QUALIFICATION</label>
                   <input
@@ -8418,6 +8462,9 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                     className="form-control"
                   />
                 </div>
+              </div>
+
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem', marginBottom: '0.85rem' }}>
                 <div>
                   <label className="form-label" style={{ fontSize: '0.78rem', fontWeight: 700 }}>EXP. (YEARS)</label>
                   <input
@@ -11954,6 +12001,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                   </h3>
                   <div style={{ fontSize: '0.78rem', color: '#64748B' }}>
                     {adminCertModalNurse.qualification} • Station: {adminCertModalNurse.serviceArea} • Phone: {adminCertModalNurse.phone}
+                    {adminCertModalNurse.currentlyWorkingAt ? ` • 🏥 ${adminCertModalNurse.currentlyWorkingAt}` : ''}
                   </div>
                 </div>
               </div>

@@ -55,13 +55,18 @@ export const Footer: React.FC<FooterProps> = ({
         <div className="footer-simple-grid reveal-on-scroll reveal-delay-2">
           {/* Brand & Mission */}
           <div className="footer-simple-col brand">
-            <div className="footer-brand-header">
-              <div className="logo-badge" style={{ width: 32, height: 32 }}>
-                <HeartPulse size={18} />
-              </div>
-              <div className="brand-title" style={{ fontSize: '1.25rem', color: '#FFFFFF' }}>
-                Xpress<span style={{ color: '#E63946' }}>Nurse</span>
-              </div>
+            <div className="footer-brand-header" style={{ marginBottom: '1.25rem' }}>
+              <img
+                src="/images/Xpressnurse Healthcare Logo.png"
+                alt="Xpress Nurse Healthcare"
+                style={{ 
+                  height: '52px', 
+                  width: 'auto', 
+                  objectFit: 'contain', 
+                  display: 'block',
+                  filter: 'brightness(0) invert(1)'
+                }}
+              />
             </div>
 
             <p className="footer-brand-desc">

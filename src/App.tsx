@@ -924,7 +924,6 @@ export const App: React.FC = () => {
             };
 
             cleanMergedBookings.unshift(synthBooking);
-            dbSaveBooking(synthBooking);
           }
         });
 
@@ -938,10 +937,17 @@ export const App: React.FC = () => {
       }
       if (remoteNurses !== null) {
         setNurses((prev) => {
-          if (prev.length === remoteNurses.length && JSON.stringify(prev) === JSON.stringify(remoteNurses)) {
+          const merged = remoteNurses.map((rn) => {
+            const localMatch = prev.find((x) => x.id === rn.id);
+            return {
+              ...rn,
+              currentlyWorkingAt: rn.currentlyWorkingAt || localMatch?.currentlyWorkingAt || undefined
+            };
+          });
+          if (prev.length === merged.length && JSON.stringify(prev) === JSON.stringify(merged)) {
             return prev;
           }
-          return remoteNurses;
+          return merged;
         });
 
         // Strictly verify active nurse session against fresh database records
@@ -1198,11 +1204,17 @@ export const App: React.FC = () => {
               referredByNurseId: raw.referred_by_nurse_id,
               earningsPaid: Number(raw.earnings_paid) || 0,
               earningsPending: Number(raw.earnings_pending) || 0,
-              rejectionReason: raw.rejection_reason
+              rejectionReason: raw.rejection_reason,
+              currentlyWorkingAt: raw.currently_working_at || raw.current_workplace || undefined
             };
             setNurses((prev) => {
-              const exists = prev.some((n) => n.id === mapped.id);
-              return exists ? prev.map((n) => (n.id === mapped.id ? mapped : n)) : [...prev, mapped];
+              const prevNurse = prev.find((n) => n.id === mapped.id);
+              const mergedNurse: NurseProfile = {
+                ...mapped,
+                currentlyWorkingAt: mapped.currentlyWorkingAt || prevNurse?.currentlyWorkingAt || undefined
+              };
+              const exists = prev.some((n) => n.id === mergedNurse.id);
+              return exists ? prev.map((n) => (n.id === mergedNurse.id ? mergedNurse : n)) : [...prev, mergedNurse];
             });
           } else if (payload.eventType === 'DELETE') {
             const delId = (payload.old as any)?.id;
@@ -2797,8 +2809,11 @@ export const App: React.FC = () => {
         onOpenBooking={() => setIsBookingOpen(true)}
       />
 
-      {/* Main Routed Views with Mobile Drag-Scroll Pull to Refresh */}
-      <PullToRefresh onRefresh={async () => { await refreshAllDataFromDb(true); }}>
+      {/* Main Routed Views with Mobile Drag-Scroll Pull to Refresh (Disabled on Staff/Admin portals to prevent reload loops) */}
+      <PullToRefresh 
+        onRefresh={async () => { await refreshAllDataFromDb(true); }}
+        disabled={currentPath === '/admin' || currentPath === '/nurse' || currentPath === '/doctor' || currentPath === '/login'}
+      >
         <main>
           {/* Route: / -> Public Marketing Website */}
           {(currentPath === '/' || currentPath === '') && (

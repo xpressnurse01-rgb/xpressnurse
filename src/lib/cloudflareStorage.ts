@@ -900,7 +900,7 @@ export const generatePrintableInvoiceHtml = (inv: InvoiceDetails): string => {
   <div class="invoice-card">
     <div class="header">
       <div>
-        <div class="brand-title">Xpress Nurse</div>
+        <img src="/images/Xpressnurse Healthcare Logo.png" alt="Xpress Nurse" style="height: 54px; width: auto; object-fit: contain; display: block; margin-bottom: 4px;" />
       </div>
       <div style="text-align: right;">
         <div style="font-size: 20px; font-weight: 800; color: #0A192F;">INVOICE</div>

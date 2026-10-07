@@ -208,6 +208,7 @@ export const NurseDashboard: React.FC<NurseDashboardProps> = ({
   const [editedName, setEditedName] = useState(nurse.name);
   const [editedExp, setEditedExp] = useState(String(nurse.experienceYears || 4));
   const [editedServiceArea, setEditedServiceArea] = useState(nurse.serviceArea || 'Gachibowli');
+  const [editedCurrentlyWorkingAt, setEditedCurrentlyWorkingAt] = useState(nurse.currentlyWorkingAt || '');
   const [profileUpdateMsg, setProfileUpdateMsg] = useState('');
 
   // Keep editedName and editedExp in sync with external nurse updates when not in edit mode
@@ -216,8 +217,9 @@ export const NurseDashboard: React.FC<NurseDashboardProps> = ({
       setEditedName(nurse.name);
       setEditedExp(String(nurse.experienceYears || 4));
       setEditedServiceArea(nurse.serviceArea || 'Gachibowli');
+      setEditedCurrentlyWorkingAt(nurse.currentlyWorkingAt || '');
     }
-  }, [nurse.name, nurse.experienceYears, isEditingProfile]);
+  }, [nurse.name, nurse.experienceYears, nurse.currentlyWorkingAt, isEditingProfile]);
 
   // Referral Link Copy
   const [copiedCode, setCopiedCode] = useState(false);
@@ -581,6 +583,14 @@ export const NurseDashboard: React.FC<NurseDashboardProps> = ({
                 </span>
                 <span style={{ color: '#CBD5E1' }}>•</span>
                 <span style={{ whiteSpace: 'nowrap' }}>{nurse.qualification || 'Registered Nurse'}</span>
+                {nurse.currentlyWorkingAt && (
+                  <>
+                    <span style={{ color: '#CBD5E1' }}>•</span>
+                    <span style={{ whiteSpace: 'nowrap', color: '#0369A1', fontWeight: 700 }}>
+                      🏥 {nurse.currentlyWorkingAt}
+                    </span>
+                  </>
+                )}
                 <span style={{ color: '#CBD5E1' }}>•</span>
                 <span style={{ whiteSpace: 'nowrap' }}>{nurse.phone}</span>
               </div>
@@ -2486,10 +2496,11 @@ export const NurseDashboard: React.FC<NurseDashboardProps> = ({
                     ...nurse,
                     name: editedName.trim(),
                     experienceYears: Number(editedExp) || 4,
-                    serviceArea: editedServiceArea.trim() || nurse.serviceArea
+                    serviceArea: editedServiceArea.trim() || nurse.serviceArea,
+                    currentlyWorkingAt: editedCurrentlyWorkingAt.trim() || nurse.currentlyWorkingAt
                   });
                   setIsEditingProfile(false);
-                  setProfileUpdateMsg('✓ Profile name and experience updated successfully!');
+                  setProfileUpdateMsg('✓ Profile name, workplace, and experience updated successfully!');
                   setTimeout(() => setProfileUpdateMsg(''), 4000);
                 }}
                 style={{ display: 'flex', flexDirection: 'column', gap: '0.9rem' }}
@@ -2503,6 +2514,25 @@ export const NurseDashboard: React.FC<NurseDashboardProps> = ({
                     required
                     value={editedName}
                     onChange={(e) => setEditedName(e.target.value)}
+                    style={{
+                      width: '100%',
+                      padding: '0.55rem 0.85rem',
+                      borderRadius: 8,
+                      border: '1px solid #CBD5E1',
+                      fontSize: '0.92rem'
+                    }}
+                  />
+                </div>
+
+                <div>
+                  <label style={{ fontSize: '0.8rem', fontWeight: 700, color: '#334155', display: 'block', marginBottom: '0.35rem' }}>
+                    Where Currently Working (Hospital / Clinic) *
+                  </label>
+                  <input
+                    type="text"
+                    required
+                    value={editedCurrentlyWorkingAt}
+                    onChange={(e) => setEditedCurrentlyWorkingAt(e.target.value)}
                     style={{
                       width: '100%',
                       padding: '0.55rem 0.85rem',
@@ -2577,6 +2607,13 @@ export const NurseDashboard: React.FC<NurseDashboardProps> = ({
                 <div style={{ padding: '0.75rem', background: '#F8FAFC', borderRadius: 10 }}>
                   <span style={{ fontSize: '0.75rem', color: '#64748B', display: 'block' }}>Full Name</span>
                   <span style={{ fontSize: '0.95rem', fontWeight: 800, color: '#0F172A' }}>{nurse.name}</span>
+                </div>
+
+                <div style={{ padding: '0.75rem', background: '#F8FAFC', borderRadius: 10 }}>
+                  <span style={{ fontSize: '0.75rem', color: '#64748B', display: 'block' }}>Where Currently Working</span>
+                  <span style={{ fontSize: '0.95rem', fontWeight: 800, color: '#0369A1' }}>
+                    {nurse.currentlyWorkingAt ? `🏥 ${nurse.currentlyWorkingAt}` : 'Not specified'}
+                  </span>
                 </div>
 
                 <div style={{ padding: '0.75rem', background: '#F8FAFC', borderRadius: 10 }}>

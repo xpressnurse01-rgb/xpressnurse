@@ -330,7 +330,8 @@ export async function dbFetchNurses(): Promise<NurseProfile[] | null> {
       earningsPaid: Number(n.earnings_paid) || 0,
       earningsPending: Number(n.earnings_pending) || 0,
       totalPayout: n.total_payout != null && !isNaN(Number(n.total_payout)) ? Number(n.total_payout) : (Number(n.earnings_pending || 0) + Number(n.referral_earnings_rupees || 0)),
-      rejectionReason: n.rejection_reason || undefined
+      rejectionReason: n.rejection_reason || undefined,
+      currentlyWorkingAt: n.currently_working_at || n.current_workplace || undefined
     };
   });
 
@@ -369,12 +370,14 @@ export async function dbUpdateNurse(n: NurseProfile): Promise<boolean> {
       earnings_paid: Number(n.earningsPaid) || 0,
       earnings_pending: Number(n.earningsPending) || 0,
       total_payout: totalPayoutCalc,
-      rejection_reason: n.rejectionReason || null
+      rejection_reason: n.rejectionReason || null,
+      currently_working_at: n.currentlyWorkingAt || null
     };
 
     let { error } = await supabase.from('nurses').upsert(payload);
-    if (error && (error.code === '42703' || error.message?.includes('total_payout'))) {
-      delete payload.total_payout;
+    if (error && (error.code === '42703' || error.message?.includes('total_payout') || error.message?.includes('currently_working_at'))) {
+      if (error.message?.includes('total_payout') || error.code === '42703') delete payload.total_payout;
+      if (error.message?.includes('currently_working_at') || error.code === '42703') delete payload.currently_working_at;
       const retry = await supabase.from('nurses').upsert(payload);
       error = retry.error;
     }
@@ -412,12 +415,14 @@ export async function dbInsertNurse(n: NurseProfile): Promise<boolean> {
       earnings_paid: Number(n.earningsPaid) || 0,
       earnings_pending: Number(n.earningsPending) || 0,
       total_payout: totalPayoutCalc,
-      rejection_reason: n.rejectionReason || null
+      rejection_reason: n.rejectionReason || null,
+      currently_working_at: n.currentlyWorkingAt || null
     };
 
     let { error } = await supabase.from('nurses').upsert(payload);
-    if (error && (error.code === '42703' || error.message?.includes('total_payout'))) {
-      delete payload.total_payout;
+    if (error && (error.code === '42703' || error.message?.includes('total_payout') || error.message?.includes('currently_working_at'))) {
+      if (error.message?.includes('total_payout') || error.code === '42703') delete payload.total_payout;
+      if (error.message?.includes('currently_working_at') || error.code === '42703') delete payload.currently_working_at;
       const retry = await supabase.from('nurses').upsert(payload);
       error = retry.error;
     }
@@ -452,11 +457,13 @@ export async function dbUpdateNurseById(id: string, updates: Partial<NurseProfil
   if (updates.earningsPaid !== undefined) payload.earnings_paid = Number(updates.earningsPaid);
   if (updates.earningsPending !== undefined) payload.earnings_pending = Number(updates.earningsPending);
   if (updates.rejectionReason !== undefined) payload.rejection_reason = updates.rejectionReason;
+  if (updates.currentlyWorkingAt !== undefined) payload.currently_working_at = updates.currentlyWorkingAt;
 
   try {
     let { error } = await supabase.from('nurses').update(payload).eq('id', id);
-    if (error && (error.code === '42703' || error.message?.includes('total_payout'))) {
-      delete payload.total_payout;
+    if (error && (error.code === '42703' || error.message?.includes('total_payout') || error.message?.includes('currently_working_at'))) {
+      if (error.message?.includes('total_payout') || error.code === '42703') delete payload.total_payout;
+      if (error.message?.includes('currently_working_at') || error.code === '42703') delete payload.currently_working_at;
       const retry = await supabase.from('nurses').update(payload).eq('id', id);
       error = retry.error;
     }

@@ -73,6 +73,7 @@ export const LoginPage: React.FC<LoginPageProps> = ({
   const [regExperienceYears, setRegExperienceYears] = useState<number>(3);
   const [regServiceArea, setRegServiceArea] = useState<string>('Gachibowli');
   const [regQualification, setRegQualification] = useState<string>('B.Sc Nursing (Registered RN)');
+  const [regCurrentlyWorkingAt, setRegCurrentlyWorkingAt] = useState<string>('');
   const [regDoctorSpecialization, setRegDoctorSpecialization] = useState<string>('MBBS - General Physician');
   const [regDoctorCustomSpecialization, setRegDoctorCustomSpecialization] = useState<string>('');
   const [regDoctorCouncilNo, setRegDoctorCouncilNo] = useState<string>('');
@@ -216,6 +217,10 @@ export const LoginPage: React.FC<LoginPageProps> = ({
       setErrorMsg('Please fill in all personal details.');
       return;
     }
+    if (!regCurrentlyWorkingAt.trim()) {
+      setErrorMsg('Please specify where you are currently working (Hospital / Clinic / Organization). This is a mandatory requirement.');
+      return;
+    }
     if (!/^\d{4}$/.test(regPin)) {
       setErrorMsg('PIN must be exactly 4 numeric digits.');
       return;
@@ -278,7 +283,8 @@ export const LoginPage: React.FC<LoginPageProps> = ({
         createdAt: new Date().toISOString(),
         referredByNurseId: matchedReferringNurse?.id || undefined,
         referredByNurseName: matchedReferringNurse?.name || undefined,
-        referralCode: myReferralCode
+        referralCode: myReferralCode,
+        currentlyWorkingAt: regCurrentlyWorkingAt.trim()
       };
       
       const newAppUser: AppUser = {
@@ -289,7 +295,7 @@ export const LoginPage: React.FC<LoginPageProps> = ({
         pin: regPin.trim(),
         phone: cleanPhone || regPhone.trim(),
         email: cleanEmail,
-        designation: regQualification.trim() || 'Registered Nurse (B.Sc)',
+        designation: `${regQualification.trim() || 'Registered Nurse (B.Sc)'} • ${regCurrentlyWorkingAt.trim()}`,
         serviceArea: regServiceArea || 'Gachibowli'
       };
       
@@ -527,16 +533,12 @@ export const LoginPage: React.FC<LoginPageProps> = ({
         <div className="login-card">
           {/* Header */}
           <div className="login-card-header">
-            <div className="brand-logo" style={{ justifyContent: 'center', marginBottom: '0.75rem' }}>
-              <div className="logo-badge" style={{ width: 42, height: 42 }}>
-                <HeartPulse size={22} />
-              </div>
-              <div className="brand-text" style={{ textAlign: 'left' }}>
-                <div className="brand-title" style={{ fontSize: '1.35rem' }}>
-                  Xpress<span>Nurse</span>
-                </div>
-                <div className="brand-subtitle">Clinical Portal Access</div>
-              </div>
+            <div style={{ display: 'flex', justifyContent: 'center', marginBottom: '1.25rem' }}>
+              <img
+                src="/images/Xpressnurse Healthcare Logo.png"
+                alt="Xpress Nurse Healthcare"
+                style={{ height: '62px', width: 'auto', objectFit: 'contain', display: 'block' }}
+              />
             </div>
 
             <h1 style={{ fontSize: '1.25rem', color: 'var(--primary-navy-900)', fontWeight: 700, marginBottom: '0.35rem' }}>
@@ -617,13 +619,6 @@ export const LoginPage: React.FC<LoginPageProps> = ({
                     type="text"
                     value={identifier}
                     onChange={(e) => setIdentifier(e.target.value)}
-                    placeholder={
-                      role === 'nurse'
-                        ? 'Enter registered email or 10-digit mobile number'
-                        : role === 'doctor'
-                        ? 'Enter registered email or 10-digit mobile number'
-                        : 'e.g. admin@xpressnurse.in'
-                    }
                     autoComplete="username"
                     className={`login-input ${errorMsg && !identifier ? 'is-invalid' : ''}`}
                   />
@@ -649,7 +644,6 @@ export const LoginPage: React.FC<LoginPageProps> = ({
                       const val = e.target.value.replace(/\D/g, '').slice(0, 4);
                       setPin(val);
                     }}
-                    placeholder="••••"
                     autoComplete="current-password"
                     style={{ letterSpacing: '0.45rem', fontSize: '1.2rem', fontWeight: 700 }}
                     className={`login-input ${errorMsg && pin.length !== 4 ? 'is-invalid' : ''}`}
@@ -731,7 +725,6 @@ export const LoginPage: React.FC<LoginPageProps> = ({
                       value={regName} 
                       onChange={e => setRegName(e.target.value)} 
                       className="form-control" 
-                      placeholder="e.g. Dr. Rajesh Kumar" 
                     />
                   </div>
 
@@ -745,7 +738,6 @@ export const LoginPage: React.FC<LoginPageProps> = ({
                         value={regEmail} 
                         onChange={e => setRegEmail(e.target.value)} 
                         className="form-control" 
-                        placeholder="doctor.name@gmail.com" 
                       />
                     </div>
                     <div className="form-group">
@@ -757,7 +749,6 @@ export const LoginPage: React.FC<LoginPageProps> = ({
                         value={regPhone} 
                         onChange={e => setRegPhone(e.target.value)} 
                         className="form-control" 
-                        placeholder="10-digit Mobile" 
                       />
                     </div>
                   </div>
@@ -773,7 +764,6 @@ export const LoginPage: React.FC<LoginPageProps> = ({
                       value={regDoctorCouncilNo} 
                       onChange={e => setRegDoctorCouncilNo(e.target.value)} 
                       className="form-control" 
-                      placeholder="e.g. TSMC/2018/12345 or MCI Reg No" 
                       style={{ fontWeight: 600 }}
                     />
                   </div>
@@ -826,7 +816,6 @@ export const LoginPage: React.FC<LoginPageProps> = ({
                         value={regDoctorCustomSpecialization} 
                         onChange={e => setRegDoctorCustomSpecialization(e.target.value)} 
                         className="form-control" 
-                        placeholder="e.g. Cardiologist (DM), Neurologist, Orthopedic Surgeon" 
                         style={{ fontWeight: 600, borderColor: '#0D9488' }}
                         required
                       />
@@ -838,7 +827,6 @@ export const LoginPage: React.FC<LoginPageProps> = ({
                     <label className="form-label">Practice / Teleconsult Zone</label>
                     <input 
                       list="hyderabad-areas" 
-                      placeholder="Hyderabad Multi-Zone or specific area"
                       value={regServiceArea}
                       onChange={(e) => setRegServiceArea(e.target.value)}
                       className="form-control"
@@ -854,7 +842,6 @@ export const LoginPage: React.FC<LoginPageProps> = ({
                       value={regPin} 
                       onChange={e => setRegPin(e.target.value.replace(/\D/g, ''))} 
                       className="form-control" 
-                      placeholder="••••" 
                       style={{ letterSpacing: '0.2rem', fontWeight: 700, fontSize: '1.1rem' }} 
                     />
                     <div style={{ fontSize: '0.72rem', color: '#64748B', marginTop: '0.25rem' }}>
@@ -898,42 +885,62 @@ export const LoginPage: React.FC<LoginPageProps> = ({
               ) : (
                 <>
                   <div className="form-group" style={{ marginBottom: '0.75rem' }}>
-                    <label className="form-label">Full Name</label>
+                    <label className="form-label">Full Name *</label>
                     <input 
                       type="text" 
                       name="nurse_reg_fullname"
                       autoComplete="off"
+                      required
                       value={regName} 
                       onChange={e => setRegName(e.target.value)} 
                       className="form-control" 
-                      placeholder="Nurse Name" 
                     />
                   </div>
 
                   <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem', marginBottom: '0.75rem' }}>
                     <div className="form-group">
-                      <label className="form-label">Email</label>
+                      <label className="form-label">Email *</label>
                       <input 
                         type="email" 
                         name="nurse_reg_email"
                         autoComplete="off"
+                        required
                         value={regEmail} 
                         onChange={e => setRegEmail(e.target.value)} 
                         className="form-control" 
-                        placeholder="nurse.name@gmail.com" 
                       />
                     </div>
                     <div className="form-group">
-                      <label className="form-label">Phone</label>
+                      <label className="form-label">Phone *</label>
                       <input 
                         type="tel" 
                         name="nurse_reg_phone"
                         autoComplete="off"
+                        required
                         value={regPhone} 
                         onChange={e => setRegPhone(e.target.value)} 
                         className="form-control" 
-                        placeholder="10-digit Mobile" 
                       />
+                    </div>
+                  </div>
+
+                  {/* Mandatory Field: Where Currently Working */}
+                  <div className="form-group" style={{ marginBottom: '0.75rem' }}>
+                    <label className="form-label" style={{ fontWeight: 700 }}>
+                      Where Currently Working? <span style={{ color: '#E11D48' }}>*</span> (Hospital / Clinic / Organization)
+                    </label>
+                    <input 
+                      type="text" 
+                      name="nurse_reg_workplace"
+                      autoComplete="off"
+                      required
+                      value={regCurrentlyWorkingAt} 
+                      onChange={e => setRegCurrentlyWorkingAt(e.target.value)} 
+                      className="form-control" 
+                      style={{ fontWeight: 600 }}
+                    />
+                    <div style={{ fontSize: '0.72rem', color: '#64748B', marginTop: '0.25rem' }}>
+                      Enter the current hospital, clinic, nursing home, or organization where you work.
                     </div>
                   </div>
 
@@ -955,7 +962,6 @@ export const LoginPage: React.FC<LoginPageProps> = ({
                       value={regReferralCode}
                       onChange={(e) => setRegReferralCode(e.target.value.toUpperCase())}
                       className="form-control"
-                      placeholder="e.g. XN-PRIYA101"
                       style={{
                         textTransform: 'uppercase',
                         letterSpacing: '0.08em',
@@ -985,8 +991,8 @@ export const LoginPage: React.FC<LoginPageProps> = ({
                   {/* Service Area & Years of Experience */}
                   <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem', marginBottom: '0.75rem' }}>
                     <div className="form-group">
-                      <label className="form-label">Service Area (Hyderabad)</label>
-                      <input list="hyderabad-areas" placeholder="Select or enter area"
+                      <label className="form-label">Service Area (Hyderabad) *</label>
+                      <input list="hyderabad-areas"
                         value={regServiceArea}
                         onChange={(e) => setRegServiceArea(e.target.value)}
                         className="form-control"
@@ -1018,7 +1024,7 @@ export const LoginPage: React.FC<LoginPageProps> = ({
 
                   {/* Qualification */}
                   <div className="form-group" style={{ marginBottom: '0.75rem' }}>
-                    <label className="form-label">Nursing Qualification</label>
+                    <label className="form-label">Nursing Qualification *</label>
                     <select
                       value={regQualification}
                       onChange={(e) => setRegQualification(e.target.value)}
@@ -1033,14 +1039,13 @@ export const LoginPage: React.FC<LoginPageProps> = ({
                   </div>
 
                   <div className="form-group" style={{ marginBottom: '0.75rem' }}>
-                    <label className="form-label">Set 4-Digit Security PIN (Used for Staff Login)</label>
+                    <label className="form-label">Set 4-Digit Security PIN (Used for Staff Login) *</label>
                     <input 
                       type="password" 
                       maxLength={4} 
                       value={regPin} 
                       onChange={e => setRegPin(e.target.value.replace(/\D/g, ''))} 
                       className="form-control" 
-                      placeholder="••••" 
                       style={{ letterSpacing: '0.2rem', fontWeight: 700, fontSize: '1.1rem' }} 
                     />
                     <div style={{ fontSize: '0.72rem', color: '#64748B', marginTop: '0.25rem' }}>

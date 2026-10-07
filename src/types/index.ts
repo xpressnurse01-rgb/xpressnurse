@@ -134,6 +134,7 @@ export interface NurseProfile {
   referredByNurseId?: string;
   referredByNurseName?: string;
   referralCode?: string;
+  currentlyWorkingAt?: string;
 }
 
 export interface NurseLead {

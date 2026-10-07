@@ -3,10 +3,11 @@ import { RefreshCw, ArrowDown } from 'lucide-react';
 
 interface PullToRefreshProps {
   onRefresh: () => Promise<void> | void;
+  disabled?: boolean;
   children?: React.ReactNode;
 }
 
-export const PullToRefresh: React.FC<PullToRefreshProps> = ({ onRefresh, children }) => {
+export const PullToRefresh: React.FC<PullToRefreshProps> = ({ onRefresh, disabled = false, children }) => {
   const [pullDistance, setPullDistance] = useState(0);
   const [isRefreshing, setIsRefreshing] = useState(false);
   const startYRef = useRef(0);
@@ -14,6 +15,8 @@ export const PullToRefresh: React.FC<PullToRefreshProps> = ({ onRefresh, childre
   const threshold = 70;
 
   useEffect(() => {
+    if (disabled) return;
+
     const handleTouchStart = (e: TouchEvent) => {
       // Only initiate pull-to-refresh if scroll is at the very top of the window
       if (window.scrollY <= 2 && e.touches.length === 1) {

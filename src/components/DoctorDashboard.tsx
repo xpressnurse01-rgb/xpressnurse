@@ -160,26 +160,17 @@ export const DoctorDashboard: React.FC<DoctorDashboardProps> = ({
   return (
     <div className="panel-container container">
       <div className="panel-header">
-        <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
-          <div
-            style={{
-              width: 48,
-              height: 48,
-              borderRadius: 'var(--radius-md)',
-              background: 'linear-gradient(135deg, #0284C7, #0369A1)',
-              color: '#FFFFFF',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center'
-            }}
-          >
-            <Stethoscope size={26} />
-          </div>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '0.85rem' }}>
+          <img
+            src="/images/Xpressnurse Healthcare Logo.png"
+            alt="Xpress Nurse"
+            style={{ height: '48px', width: 'auto', objectFit: 'contain' }}
+          />
           <div>
-            <h2 style={{ fontSize: '1.4rem', color: 'var(--primary-navy-900)' }}>
+            <h2 style={{ fontSize: '1.35rem', color: 'var(--primary-navy-900)', margin: 0 }}>
               Doctor Clinical Consultation & Rx Panel
             </h2>
-            <p style={{ fontSize: '0.85rem', color: 'var(--neutral-600)' }}>
+            <p style={{ fontSize: '0.82rem', color: 'var(--neutral-600)', margin: '0.15rem 0 0' }}>
               Evaluate patients, clear clinical orders, and issue digital prescriptions for home nursing
             </p>
           </div>

@@ -35,6 +35,7 @@ CREATE TABLE IF NOT EXISTS public.nurses (
   avatar_url text,
   certificate_verified boolean DEFAULT true,
   certificate_url text,
+  currently_working_at text,
   created_at timestamp with time zone DEFAULT now(),
   CONSTRAINT nurses_pkey PRIMARY KEY (id)
 );

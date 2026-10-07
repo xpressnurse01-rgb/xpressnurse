@@ -1,7 +1,8 @@
 import React from 'react';
 import { 
   HeartPulse, 
-  ArrowLeft
+  ArrowLeft,
+  LogIn
 } from 'lucide-react';
 
 interface HeaderProps {
@@ -45,14 +46,13 @@ export const Header: React.FC<HeaderProps> = ({
                 onNavigate('/');
               }}
               className="brand-logo"
+              title="Xpress Nurse — Professional Home Nursing"
             >
-              <div className="logo-badge">
-                <HeartPulse size={20} />
-              </div>
-              <div className="brand-text">
-                <div className="brand-title">Xpress<span>Nurse</span></div>
-                <div className="brand-subtitle">Care That Comes To You</div>
-              </div>
+              <img
+                src="/images/Xpressnurse Healthcare Logo.png"
+                alt="Xpress Nurse Healthcare"
+                className="site-main-logo"
+              />
             </a>
           </div>
 
@@ -100,9 +100,20 @@ export const Header: React.FC<HeaderProps> = ({
             </div>
           )}
 
-          {/* Action CTAs: Book a Home Visit Pill (Hidden on dedicated portal/login routes) */}
+          {/* Action CTAs: Login & Book a Home Visit (Hidden on dedicated portal/login routes) */}
           {!isPortalRoute && (
             <div className="nav-actions-group">
+              {/* Top Login Button */}
+              <button
+                type="button"
+                onClick={() => onNavigate('/login')}
+                className="nav-login-top-btn"
+                title="Staff & Patient Portal Login"
+              >
+                <LogIn size={15} />
+                <span>Login</span>
+              </button>
+
               <a
                 href="https://wa.me/917569657371"
                 target="_blank" rel="noreferrer"
@@ -113,6 +124,7 @@ export const Header: React.FC<HeaderProps> = ({
                 <HeartPulse size={15} />
                 <span>24/7 Help</span>
               </a>
+
               <button 
                 onClick={onOpenBooking} 
                 className="nav-book-pill-btn desktop-only-cta"
