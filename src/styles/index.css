@@ -855,12 +855,12 @@ img {
 
 .hero-editorial-grid {
   display: grid;
-  grid-template-columns: 1.15fr 0.85fr;
+  grid-template-columns: 1fr 1.06fr;
   gap: 3.5rem;
   align-items: center;
 }
 
-@media (max-width: 980px) {
+@media (max-width: 1040px) {
   .hero-editorial-grid {
     grid-template-columns: 1fr;
     gap: 2.75rem;
@@ -938,12 +938,17 @@ img {
 }
 
 .hero-editorial-title {
-  font-size: clamp(2.5rem, 4.4vw, 4rem);
+  font-size: clamp(1.95rem, 3.5vw, 3.75rem);
   font-weight: 850;
-  letter-spacing: -0.04em;
-  line-height: 1.08;
+  letter-spacing: -0.035em;
+  line-height: 1.14;
   color: var(--primary-navy-950);
   margin-bottom: 0;
+}
+
+.hero-title-nowrap {
+  white-space: nowrap;
+  display: inline-block;
 }
 
 .hero-title-gradient {
@@ -951,6 +956,48 @@ img {
   -webkit-background-clip: text;
   -webkit-text-fill-color: transparent;
   display: inline-block;
+}
+
+/* Stylized "Take Care" Beside Nursing */
+.hero-take-care-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  background: linear-gradient(135deg, rgba(254, 242, 242, 0.95) 0%, rgba(239, 246, 255, 0.95) 100%);
+  color: #0284C7;
+  border: 1.5px solid #BAE6FD;
+  padding: 0.22rem 0.85rem;
+  border-radius: 9999px;
+  font-size: 0.44em;
+  font-weight: 850;
+  vertical-align: middle;
+  letter-spacing: -0.01em;
+  box-shadow: 0 4px 16px rgba(2, 132, 199, 0.16), 0 1px 3px rgba(225, 29, 72, 0.08);
+  margin-left: 0.45rem;
+  position: relative;
+  top: -4px;
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  text-transform: none;
+  line-height: 1.25;
+  transition: all 0.25s ease;
+}
+
+.hero-take-care-badge:hover {
+  transform: translateY(-6px) scale(1.04);
+  box-shadow: 0 8px 22px rgba(2, 132, 199, 0.22);
+  border-color: #38BDF8;
+}
+
+.hero-take-care-badge .take-care-heart {
+  font-size: 0.92em;
+  display: inline-block;
+  animation: heartPulseAnim 1.8s infinite ease-in-out;
+}
+
+@keyframes heartPulseAnim {
+  0%, 100% { transform: scale(1); }
+  50% { transform: scale(1.25); }
 }
 
 /* Level 4: Editorial Lead Paragraph */
@@ -997,6 +1044,30 @@ img {
   background: var(--gradient-accent-hover);
   transform: translateY(-2px);
   box-shadow: 0 12px 30px -4px rgba(225, 29, 72, 0.55);
+}
+
+/* Increased Prominent Book a Home Visit Button */
+.hero-btn-large {
+  font-size: 1.12rem !important;
+  font-weight: 850 !important;
+  padding: 1.05rem 2.45rem !important;
+  gap: 0.75rem !important;
+  letter-spacing: -0.01em;
+  box-shadow: 0 14px 34px -4px rgba(225, 29, 72, 0.52), 0 4px 14px rgba(2, 132, 199, 0.22) !important;
+}
+
+.hero-btn-large:hover {
+  transform: translateY(-3px) scale(1.025) !important;
+  box-shadow: 0 20px 44px -4px rgba(225, 29, 72, 0.65), 0 6px 18px rgba(2, 132, 199, 0.28) !important;
+}
+
+.hero-btn-pulse {
+  animation: pulseIcon 2s infinite ease-in-out;
+}
+
+@keyframes pulseIcon {
+  0%, 100% { transform: scale(1); }
+  50% { transform: scale(1.18); }
 }
 
 .hero-secondary-pill-btn {
@@ -1137,25 +1208,48 @@ img {
 .hero-image-stage {
   position: relative;
   width: 100%;
-  max-width: 450px;
-  height: 490px;
-  border-radius: 28px;
+  max-width: 580px;
+  height: 560px;
+  border-radius: 32px;
   overflow: visible;
+  transition: transform 0.3s ease;
+}
+
+@media (min-width: 1400px) {
+  .hero-image-stage {
+    max-width: 620px;
+    height: 590px;
+  }
+}
+
+@media (max-width: 1200px) {
+  .hero-image-stage {
+    max-width: 510px;
+    height: 520px;
+  }
+}
+
+@media (max-width: 1040px) {
+  .hero-image-stage {
+    max-width: 540px;
+    height: 500px;
+  }
 }
 
 @media (max-width: 600px) {
   .hero-image-stage {
-    max-width: 320px;
-    height: 370px;
+    max-width: 100%;
+    height: 420px;
+    border-radius: 24px;
   }
 }
 
 .image-stage-backdrop {
   position: absolute;
-  inset: -18px;
-  border-radius: 40px;
-  background: radial-gradient(circle at 70% 30%, rgba(2, 132, 199, 0.4) 0%, rgba(225, 29, 72, 0.25) 50%, rgba(56, 189, 248, 0.35) 100%);
-  filter: blur(30px);
+  inset: -22px;
+  border-radius: 44px;
+  background: radial-gradient(circle at 70% 30%, rgba(2, 132, 199, 0.45) 0%, rgba(225, 29, 72, 0.28) 50%, rgba(56, 189, 248, 0.4) 100%);
+  filter: blur(34px);
   z-index: 1;
 }
 
@@ -1164,10 +1258,234 @@ img {
   width: 100%;
   height: 100%;
   object-fit: cover;
-  border-radius: 28px;
-  box-shadow: 0 32px 70px -16px rgba(10, 25, 47, 0.28), 0 0 0 1px rgba(255, 255, 255, 0.85), 0 0 0 2px rgba(2, 132, 199, 0.2);
+  border-radius: 32px;
+  box-shadow: 0 36px 85px -16px rgba(10, 25, 47, 0.35), 0 0 0 1px rgba(255, 255, 255, 0.9), 0 0 0 3px rgba(2, 132, 199, 0.25);
   z-index: 2;
   display: block;
+}
+
+/* Hero Multi-Service Interactive Slideshow */
+.hero-slideshow-container {
+  overflow: hidden !important;
+  border-radius: 32px;
+  box-shadow: 0 36px 85px -16px rgba(10, 25, 47, 0.35), 0 0 0 1px rgba(255, 255, 255, 0.95), 0 0 0 3px rgba(2, 132, 199, 0.28);
+  cursor: pointer;
+  user-select: none;
+  background: #0F172A;
+}
+
+.hero-slides-wrapper {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  z-index: 2;
+  border-radius: 32px;
+  overflow: hidden;
+}
+
+.hero-slide-item {
+  position: absolute;
+  inset: 0;
+  opacity: 0;
+  visibility: hidden;
+  transition: opacity 0.75s cubic-bezier(0.16, 1, 0.3, 1), transform 0.75s cubic-bezier(0.16, 1, 0.3, 1);
+  transform: scale(1.05);
+}
+
+.hero-slide-item.active {
+  opacity: 1;
+  visibility: visible;
+  transform: scale(1);
+}
+
+.hero-slide-item .hero-main-photo {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  border-radius: 0;
+  box-shadow: none;
+  filter: contrast(1.03) saturate(1.05);
+}
+
+/* Glassmorphic Slide Caption Overlay */
+.hero-slideshow-caption {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  z-index: 5;
+  background: linear-gradient(180deg, rgba(15, 23, 42, 0) 0%, rgba(15, 23, 42, 0.76) 28%, rgba(15, 23, 42, 0.96) 100%);
+  padding: 2.8rem 1.6rem 1.35rem 1.6rem;
+  color: #FFFFFF;
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+  backdrop-filter: blur(6px);
+  -webkit-backdrop-filter: blur(6px);
+  transition: all 0.3s ease;
+  pointer-events: auto;
+}
+
+.hero-slideshow-container:hover .hero-slideshow-caption {
+  background: linear-gradient(180deg, rgba(15, 23, 42, 0) 0%, rgba(15, 23, 42, 0.86) 26%, rgba(15, 23, 42, 0.99) 100%);
+}
+
+.hero-caption-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 0.25rem;
+}
+
+.hero-caption-tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  background: linear-gradient(135deg, #0284C7 0%, #0369A1 100%);
+  color: #FFFFFF;
+  font-size: 0.72rem;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  padding: 3px 11px;
+  border-radius: 9999px;
+  box-shadow: 0 4px 12px rgba(2, 132, 199, 0.45);
+}
+
+.hero-caption-counter {
+  font-size: 0.72rem;
+  font-weight: 800;
+  color: #E2E8F0;
+  background: rgba(255, 255, 255, 0.16);
+  padding: 3px 10px;
+  border-radius: 9999px;
+  letter-spacing: 0.03em;
+  backdrop-filter: blur(8px);
+}
+
+.hero-caption-title {
+  font-size: 1.22rem;
+  font-weight: 850;
+  color: #FFFFFF;
+  margin: 0;
+  line-height: 1.25;
+  letter-spacing: -0.02em;
+  text-shadow: 0 2px 10px rgba(0, 0, 0, 0.6);
+}
+
+.hero-caption-desc {
+  font-size: 0.82rem;
+  color: #E2E8F0;
+  margin: 0;
+  line-height: 1.45;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  text-shadow: 0 1px 4px rgba(0, 0, 0, 0.4);
+}
+
+.hero-caption-cta {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+  font-size: 0.76rem;
+  font-weight: 850;
+  color: #38BDF8;
+  margin-top: 0.35rem;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+  transition: gap 0.25s ease, color 0.25s ease;
+  width: fit-content;
+  background: rgba(56, 189, 248, 0.12);
+  padding: 4px 10px;
+  border-radius: 9999px;
+  border: 1px solid rgba(56, 189, 248, 0.3);
+}
+
+.hero-slideshow-container:hover .hero-caption-cta {
+  gap: 0.65rem;
+  color: #FFFFFF;
+  background: #0284C7;
+  border-color: #0284C7;
+  box-shadow: 0 4px 14px rgba(2, 132, 199, 0.4);
+}
+
+/* Slideshow Navigation Arrows */
+.hero-slide-btn {
+  position: absolute;
+  top: 40%;
+  transform: translateY(-50%);
+  z-index: 6;
+  width: 42px;
+  height: 42px;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.92);
+  border: 1.5px solid rgba(255, 255, 255, 1);
+  color: #0F172A;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: all 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.25);
+  opacity: 0;
+}
+
+.hero-slideshow-container:hover .hero-slide-btn {
+  opacity: 1;
+}
+
+.hero-slide-btn:hover {
+  background: #0284C7;
+  color: #FFFFFF;
+  border-color: #0284C7;
+  transform: translateY(-50%) scale(1.12);
+  box-shadow: 0 8px 24px rgba(2, 132, 199, 0.45);
+}
+
+.hero-slide-prev {
+  left: 14px;
+}
+
+.hero-slide-next {
+  right: 14px;
+}
+
+/* Slideshow Indicator Dots */
+.hero-slides-dots {
+  position: absolute;
+  top: 16px;
+  right: 16px;
+  z-index: 6;
+  display: flex;
+  gap: 5px;
+  background: rgba(15, 23, 42, 0.55);
+  padding: 5px 10px;
+  border-radius: 9999px;
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+}
+
+.hero-slide-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.45);
+  border: none;
+  padding: 0;
+  cursor: pointer;
+  transition: all 0.28s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.hero-slide-dot.active {
+  width: 20px;
+  border-radius: 9999px;
+  background: #38BDF8;
+  box-shadow: 0 0 10px #38BDF8;
 }
 
 /* Ultra-Refined Floating Glassmorphic Cards */

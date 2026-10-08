@@ -38,7 +38,7 @@ export const Testimonials: React.FC = () => {
             <CheckCircle2 size={13} />
             <span>Verified Patient Experiences</span>
           </span>
-          <h2 className="section-title">Trusted by 10,000+ Families in Hyderabad</h2>
+          <h2 className="section-title">Trusted by 1000+ Families in Hyderabad</h2>
           <p className="section-subtitle">
             Read authentic feedback from patients, physicians, and family caregivers across Hyderabad’s residential neighborhoods.
           </p>

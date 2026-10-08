@@ -272,11 +272,10 @@ export const BookingModal: React.FC<BookingModalProps> = ({
             const detectedStr = [road, suburb, data.address.city || 'Hyderabad'].filter(Boolean).join(', ') + postcode;
 
             setFullAddress(detectedStr);
-
             setLocationSuccessMsg(`✓ Location detected (${suburb || 'Hyderabad'})`);
           } else {
-            setFullAddress(`Lat: ${latitude.toFixed(4)}, Lon: ${longitude.toFixed(4)}, Hyderabad`);
-            setLocationSuccessMsg('✓ Coordinates detected');
+            setFullAddress('');
+            setLocationSuccessMsg('✓ Location pinned. Please enter your house/flat and street address below.');
           }
         } catch (err) {
           console.error('Error reverse geocoding:', err);
@@ -398,7 +397,7 @@ export const BookingModal: React.FC<BookingModalProps> = ({
     if (!fullAddress.trim()) {
       errs.fullAddress = 'Please enter area and doorstep address or click Auto-Detect.';
     } else if (fullAddress.trim().length < 5) {
-      errs.fullAddress = 'Please provide detailed area/address (e.g. Madhapur, Flat 402).';
+      errs.fullAddress = 'Please provide your house/flat and street address.';
     }
 
     // MANDATORY PRESCRIPTION ENFORCEMENT:
@@ -1119,7 +1118,6 @@ export const BookingModal: React.FC<BookingModalProps> = ({
                 <input
                   type="text"
                   className={`form-control ${errors.fullAddress ? 'is-invalid' : ''}`}
-                  placeholder="e.g. Madhapur / Flat 402, Sunshine Apts, Near Metro Pillar 17"
                   value={fullAddress}
                   onChange={(e) => setFullAddress(e.target.value)}
                   style={{ padding: '0.6rem 0.85rem', fontSize: '0.88rem', borderRadius: 10 }}
