@@ -1,5 +1,5 @@
 import React from 'react';
-import { HeartPulse, Phone, MessageCircle, Mail, ShieldCheck, LogIn } from 'lucide-react';
+import { HeartPulse, Phone, MessageCircle, Mail, ShieldCheck, LogIn, ChevronRight } from 'lucide-react';
 import { PolicyType } from './PolicyModal';
 
 interface FooterProps {
@@ -7,12 +7,15 @@ interface FooterProps {
   onOpenQrModal: () => void;
   onNavigate: (path: string) => void;
   onOpenPolicy: (policy: PolicyType) => void;
+  currentPath?: string;
 }
 
 export const Footer: React.FC<FooterProps> = ({
   onNavigate,
-  onOpenPolicy
+  onOpenPolicy,
+  currentPath = '/'
 }) => {
+  const isHomeScreen = !currentPath || currentPath === '/' || currentPath === '';
   const handleAnchorNavigate = (e: React.MouseEvent, targetId: string) => {
     e.preventDefault();
     if (window.location.pathname !== '/' && window.location.pathname !== '') {
@@ -132,68 +135,80 @@ export const Footer: React.FC<FooterProps> = ({
 
         </div>
 
-        {/* Local SEO: Top Hyderabad Service Areas Crawl Grid */}
-        <div style={{
-          borderTop: '1px solid rgba(255, 255, 255, 0.08)',
-          paddingTop: '1.75rem',
-          paddingBottom: '1.5rem',
-          marginBottom: '1rem'
-        }}>
-          <div style={{ fontSize: '0.8rem', color: '#94A3B8', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: '0.75rem' }}>
-            Doorstep Nursing Across Hyderabad Localities:
+        {/* Local SEO: Top Hyderabad Service Areas Crawl Grid - Only on Home Screen */}
+        {isHomeScreen && (
+          <div style={{
+            borderTop: '1px solid rgba(255, 255, 255, 0.08)',
+            paddingTop: '1.75rem',
+            paddingBottom: '1.5rem',
+            marginBottom: '1rem'
+          }}>
+            <div style={{ fontSize: '0.8rem', color: '#94A3B8', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: '0.75rem' }}>
+              Doorstep Nursing Across Hyderabad Localities:
+            </div>
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.5rem' }}>
+              {[
+                { name: 'Gachibowli', slug: 'nursing-services-gachibowli' },
+                { name: 'Madhapur', slug: 'nursing-services-madhapur' },
+                { name: 'Hitech City', slug: 'nursing-services-hitech-city' },
+                { name: 'Kondapur', slug: 'nursing-services-kondapur' },
+                { name: 'Manikonda', slug: 'nursing-services-manikonda' },
+                { name: 'Kukatpally', slug: 'nursing-services-kukatpally' },
+                { name: 'Banjara Hills', slug: 'nursing-services-banjara-hills' },
+                { name: 'Jubilee Hills', slug: 'nursing-services-jubilee-hills' },
+                { name: 'Miyapur', slug: 'nursing-services-miyapur' },
+                { name: 'KPHB Colony', slug: 'nursing-services-kphb-colony' },
+                { name: 'Secunderabad', slug: 'nursing-services-secunderabad' },
+                { name: 'Ameerpet', slug: 'nursing-services-ameerpet' },
+                { name: 'Begumpet', slug: 'nursing-services-begumpet' },
+                { name: 'LB Nagar', slug: 'nursing-services-lb-nagar' },
+                { name: 'Uppal', slug: 'nursing-services-uppal' },
+                { name: 'Attapur', slug: 'nursing-services-attapur' },
+                { name: 'Narsingi', slug: 'nursing-services-narsingi' },
+                { name: 'Kokapet', slug: 'nursing-services-kokapet' }
+              ].map((loc) => (
+                <a
+                  key={loc.slug}
+                  href={`/${loc.slug}`}
+                  onClick={(e) => {
+                    if (e.metaKey || e.ctrlKey || e.button === 1) return;
+                    e.preventDefault();
+                    onNavigate(`/${loc.slug}`);
+                    window.scrollTo(0, 0);
+                  }}
+                  title={`Open Home Nursing in ${loc.name}`}
+                  style={{
+                    fontSize: '0.78rem',
+                    color: '#CBD5E1',
+                    textDecoration: 'none',
+                    background: 'rgba(255, 255, 255, 0.06)',
+                    padding: '4px 10px',
+                    borderRadius: 6,
+                    border: '1px solid rgba(255, 255, 255, 0.12)',
+                    transition: 'all 0.2s ease',
+                    cursor: 'pointer',
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    gap: '4px'
+                  }}
+                  onMouseEnter={(e) => {
+                    e.currentTarget.style.color = '#38BDF8';
+                    e.currentTarget.style.borderColor = 'rgba(56, 189, 248, 0.5)';
+                    e.currentTarget.style.background = 'rgba(56, 189, 248, 0.12)';
+                  }}
+                  onMouseLeave={(e) => {
+                    e.currentTarget.style.color = '#CBD5E1';
+                    e.currentTarget.style.borderColor = 'rgba(255, 255, 255, 0.12)';
+                    e.currentTarget.style.background = 'rgba(255, 255, 255, 0.06)';
+                  }}
+                >
+                  <span>{loc.name}</span>
+                  <ChevronRight size={11} style={{ opacity: 0.6 }} />
+                </a>
+              ))}
+            </div>
           </div>
-          <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.5rem' }}>
-            {[
-              { name: 'Gachibowli', slug: 'nursing-services-gachibowli' },
-              { name: 'Madhapur', slug: 'nursing-services-madhapur' },
-              { name: 'Hitech City', slug: 'nursing-services-hitech-city' },
-              { name: 'Kondapur', slug: 'nursing-services-kondapur' },
-              { name: 'Manikonda', slug: 'nursing-services-manikonda' },
-              { name: 'Kukatpally', slug: 'nursing-services-kukatpally' },
-              { name: 'Banjara Hills', slug: 'nursing-services-banjara-hills' },
-              { name: 'Jubilee Hills', slug: 'nursing-services-jubilee-hills' },
-              { name: 'Miyapur', slug: 'nursing-services-miyapur' },
-              { name: 'KPHB Colony', slug: 'nursing-services-kphb-colony' },
-              { name: 'Secunderabad', slug: 'nursing-services-secunderabad' },
-              { name: 'Ameerpet', slug: 'nursing-services-ameerpet' },
-              { name: 'Begumpet', slug: 'nursing-services-begumpet' },
-              { name: 'LB Nagar', slug: 'nursing-services-lb-nagar' },
-              { name: 'Uppal', slug: 'nursing-services-uppal' },
-              { name: 'Attapur', slug: 'nursing-services-attapur' },
-              { name: 'Narsingi', slug: 'nursing-services-narsingi' },
-              { name: 'Kokapet', slug: 'nursing-services-kokapet' }
-            ].map((loc) => (
-              <a
-                key={loc.slug}
-                href={`/${loc.slug}`}
-                onClick={(e) => {
-                  e.preventDefault();
-                  onNavigate(`/${loc.slug}`);
-                }}
-                style={{
-                  fontSize: '0.78rem',
-                  color: '#94A3B8',
-                  textDecoration: 'none',
-                  background: 'rgba(255, 255, 255, 0.05)',
-                  padding: '3px 9px',
-                  borderRadius: 6,
-                  border: '1px solid rgba(255, 255, 255, 0.08)',
-                  transition: 'all 0.2s ease'
-                }}
-                onMouseEnter={(e) => {
-                  e.currentTarget.style.color = '#38BDF8';
-                  e.currentTarget.style.borderColor = 'rgba(56, 189, 248, 0.4)';
-                }}
-                onMouseLeave={(e) => {
-                  e.currentTarget.style.color = '#94A3B8';
-                  e.currentTarget.style.borderColor = 'rgba(255, 255, 255, 0.08)';
-                }}
-              >
-                {loc.name}
-              </a>
-            ))}
-          </div>
-        </div>
+        )}
 
         {/* Subtle Regulatory & Emergency Disclaimer */}
         <div className="footer-disclaimer-text">

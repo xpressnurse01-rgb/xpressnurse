@@ -199,7 +199,7 @@ export const App: React.FC = () => {
       window.history.pushState({}, '', path);
     }
     setCurrentPath(path.split('?')[0]);
-    window.scrollTo({ top: 0, behavior: 'smooth' });
+    window.scrollTo(0, 0);
   };
 
   // Automatically direct users with referral links (?ref= or ?referral=) to the registration portal
@@ -3083,6 +3083,7 @@ export const App: React.FC = () => {
 
       {/* Corporate Footer with Working Modals & Routes */}
       <Footer
+        currentPath={currentPath}
         onOpenBooking={() => setIsBookingOpen(true)}
         onOpenQrModal={() => setIsQrModalOpen(true)}
         onNavigate={navigate}
