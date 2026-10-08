@@ -101,7 +101,7 @@ export const Hero: React.FC<HeroProps> = ({ onOpenBooking }) => {
   const [currentSlide, setCurrentSlide] = useState(0);
   const [isPaused, setIsPaused] = useState(false);
   const slideCount = HERO_SLIDES.length;
-  const timerRef = useRef<NodeJS.Timeout | null>(null);
+  const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   useEffect(() => {
     if (isPaused) return;
