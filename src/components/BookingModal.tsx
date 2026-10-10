@@ -78,7 +78,27 @@ export const BookingModal: React.FC<BookingModalProps> = ({
     { id: 'doctor-consult', title: 'Tele-Doctor Consult & Prescription', priceNumber: 299, singleVisitPrice: 299, indicativePrice: '₹299' },
     { id: 'vitals-monitoring', title: 'Senior Citizen General Health Check', priceNumber: 699, singleVisitPrice: 699, indicativePrice: '₹699' }
   ];
-  const serviceList: ServiceItem[] = (services && services.length > 0) ? services : fallbackServices;
+  const sortProceduresStrictly = (rawList: ServiceItem[]): ServiceItem[] => {
+    if (!Array.isArray(rawList) || rawList.length === 0) return rawList;
+    try {
+      const savedOrderRaw = typeof window !== 'undefined' ? localStorage.getItem('xn_services_order') : null;
+      if (savedOrderRaw) {
+        const orderList: { id: string; order: number }[] = JSON.parse(savedOrderRaw);
+        const orderMap = new Map(orderList.map((item) => [item.id, Number(item.order)]));
+        return [...rawList].sort((a, b) => {
+          const orderA = orderMap.has(a.id) ? orderMap.get(a.id)! : (a.displayOrder ?? 9999);
+          const orderB = orderMap.has(b.id) ? orderMap.get(b.id)! : (b.displayOrder ?? 9999);
+          if (orderA !== orderB) return orderA - orderB;
+          return (a.displayOrder ?? 9999) - (b.displayOrder ?? 9999);
+        });
+      }
+    } catch { }
+    return [...rawList].sort((a, b) => (a.displayOrder ?? 9999) - (b.displayOrder ?? 9999));
+  };
+
+  const serviceList: ServiceItem[] = sortProceduresStrictly(
+    (services && services.length > 0) ? services : fallbackServices
+  );
   const couponList = coupons;
 
   // Form Fields

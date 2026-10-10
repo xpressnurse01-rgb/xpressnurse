@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useRef } from 'react';
 import { 
   MapPin, 
   CheckCircle, 
@@ -10,6 +10,7 @@ import {
   HelpCircle, 
   ArrowRight,
   ChevronRight,
+  ChevronLeft,
   Award,
   Sparkles,
   HeartPulse,
@@ -188,6 +189,134 @@ export const LocalSeoPage: React.FC<LocalSeoPageProps> = ({
   const nearbyAreaPages = getNearbyAreaPagesForService(page.service, page.area, page.slug);
 
   const heroImage = getServiceImage(page.service, page.serviceId);
+
+  interface SeoSlide {
+    id: string;
+    serviceId: string;
+    image: string;
+    title: string;
+    tag: string;
+    description: string;
+  }
+
+  const SEO_ALL_SERVICES_SLIDES: SeoSlide[] = [
+    {
+      id: 'saline-infusion',
+      serviceId: 'saline-infusion',
+      image: '/images/services/saline-infusion.jpg',
+      title: 'IV Saline & Fluid Infusions',
+      tag: 'Single & Multi Visit',
+      description: `Sterile IV cannulation & normal saline infusions at home in ${page.area}`
+    },
+    {
+      id: 'wound-dressing',
+      serviceId: 'wound-dressing',
+      image: '/images/services/wound-dressing.jpg',
+      title: 'Wound Care & Surgical Dressing',
+      tag: 'Aseptic Dressing',
+      description: `Post-op surgical dressing & diabetic ulcer recovery at home in ${page.area}`
+    },
+    {
+      id: 'foleys-catheter',
+      serviceId: 'foleys-catheter',
+      image: '/images/services/foleys-catheter.jpg',
+      title: 'Foley Catheter Replacement',
+      tag: 'Sterile Catheter Care',
+      description: `Gentle catheter insertion, bag change & bladder wash in ${page.area}`
+    },
+    {
+      id: 'ryles-tube',
+      serviceId: 'ryles-tube',
+      image: '/images/services/ryles-tube.jpg',
+      title: 'Ryles / NG Tube Care',
+      tag: 'Enteral Tube Support',
+      description: `Safe nasogastric feeding tube insertion & care in ${page.area}`
+    },
+    {
+      id: 'suture-removal',
+      serviceId: 'suture-removal',
+      image: '/images/services/suture-removal.jpg',
+      title: 'Suture & Staple Removal',
+      tag: 'Post-Surgical Care',
+      description: `Sterile surgical stitch & staple removal with antiseptic care in ${page.area}`
+    },
+    {
+      id: 'lab-diagnostics',
+      serviceId: 'lab-diagnostics',
+      image: '/images/services/lab-diagnostics.jpg',
+      title: 'Doorstep Lab Sample Collection',
+      tag: 'Home Phlebotomy',
+      description: `Hygienic blood draw with barcode-sealed vacutainers in ${page.area}`
+    },
+    {
+      id: 'doctor-consult',
+      serviceId: 'doctor-consult',
+      image: '/images/services/doctor-consult.jpg',
+      title: 'Online Doctor Consultation',
+      tag: 'Instant Digital Rx',
+      description: `Connect with verified MBBS/MD doctors via WhatsApp call in ${page.area}`
+    },
+    {
+      id: 'injection-administration',
+      serviceId: 'injection-administration',
+      image: '/images/services/injection-administration.jpg',
+      title: 'IM & SC Injections at Home',
+      tag: 'Prescribed Injections',
+      description: `Hygienic injection administration & vital parameters check in ${page.area}`
+    },
+    {
+      id: 'vitals-monitoring',
+      serviceId: 'vitals-monitoring',
+      image: '/images/services/personalized-nursing.jpg',
+      title: 'Vitals & Senior Health Check',
+      tag: 'Elderly Home Care',
+      description: `Digital BP, SpO2, blood sugar & pulse observation in ${page.area}`
+    }
+  ];
+
+  const currentServiceSlide: SeoSlide = {
+    id: `seo-primary-${page.serviceId}`,
+    serviceId: page.serviceId,
+    image: heroImage,
+    title: page.service,
+    tag: `${page.area} Verified`,
+    description: `Doorstep ${page.service} by certified nurses attending in ${page.area}, Hyderabad`
+  };
+
+  const seoSlides: SeoSlide[] = [
+    currentServiceSlide,
+    ...SEO_ALL_SERVICES_SLIDES.filter((s) => s.serviceId !== page.serviceId)
+  ];
+
+  const [currentSlide, setCurrentSlide] = useState(0);
+  const [isPaused, setIsPaused] = useState(false);
+  const slideCount = seoSlides.length;
+  const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  useEffect(() => {
+    setCurrentSlide(0);
+  }, [page.slug]);
+
+  useEffect(() => {
+    if (isPaused) return;
+    timerRef.current = setInterval(() => {
+      setCurrentSlide((prev) => (prev + 1) % slideCount);
+    }, 4200);
+
+    return () => {
+      if (timerRef.current) clearInterval(timerRef.current);
+    };
+  }, [isPaused, slideCount]);
+
+  const handlePrev = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    setCurrentSlide((prev) => (prev - 1 + slideCount) % slideCount);
+  };
+
+  const handleNext = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    setCurrentSlide((prev) => (prev + 1) % slideCount);
+  };
 
   const whatsappMessage = encodeURIComponent(
     `Hi Xpress Nurse, I would like to book ${page.service} at my home in ${page.area}, Hyderabad.`
@@ -389,49 +518,91 @@ export const LocalSeoPage: React.FC<LocalSeoPageProps> = ({
               </div>
             </div>
 
-            {/* Right Visual Image Column */}
+            {/* Right Visual Image Column: Sliding Multi-Service Visual Showcase */}
             <div style={{ position: 'relative' }}>
-              <div style={{
-                position: 'relative',
-                borderRadius: 20,
-                overflow: 'hidden',
-                boxShadow: '0 20px 45px rgba(2, 132, 199, 0.16)',
-                border: '1px solid rgba(226, 232, 240, 0.8)',
-                background: '#FFFFFF'
-              }}>
-                <img
-                  src={heroImage}
-                  alt={`${page.service} in ${page.area}, Hyderabad`}
-                  style={{
-                    width: '100%',
-                    height: 380,
-                    objectFit: 'cover',
-                    display: 'block'
-                  }}
-                />
+              <div 
+                className="hero-image-stage hero-slideshow-container"
+                style={{
+                  maxWidth: '100%',
+                  height: 440,
+                  borderRadius: 24,
+                  boxShadow: '0 20px 45px rgba(2, 132, 199, 0.2)'
+                }}
+                onMouseEnter={() => setIsPaused(true)}
+                onMouseLeave={() => setIsPaused(false)}
+              >
+                {/* Backing Ambient Frame */}
+                <div className="image-stage-backdrop" />
 
-                <div style={{
-                  position: 'absolute',
-                  inset: 0,
-                  background: 'linear-gradient(180deg, rgba(0,0,0,0) 50%, rgba(4, 13, 26, 0.75) 100%)'
-                }} />
+                {/* Slides Container */}
+                <div 
+                  className="hero-slides-wrapper" 
+                  onClick={() => onOpenBookingForService(seoSlides[currentSlide].serviceId, page.area)}
+                >
+                  {seoSlides.map((slide, idx) => (
+                    <div
+                      key={slide.id}
+                      className={`hero-slide-item ${idx === currentSlide ? 'active' : ''}`}
+                      aria-hidden={idx !== currentSlide}
+                    >
+                      <img
+                        src={slide.image}
+                        alt={`${slide.title} in ${page.area}, Hyderabad`}
+                        className="hero-main-photo"
+                        loading={idx === 0 ? 'eager' : 'lazy'}
+                      />
+                    </div>
+                  ))}
+                </div>
 
-                <div style={{
-                  position: 'absolute',
-                  bottom: 16,
-                  left: 16,
-                  right: 16,
-                  color: '#FFFFFF'
-                }}>
-                  <div style={{ fontSize: '0.8rem', textTransform: 'uppercase', letterSpacing: '0.08em', color: '#38BDF8', fontWeight: 800 }}>
-                    Clinical Care At Your Doorstep
+                {/* Crisp Dynamic Slideshow Caption Card Overlay (No blur) */}
+                <div 
+                  className="hero-slideshow-caption" 
+                  onClick={() => onOpenBookingForService(seoSlides[currentSlide].serviceId, page.area)}
+                >
+                  <div className="hero-caption-top">
+                    <span className="hero-caption-tag">{seoSlides[currentSlide].tag}</span>
+                    <span className="hero-caption-counter">
+                      {currentSlide + 1} / {slideCount}
+                    </span>
                   </div>
-                  <div style={{ fontSize: '1.15rem', fontWeight: 850 }}>
-                    {page.service}
+                  <h3 className="hero-caption-title">{seoSlides[currentSlide].title}</h3>
+                  <p className="hero-caption-desc">{seoSlides[currentSlide].description}</p>
+                  <div className="hero-caption-cta">
+                    <span>Book For {page.area}</span>
+                    <ArrowRight size={13} />
                   </div>
-                  <div style={{ fontSize: '0.84rem', color: '#E2E8F0', marginTop: 2 }}>
-                    Serving {page.area} & surrounding {page.zone} communities
-                  </div>
+                </div>
+
+                {/* Slideshow Arrow Controls */}
+                <button
+                  type="button"
+                  className="hero-slide-btn hero-slide-prev"
+                  onClick={handlePrev}
+                  aria-label="Previous service"
+                >
+                  <ChevronLeft size={20} />
+                </button>
+                <button
+                  type="button"
+                  className="hero-slide-btn hero-slide-next"
+                  onClick={handleNext}
+                  aria-label="Next service"
+                >
+                  <ChevronRight size={20} />
+                </button>
+
+                {/* Slideshow Indicator Dots */}
+                <div className="hero-slides-dots" onClick={(e) => e.stopPropagation()}>
+                  {seoSlides.map((slide, idx) => (
+                    <button
+                      key={slide.id}
+                      type="button"
+                      className={`hero-slide-dot ${idx === currentSlide ? 'active' : ''}`}
+                      onClick={() => setCurrentSlide(idx)}
+                      aria-label={`Go to slide ${idx + 1}: ${slide.title}`}
+                    />
+                  ))}
                 </div>
               </div>
 
@@ -439,7 +610,7 @@ export const LocalSeoPage: React.FC<LocalSeoPageProps> = ({
               <div style={{
                 position: 'absolute',
                 top: -12,
-                right: -12,
+                right: -10,
                 background: '#FFFFFF',
                 borderRadius: 14,
                 padding: '0.65rem 1rem',
@@ -447,7 +618,8 @@ export const LocalSeoPage: React.FC<LocalSeoPageProps> = ({
                 alignItems: 'center',
                 gap: '0.6rem',
                 boxShadow: '0 8px 24px rgba(0,0,0,0.12)',
-                border: '1px solid #E2E8F0'
+                border: '1px solid #E2E8F0',
+                zIndex: 8
               }}>
                 <div style={{ width: 34, height: 34, borderRadius: '50%', background: '#DEF7EC', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#03543F' }}>
                   <UserCheck size={18} />
@@ -470,7 +642,8 @@ export const LocalSeoPage: React.FC<LocalSeoPageProps> = ({
                 alignItems: 'center',
                 gap: '0.55rem',
                 boxShadow: '0 8px 24px rgba(0,0,0,0.12)',
-                border: '1px solid #E2E8F0'
+                border: '1px solid #E2E8F0',
+                zIndex: 8
               }}>
                 <div style={{ width: 32, height: 32, borderRadius: '50%', background: '#EFF6FF', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#0284C7' }}>
                   <Activity size={16} />

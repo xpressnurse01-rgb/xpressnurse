@@ -88,19 +88,29 @@ export async function executeWithRetry<T>(
 
 export async function dbFetchServices(): Promise<ServiceItem[] | null> {
   const data = await executeWithRetry(async () => {
-    return await supabase
+    // Attempt to order by display_order first
+    const tryOrdered = await supabase
       .from('services')
       .select('*')
-      .order('single_visit_price', { ascending: false });
+      .order('display_order', { ascending: true, nullsFirst: false });
+
+    if (!tryOrdered.error && tryOrdered.data !== null) {
+      return tryOrdered;
+    }
+
+    // Fallback if display_order column is missing in Supabase schema
+    return await supabase
+      .from('services')
+      .select('*');
   });
 
   if (data === null) return null;
 
-  return data.map((s: any) => {
+  const mappedList = data.map((s: any) => {
     const rawDesc = s.description || '';
     const match = rawDesc.match(/<!--pricing:([^>]+)-->/);
     const pricingLabel = match ? match[1].trim() : undefined;
-    const cleanDesc = rawDesc.replace(/\s*<!--pricing:[^>]+-->/g, '').trim();
+    const cleanDesc = rawDesc.replace(/\s*<!--pricing:[^>]+-->/g, '').replace(/\s*<!--order:\d+-->/g, '').replace(/\s*<!--display_order:\d+-->/g, '').trim();
     const isZero = Number(s.single_visit_price) === 0 || Number(s.price_number) === 0;
 
     let computedIndicative = `₹${Math.round(s.single_visit_price ?? s.price_number ?? 0)}`;
@@ -111,6 +121,17 @@ export async function dbFetchServices(): Promise<ServiceItem[] | null> {
         computedIndicative = pricingLabel.includes('₹') ? pricingLabel : `${pricingLabel} • ₹0`;
       } else {
         computedIndicative = 'Free / Decided at service • ₹0';
+      }
+    }
+
+    // Extract display order from column or embedded comment
+    let parsedOrder: number | undefined = undefined;
+    if (s.display_order !== undefined && s.display_order !== null && !isNaN(Number(s.display_order))) {
+      parsedOrder = Number(s.display_order);
+    } else {
+      const orderMatch = rawDesc.match(/<!--(?:order|display_order):(\d+)-->/);
+      if (orderMatch && orderMatch[1]) {
+        parsedOrder = parseInt(orderMatch[1], 10);
       }
     }
 
@@ -126,40 +147,52 @@ export async function dbFetchServices(): Promise<ServiceItem[] | null> {
       duration: s.duration || '30 - 45 mins',
       indicativePrice: computedIndicative,
       priceNumber: s.single_visit_price !== undefined && s.single_visit_price !== null ? Number(s.single_visit_price) : 800,
-    features: [
-      'Doorstep clinical service across Hyderabad',
-      'Certified & background-verified RN attending',
-      'Transport & basic PPE kit charges included',
-      'Digital vitals check & medical observation log'
-    ],
-    icon: s.icon || 'Activity',
-    badge: s.badge || undefined,
-    procedureSteps: [
-      'Vitals evaluation & doctor prescription verification',
-      'Aseptic preparation & equipment sterility check',
-      'Standard clinical procedure execution by RN',
-      'Patient monitoring & digital handover documentation'
-    ],
-    equipmentProvided: [
-      'Sterile gloves & disposable surgical drape',
-      'Clinical disinfectant & skin preparation swab',
-      'Digital thermometer & automated BP apparatus',
-      'Bio-medical waste disposal pouch'
-    ],
-    imageUrl: s.image_url || `/images/services/${s.id}.jpg`,
-    thumbnailUrl: s.thumbnail_url || null,
-    createdAt: s.created_at
-  };
+      features: [
+        'Doorstep clinical service across Hyderabad',
+        'Certified & background-verified RN attending',
+        'Transport & basic PPE kit charges included',
+        'Digital vitals check & medical observation log'
+      ],
+      icon: s.icon || 'Activity',
+      badge: s.badge || undefined,
+      procedureSteps: [
+        'Vitals evaluation & doctor prescription verification',
+        'Aseptic preparation & equipment sterility check',
+        'Standard clinical procedure execution by RN',
+        'Patient monitoring & digital handover documentation'
+      ],
+      equipmentProvided: [
+        'Sterile gloves & disposable surgical drape',
+        'Clinical disinfectant & skin preparation swab',
+        'Digital thermometer & automated BP apparatus',
+        'Bio-medical waste disposal pouch'
+      ],
+      imageUrl: s.image_url || `/images/services/${s.id}.jpg`,
+      thumbnailUrl: s.thumbnail_url || null,
+      createdAt: s.created_at,
+      displayOrder: parsedOrder
+    };
+  });
+
+  // Sort by displayOrder ascending
+  return mappedList.sort((a, b) => {
+    const ordA = a.displayOrder ?? 9999;
+    const ordB = b.displayOrder ?? 9999;
+    return ordA - ordB;
   });
 }
 
 export async function dbInsertService(s: ServiceItem): Promise<boolean> {
   try {
-    const payload = {
+    const rawDesc = s.description || '';
+    const cleanDesc = rawDesc.replace(/\s*<!--order:\d+-->/g, '').trim();
+    const finalDesc = s.displayOrder !== undefined ? `${cleanDesc} <!--order:${s.displayOrder}-->` : cleanDesc;
+
+    const payload: any = {
       id: s.id,
       title: s.title,
       subtitle: s.subtitle || null,
-      description: s.description || null,
+      description: finalDesc || null,
       single_visit_price: (s.priceNumber !== undefined && s.priceNumber !== null) ? Number(s.priceNumber) : ((s.singleVisitPrice !== undefined && s.singleVisitPrice !== null) ? Number(s.singleVisitPrice) : 800),
       multi_visit_price: (s.multiVisitPrice !== undefined && s.multiVisitPrice !== null) ? Number(s.multiVisitPrice) : ((s.priceNumber !== undefined && s.priceNumber !== null) ? Number(s.priceNumber) : 800),
       night_surcharge: (s.nightSurcharge !== undefined && s.nightSurcharge !== null) ? Number(s.nightSurcharge) : 399,
@@ -171,7 +204,16 @@ export async function dbInsertService(s: ServiceItem): Promise<boolean> {
       thumbnail_url: s.thumbnailUrl || null
     };
 
+    if (s.displayOrder !== undefined) {
+      payload.display_order = s.displayOrder;
+    }
+
     const { error } = await supabase.from('services').insert(payload);
+    if (error && error.message && error.message.includes('display_order')) {
+      delete payload.display_order;
+      const retry = await supabase.from('services').insert(payload);
+      return !retry.error;
+    }
     return !error;
   } catch {
     return false;
@@ -190,7 +232,30 @@ export async function dbUpdateServiceById(id: string, updates: Partial<ServiceIt
   }
   if (updates.title !== undefined) payload.title = updates.title;
   if (updates.subtitle !== undefined) payload.subtitle = updates.subtitle;
-  if (updates.description !== undefined) payload.description = updates.description;
+
+  const orderNum = updates.displayOrder !== undefined ? updates.displayOrder : (updates as any).display_order;
+  if (orderNum !== undefined) {
+    payload.display_order = Number(orderNum);
+  }
+
+  if (updates.description !== undefined) {
+    let d = updates.description;
+    if (orderNum !== undefined) {
+      const cleanDesc = d.replace(/\s*<!--order:\d+-->/g, '').replace(/\s*<!--display_order:\d+-->/g, '').trim();
+      d = `${cleanDesc} <!--order:${orderNum}-->`;
+    }
+    payload.description = d;
+  } else if (orderNum !== undefined) {
+    // Also inject order tag into description if description is not explicitly provided
+    try {
+      const { data: curr } = await supabase.from('services').select('description').eq('id', id).single();
+      if (curr?.description) {
+        const cleanDesc = curr.description.replace(/\s*<!--order:\d+-->/g, '').replace(/\s*<!--display_order:\d+-->/g, '').trim();
+        payload.description = `${cleanDesc} <!--order:${orderNum}-->`;
+      }
+    } catch {}
+  }
+
   if (updates.priceNumber !== undefined || updates.singleVisitPrice !== undefined) {
     payload.single_visit_price = Number(updates.priceNumber ?? updates.singleVisitPrice);
   }
@@ -205,7 +270,15 @@ export async function dbUpdateServiceById(id: string, updates: Partial<ServiceIt
 
   try {
     const { error } = await supabase.from('services').update(payload).eq('id', id);
-    return !error;
+    if (error) {
+      if (error.message && error.message.includes('display_order')) {
+        delete payload.display_order;
+        const retry = await supabase.from('services').update(payload).eq('id', id);
+        return !retry.error;
+      }
+      return false;
+    }
+    return true;
   } catch {
     return false;
   }

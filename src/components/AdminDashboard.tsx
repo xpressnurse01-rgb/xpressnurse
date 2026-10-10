@@ -2191,20 +2191,46 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
   const [isUploadingServiceImage, setIsUploadingServiceImage] = useState(false);
   const [isUploadingServiceThumbnail, setIsUploadingServiceThumbnail] = useState(false);
 
+  const sortedServices = useMemo(() => {
+    if (!Array.isArray(services) || services.length === 0) return services;
+    try {
+      const savedOrderRaw = localStorage.getItem('xn_services_order');
+      if (savedOrderRaw) {
+        const orderList: { id: string; order: number }[] = JSON.parse(savedOrderRaw);
+        const orderMap = new Map(orderList.map((item) => [item.id, Number(item.order)]));
+        return [...services].sort((a, b) => {
+          const orderA = orderMap.has(a.id) ? orderMap.get(a.id)! : (a.displayOrder ?? 9999);
+          const orderB = orderMap.has(b.id) ? orderMap.get(b.id)! : (b.displayOrder ?? 9999);
+          if (orderA !== orderB) return orderA - orderB;
+          return (a.displayOrder ?? 9999) - (b.displayOrder ?? 9999);
+        });
+      }
+    } catch { }
+    return [...services].sort((a, b) => (a.displayOrder ?? 9999) - (b.displayOrder ?? 9999));
+  }, [services]);
+
   const handleMoveServiceOrder = async (serviceId: string, direction: 'up' | 'down') => {
-    const currentIndex = services.findIndex((s) => s.id === serviceId);
+    const currentIndex = sortedServices.findIndex((s) => s.id === serviceId);
     if (currentIndex === -1) return;
     const targetIndex = direction === 'up' ? currentIndex - 1 : currentIndex + 1;
-    if (targetIndex < 0 || targetIndex >= services.length) return;
+    if (targetIndex < 0 || targetIndex >= sortedServices.length) return;
 
-    const reordered = [...services];
+    const reordered = [...sortedServices];
     const [moved] = reordered.splice(currentIndex, 1);
     reordered.splice(targetIndex, 0, moved);
 
+    const withOrder = reordered.map((s, idx) => ({ ...s, displayOrder: idx + 1 }));
+
+    try {
+      localStorage.setItem('xn_cached_services', JSON.stringify(withOrder));
+      const idOrder = withOrder.map((s, idx) => ({ id: s.id, order: idx + 1 }));
+      localStorage.setItem('xn_services_order', JSON.stringify(idOrder));
+    } catch { }
+
     if (onReorderServices) {
-      await onReorderServices(reordered);
+      await onReorderServices(withOrder);
     }
-    showToast(`Updated Homepage Order: "${moved.title}" is now #${targetIndex + 1}`);
+    showToast(`Updated Procedure Order: "${moved.title}" is now #${targetIndex + 1}`);
   };
 
   const handleOpenCreateServiceModal = () => {
@@ -2466,7 +2492,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
     });
   };
 
-  const filteredServices = services.filter((s) => {
+  const filteredServices = sortedServices.filter((s) => {
     return (
       s.title.toLowerCase().includes(serviceSearch.toLowerCase()) ||
       s.id.toLowerCase().includes(serviceSearch.toLowerCase()) ||
@@ -5041,7 +5067,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                     <tbody>
                       {filteredServices.map((s) => {
                         const isSelected = selectedServiceIds.has(s.id);
-                        const orderIndex = services.findIndex((srv) => srv.id === s.id);
+                        const orderIndex = sortedServices.findIndex((srv) => srv.id === s.id);
                         return (
                           <tr key={s.id} style={{ background: isSelected ? '#FFF1F2' : undefined }}>
                             <td style={{ textAlign: 'center', width: 40 }}>
@@ -5081,25 +5107,25 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                                     fontWeight: 800,
                                     color: orderIndex <= 0 ? '#CBD5E1' : '#0284C7'
                                   }}
-                                  title="Move Up on Home Screen"
+                                  title="Move Up on Home Screen & Booking List"
                                 >
                                   ▲
                                 </button>
                                 <button
                                   type="button"
-                                  disabled={orderIndex < 0 || orderIndex >= services.length - 1}
+                                  disabled={orderIndex < 0 || orderIndex >= sortedServices.length - 1}
                                   onClick={() => handleMoveServiceOrder(s.id, 'down')}
                                   style={{
                                     border: '1px solid #CBD5E1',
                                     background: '#FFFFFF',
                                     borderRadius: 4,
                                     padding: '2px 6px',
-                                    cursor: (orderIndex < 0 || orderIndex >= services.length - 1) ? 'not-allowed' : 'pointer',
+                                    cursor: (orderIndex < 0 || orderIndex >= sortedServices.length - 1) ? 'not-allowed' : 'pointer',
                                     fontSize: '0.72rem',
                                     fontWeight: 800,
-                                    color: (orderIndex < 0 || orderIndex >= services.length - 1) ? '#CBD5E1' : '#0284C7'
+                                    color: (orderIndex < 0 || orderIndex >= sortedServices.length - 1) ? '#CBD5E1' : '#0284C7'
                                   }}
-                                  title="Move Down on Home Screen"
+                                  title="Move Down on Home Screen & Booking List"
                                 >
                                   ▼
                                 </button>

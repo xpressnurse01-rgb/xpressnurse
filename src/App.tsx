@@ -97,11 +97,12 @@ function sortServicesWithCustomOrder(rawList: ServiceItem[]): ServiceItem[] {
     const savedOrderRaw = localStorage.getItem('xn_services_order');
     if (savedOrderRaw) {
       const orderList: { id: string; order: number }[] = JSON.parse(savedOrderRaw);
-      const orderMap = new Map(orderList.map((item) => [item.id, item.order]));
+      const orderMap = new Map(orderList.map((item) => [item.id, Number(item.order)]));
       return [...rawList].sort((a, b) => {
         const orderA = orderMap.has(a.id) ? orderMap.get(a.id)! : (a.displayOrder ?? 9999);
         const orderB = orderMap.has(b.id) ? orderMap.get(b.id)! : (b.displayOrder ?? 9999);
-        return orderA - orderB;
+        if (orderA !== orderB) return orderA - orderB;
+        return (a.displayOrder ?? 9999) - (b.displayOrder ?? 9999);
       });
     }
   } catch { }
@@ -1107,8 +1108,19 @@ export const App: React.FC = () => {
         });
       } else if (type === 'CONSULTATION_DELETE' && data?.id) {
         setConsultations((prev) => prev.filter((c) => c.id !== data.id));
+      } else if (type === 'SERVICE_REORDER' && Array.isArray(data)) {
+        const sorted = sortServicesWithCustomOrder(data);
+        setServices(sorted);
+        try {
+          localStorage.setItem('xn_cached_services', JSON.stringify(sorted));
+          const idOrder = sorted.map((s: any, idx: number) => ({ id: s.id, order: idx + 1 }));
+          localStorage.setItem('xn_services_order', JSON.stringify(idOrder));
+        } catch { }
       } else if (type === 'SERVICE_UPDATE' && data?.id) {
-        setServices((prev) => prev.map((s) => (s.id === data.id ? { ...s, ...data } : s)));
+        setServices((prev) => {
+          const next = prev.map((s) => (s.id === data.id ? { ...s, ...data } : s));
+          return sortServicesWithCustomOrder(next);
+        });
       } else if (type === 'SERVICE_CREATE' && data?.id) {
         setServices((prev) => {
           const exists = prev.some((s) => s.id === data.id);
@@ -2546,9 +2558,12 @@ export const App: React.FC = () => {
   };
   const handleUpdateService = async (id: string, updates: Partial<ServiceItem>) => {
     setServices((prev) => {
-      const next = prev.map((s) => (s.id === id ? { ...s, ...updates } : s));
-      try { localStorage.setItem('xn_cached_services', JSON.stringify(next)); } catch { }
-      return next;
+      const existing = prev.find((s) => s.id === id);
+      const preservedOrder = updates.displayOrder !== undefined ? updates.displayOrder : existing?.displayOrder;
+      const next = prev.map((s) => (s.id === id ? { ...s, ...updates, displayOrder: preservedOrder } : s));
+      const sorted = sortServicesWithCustomOrder(next);
+      try { localStorage.setItem('xn_cached_services', JSON.stringify(sorted)); } catch { }
+      return sorted;
     });
     broadcastRealtimeUpdate('SERVICE_UPDATE', { id, ...updates });
     await dbUpdateServiceById(id, updates);
@@ -2567,15 +2582,20 @@ export const App: React.FC = () => {
     setServices(updated);
     try {
       localStorage.setItem('xn_cached_services', JSON.stringify(updated));
-      const idOrder = updated.map((s, idx) => ({ id: s.id, order: idx }));
+      const idOrder = updated.map((s, idx) => ({ id: s.id, order: idx + 1 }));
       localStorage.setItem('xn_services_order', JSON.stringify(idOrder));
     } catch { }
     broadcastRealtimeUpdate('SERVICE_REORDER', updated);
-    for (let i = 0; i < updated.length; i++) {
-      try {
-        await dbUpdateServiceById(updated[i].id, { display_order: i + 1 } as any);
-      } catch { }
-    }
+    await Promise.all(
+      updated.map(async (srv, i) => {
+        try {
+          await dbUpdateServiceById(srv.id, {
+            displayOrder: i + 1,
+            display_order: i + 1
+          } as any);
+        } catch { }
+      })
+    );
   };
 
   // 5. Consultations CRUD Handlers

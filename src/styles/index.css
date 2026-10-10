@@ -1307,27 +1307,27 @@ img {
   filter: contrast(1.03) saturate(1.05);
 }
 
-/* Glassmorphic Slide Caption Overlay */
+/* Crisp Slide Caption Overlay - No blur */
 .hero-slideshow-caption {
   position: absolute;
   bottom: 0;
   left: 0;
   right: 0;
   z-index: 5;
-  background: linear-gradient(180deg, rgba(15, 23, 42, 0) 0%, rgba(15, 23, 42, 0.76) 28%, rgba(15, 23, 42, 0.96) 100%);
+  background: linear-gradient(180deg, rgba(15, 23, 42, 0) 0%, rgba(15, 23, 42, 0.82) 28%, rgba(15, 23, 42, 0.98) 100%);
   padding: 2.8rem 1.6rem 1.35rem 1.6rem;
   color: #FFFFFF;
   display: flex;
   flex-direction: column;
   gap: 0.3rem;
-  backdrop-filter: blur(6px);
-  -webkit-backdrop-filter: blur(6px);
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
   transition: all 0.3s ease;
   pointer-events: auto;
 }
 
 .hero-slideshow-container:hover .hero-slideshow-caption {
-  background: linear-gradient(180deg, rgba(15, 23, 42, 0) 0%, rgba(15, 23, 42, 0.86) 26%, rgba(15, 23, 42, 0.99) 100%);
+  background: linear-gradient(180deg, rgba(15, 23, 42, 0) 0%, rgba(15, 23, 42, 0.9) 26%, rgba(15, 23, 42, 0.99) 100%);
 }
 
 .hero-caption-top {
@@ -1356,11 +1356,11 @@ img {
   font-size: 0.72rem;
   font-weight: 800;
   color: #E2E8F0;
-  background: rgba(255, 255, 255, 0.16);
+  background: rgba(15, 23, 42, 0.8);
+  border: 1px solid rgba(255, 255, 255, 0.2);
   padding: 3px 10px;
   border-radius: 9999px;
   letter-spacing: 0.03em;
-  backdrop-filter: blur(8px);
 }
 
 .hero-caption-title {
@@ -1411,7 +1411,7 @@ img {
   box-shadow: 0 4px 14px rgba(2, 132, 199, 0.4);
 }
 
-/* Slideshow Navigation Arrows */
+/* Slideshow Navigation Arrows - Sharp without blur */
 .hero-slide-btn {
   position: absolute;
   top: 40%;
@@ -1420,7 +1420,7 @@ img {
   width: 42px;
   height: 42px;
   border-radius: 50%;
-  background: rgba(255, 255, 255, 0.92);
+  background: rgba(255, 255, 255, 0.96);
   border: 1.5px solid rgba(255, 255, 255, 1);
   color: #0F172A;
   display: flex;
@@ -1428,8 +1428,8 @@ img {
   justify-content: center;
   cursor: pointer;
   transition: all 0.25s cubic-bezier(0.16, 1, 0.3, 1);
-  backdrop-filter: blur(10px);
-  -webkit-backdrop-filter: blur(10px);
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
   box-shadow: 0 6px 20px rgba(0, 0, 0, 0.25);
   opacity: 0;
 }
@@ -1454,7 +1454,7 @@ img {
   right: 14px;
 }
 
-/* Slideshow Indicator Dots */
+/* Slideshow Indicator Dots - Sharp without blur */
 .hero-slides-dots {
   position: absolute;
   top: 16px;
@@ -1462,12 +1462,12 @@ img {
   z-index: 6;
   display: flex;
   gap: 5px;
-  background: rgba(15, 23, 42, 0.55);
+  background: rgba(15, 23, 42, 0.75);
   padding: 5px 10px;
   border-radius: 9999px;
-  backdrop-filter: blur(8px);
-  -webkit-backdrop-filter: blur(8px);
-  border: 1px solid rgba(255, 255, 255, 0.12);
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+  border: 1px solid rgba(255, 255, 255, 0.2);
 }
 
 .hero-slide-dot {
@@ -5544,13 +5544,11 @@ body {
 @keyframes heroEntranceFadeUp {
   0% {
     opacity: 0;
-    transform: translateY(30px);
-    filter: blur(4px);
+    transform: translateY(24px);
   }
   100% {
     opacity: 1;
     transform: translateY(0);
-    filter: blur(0);
   }
 }
 
