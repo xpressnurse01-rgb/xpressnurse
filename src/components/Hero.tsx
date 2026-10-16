@@ -107,7 +107,7 @@ export const Hero: React.FC<HeroProps> = ({ onOpenBooking }) => {
     if (isPaused) return;
     timerRef.current = setInterval(() => {
       setCurrentSlide((prev) => (prev + 1) % slideCount);
-    }, 4200);
+    }, 1100);
 
     return () => {
       if (timerRef.current) clearInterval(timerRef.current);

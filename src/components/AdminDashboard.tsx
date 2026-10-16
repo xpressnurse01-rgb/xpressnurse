@@ -1996,15 +1996,8 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
     maritalStatus: 'Single',
     district: 'Hyderabad',
     mandal: '',
-    skills: [
-      'IV Cannulation',
-      'Injections',
-      'Foley Replacement',
-      'Ryles Tube Replacement',
-      'Suture Removal',
-      'Enema',
-      'Dressings'
-    ] as string[],
+    village: '',
+    skills: [] as string[],
     status: 'Active',
     certificateVerified: true,
     rating: 4.9,
@@ -2038,15 +2031,8 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
       maritalStatus: 'Single',
       district: 'Hyderabad',
       mandal: '',
-      skills: [
-        'IV Cannulation',
-        'Injections',
-        'Foley Replacement',
-        'Ryles Tube Replacement',
-        'Suture Removal',
-        'Enema',
-        'Dressings'
-      ],
+      village: '',
+      skills: [] as string[],
       status: 'Active',
       certificateVerified: true,
       rating: 4.9,
@@ -2096,15 +2082,8 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
       maritalStatus: (n.maritalStatus === 'Married' ? 'Married' : 'Single'),
       district: (n.district && (n.district.toLowerCase().includes('non') || n.district !== 'Hyderabad')) ? 'Non-Hyderabad' : 'Hyderabad',
       mandal: n.mandal || '',
-      skills: Array.isArray(n.skills) && n.skills.length > 0 ? n.skills : [
-        'IV Cannulation',
-        'Injections',
-        'Foley Replacement',
-        'Ryles Tube Replacement',
-        'Suture Removal',
-        'Enema',
-        'Dressings'
-      ],
+      village: n.village || '',
+      skills: Array.isArray(n.skills) ? n.skills : [],
       status: n.status || 'Active',
       certificateVerified: !!n.certificateVerified,
       rating: n.rating || 4.9,
@@ -2134,6 +2113,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
       return;
     }
     const cleanPhone = nurseForm.phone.replace(/\D/g, '') || nurseForm.phone.trim();
+    const nonHydLoc = [nurseForm.village.trim(), nurseForm.mandal.trim(), nurseForm.district].filter(Boolean).join(', ');
     const nursePayload: NurseProfile = {
       id: editingNurse ? editingNurse.id : nurseForm.id,
       name: nurseForm.name.trim(),
@@ -2141,10 +2121,11 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
       email: nurseForm.email.trim(),
       qualification: nurseForm.qualification.trim(),
       experienceYears: Number(nurseForm.experienceYears) || 1,
-      serviceArea: nurseForm.serviceArea.trim() || (nurseForm.district !== 'Hyderabad' && nurseForm.mandal.trim() ? `${nurseForm.mandal.trim()}, ${nurseForm.district}` : nurseForm.district),
+      serviceArea: nurseForm.serviceArea.trim() || (nurseForm.district !== 'Hyderabad' && nurseForm.mandal.trim() ? nonHydLoc : nurseForm.district),
       maritalStatus: nurseForm.maritalStatus,
       district: nurseForm.district,
       mandal: nurseForm.district !== 'Hyderabad' ? (nurseForm.mandal.trim() || undefined) : undefined,
+      village: nurseForm.district !== 'Hyderabad' ? (nurseForm.village.trim() || undefined) : undefined,
       skills: nurseForm.skills || [],
       pin: nurseForm.pin.trim() || undefined,
       status: (nurseForm.status as 'Active' | 'Pending Verification' | 'On Leave') || 'Active',
@@ -2236,6 +2217,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
       (n.serviceArea && n.serviceArea.toLowerCase().includes(q)) ||
       (n.district && n.district.toLowerCase().includes(q)) ||
       (n.mandal && n.mandal.toLowerCase().includes(q)) ||
+      (n.village && n.village.toLowerCase().includes(q)) ||
       (n.maritalStatus && n.maritalStatus.toLowerCase().includes(q)) ||
       (Array.isArray(n.skills) && n.skills.some((s) => s.toLowerCase().includes(q))) ||
       (n.referredByNurseName && n.referredByNurseName.toLowerCase().includes(q)) ||
@@ -4834,9 +4816,9 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                                     <MapPin size={12} />
                                     <span>{n.serviceArea || 'Not specified'}</span>
                                   </span>
-                                  {(n.district || n.mandal) && (
+                                  {(n.district || n.mandal || n.village) && (
                                     <span style={{ fontSize: '0.72rem', color: '#64748B', display: 'flex', alignItems: 'center', gap: '3px' }}>
-                                      📍 {[n.mandal, n.district].filter(Boolean).join(', ')}
+                                      📍 {[n.village, n.mandal, n.district].filter(Boolean).join(', ')}
                                     </span>
                                   )}
                                 </div>
@@ -6873,7 +6855,12 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                                   <div style={{ fontSize: '0.75rem', color: 'var(--neutral-500)' }}>{cleanUserDesignation(u.designation) || u.role}</div>
                                   {u.role === 'doctor' && (
                                     <div style={{ fontSize: '0.72rem', color: '#64748B', marginTop: '2px', display: 'flex', alignItems: 'center', gap: '0.4rem', flexWrap: 'wrap' }}>
-                                      <span>Council Reg: <strong>{u.councilRegistrationNumber || 'Optional / Not given'}</strong></span>
+                                      {u.specialization && (
+                                        <span>Specialization: <strong style={{ color: '#0F766E' }}>{u.specialization}</strong></span>
+                                      )}
+                                      {u.councilRegistrationNumber && (
+                                        <span>Council Reg: <strong>{u.councilRegistrationNumber}</strong></span>
+                                      )}
                                       {(u.certificateUrl || u.avatarUrl) && (
                                         <a
                                           href={u.certificateUrl || u.avatarUrl}
@@ -8893,8 +8880,8 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                 </div>
               </div>
 
-              {/* Marital Status, District & Mandal */}
-              <div style={{ display: 'grid', gridTemplateColumns: nurseForm.district === 'Hyderabad' ? '1fr 1fr' : '1fr 1fr 1fr', gap: '0.75rem', marginBottom: '0.85rem' }}>
+              {/* Marital Status, District, Mandal & Village */}
+              <div style={{ display: 'grid', gridTemplateColumns: nurseForm.district === 'Hyderabad' ? '1fr 1fr' : 'repeat(auto-fit, minmax(130px, 1fr))', gap: '0.75rem', marginBottom: '0.85rem' }}>
                 <div>
                   <label className="form-label" style={{ fontSize: '0.78rem', fontWeight: 700 }}>MARITAL STATUS</label>
                   <select
@@ -8916,7 +8903,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                       setNurseForm({
                         ...nurseForm,
                         district: val,
-                        ...(val === 'Hyderabad' ? { mandal: '' } : {})
+                        ...(val === 'Hyderabad' ? { mandal: '', village: '' } : {})
                       });
                     }}
                   >
@@ -8925,16 +8912,28 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                   </select>
                 </div>
                 {nurseForm.district !== 'Hyderabad' && (
-                  <div>
-                    <label className="form-label" style={{ fontSize: '0.78rem', fontWeight: 700 }}>MANDAL / TEHSIL</label>
-                    <input
-                      type="text"
-                      placeholder="e.g. Shamirpet"
-                      value={nurseForm.mandal}
-                      onChange={(e) => setNurseForm({ ...nurseForm, mandal: e.target.value })}
-                      className="form-control"
-                    />
-                  </div>
+                  <>
+                    <div>
+                      <label className="form-label" style={{ fontSize: '0.78rem', fontWeight: 700 }}>MANDAL / TEHSIL</label>
+                      <input
+                        type="text"
+                        placeholder="e.g. Shamirpet"
+                        value={nurseForm.mandal}
+                        onChange={(e) => setNurseForm({ ...nurseForm, mandal: e.target.value })}
+                        className="form-control"
+                      />
+                    </div>
+                    <div>
+                      <label className="form-label" style={{ fontSize: '0.78rem', fontWeight: 700 }}>VILLAGE</label>
+                      <input
+                        type="text"
+                        placeholder="e.g. Aliabad"
+                        value={nurseForm.village}
+                        onChange={(e) => setNurseForm({ ...nurseForm, village: e.target.value })}
+                        className="form-control"
+                      />
+                    </div>
+                  </>
                 )}
               </div>
 

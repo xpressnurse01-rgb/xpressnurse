@@ -31,6 +31,14 @@ BEGIN
         ALTER TABLE nurses ADD COLUMN mandal text;
     END IF;
 
+    -- Village
+    IF NOT EXISTS (
+        SELECT 1 FROM information_schema.columns 
+        WHERE table_name = 'nurses' AND column_name = 'village'
+    ) THEN
+        ALTER TABLE nurses ADD COLUMN village text;
+    END IF;
+
     -- Clinical Skills / Procedures known
     IF NOT EXISTS (
         SELECT 1 FROM information_schema.columns 
@@ -67,6 +75,14 @@ BEGIN
         ALTER TABLE app_users ADD COLUMN mandal text;
     END IF;
 
+    -- Village
+    IF NOT EXISTS (
+        SELECT 1 FROM information_schema.columns 
+        WHERE table_name = 'app_users' AND column_name = 'village'
+    ) THEN
+        ALTER TABLE app_users ADD COLUMN village text;
+    END IF;
+
     -- Clinical Skills / Procedures known
     IF NOT EXISTS (
         SELECT 1 FROM information_schema.columns 
@@ -96,5 +112,5 @@ END $$;
 SELECT column_name, data_type 
 FROM information_schema.columns 
 WHERE table_name IN ('nurses', 'app_users') 
-  AND column_name IN ('marital_status', 'district', 'mandal', 'skills', 'council_registration_number', 'certificate_url')
+  AND column_name IN ('marital_status', 'district', 'mandal', 'village', 'skills', 'council_registration_number', 'certificate_url')
 ORDER BY table_name, column_name;

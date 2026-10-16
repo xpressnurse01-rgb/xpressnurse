@@ -301,7 +301,7 @@ export const LocalSeoPage: React.FC<LocalSeoPageProps> = ({
     if (isPaused) return;
     timerRef.current = setInterval(() => {
       setCurrentSlide((prev) => (prev + 1) % slideCount);
-    }, 4200);
+    }, 1100);
 
     return () => {
       if (timerRef.current) clearInterval(timerRef.current);
@@ -448,6 +448,30 @@ export const LocalSeoPage: React.FC<LocalSeoPageProps> = ({
                 >
                   <Calendar size={18} />
                   <span>Book {page.service.split('(')[0].trim()} Now</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => onOpenBookingForService('', page.area)}
+                  className="btn btn-secondary btn-lg"
+                  style={{
+                    padding: '0.85rem 1.65rem',
+                    fontSize: '0.96rem',
+                    fontWeight: 700,
+                    borderRadius: 9999,
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    gap: '0.5rem',
+                    background: '#F0F9FF',
+                    border: '1.5px solid #BAE6FD',
+                    color: '#0284C7',
+                    cursor: 'pointer',
+                    transition: 'all 0.2s ease',
+                    boxShadow: '0 4px 14px rgba(2, 132, 199, 0.12)'
+                  }}
+                >
+                  <Sparkles size={16} style={{ color: '#0284C7' }} />
+                  <span>Book Other Services</span>
                 </button>
 
                 <a
@@ -1036,6 +1060,32 @@ export const LocalSeoPage: React.FC<LocalSeoPageProps> = ({
                   </a>
                 ))}
               </div>
+              <div style={{ marginTop: '0.85rem' }}>
+                <button
+                  type="button"
+                  onClick={() => onOpenBookingForService('', page.area)}
+                  style={{
+                    width: '100%',
+                    padding: '0.8rem 1.25rem',
+                    background: '#0284C7',
+                    color: '#FFFFFF',
+                    border: 'none',
+                    borderRadius: 10,
+                    fontWeight: 800,
+                    fontSize: '0.92rem',
+                    cursor: 'pointer',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    gap: '0.5rem',
+                    boxShadow: '0 4px 12px rgba(2, 132, 199, 0.25)'
+                  }}
+                >
+                  <Sparkles size={16} />
+                  <span>Book Other Services in {page.area}</span>
+                  <ArrowRight size={15} />
+                </button>
+              </div>
             </div>
 
             {/* Same Service in Nearby Localities */}
@@ -1169,6 +1219,25 @@ export const LocalSeoPage: React.FC<LocalSeoPageProps> = ({
           }}
         >
           Book in {page.area} (₹{page.indicativePrice})
+        </button>
+
+        <button
+          type="button"
+          onClick={() => onOpenBookingForService('', page.area)}
+          style={{
+            flex: 1.2,
+            background: '#F0F9FF',
+            color: '#0284C7',
+            border: '1px solid #BAE6FD',
+            padding: '0.65rem 0.5rem',
+            borderRadius: 8,
+            fontSize: '0.78rem',
+            fontWeight: 700,
+            cursor: 'pointer',
+            whiteSpace: 'nowrap'
+          }}
+        >
+          Other Services
         </button>
       </div>
     </div>

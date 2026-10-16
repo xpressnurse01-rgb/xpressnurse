@@ -75,18 +75,11 @@ export const LoginPage: React.FC<LoginPageProps> = ({
   const [regMaritalStatus, setRegMaritalStatus] = useState<string>('Single');
   const [regDistrict, setRegDistrict] = useState<string>('Hyderabad');
   const [regMandal, setRegMandal] = useState<string>('');
-  const [regSelectedSkills, setRegSelectedSkills] = useState<string[]>([
-    'IV Cannulation',
-    'Injections',
-    'Foley Replacement',
-    'Ryles Tube Replacement',
-    'Suture Removal',
-    'Enema',
-    'Dressings'
-  ]);
+  const [regVillage, setRegVillage] = useState<string>('');
+  const [regSelectedSkills, setRegSelectedSkills] = useState<string[]>([]);
   const [regQualification, setRegQualification] = useState<string>('B.Sc Nursing (Registered RN)');
   const [regCurrentlyWorkingAt, setRegCurrentlyWorkingAt] = useState<string>('');
-  const [regDoctorSpecialization, setRegDoctorSpecialization] = useState<string>('MBBS - General Physician');
+  const [regDoctorSpecialization, setRegDoctorSpecialization] = useState<string>('');
   const [regDoctorCustomSpecialization, setRegDoctorCustomSpecialization] = useState<string>('');
   const [regDoctorCouncilNo, setRegDoctorCouncilNo] = useState<string>('');
   const [regReferralCode, setRegReferralCode] = useState('');
@@ -143,9 +136,8 @@ export const LoginPage: React.FC<LoginPageProps> = ({
         setErrorMsg('Please enter your full name, email, and phone number.');
         return;
       }
-      // Medical Council Registration Number is now OPTIONAL
-      if (regDoctorSpecialization === 'Other' && !regDoctorCustomSpecialization.trim()) {
-        setErrorMsg('Please enter your specific medical specialization.');
+      if (!regDoctorSpecialization.trim()) {
+        setErrorMsg('Please enter your medical specialization.');
         return;
       }
       if (!/^\d{4}$/.test(regPin)) {
@@ -185,11 +177,7 @@ export const LoginPage: React.FC<LoginPageProps> = ({
         const formattedDocName = regName.trim().startsWith('Dr.') ? regName.trim() : `Dr. ${regName.trim()}`;
         const newId = `DOC-${Math.floor(1000 + Math.random() * 9000)}`;
 
-        const effectiveDocSpec = regDoctorSpecialization === 'Other'
-          ? (regDoctorCustomSpecialization.trim() || 'Specialist Physician')
-          : regDoctorSpecialization;
-
-        const regSuffix = regDoctorCouncilNo.trim() ? ` • Reg: ${regDoctorCouncilNo.trim()}` : '';
+        const effectiveDocSpec = regDoctorSpecialization.trim() || 'General Physician';
         const newAppUser: AppUser = {
           id: newId,
           role: 'doctor',
@@ -198,12 +186,11 @@ export const LoginPage: React.FC<LoginPageProps> = ({
           pin: regPin.trim(),
           phone: cleanPhone || regPhone.trim(),
           email: cleanEmail,
-          designation: `[PENDING_VERIFICATION] ${effectiveDocSpec}${regSuffix}`,
+          designation: `[PENDING_VERIFICATION] ${effectiveDocSpec}`,
           serviceArea: regServiceArea.trim() || 'Hyderabad Multi-Zone',
           avatarUrl: certUrl || undefined,
           status: 'Pending Verification',
           specialization: effectiveDocSpec,
-          councilRegistrationNumber: regDoctorCouncilNo.trim() || undefined,
           certificateUrl: certUrl || undefined,
           experienceYears: Number(regExperienceYears) || 3,
           createdAt: new Date().toISOString()
@@ -213,7 +200,7 @@ export const LoginPage: React.FC<LoginPageProps> = ({
 
         setIsLoading(false);
         setSuccessMsg(`Doctor application submitted for ${formattedDocName}! Your application is pending Admin verification. You can sign in once approved.`);
-        setRegName(''); setRegPhone(''); setRegEmail(''); setRegPin(''); setRegCertificate(null); setRegDisclaimer(false); setRegDoctorCouncilNo(''); setRegDoctorCustomSpecialization('');
+        setRegName(''); setRegPhone(''); setRegEmail(''); setRegPin(''); setRegCertificate(null); setRegDisclaimer(false); setRegDoctorSpecialization(''); setRegDoctorCustomSpecialization(''); setRegDoctorCouncilNo('');
         setTimeout(() => setIsRegistering(false), 3500);
         return;
       } catch (err: any) {
@@ -243,9 +230,15 @@ export const LoginPage: React.FC<LoginPageProps> = ({
       setErrorMsg('You must agree to the clinical disclaimer.');
       return;
     }
-    if (regDistrict !== 'Hyderabad' && !regMandal.trim()) {
-      setErrorMsg('Please enter your Mandal for Non-Hyderabad district.');
-      return;
+    if (regDistrict !== 'Hyderabad') {
+      if (!regMandal.trim()) {
+        setErrorMsg('Please enter your Mandal for Non-Hyderabad district.');
+        return;
+      }
+      if (!regVillage.trim()) {
+        setErrorMsg('Please enter your Village for Non-Hyderabad district.');
+        return;
+      }
     }
 
     setIsLoading(true);
@@ -276,7 +269,8 @@ export const LoginPage: React.FC<LoginPageProps> = ({
       
       const cleanPhone = regPhone.replace(/\D/g, '');
       const cleanEmail = regEmail.trim().toLowerCase();
-      const resolvedArea = regServiceArea.trim() || (regDistrict !== 'Hyderabad' && regMandal.trim() ? `${regMandal.trim()}, ${regDistrict}` : regDistrict) || 'Hyderabad';
+      const nonHydLocation = [regVillage.trim(), regMandal.trim(), regDistrict].filter(Boolean).join(', ');
+      const resolvedArea = regServiceArea.trim() || (regDistrict !== 'Hyderabad' && regMandal.trim() ? nonHydLocation : regDistrict) || 'Hyderabad';
 
       const newNurse: NurseProfile = {
         id: newId,
@@ -289,6 +283,7 @@ export const LoginPage: React.FC<LoginPageProps> = ({
         maritalStatus: regMaritalStatus,
         district: regDistrict,
         mandal: regDistrict !== 'Hyderabad' ? (regMandal.trim() || undefined) : undefined,
+        village: regDistrict !== 'Hyderabad' ? (regVillage.trim() || undefined) : undefined,
         skills: regSelectedSkills,
         pin: regPin.trim(),
         status: 'Pending Verification',
@@ -320,6 +315,7 @@ export const LoginPage: React.FC<LoginPageProps> = ({
         maritalStatus: regMaritalStatus,
         district: regDistrict,
         mandal: regDistrict !== 'Hyderabad' ? (regMandal.trim() || undefined) : undefined,
+        village: regDistrict !== 'Hyderabad' ? (regVillage.trim() || undefined) : undefined,
         skills: regSelectedSkills
       };
       
@@ -359,7 +355,7 @@ export const LoginPage: React.FC<LoginPageProps> = ({
         ? `Application submitted with referral from ${matchedReferringNurse.name}! Profile pending verification.`
         : 'Registration submitted! Your profile is pending Admin approval.'
       );
-      setRegName(''); setRegPhone(''); setRegEmail(''); setRegPin(''); setRegCertificate(null); setRegDisclaimer(false); setRegReferralCode(''); setRegExperienceYears(3); setRegServiceArea(''); setRegMaritalStatus('Single'); setRegDistrict('Hyderabad'); setRegMandal(''); setRegSelectedSkills(['IV Cannulation', 'Injections', 'Foley Replacement', 'Ryles Tube Replacement', 'Suture Removal', 'Enema', 'Dressings']);
+      setRegName(''); setRegPhone(''); setRegEmail(''); setRegPin(''); setRegCertificate(null); setRegDisclaimer(false); setRegReferralCode(''); setRegExperienceYears(3); setRegServiceArea(''); setRegMaritalStatus('Single'); setRegDistrict('Hyderabad'); setRegMandal(''); setRegVillage(''); setRegSelectedSkills([]);
       setTimeout(() => setIsRegistering(false), 3000);
     } catch (err: any) {
       setIsLoading(false);
@@ -777,40 +773,18 @@ export const LoginPage: React.FC<LoginPageProps> = ({
                     </div>
                   </div>
 
-                  {/* Medical Council Registration Number (Optional) */}
-                  <div className="form-group" style={{ marginBottom: '0.75rem' }}>
-                    <label className="form-label" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                      <span>Medical Council Reg No. (Optional)</span>
-                      <span style={{ fontSize: '0.72rem', color: '#0284C7', fontWeight: 700 }}>NMC / State Council</span>
-                    </label>
-                    <input 
-                      type="text" 
-                      placeholder="e.g. TSMC / MCI Registration Number (Optional)"
-                      value={regDoctorCouncilNo} 
-                      onChange={e => setRegDoctorCouncilNo(e.target.value)} 
-                      className="form-control" 
-                      style={{ fontWeight: 600 }}
-                    />
-                  </div>
-
                   {/* Specialization & Experience */}
                   <div style={{ display: 'grid', gridTemplateColumns: '1.2fr 0.8fr', gap: '0.75rem', marginBottom: '0.75rem' }}>
                     <div className="form-group">
                       <label className="form-label">Specialization</label>
-                      <select
+                      <input
+                        type="text"
+                        placeholder="Enter Specialization"
                         value={regDoctorSpecialization}
                         onChange={(e) => setRegDoctorSpecialization(e.target.value)}
                         className="form-control"
-                      >
-                        <option value="MBBS - General Physician">MBBS - General Physician</option>
-                        <option value="Consultant Physician (MBBS, MD - General Medicine)">Consultant Physician (MBBS, MD)</option>
-                        <option value="Family Medicine Specialist (MBBS, DNB)">Family Medicine Specialist (MBBS, DNB)</option>
-                        <option value="Pediatrician (MBBS, MD - Pediatrics)">Pediatrician (MBBS, MD)</option>
-                        <option value="Pulmonology & Critical Care (MBBS, MD)">Pulmonology & Critical Care</option>
-                        <option value="Emergency Medicine Consultant">Emergency Medicine Consultant</option>
-                        <option value="Teleconsultation Specialist">Teleconsultation Specialist</option>
-                        <option value="Other">Other Specialization (Specify)</option>
-                      </select>
+                        style={{ fontWeight: 600 }}
+                      />
                     </div>
                     <div className="form-group">
                       <label className="form-label">Experience</label>
@@ -830,22 +804,6 @@ export const LoginPage: React.FC<LoginPageProps> = ({
                       </select>
                     </div>
                   </div>
-
-                  {regDoctorSpecialization === 'Other' && (
-                    <div className="form-group" style={{ marginBottom: '0.75rem' }}>
-                      <label className="form-label" style={{ color: '#0F766E', fontWeight: 600 }}>
-                        Specify Medical Specialization <span style={{ color: '#EF4444' }}>*</span>
-                      </label>
-                      <input 
-                        type="text" 
-                        value={regDoctorCustomSpecialization} 
-                        onChange={e => setRegDoctorCustomSpecialization(e.target.value)} 
-                        className="form-control" 
-                        style={{ fontWeight: 600, borderColor: '#0D9488' }}
-                        required
-                      />
-                    </div>
-                  )}
 
                   {/* Practice / Consultation Zone */}
                   <div className="form-group" style={{ marginBottom: '0.75rem' }}>
@@ -967,8 +925,13 @@ export const LoginPage: React.FC<LoginPageProps> = ({
                     </select>
                   </div>
 
-                  {/* District & Mandal Selection */}
-                  <div style={{ display: 'grid', gridTemplateColumns: regDistrict === 'Hyderabad' ? '1fr' : '1fr 1fr', gap: '0.75rem', marginBottom: '0.75rem' }}>
+                  {/* District, Mandal & Village Selection */}
+                  <div style={{
+                    display: 'grid',
+                    gridTemplateColumns: regDistrict === 'Hyderabad' ? '1fr' : 'repeat(auto-fit, minmax(130px, 1fr))',
+                    gap: '0.75rem',
+                    marginBottom: '0.75rem'
+                  }}>
                     <div className="form-group">
                       <label className="form-label">District *</label>
                       <select
@@ -976,7 +939,10 @@ export const LoginPage: React.FC<LoginPageProps> = ({
                         onChange={(e) => {
                           const val = e.target.value;
                           setRegDistrict(val);
-                          if (val === 'Hyderabad') setRegMandal('');
+                          if (val === 'Hyderabad') {
+                            setRegMandal('');
+                            setRegVillage('');
+                          }
                         }}
                         className="form-control"
                         style={{ fontWeight: 600 }}
@@ -986,18 +952,32 @@ export const LoginPage: React.FC<LoginPageProps> = ({
                       </select>
                     </div>
                     {regDistrict !== 'Hyderabad' && (
-                      <div className="form-group">
-                        <label className="form-label">Mandal *</label>
-                        <input
-                          type="text"
-                          placeholder="Enter Mandal name"
-                          value={regMandal}
-                          onChange={(e) => setRegMandal(e.target.value)}
-                          className="form-control"
-                          style={{ fontWeight: 600 }}
-                          required
-                        />
-                      </div>
+                      <>
+                        <div className="form-group">
+                          <label className="form-label">Mandal *</label>
+                          <input
+                            type="text"
+                            placeholder="Enter Mandal name"
+                            value={regMandal}
+                            onChange={(e) => setRegMandal(e.target.value)}
+                            className="form-control"
+                            style={{ fontWeight: 600 }}
+                            required
+                          />
+                        </div>
+                        <div className="form-group">
+                          <label className="form-label">Village *</label>
+                          <input
+                            type="text"
+                            placeholder="Enter Village name"
+                            value={regVillage}
+                            onChange={(e) => setRegVillage(e.target.value)}
+                            className="form-control"
+                            style={{ fontWeight: 600 }}
+                            required
+                          />
+                        </div>
+                      </>
                     )}
                   </div>
 
@@ -1067,10 +1047,10 @@ export const LoginPage: React.FC<LoginPageProps> = ({
                     )}
                   </div>
 
-                  {/* Locality / Stay Area (Empty Box by default) & Years of Experience */}
+                  {/* Residence & Years of Experience */}
                   <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem', marginBottom: '0.75rem' }}>
                     <div className="form-group">
-                      <label className="form-label">Locality / Stay Area *</label>
+                      <label className="form-label">Residence *</label>
                       <input list="hyderabad-areas"
                         placeholder="e.g. LB Nagar, Madhapur, Kukatpally, Gachibowli"
                         value={regServiceArea}

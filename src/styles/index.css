@@ -1288,8 +1288,8 @@ img {
   inset: 0;
   opacity: 0;
   visibility: hidden;
-  transition: opacity 0.75s cubic-bezier(0.16, 1, 0.3, 1), transform 0.75s cubic-bezier(0.16, 1, 0.3, 1);
-  transform: scale(1.05);
+  transition: opacity 0.25s cubic-bezier(0.16, 1, 0.3, 1), transform 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+  transform: scale(1.02);
 }
 
 .hero-slide-item.active {

@@ -139,6 +139,7 @@ export interface NurseProfile {
   maritalStatus?: string;
   district?: string;
   mandal?: string;
+  village?: string;
   skills?: string[];
 }
 
@@ -215,6 +216,7 @@ export interface AppUser {
   maritalStatus?: string;
   district?: string;
   mandal?: string;
+  village?: string;
   skills?: string[];
   createdAt?: string;
 }
