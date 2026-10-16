@@ -474,6 +474,28 @@ export async function dbUpdateNurse(n: NurseProfile): Promise<boolean> {
       const retry = await supabase.from('nurses').upsert(payload);
       error = retry.error;
     }
+
+    // Also sync matching user in app_users table
+    try {
+      const userPayload: any = {
+        name: n.name,
+        phone: n.phone,
+        email: n.email.trim(),
+        identifier: n.email.trim().toLowerCase(),
+        designation: n.qualification,
+        service_area: n.serviceArea,
+        status: n.status || 'Active',
+        marital_status: n.maritalStatus || null,
+        district: n.district || null,
+        mandal: n.mandal || null,
+        village: n.village || null,
+        skills: Array.isArray(n.skills) ? n.skills : [],
+        experience_years: !isNaN(Number(n.experienceYears)) ? Math.max(0, Math.round(Number(n.experienceYears))) : 3,
+        certificate_url: n.certificateUrl || null
+      };
+      await supabase.from('app_users').update(userPayload).eq('id', n.id);
+    } catch {}
+
     return !error;
   } catch {
     return false;
@@ -599,6 +621,9 @@ export async function dbUpdateNurseById(id: string, updates: Partial<NurseProfil
     if (updates.mandal !== undefined) userPayload.mandal = updates.mandal;
     if (updates.village !== undefined) userPayload.village = updates.village;
     if (updates.skills !== undefined) userPayload.skills = updates.skills;
+    if (updates.status !== undefined) userPayload.status = updates.status;
+    if (updates.experienceYears !== undefined) userPayload.experience_years = !isNaN(Number(updates.experienceYears)) ? Math.max(0, Math.round(Number(updates.experienceYears))) : 3;
+    if (updates.certificateUrl !== undefined) userPayload.certificate_url = updates.certificateUrl;
     if (Object.keys(userPayload).length > 0) {
       await supabase.from('app_users').update(userPayload).eq('id', id);
     }
@@ -840,6 +865,7 @@ export async function dbUpdateBooking(id: string, updates: Partial<Booking>): Pr
   if (updates.promoCode !== undefined) payload.promo_code = updates.promoCode || null;
   if (updates.discountRupees !== undefined) payload.discount_rupees = updates.discountRupees;
   if (updates.finalFee !== undefined) payload.final_fee = updates.finalFee || null;
+  if (updates.numberOfVisits !== undefined) payload.number_of_visits = updates.numberOfVisits !== null ? Number(updates.numberOfVisits) : 1;
   if (updates.invoiceNumber !== undefined) payload.invoice_number = updates.invoiceNumber || null;
   if (updates.invoiceUrl !== undefined) payload.invoice_url = updates.invoiceUrl || null;
   if (updates.hasPrescription !== undefined) payload.has_prescription = Boolean(updates.hasPrescription);
@@ -1416,7 +1442,9 @@ export async function dbFetchAppUsers(): Promise<AppUser[]> {
     if (!error && data) {
       return data.map((u: any) => {
         let status: 'Active' | 'Pending Verification' | 'Rejected' = 'Active';
-        if (u.role === 'doctor') {
+        if (u.status) {
+          status = u.status as any;
+        } else if (u.role === 'doctor') {
           const des = u.designation || '';
           if (des.includes('[PENDING_VERIFICATION]') || des.includes('[PENDING]')) {
             status = 'Pending Verification';

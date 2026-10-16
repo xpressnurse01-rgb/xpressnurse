@@ -1850,6 +1850,14 @@ export const App: React.FC = () => {
             email: updated.email,
             designation: updated.qualification,
             serviceArea: updated.serviceArea,
+            status: updated.status ?? u.status,
+            experienceYears: updated.experienceYears ?? u.experienceYears,
+            certificateUrl: updated.certificateUrl ?? u.certificateUrl,
+            maritalStatus: updated.maritalStatus ?? u.maritalStatus,
+            district: updated.district ?? u.district,
+            mandal: updated.mandal ?? u.mandal,
+            village: updated.village ?? u.village,
+            skills: updated.skills ?? u.skills
           };
         }
         return u;
@@ -2402,6 +2410,14 @@ export const App: React.FC = () => {
             email: updates.email ?? u.email,
             designation: updates.qualification ?? u.designation,
             serviceArea: updates.serviceArea ?? u.serviceArea,
+            status: updates.status ?? u.status,
+            experienceYears: updates.experienceYears ?? u.experienceYears,
+            certificateUrl: updates.certificateUrl ?? u.certificateUrl,
+            maritalStatus: updates.maritalStatus ?? u.maritalStatus,
+            district: updates.district ?? u.district,
+            mandal: updates.mandal ?? u.mandal,
+            village: updates.village ?? u.village,
+            skills: updates.skills ?? u.skills
           };
         }
         return u;

@@ -2163,7 +2163,15 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
             phone: cleanPhone,
             email: nursePayload.email,
             identifier: nursePayload.email.toLowerCase(),
-            serviceArea: nursePayload.serviceArea
+            serviceArea: nursePayload.serviceArea,
+            status: nursePayload.status,
+            experienceYears: nursePayload.experienceYears,
+            certificateUrl: nursePayload.certificateUrl,
+            maritalStatus: nursePayload.maritalStatus,
+            district: nursePayload.district,
+            mandal: nursePayload.mandal,
+            village: nursePayload.village,
+            skills: nursePayload.skills
           });
         }
       }
@@ -2180,7 +2188,15 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
           phone: cleanPhone,
           email: nursePayload.email,
           designation: nursePayload.qualification,
-          serviceArea: nursePayload.serviceArea
+          serviceArea: nursePayload.serviceArea,
+          status: nursePayload.status,
+          experienceYears: nursePayload.experienceYears,
+          certificateUrl: nursePayload.certificateUrl,
+          maritalStatus: nursePayload.maritalStatus,
+          district: nursePayload.district,
+          mandal: nursePayload.mandal,
+          village: nursePayload.village,
+          skills: nursePayload.skills
         });
       }
       showToast(`Nurse ${nursePayload.name} registered and live in Supabase!`);
