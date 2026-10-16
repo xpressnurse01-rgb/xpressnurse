@@ -1166,7 +1166,8 @@ export async function dbFetchConsultations(): Promise<DoctorConsultation[] | nul
     prescriptionIssued: Boolean(c.prescription_issued),
     prescriptionText: c.prescription_text,
     doctorNotes: c.prescription_text || '',
-    recommendedService: c.recommended_service
+    recommendedService: c.recommended_service,
+    doctorName: c.doctor_name || c.doctorName || undefined
   }));
 }
 
@@ -1188,7 +1189,8 @@ export async function dbSaveConsultation(c: DoctorConsultation): Promise<boolean
       status: c.status || 'Awaiting Call',
       prescription_issued: Boolean(c.prescriptionIssued),
       prescription_text: c.prescriptionText || c.doctorNotes || null,
-      recommended_service: c.recommendedService || null
+      recommended_service: c.recommendedService || null,
+      doctor_name: c.doctorName || null
     };
 
     const { error } = await supabase.from('consultations').upsert(payload);
@@ -1215,6 +1217,7 @@ export async function dbUpdateConsultationById(id: string, updates: Partial<Doct
     payload.prescription_text = updates.prescriptionText || updates.doctorNotes || null;
   }
   if (updates.recommendedService !== undefined) payload.recommended_service = updates.recommendedService || null;
+  if (updates.doctorName !== undefined) payload.doctor_name = updates.doctorName || null;
 
   try {
     const { error } = await supabase.from('consultations').update(payload).eq('id', id);

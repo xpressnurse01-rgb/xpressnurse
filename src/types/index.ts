@@ -189,6 +189,7 @@ export interface DoctorConsultation {
   prescriptionText?: string;
   recommendedService?: ServiceId;
   doctorName?: string;
+  assignedDoctorId?: string;
   doctorNotes?: string;
   rejectionReason?: string;
   bookingId?: string;

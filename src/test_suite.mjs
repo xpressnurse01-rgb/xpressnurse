@@ -144,7 +144,7 @@ async function testAll() {
   // Seed directory simulation matching supabase.ts
   const SEED_USERS = [
     { role: 'admin', identifier: 'admin@xpressnurse.in', pin: '9001' },
-    { role: 'doctor', identifier: 'vikramaditya@xpressnurse.in', pin: '2001' },
+    { role: 'doctor', identifier: 'doctor@xpressnurse.in', pin: '2001' },
     { role: 'nurse', identifier: 'priya.nursing@xpressnurse.in', pin: '1001', phone: '9849012345' }
   ];
 
@@ -163,7 +163,7 @@ async function testAll() {
   const adminAuth = verifyUnifiedPin('admin@xpressnurse.in', '9001');
   assert(adminAuth.success && adminAuth.role === 'admin', 'Admin login auto-detected role "admin" -> routes to /admin');
 
-  const doctorAuth = verifyUnifiedPin('vikramaditya@xpressnurse.in', '2001');
+  const doctorAuth = verifyUnifiedPin('doctor@xpressnurse.in', '2001');
   assert(doctorAuth.success && doctorAuth.role === 'doctor', 'Doctor login auto-detected role "doctor" -> routes to /doctor');
 
   const nurseAuth = verifyUnifiedPin('9849012345', '1001');

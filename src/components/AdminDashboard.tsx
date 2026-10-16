@@ -2878,7 +2878,8 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
     status: 'Awaiting Call' as 'Awaiting Call' | 'In Call' | 'Prescription Issued' | 'Completed' | 'Rejected',
     prescriptionIssued: false,
     prescriptionText: '',
-    recommendedService: 'saline-infusion' as ServiceId
+    recommendedService: 'saline-infusion' as ServiceId,
+    doctorName: ''
   });
 
   const handleOpenCreateConsultModal = () => {
@@ -2893,7 +2894,8 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
       status: 'Awaiting Call',
       prescriptionIssued: false,
       prescriptionText: '',
-      recommendedService: 'saline-infusion'
+      recommendedService: 'saline-infusion',
+      doctorName: ''
     });
     setIsConsultModalOpen(true);
   };
@@ -2910,7 +2912,8 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
       status: c.status,
       prescriptionIssued: !!c.prescriptionIssued,
       prescriptionText: c.prescriptionText || '',
-      recommendedService: c.recommendedService || 'saline-infusion'
+      recommendedService: c.recommendedService || 'saline-infusion',
+      doctorName: c.doctorName || ''
     });
     setIsConsultModalOpen(true);
   };
@@ -2932,7 +2935,8 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
       status: consultForm.status as 'Awaiting Call' | 'In Call' | 'Prescription Issued' | 'Completed',
       prescriptionIssued: consultForm.prescriptionIssued,
       prescriptionText: consultForm.prescriptionText.trim(),
-      recommendedService: consultForm.recommendedService as ServiceId
+      recommendedService: consultForm.recommendedService as ServiceId,
+      doctorName: consultForm.doctorName ? consultForm.doctorName.trim() : undefined
     };
 
     if (editingConsult && onUpdateConsultation) {
@@ -6235,6 +6239,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                         <th>Area</th>
                         <th>Prescription</th>
                         <th>Recommended Service</th>
+                        <th>Attending Doctor</th>
                         <th>Status</th>
                         <th style={{ textAlign: 'right' }}>Actions</th>
                       </tr>
@@ -6303,6 +6308,37 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                             </td>
                             <td>
                               <span style={{ fontSize: '0.82rem', fontWeight: 600 }}>{c.recommendedService || 'saline-infusion'}</span>
+                            </td>
+                            <td>
+                              <select
+                                value={c.doctorName || ''}
+                                onChange={async (e) => {
+                                  const newDoc = e.target.value;
+                                  if (onUpdateConsultation) {
+                                    await onUpdateConsultation(c.id, { doctorName: newDoc || undefined });
+                                    showToast(newDoc ? `Assigned to ${newDoc}!` : 'Consultation set to Unassigned');
+                                  }
+                                }}
+                                title="Click to assign or reassign attending doctor"
+                                style={{
+                                  fontSize: '0.78rem',
+                                  fontWeight: c.doctorName ? 700 : 500,
+                                  color: c.doctorName ? '#0369A1' : '#64748B',
+                                  padding: '0.25rem 0.5rem',
+                                  borderRadius: 6,
+                                  border: c.doctorName ? '1px solid #BAE6FD' : '1px dashed #CBD5E1',
+                                  background: c.doctorName ? '#F0F9FF' : '#F8FAFC',
+                                  cursor: 'pointer',
+                                  maxWidth: 170
+                                }}
+                              >
+                                <option value="">— Unassigned —</option>
+                                {doctorsList.map((doc) => (
+                                  <option key={doc.id} value={doc.name}>
+                                    {doc.name} ({doc.specialization || 'Doctor'})
+                                  </option>
+                                ))}
+                              </select>
                             </td>
                             <td>
                               <span className={`status-pill ${c.status === 'Completed' ? 'success' :
@@ -10472,7 +10508,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                 />
               </div>
 
-              <div style={{ marginBottom: '1.25rem' }}>
+              <div style={{ marginBottom: '1rem' }}>
                 <label className="form-label" style={{ fontSize: '0.78rem', fontWeight: 700 }}>RECOMMENDED SERVICE FOR NURSING VISIT</label>
                 <select
                   className="form-control"
@@ -10483,6 +10519,27 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                     <option key={s.id} value={s.id}>{s.title}</option>
                   ))}
                 </select>
+              </div>
+
+              <div style={{ marginBottom: '1.25rem' }}>
+                <label className="form-label" style={{ fontSize: '0.78rem', fontWeight: 700 }}>
+                  ATTENDING DOCTOR (MANUAL ASSIGNMENT)
+                </label>
+                <select
+                  className="form-control"
+                  value={consultForm.doctorName}
+                  onChange={(e) => setConsultForm({ ...consultForm, doctorName: e.target.value })}
+                >
+                  <option value="">Unassigned (No Doctor Auto-Assigned)</option>
+                  {doctorsList.map((doc) => (
+                    <option key={doc.id} value={doc.name}>
+                      {doc.name} ({doc.specialization || 'Physician'})
+                    </option>
+                  ))}
+                </select>
+                <div style={{ fontSize: '0.72rem', color: '#64748B', marginTop: 3 }}>
+                  Leave as "Unassigned" to keep in triage queue for on-duty doctors. No doctor is auto-assigned.
+                </div>
               </div>
 
               <div style={{ display: 'flex', gap: '0.65rem', justifyContent: 'flex-end', alignItems: 'center' }}>
@@ -10744,7 +10801,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                     <Cloud size={12} />
                     <span>
                       {previewPrescriptionConsultation
-                        ? `Consultation: ${previewPrescriptionConsultation.id} • Issued by Dr. Vikramaditya, MD`
+                        ? `Consultation: ${previewPrescriptionConsultation.id} • Issued by ${previewPrescriptionConsultation.doctorName || 'Attending Physician'}`
                         : `Bucket: ${r2Config.bucketName} • Category: prescriptions`}
                     </span>
                   </div>
@@ -10879,7 +10936,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                             TELANGANA STATE HEALTH SERVICES COMPLIANT
                           </div>
                           <div style={{ fontSize: '0.74rem', color: '#64748B', marginTop: '0.2rem' }}>
-                            Verified Doorstep Nursing Execution Protocol • Dr. Vikramaditya, MD
+                            Verified Doorstep Nursing Execution Protocol • {previewPrescriptionConsultation?.doctorName || previewPrescriptionBooking?.referredByDoctorName || 'Verified Attending Physician'}
                           </div>
                         </div>
                         <div style={{ textAlign: 'right' }}>
@@ -10953,7 +11010,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                           </div>
                           <code style={{ fontSize: '0.74rem', background: '#F1F5F9', color: '#0284C7', padding: '2px 6px', borderRadius: 4 }}>
                             {previewPrescriptionConsultation
-                              ? 'Dr. Vikramaditya, MD (Internal Medicine) • Reg: TSMC/2016/9421'
+                              ? `${previewPrescriptionConsultation.doctorName || 'Attending Physician'} • Verified Tele-Consultant`
                               : (previewPrescriptionObject?.key || `prescriptions/${previewPrescriptionBooking?.prescriptionFileName || 'Rx_Verified.pdf'}`)}
                           </code>
                         </div>

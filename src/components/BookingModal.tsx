@@ -513,7 +513,8 @@ export const BookingModal: React.FC<BookingModalProps> = ({
           status: 'Awaiting Call',
           prescriptionIssued: false,
           prescriptionText: '',
-          recommendedService: undefined
+          recommendedService: undefined,
+          doctorName: undefined // Explicitly unassigned; No doctor is auto-assigned
         });
       }
 

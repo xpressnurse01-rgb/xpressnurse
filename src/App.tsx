@@ -1971,9 +1971,12 @@ export const App: React.FC = () => {
   };
 
   // Handler: Doctor issues prescription — persist to Supabase & Cloudflare R2
-  const handleDoctorIssueRx = async (consultId: string, rxText: string, recommendedService: ServiceId) => {
+  const handleDoctorIssueRx = async (consultId: string, rxText: string, recommendedService: ServiceId, issuingDoctorName?: string) => {
     const targetConsult = consultations.find((c) => c.id === consultId);
     const patName = targetConsult?.patientName || 'Patient';
+    const fallbackDoc = targetConsult?.doctorName || 'Authorized Physician';
+    const rawDocName = issuingDoctorName || authUser?.name || fallbackDoc;
+    const activeDocName = rawDocName.startsWith('Dr.') ? rawDocName : `Dr. ${rawDocName}`;
     const rxFileName = `Doctor_Rx_${consultId}_${patName.replace(/[^a-zA-Z0-9]/g, '_')}.pdf`;
 
     // 1. Update React state for consultations
@@ -1982,7 +1985,8 @@ export const App: React.FC = () => {
       status: 'Prescription Issued' as const,
       prescriptionIssued: true,
       prescriptionText: rxText,
-      recommendedService
+      recommendedService,
+      doctorName: activeDocName
     };
     setConsultations((prev) =>
       prev.map((c) => {
@@ -2003,7 +2007,8 @@ export const App: React.FC = () => {
         status: 'Prescription Issued',
         prescriptionIssued: true,
         prescriptionText: rxText,
-        recommendedService
+        recommendedService,
+        doctorName: activeDocName
       });
       console.log(`[Supabase] Consultation ${consultId} prescription saved.`);
     } catch (err) {
@@ -2023,7 +2028,7 @@ export const App: React.FC = () => {
           patientPhone: targetConsult?.patientPhone,
           recommendedService,
           prescriptionText: rxText,
-          doctorName: 'Dr. Vikramaditya, MD (Internal Medicine)',
+          doctorName: activeDocName,
           issuedAt: new Date().toISOString()
         }
       });
@@ -2051,7 +2056,8 @@ export const App: React.FC = () => {
             prescriptionFileName: rxFileName,
             serviceId: recommendedService,
             serviceTitle,
-            notes: `${b.notes ? b.notes + ' • ' : ''}Authorized by Dr. Vikramaditya, MD: "${rxText.slice(0, 70)}..."`
+            notes: `${b.notes ? b.notes + ' • ' : ''}Authorized by ${activeDocName}: "${rxText.slice(0, 70)}..."`,
+            referredByDoctorName: activeDocName
           };
           broadcastRealtimeUpdate('BOOKING_UPDATE', updated);
           dbSaveBooking(updated);
@@ -2081,7 +2087,8 @@ export const App: React.FC = () => {
         estimatedFee: fee,
         finalFee: fee,
         createdAt: new Date().toISOString(),
-        notes: `Doctor Authorized Rx: "${rxText.slice(0, 80)}"`
+        notes: `Doctor Authorized Rx by ${activeDocName}: "${rxText.slice(0, 80)}"`,
+        referredByDoctorName: activeDocName
       };
       await handleCreateBooking(newBooking);
     }
@@ -3031,6 +3038,7 @@ export const App: React.FC = () => {
                 services={services}
                 onIssuePrescription={handleDoctorIssueRx}
                 onAddNewConsultation={handleCreateConsultation}
+                user={authUser}
               />
             </AuthGuard>
           )}

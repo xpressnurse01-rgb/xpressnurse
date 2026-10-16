@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { DoctorConsultation, ServiceId, Booking, ServiceItem } from '../types';
+import { DoctorConsultation, ServiceId, Booking, ServiceItem, AppUser } from '../types';
 import { 
   Stethoscope, 
   Video, 
@@ -9,17 +9,17 @@ import {
   User, 
   Phone, 
   AlertCircle, 
-  Send,
-  MapPin,
-  CalendarX,
-  Printer,
-  Share2,
-  Edit3,
-  ShieldCheck,
-  Sparkles,
-  Download,
-  Check,
-  LogOut
+  Send, 
+  MapPin, 
+  CalendarX, 
+  Printer, 
+  Share2, 
+  Edit3, 
+  ShieldCheck, 
+  Sparkles, 
+  Download, 
+  Check, 
+  LogOut 
 } from 'lucide-react';
 import confetti from 'canvas-confetti';
 import { EmptyState } from './EmptyState';
@@ -28,17 +28,30 @@ import { formatDateTimeDDMMYY } from '../lib/dateUtils';
 interface DoctorDashboardProps {
   consultations: DoctorConsultation[];
   services?: ServiceItem[];
-  onIssuePrescription: (consultationId: string, prescriptionText: string, recommendedService: ServiceId) => void;
+  onIssuePrescription: (consultationId: string, prescriptionText: string, recommendedService: ServiceId, doctorName?: string) => void;
   onAddNewConsultation: (consultation: DoctorConsultation) => void;
+  user?: AppUser | null;
 }
 
 export const DoctorDashboard: React.FC<DoctorDashboardProps> = ({
   consultations,
   services = [],
   onIssuePrescription,
-  onAddNewConsultation
+  onAddNewConsultation,
+  user
 }) => {
   const serviceList = services;
+
+  // Retrieve active logged-in doctor profile (from prop or session/local storage fallback)
+  const activeDoctorUser: AppUser | null = user || (() => {
+    try {
+      const s = sessionStorage.getItem('xn_auth_user_doctor') || sessionStorage.getItem('xn_auth_user') || localStorage.getItem('xn_auth_user_doctor') || localStorage.getItem('xn_auth_user');
+      return s ? JSON.parse(s) : null;
+    } catch {
+      return null;
+    }
+  })();
+
   const [selectedConsult, setSelectedConsult] = useState<DoctorConsultation | null>(consultations[0] || null);
   const [rxText, setRxText] = useState('');
   const [rxError, setRxError] = useState('');
@@ -47,6 +60,16 @@ export const DoctorDashboard: React.FC<DoctorDashboardProps> = ({
   const [callSuccess, setCallSuccess] = useState('');
   const [callNotice, setCallNotice] = useState('');
   const [isEditingRx, setIsEditingRx] = useState(false);
+
+  // Dynamic doctor details
+  const rawDocName = activeDoctorUser?.name || selectedConsult?.doctorName || 'Doctor On Duty';
+  const doctorDisplayName = rawDocName.startsWith('Dr.') ? rawDocName : `Dr. ${rawDocName}`;
+  const doctorSpecialization = activeDoctorUser?.specialization || 
+    (activeDoctorUser?.designation ? activeDoctorUser.designation.replace(/\[.*?\]\s*/g, '').trim() : '') || 
+    'Consultant Physician';
+  const doctorRegNumber = (activeDoctorUser as any)?.councilRegistrationNumber || 
+    (activeDoctorUser as any)?.regNumber || 
+    'TSMC Registered';
 
   // Synchronize selected consultation whenever consultations update in realtime
   React.useEffect(() => {
@@ -90,7 +113,9 @@ export const DoctorDashboard: React.FC<DoctorDashboardProps> = ({
       status: 'Prescription Issued',
       prescriptionIssued: true,
       prescriptionText: trimmedRx,
-      recommendedService: recommendedSvc
+      recommendedService: recommendedSvc,
+      doctorName: doctorDisplayName,
+      assignedDoctorId: activeDoctorUser?.id
     };
 
     // 1. Immediately reflect issued prescription in local state
@@ -98,7 +123,7 @@ export const DoctorDashboard: React.FC<DoctorDashboardProps> = ({
     setIsEditingRx(false);
 
     // 2. Call parent to update App state, Supabase & Cloudflare R2
-    onIssuePrescription(selectedConsult.id, trimmedRx, recommendedSvc);
+    onIssuePrescription(selectedConsult.id, trimmedRx, recommendedSvc, doctorDisplayName);
 
     // 3. Trigger celebration confetti
     try {
@@ -121,7 +146,7 @@ export const DoctorDashboard: React.FC<DoctorDashboardProps> = ({
     const phone = selectedConsult.patientPhone || '';
     const cleanPhone = phone.replace(/\D/g, '').slice(-10);
     const doctorMsg = encodeURIComponent(
-      `Hello ${selectedConsult.patientName}, this is Dr. Vikramaditya, MD from Xpress Nurse initiating your medical teleconsultation video call. Please tap or answer to start the clinical review.`
+      `Hello ${selectedConsult.patientName}, this is ${doctorDisplayName} from Xpress Nurse initiating your medical teleconsultation video call. Please tap or answer to start the clinical review.`
     );
     const whatsappUrl = `https://wa.me/91${cleanPhone}?text=${doctorMsg}`;
     
@@ -145,7 +170,7 @@ export const DoctorDashboard: React.FC<DoctorDashboardProps> = ({
       `*Xpress Nurse — Official Medical Prescription*\n` +
       `------------------------------------------\n` +
       `*Patient:* ${selectedConsult.patientName} (${selectedConsult.patientAge} yrs)\n` +
-      `*Attending Physician:* Dr. Vikramaditya, MBBS, MD (TSMC Reg: TSMC/2016/9421)\n` +
+      `*Attending Physician:* ${doctorDisplayName} (${doctorSpecialization})\n` +
       `*Locality / Zone:* ${selectedConsult.area}, Hyderabad\n` +
       `*Approved Procedure:* ${serviceTitle}\n` +
       `*Clinical Orders (Rx):*\n${selectedConsult.prescriptionText || rxText}\n` +
@@ -178,7 +203,7 @@ export const DoctorDashboard: React.FC<DoctorDashboardProps> = ({
 
         <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', flexWrap: 'wrap' }}>
           <span className="status-pill success" style={{ fontWeight: 700, padding: '4px 10px' }}>
-            Dr. Vikramaditya, MD (TSMC/2016/9421) — Active On Duty
+            {doctorDisplayName} ({doctorSpecialization}) — Active On Duty
           </span>
           <button
             type="button"
@@ -384,10 +409,10 @@ export const DoctorDashboard: React.FC<DoctorDashboardProps> = ({
                           OFFICIAL DIGITAL PRESCRIPTION & CLINICAL ORDERS
                         </div>
                         <div style={{ fontSize: '0.78rem', color: '#0284C7', fontWeight: 700 }}>
-                          TELANGANA STATE MEDICAL COUNCIL • REG: TSMC/2016/9421
+                          TELANGANA STATE MEDICAL COUNCIL • {doctorRegNumber}
                         </div>
                         <div style={{ fontSize: '0.74rem', color: '#64748B', marginTop: 2 }}>
-                          Dr. Vikramaditya, MBBS, MD (Internal Medicine) • Authorized Tele-Consultant
+                          {doctorDisplayName} • {doctorSpecialization} • Authorized Tele-Consultant
                         </div>
                       </div>
                       <span style={{
@@ -460,7 +485,7 @@ export const DoctorDashboard: React.FC<DoctorDashboardProps> = ({
                       </div>
                       <div style={{ textAlign: 'right' }}>
                         <div style={{ fontSize: '0.85rem', fontWeight: 900, color: '#0F172A' }}>
-                          Dr. Vikramaditya, MD
+                          {doctorDisplayName}
                         </div>
                         <div style={{ fontSize: '0.72rem', color: '#059669', fontWeight: 700 }}>
                           ✓ Digitally Authenticated & Stamped
