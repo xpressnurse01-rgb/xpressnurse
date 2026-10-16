@@ -243,6 +243,10 @@ export const LoginPage: React.FC<LoginPageProps> = ({
       setErrorMsg('You must agree to the clinical disclaimer.');
       return;
     }
+    if (regDistrict !== 'Hyderabad' && !regMandal.trim()) {
+      setErrorMsg('Please enter your Mandal for Non-Hyderabad district.');
+      return;
+    }
 
     setIsLoading(true);
     try {
@@ -272,7 +276,7 @@ export const LoginPage: React.FC<LoginPageProps> = ({
       
       const cleanPhone = regPhone.replace(/\D/g, '');
       const cleanEmail = regEmail.trim().toLowerCase();
-      const resolvedArea = regServiceArea.trim() || (regMandal.trim() ? `${regMandal.trim()}, ${regDistrict}` : regDistrict) || 'Hyderabad';
+      const resolvedArea = regServiceArea.trim() || (regDistrict !== 'Hyderabad' && regMandal.trim() ? `${regMandal.trim()}, ${regDistrict}` : regDistrict) || 'Hyderabad';
 
       const newNurse: NurseProfile = {
         id: newId,
@@ -284,7 +288,7 @@ export const LoginPage: React.FC<LoginPageProps> = ({
         serviceArea: resolvedArea,
         maritalStatus: regMaritalStatus,
         district: regDistrict,
-        mandal: regMandal.trim() || undefined,
+        mandal: regDistrict !== 'Hyderabad' ? (regMandal.trim() || undefined) : undefined,
         skills: regSelectedSkills,
         pin: regPin.trim(),
         status: 'Pending Verification',
@@ -315,7 +319,7 @@ export const LoginPage: React.FC<LoginPageProps> = ({
         serviceArea: resolvedArea,
         maritalStatus: regMaritalStatus,
         district: regDistrict,
-        mandal: regMandal.trim() || undefined,
+        mandal: regDistrict !== 'Hyderabad' ? (regMandal.trim() || undefined) : undefined,
         skills: regSelectedSkills
       };
       
@@ -958,79 +962,43 @@ export const LoginPage: React.FC<LoginPageProps> = ({
                       className="form-control"
                       style={{ fontWeight: 600 }}
                     >
-                      <option value="Single">Single / Unmarried</option>
+                      <option value="Single">Single</option>
                       <option value="Married">Married</option>
-                      <option value="Divorced">Divorced</option>
-                      <option value="Widowed">Widowed</option>
-                      <option value="Other">Other</option>
                     </select>
                   </div>
 
                   {/* District & Mandal Selection */}
-                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem', marginBottom: '0.75rem' }}>
+                  <div style={{ display: 'grid', gridTemplateColumns: regDistrict === 'Hyderabad' ? '1fr' : '1fr 1fr', gap: '0.75rem', marginBottom: '0.75rem' }}>
                     <div className="form-group">
                       <label className="form-label">District *</label>
                       <select
                         value={regDistrict}
-                        onChange={(e) => setRegDistrict(e.target.value)}
+                        onChange={(e) => {
+                          const val = e.target.value;
+                          setRegDistrict(val);
+                          if (val === 'Hyderabad') setRegMandal('');
+                        }}
                         className="form-control"
                         style={{ fontWeight: 600 }}
                       >
                         <option value="Hyderabad">Hyderabad</option>
-                        <option value="Medchal-Malkajgiri">Medchal–Malkajgiri</option>
-                        <option value="Ranga Reddy">Ranga Reddy</option>
-                        <option value="Sangareddy">Sangareddy</option>
-                        <option value="Yadadri Bhuvanagiri">Yadadri Bhuvanagiri</option>
-                        <option value="Vikarabad">Vikarabad</option>
-                        <option value="Siddipet">Siddipet</option>
-                        <option value="Mahabubnagar">Mahabubnagar</option>
-                        <option value="Warangal">Warangal</option>
-                        <option value="Nizamabad">Nizamabad</option>
-                        <option value="Karimnagar">Karimnagar</option>
-                        <option value="Khammam">Khammam</option>
-                        <option value="Other District">Other District</option>
+                        <option value="Non-Hyderabad">Non-Hyderabad</option>
                       </select>
                     </div>
-                    <div className="form-group">
-                      <label className="form-label">Mandal *</label>
-                      <input
-                        type="text"
-                        list="telangana-mandals-list"
-                        placeholder="e.g. Serilingampally, Gandipet"
-                        value={regMandal}
-                        onChange={(e) => setRegMandal(e.target.value)}
-                        className="form-control"
-                        style={{ fontWeight: 600 }}
-                        required
-                      />
-                      <datalist id="telangana-mandals-list">
-                        <option value="Serilingampally" />
-                        <option value="Gandipet" />
-                        <option value="Rajendranagar" />
-                        <option value="Uppal" />
-                        <option value="Kukatpally" />
-                        <option value="Balanagar" />
-                        <option value="Quthbullapur" />
-                        <option value="Malkajgiri" />
-                        <option value="Alwal" />
-                        <option value="Kapra" />
-                        <option value="Secunderabad" />
-                        <option value="Musheerabad" />
-                        <option value="Amberpet" />
-                        <option value="Khairatabad" />
-                        <option value="Shaikpet" />
-                        <option value="Asifnagar" />
-                        <option value="Bandlaguda" />
-                        <option value="Charminar" />
-                        <option value="Hayathnagar" />
-                        <option value="Saroornagar" />
-                        <option value="Ibrahimpatnam" />
-                        <option value="Maheshwaram" />
-                        <option value="Shamshabad" />
-                        <option value="Patancheru" />
-                        <option value="Ameerpet" />
-                      </datalist>
-                    </div>
+                    {regDistrict !== 'Hyderabad' && (
+                      <div className="form-group">
+                        <label className="form-label">Mandal *</label>
+                        <input
+                          type="text"
+                          placeholder="Enter Mandal name"
+                          value={regMandal}
+                          onChange={(e) => setRegMandal(e.target.value)}
+                          className="form-control"
+                          style={{ fontWeight: 600 }}
+                          required
+                        />
+                      </div>
+                    )}
                   </div>
 
                   {/* Mandatory Field: Where Currently Working */}

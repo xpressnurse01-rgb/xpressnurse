@@ -2093,8 +2093,8 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
       qualification: n.qualification,
       experienceYears: typeof n.experienceYears === 'number' ? n.experienceYears : 3,
       serviceArea: n.serviceArea || '',
-      maritalStatus: n.maritalStatus || 'Single',
-      district: n.district || 'Hyderabad',
+      maritalStatus: (n.maritalStatus === 'Married' ? 'Married' : 'Single'),
+      district: (n.district && (n.district.toLowerCase().includes('non') || n.district !== 'Hyderabad')) ? 'Non-Hyderabad' : 'Hyderabad',
       mandal: n.mandal || '',
       skills: Array.isArray(n.skills) && n.skills.length > 0 ? n.skills : [
         'IV Cannulation',
@@ -2141,10 +2141,10 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
       email: nurseForm.email.trim(),
       qualification: nurseForm.qualification.trim(),
       experienceYears: Number(nurseForm.experienceYears) || 1,
-      serviceArea: nurseForm.serviceArea.trim() || (nurseForm.mandal.trim() ? `${nurseForm.mandal.trim()}, ${nurseForm.district}` : nurseForm.district),
+      serviceArea: nurseForm.serviceArea.trim() || (nurseForm.district !== 'Hyderabad' && nurseForm.mandal.trim() ? `${nurseForm.mandal.trim()}, ${nurseForm.district}` : nurseForm.district),
       maritalStatus: nurseForm.maritalStatus,
       district: nurseForm.district,
-      mandal: nurseForm.mandal.trim() || undefined,
+      mandal: nurseForm.district !== 'Hyderabad' ? (nurseForm.mandal.trim() || undefined) : undefined,
       skills: nurseForm.skills || [],
       pin: nurseForm.pin.trim() || undefined,
       status: (nurseForm.status as 'Active' | 'Pending Verification' | 'On Leave') || 'Active',
@@ -8894,7 +8894,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
               </div>
 
               {/* Marital Status, District & Mandal */}
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '0.75rem', marginBottom: '0.85rem' }}>
+              <div style={{ display: 'grid', gridTemplateColumns: nurseForm.district === 'Hyderabad' ? '1fr 1fr' : '1fr 1fr 1fr', gap: '0.75rem', marginBottom: '0.85rem' }}>
                 <div>
                   <label className="form-label" style={{ fontSize: '0.78rem', fontWeight: 700 }}>MARITAL STATUS</label>
                   <select
@@ -8902,11 +8902,8 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                     value={nurseForm.maritalStatus}
                     onChange={(e) => setNurseForm({ ...nurseForm, maritalStatus: e.target.value })}
                   >
-                    <option value="Single">Single / Unmarried</option>
+                    <option value="Single">Single</option>
                     <option value="Married">Married</option>
-                    <option value="Divorced">Divorced</option>
-                    <option value="Widowed">Widowed</option>
-                    <option value="Other">Other</option>
                   </select>
                 </div>
                 <div>
@@ -8914,25 +8911,31 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                   <select
                     className="form-control"
                     value={nurseForm.district}
-                    onChange={(e) => setNurseForm({ ...nurseForm, district: e.target.value })}
+                    onChange={(e) => {
+                      const val = e.target.value;
+                      setNurseForm({
+                        ...nurseForm,
+                        district: val,
+                        ...(val === 'Hyderabad' ? { mandal: '' } : {})
+                      });
+                    }}
                   >
                     <option value="Hyderabad">Hyderabad</option>
-                    <option value="Ranga Reddy">Ranga Reddy</option>
-                    <option value="Medchal-Malkajgiri">Medchal-Malkajgiri</option>
-                    <option value="Sangareddy">Sangareddy</option>
-                    <option value="Other">Other District</option>
+                    <option value="Non-Hyderabad">Non-Hyderabad</option>
                   </select>
                 </div>
-                <div>
-                  <label className="form-label" style={{ fontSize: '0.78rem', fontWeight: 700 }}>MANDAL / TEHSIL</label>
-                  <input
-                    type="text"
-                    placeholder="e.g. Serilingampally"
-                    value={nurseForm.mandal}
-                    onChange={(e) => setNurseForm({ ...nurseForm, mandal: e.target.value })}
-                    className="form-control"
-                  />
-                </div>
+                {nurseForm.district !== 'Hyderabad' && (
+                  <div>
+                    <label className="form-label" style={{ fontSize: '0.78rem', fontWeight: 700 }}>MANDAL / TEHSIL</label>
+                    <input
+                      type="text"
+                      placeholder="e.g. Shamirpet"
+                      value={nurseForm.mandal}
+                      onChange={(e) => setNurseForm({ ...nurseForm, mandal: e.target.value })}
+                      className="form-control"
+                    />
+                  </div>
+                )}
               </div>
 
               {/* Clinical Procedures / Services Known Multi-Select */}
