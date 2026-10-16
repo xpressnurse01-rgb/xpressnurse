@@ -1994,6 +1994,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
     experienceYears: 5,
     serviceArea: '' as HyderabadArea,
     maritalStatus: 'Single',
+    city: 'Hyderabad',
     district: 'Hyderabad',
     mandal: '',
     village: '',
@@ -2029,6 +2030,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
       experienceYears: 3,
       serviceArea: '',
       maritalStatus: 'Single',
+      city: 'Hyderabad',
       district: 'Hyderabad',
       mandal: '',
       village: '',
@@ -2080,7 +2082,8 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
       experienceYears: typeof n.experienceYears === 'number' ? n.experienceYears : 3,
       serviceArea: n.serviceArea || '',
       maritalStatus: (n.maritalStatus === 'Married' ? 'Married' : 'Single'),
-      district: (n.district && (n.district.toLowerCase().includes('non') || n.district !== 'Hyderabad')) ? 'Non-Hyderabad' : 'Hyderabad',
+      city: n.city || (n.district && n.district.toLowerCase().includes('non') ? 'Non-Hyderabad' : 'Hyderabad'),
+      district: n.district || (n.city === 'Hyderabad' || !n.city ? 'Hyderabad' : ''),
       mandal: n.mandal || '',
       village: n.village || '',
       skills: Array.isArray(n.skills) ? n.skills : [],
@@ -2113,7 +2116,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
       return;
     }
     const cleanPhone = nurseForm.phone.replace(/\D/g, '') || nurseForm.phone.trim();
-    const nonHydLoc = [nurseForm.village.trim(), nurseForm.mandal.trim(), nurseForm.district].filter(Boolean).join(', ');
+    const nonHydLoc = [nurseForm.village.trim(), nurseForm.mandal.trim(), nurseForm.district.trim(), nurseForm.city].filter(Boolean).join(', ');
     const nursePayload: NurseProfile = {
       id: editingNurse ? editingNurse.id : nurseForm.id,
       name: nurseForm.name.trim(),
@@ -2121,11 +2124,12 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
       email: nurseForm.email.trim(),
       qualification: nurseForm.qualification.trim(),
       experienceYears: Number(nurseForm.experienceYears) || 1,
-      serviceArea: nurseForm.serviceArea.trim() || (nurseForm.district !== 'Hyderabad' && nurseForm.mandal.trim() ? nonHydLoc : nurseForm.district),
+      serviceArea: nurseForm.serviceArea.trim() || (nurseForm.city !== 'Hyderabad' && nurseForm.district.trim() ? nonHydLoc : nurseForm.city),
       maritalStatus: nurseForm.maritalStatus,
-      district: nurseForm.district,
-      mandal: nurseForm.district !== 'Hyderabad' ? (nurseForm.mandal.trim() || undefined) : undefined,
-      village: nurseForm.district !== 'Hyderabad' ? (nurseForm.village.trim() || undefined) : undefined,
+      city: nurseForm.city,
+      district: nurseForm.city !== 'Hyderabad' ? (nurseForm.district.trim() || undefined) : 'Hyderabad',
+      mandal: nurseForm.city !== 'Hyderabad' ? (nurseForm.mandal.trim() || undefined) : undefined,
+      village: nurseForm.city !== 'Hyderabad' ? (nurseForm.village.trim() || undefined) : undefined,
       skills: nurseForm.skills || [],
       pin: nurseForm.pin.trim() || undefined,
       status: (nurseForm.status as 'Active' | 'Pending Verification' | 'On Leave') || 'Active',
@@ -2168,6 +2172,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
             experienceYears: nursePayload.experienceYears,
             certificateUrl: nursePayload.certificateUrl,
             maritalStatus: nursePayload.maritalStatus,
+            city: nursePayload.city,
             district: nursePayload.district,
             mandal: nursePayload.mandal,
             village: nursePayload.village,
@@ -2193,6 +2198,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
           experienceYears: nursePayload.experienceYears,
           certificateUrl: nursePayload.certificateUrl,
           maritalStatus: nursePayload.maritalStatus,
+          city: nursePayload.city,
           district: nursePayload.district,
           mandal: nursePayload.mandal,
           village: nursePayload.village,
@@ -2231,6 +2237,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
       n.email.toLowerCase().includes(q) ||
       n.qualification.toLowerCase().includes(q) ||
       (n.serviceArea && n.serviceArea.toLowerCase().includes(q)) ||
+      (n.city && n.city.toLowerCase().includes(q)) ||
       (n.district && n.district.toLowerCase().includes(q)) ||
       (n.mandal && n.mandal.toLowerCase().includes(q)) ||
       (n.village && n.village.toLowerCase().includes(q)) ||
@@ -4832,9 +4839,9 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                                     <MapPin size={12} />
                                     <span>{n.serviceArea || 'Not specified'}</span>
                                   </span>
-                                  {(n.district || n.mandal || n.village) && (
+                                  {(n.city || n.district || n.mandal || n.village) && (
                                     <span style={{ fontSize: '0.72rem', color: '#64748B', display: 'flex', alignItems: 'center', gap: '3px' }}>
-                                      📍 {[n.village, n.mandal, n.district].filter(Boolean).join(', ')}
+                                      📍 {[n.village, n.mandal, n.district !== 'Hyderabad' ? n.district : undefined, n.city || n.district].filter(Boolean).filter((v, i, a) => a.indexOf(v) === i).join(', ')}
                                     </span>
                                   )}
                                 </div>
@@ -8896,8 +8903,8 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                 </div>
               </div>
 
-              {/* Marital Status, District, Mandal & Village */}
-              <div style={{ display: 'grid', gridTemplateColumns: nurseForm.district === 'Hyderabad' ? '1fr 1fr' : 'repeat(auto-fit, minmax(130px, 1fr))', gap: '0.75rem', marginBottom: '0.85rem' }}>
+              {/* Marital Status, City, District, Mandal & Village */}
+              <div style={{ display: 'grid', gridTemplateColumns: nurseForm.city === 'Hyderabad' ? '1fr 1fr' : 'repeat(auto-fit, minmax(130px, 1fr))', gap: '0.75rem', marginBottom: '0.85rem' }}>
                 <div>
                   <label className="form-label" style={{ fontSize: '0.78rem', fontWeight: 700 }}>MARITAL STATUS</label>
                   <select
@@ -8910,16 +8917,16 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                   </select>
                 </div>
                 <div>
-                  <label className="form-label" style={{ fontSize: '0.78rem', fontWeight: 700 }}>DISTRICT</label>
+                  <label className="form-label" style={{ fontSize: '0.78rem', fontWeight: 700 }}>CITY</label>
                   <select
                     className="form-control"
-                    value={nurseForm.district}
+                    value={nurseForm.city}
                     onChange={(e) => {
                       const val = e.target.value;
                       setNurseForm({
                         ...nurseForm,
-                        district: val,
-                        ...(val === 'Hyderabad' ? { mandal: '', village: '' } : {})
+                        city: val,
+                        ...(val === 'Hyderabad' ? { district: 'Hyderabad', mandal: '', village: '' } : { district: '' })
                       });
                     }}
                   >
@@ -8927,8 +8934,18 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                     <option value="Non-Hyderabad">Non-Hyderabad</option>
                   </select>
                 </div>
-                {nurseForm.district !== 'Hyderabad' && (
+                {nurseForm.city !== 'Hyderabad' && (
                   <>
+                    <div>
+                      <label className="form-label" style={{ fontSize: '0.78rem', fontWeight: 700 }}>DISTRICT</label>
+                      <input
+                        type="text"
+                        placeholder="e.g. Medchal-Malkajgiri"
+                        value={nurseForm.district === 'Hyderabad' ? '' : nurseForm.district}
+                        onChange={(e) => setNurseForm({ ...nurseForm, district: e.target.value })}
+                        className="form-control"
+                      />
+                    </div>
                     <div>
                       <label className="form-label" style={{ fontSize: '0.78rem', fontWeight: 700 }}>MANDAL / TEHSIL</label>
                       <input

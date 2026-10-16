@@ -15,6 +15,14 @@ BEGIN
         ALTER TABLE nurses ADD COLUMN marital_status text DEFAULT 'Single';
     END IF;
 
+    -- City (Hyderabad or Non-Hyderabad)
+    IF NOT EXISTS (
+        SELECT 1 FROM information_schema.columns 
+        WHERE table_name = 'nurses' AND column_name = 'city'
+    ) THEN
+        ALTER TABLE nurses ADD COLUMN city text DEFAULT 'Hyderabad';
+    END IF;
+
     -- District
     IF NOT EXISTS (
         SELECT 1 FROM information_schema.columns 
@@ -57,6 +65,14 @@ BEGIN
         WHERE table_name = 'app_users' AND column_name = 'marital_status'
     ) THEN
         ALTER TABLE app_users ADD COLUMN marital_status text DEFAULT 'Single';
+    END IF;
+
+    -- City (Hyderabad or Non-Hyderabad)
+    IF NOT EXISTS (
+        SELECT 1 FROM information_schema.columns 
+        WHERE table_name = 'app_users' AND column_name = 'city'
+    ) THEN
+        ALTER TABLE app_users ADD COLUMN city text DEFAULT 'Hyderabad';
     END IF;
 
     -- District
@@ -109,8 +125,8 @@ BEGIN
 END $$;
 
 -- Verify columns
-SELECT column_name, data_type 
+SELECT table_name, column_name, data_type, column_default
 FROM information_schema.columns 
 WHERE table_name IN ('nurses', 'app_users') 
-  AND column_name IN ('marital_status', 'district', 'mandal', 'village', 'skills', 'council_registration_number', 'certificate_url')
+  AND column_name IN ('marital_status', 'city', 'district', 'mandal', 'village', 'skills', 'council_registration_number', 'certificate_url')
 ORDER BY table_name, column_name;

@@ -73,7 +73,8 @@ export const LoginPage: React.FC<LoginPageProps> = ({
   const [regExperienceYears, setRegExperienceYears] = useState<number>(3);
   const [regServiceArea, setRegServiceArea] = useState<string>(''); // Clean empty box (no auto Gachibowli)
   const [regMaritalStatus, setRegMaritalStatus] = useState<string>('Single');
-  const [regDistrict, setRegDistrict] = useState<string>('Hyderabad');
+  const [regCity, setRegCity] = useState<string>('Hyderabad');
+  const [regDistrict, setRegDistrict] = useState<string>('');
   const [regMandal, setRegMandal] = useState<string>('');
   const [regVillage, setRegVillage] = useState<string>('');
   const [regSelectedSkills, setRegSelectedSkills] = useState<string[]>([]);
@@ -230,13 +231,17 @@ export const LoginPage: React.FC<LoginPageProps> = ({
       setErrorMsg('You must agree to the clinical disclaimer.');
       return;
     }
-    if (regDistrict !== 'Hyderabad') {
+    if (regCity !== 'Hyderabad') {
+      if (!regDistrict.trim()) {
+        setErrorMsg('Please enter your District for Non-Hyderabad city.');
+        return;
+      }
       if (!regMandal.trim()) {
-        setErrorMsg('Please enter your Mandal for Non-Hyderabad district.');
+        setErrorMsg('Please enter your Mandal for Non-Hyderabad city.');
         return;
       }
       if (!regVillage.trim()) {
-        setErrorMsg('Please enter your Village for Non-Hyderabad district.');
+        setErrorMsg('Please enter your Village for Non-Hyderabad city.');
         return;
       }
     }
@@ -269,8 +274,8 @@ export const LoginPage: React.FC<LoginPageProps> = ({
       
       const cleanPhone = regPhone.replace(/\D/g, '');
       const cleanEmail = regEmail.trim().toLowerCase();
-      const nonHydLocation = [regVillage.trim(), regMandal.trim(), regDistrict].filter(Boolean).join(', ');
-      const resolvedArea = regServiceArea.trim() || (regDistrict !== 'Hyderabad' && regMandal.trim() ? nonHydLocation : regDistrict) || 'Hyderabad';
+      const nonHydLocation = [regVillage.trim(), regMandal.trim(), regDistrict.trim(), regCity].filter(Boolean).join(', ');
+      const resolvedArea = regServiceArea.trim() || (regCity !== 'Hyderabad' && regDistrict.trim() ? nonHydLocation : regCity) || 'Hyderabad';
 
       const newNurse: NurseProfile = {
         id: newId,
@@ -281,9 +286,10 @@ export const LoginPage: React.FC<LoginPageProps> = ({
         qualification: regQualification.trim() || 'Registered Nurse (B.Sc)',
         serviceArea: resolvedArea,
         maritalStatus: regMaritalStatus,
-        district: regDistrict,
-        mandal: regDistrict !== 'Hyderabad' ? (regMandal.trim() || undefined) : undefined,
-        village: regDistrict !== 'Hyderabad' ? (regVillage.trim() || undefined) : undefined,
+        city: regCity,
+        district: regCity !== 'Hyderabad' ? (regDistrict.trim() || undefined) : 'Hyderabad',
+        mandal: regCity !== 'Hyderabad' ? (regMandal.trim() || undefined) : undefined,
+        village: regCity !== 'Hyderabad' ? (regVillage.trim() || undefined) : undefined,
         skills: regSelectedSkills,
         pin: regPin.trim(),
         status: 'Pending Verification',
@@ -316,9 +322,10 @@ export const LoginPage: React.FC<LoginPageProps> = ({
         certificateUrl: certUrl || undefined,
         experienceYears: Number(regExperienceYears) || 1,
         maritalStatus: regMaritalStatus,
-        district: regDistrict,
-        mandal: regDistrict !== 'Hyderabad' ? (regMandal.trim() || undefined) : undefined,
-        village: regDistrict !== 'Hyderabad' ? (regVillage.trim() || undefined) : undefined,
+        city: regCity,
+        district: regCity !== 'Hyderabad' ? (regDistrict.trim() || undefined) : 'Hyderabad',
+        mandal: regCity !== 'Hyderabad' ? (regMandal.trim() || undefined) : undefined,
+        village: regCity !== 'Hyderabad' ? (regVillage.trim() || undefined) : undefined,
         skills: regSelectedSkills
       };
       
@@ -358,7 +365,7 @@ export const LoginPage: React.FC<LoginPageProps> = ({
         ? `Application submitted with referral from ${matchedReferringNurse.name}! Profile pending verification.`
         : 'Registration submitted! Your profile is pending Admin approval.'
       );
-      setRegName(''); setRegPhone(''); setRegEmail(''); setRegPin(''); setRegCertificate(null); setRegDisclaimer(false); setRegReferralCode(''); setRegExperienceYears(3); setRegServiceArea(''); setRegMaritalStatus('Single'); setRegDistrict('Hyderabad'); setRegMandal(''); setRegVillage(''); setRegSelectedSkills([]);
+      setRegName(''); setRegPhone(''); setRegEmail(''); setRegPin(''); setRegCertificate(null); setRegDisclaimer(false); setRegReferralCode(''); setRegExperienceYears(3); setRegServiceArea(''); setRegMaritalStatus('Single'); setRegCity('Hyderabad'); setRegDistrict(''); setRegMandal(''); setRegVillage(''); setRegSelectedSkills([]);
       setTimeout(() => setIsRegistering(false), 3000);
     } catch (err: any) {
       setIsLoading(false);
@@ -928,21 +935,22 @@ export const LoginPage: React.FC<LoginPageProps> = ({
                     </select>
                   </div>
 
-                  {/* District, Mandal & Village Selection */}
+                  {/* City, District, Mandal & Village Selection */}
                   <div style={{
                     display: 'grid',
-                    gridTemplateColumns: regDistrict === 'Hyderabad' ? '1fr' : 'repeat(auto-fit, minmax(130px, 1fr))',
+                    gridTemplateColumns: regCity === 'Hyderabad' ? '1fr' : 'repeat(auto-fit, minmax(130px, 1fr))',
                     gap: '0.75rem',
                     marginBottom: '0.75rem'
                   }}>
                     <div className="form-group">
-                      <label className="form-label">District *</label>
+                      <label className="form-label">City *</label>
                       <select
-                        value={regDistrict}
+                        value={regCity}
                         onChange={(e) => {
                           const val = e.target.value;
-                          setRegDistrict(val);
+                          setRegCity(val);
                           if (val === 'Hyderabad') {
+                            setRegDistrict('');
                             setRegMandal('');
                             setRegVillage('');
                           }
@@ -954,8 +962,20 @@ export const LoginPage: React.FC<LoginPageProps> = ({
                         <option value="Non-Hyderabad">Non-Hyderabad</option>
                       </select>
                     </div>
-                    {regDistrict !== 'Hyderabad' && (
+                    {regCity !== 'Hyderabad' && (
                       <>
+                        <div className="form-group">
+                          <label className="form-label">District *</label>
+                          <input
+                            type="text"
+                            placeholder="Enter District name"
+                            value={regDistrict}
+                            onChange={(e) => setRegDistrict(e.target.value)}
+                            className="form-control"
+                            style={{ fontWeight: 600 }}
+                            required
+                          />
+                        </div>
                         <div className="form-group">
                           <label className="form-label">Mandal *</label>
                           <input

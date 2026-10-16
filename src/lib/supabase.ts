@@ -406,6 +406,7 @@ export async function dbFetchNurses(): Promise<NurseProfile[] | null> {
       rejectionReason: n.rejection_reason || undefined,
       currentlyWorkingAt: n.currently_working_at || n.current_workplace || undefined,
       maritalStatus: n.marital_status || matchedUser?.maritalStatus || undefined,
+      city: n.city || matchedUser?.city || (n.district && n.district.toLowerCase().includes('non') ? 'Non-Hyderabad' : 'Hyderabad'),
       district: n.district || matchedUser?.district || undefined,
       mandal: n.mandal || matchedUser?.mandal || undefined,
       village: n.village || matchedUser?.village || undefined,
@@ -455,6 +456,7 @@ export async function dbUpdateNurse(n: NurseProfile): Promise<boolean> {
       rejection_reason: n.rejectionReason || null,
       currently_working_at: n.currentlyWorkingAt || null,
       marital_status: n.maritalStatus || null,
+      city: n.city || (n.district && n.district.toLowerCase().includes('non') ? 'Non-Hyderabad' : 'Hyderabad'),
       district: n.district || null,
       mandal: n.mandal || null,
       village: n.village || null,
@@ -463,10 +465,11 @@ export async function dbUpdateNurse(n: NurseProfile): Promise<boolean> {
     };
 
     let { error } = await supabase.from('nurses').upsert(payload);
-    if (error && (error.code === '42703' || error.message?.includes('total_payout') || error.message?.includes('currently_working_at') || error.message?.includes('marital_status') || error.message?.includes('district') || error.message?.includes('mandal') || error.message?.includes('village') || error.message?.includes('skills'))) {
+    if (error && (error.code === '42703' || error.message?.includes('total_payout') || error.message?.includes('currently_working_at') || error.message?.includes('marital_status') || error.message?.includes('city') || error.message?.includes('district') || error.message?.includes('mandal') || error.message?.includes('village') || error.message?.includes('skills'))) {
       if (error.message?.includes('total_payout') || error.code === '42703') delete payload.total_payout;
       if (error.message?.includes('currently_working_at') || error.code === '42703') delete payload.currently_working_at;
       if (error.message?.includes('marital_status') || error.code === '42703') delete payload.marital_status;
+      if (error.message?.includes('city') || error.code === '42703') delete payload.city;
       if (error.message?.includes('district') || error.code === '42703') delete payload.district;
       if (error.message?.includes('mandal') || error.code === '42703') delete payload.mandal;
       if (error.message?.includes('village') || error.code === '42703') delete payload.village;
@@ -486,6 +489,7 @@ export async function dbUpdateNurse(n: NurseProfile): Promise<boolean> {
         service_area: n.serviceArea,
         status: n.status || 'Active',
         marital_status: n.maritalStatus || null,
+        city: n.city || (n.district && n.district.toLowerCase().includes('non') ? 'Non-Hyderabad' : 'Hyderabad'),
         district: n.district || null,
         mandal: n.mandal || null,
         village: n.village || null,
@@ -533,6 +537,7 @@ export async function dbInsertNurse(n: NurseProfile): Promise<boolean> {
       rejection_reason: n.rejectionReason || null,
       currently_working_at: n.currentlyWorkingAt || null,
       marital_status: n.maritalStatus || null,
+      city: n.city || (n.district && n.district.toLowerCase().includes('non') ? 'Non-Hyderabad' : 'Hyderabad'),
       district: n.district || null,
       mandal: n.mandal || null,
       village: n.village || null,
@@ -541,10 +546,11 @@ export async function dbInsertNurse(n: NurseProfile): Promise<boolean> {
     };
 
     let { error } = await supabase.from('nurses').upsert(payload);
-    if (error && (error.code === '42703' || error.message?.includes('total_payout') || error.message?.includes('currently_working_at') || error.message?.includes('marital_status') || error.message?.includes('district') || error.message?.includes('mandal') || error.message?.includes('village') || error.message?.includes('skills'))) {
+    if (error && (error.code === '42703' || error.message?.includes('total_payout') || error.message?.includes('currently_working_at') || error.message?.includes('marital_status') || error.message?.includes('city') || error.message?.includes('district') || error.message?.includes('mandal') || error.message?.includes('village') || error.message?.includes('skills'))) {
       if (error.message?.includes('total_payout') || error.code === '42703') delete payload.total_payout;
       if (error.message?.includes('currently_working_at') || error.code === '42703') delete payload.currently_working_at;
       if (error.message?.includes('marital_status') || error.code === '42703') delete payload.marital_status;
+      if (error.message?.includes('city') || error.code === '42703') delete payload.city;
       if (error.message?.includes('district') || error.code === '42703') delete payload.district;
       if (error.message?.includes('mandal') || error.code === '42703') delete payload.mandal;
       if (error.message?.includes('village') || error.code === '42703') delete payload.village;
@@ -585,6 +591,7 @@ export async function dbUpdateNurseById(id: string, updates: Partial<NurseProfil
   if (updates.rejectionReason !== undefined) payload.rejection_reason = updates.rejectionReason;
   if (updates.currentlyWorkingAt !== undefined) payload.currently_working_at = updates.currentlyWorkingAt;
   if (updates.maritalStatus !== undefined) payload.marital_status = updates.maritalStatus;
+  if (updates.city !== undefined) payload.city = updates.city;
   if (updates.district !== undefined) payload.district = updates.district;
   if (updates.mandal !== undefined) payload.mandal = updates.mandal;
   if (updates.village !== undefined) payload.village = updates.village;
@@ -593,10 +600,11 @@ export async function dbUpdateNurseById(id: string, updates: Partial<NurseProfil
 
   try {
     let { error } = await supabase.from('nurses').update(payload).eq('id', id);
-    if (error && (error.code === '42703' || error.message?.includes('total_payout') || error.message?.includes('currently_working_at') || error.message?.includes('marital_status') || error.message?.includes('district') || error.message?.includes('mandal') || error.message?.includes('village') || error.message?.includes('skills'))) {
+    if (error && (error.code === '42703' || error.message?.includes('total_payout') || error.message?.includes('currently_working_at') || error.message?.includes('marital_status') || error.message?.includes('city') || error.message?.includes('district') || error.message?.includes('mandal') || error.message?.includes('village') || error.message?.includes('skills'))) {
       if (error.message?.includes('total_payout') || error.code === '42703') delete payload.total_payout;
       if (error.message?.includes('currently_working_at') || error.code === '42703') delete payload.currently_working_at;
       if (error.message?.includes('marital_status') || error.code === '42703') delete payload.marital_status;
+      if (error.message?.includes('city') || error.code === '42703') delete payload.city;
       if (error.message?.includes('district') || error.code === '42703') delete payload.district;
       if (error.message?.includes('mandal') || error.code === '42703') delete payload.mandal;
       if (error.message?.includes('village') || error.code === '42703') delete payload.village;
@@ -617,6 +625,7 @@ export async function dbUpdateNurseById(id: string, updates: Partial<NurseProfil
     if (updates.qualification !== undefined) userPayload.designation = updates.qualification;
     if (updates.serviceArea !== undefined) userPayload.service_area = updates.serviceArea;
     if (updates.maritalStatus !== undefined) userPayload.marital_status = updates.maritalStatus;
+    if (updates.city !== undefined) userPayload.city = updates.city;
     if (updates.district !== undefined) userPayload.district = updates.district;
     if (updates.mandal !== undefined) userPayload.mandal = updates.mandal;
     if (updates.village !== undefined) userPayload.village = updates.village;
@@ -1475,6 +1484,7 @@ export async function dbFetchAppUsers(): Promise<AppUser[]> {
           experienceYears: u.experience_years !== null && !isNaN(Number(u.experience_years)) ? Number(u.experience_years) : undefined,
           councilRegistrationNumber: u.council_registration_number || undefined,
           maritalStatus: u.marital_status || undefined,
+          city: u.city || (u.district && u.district.toLowerCase().includes('non') ? 'Non-Hyderabad' : 'Hyderabad'),
           district: u.district || undefined,
           mandal: u.mandal || undefined,
           village: u.village || undefined,
@@ -1641,14 +1651,16 @@ export async function dbInsertAppUser(u: AppUser): Promise<boolean> {
       experience_years: u.experienceYears !== undefined && !isNaN(Number(u.experienceYears)) ? Math.round(Number(u.experienceYears)) : 3,
       council_registration_number: u.councilRegistrationNumber || null,
       marital_status: u.maritalStatus || null,
+      city: u.city || (u.district && u.district.toLowerCase().includes('non') ? 'Non-Hyderabad' : 'Hyderabad'),
       district: u.district || null,
       mandal: u.mandal || null,
       village: u.village || null,
       skills: Array.isArray(u.skills) ? u.skills : null
     };
     let { error } = await supabase.from('app_users').upsert(payload, { onConflict: 'identifier' });
-    if (error && (error.code === '42703' || error.message?.includes('marital_status') || error.message?.includes('district') || error.message?.includes('mandal') || error.message?.includes('village') || error.message?.includes('skills'))) {
+    if (error && (error.code === '42703' || error.message?.includes('marital_status') || error.message?.includes('city') || error.message?.includes('district') || error.message?.includes('mandal') || error.message?.includes('village') || error.message?.includes('skills'))) {
       delete (payload as any).marital_status;
+      delete (payload as any).city;
       delete (payload as any).district;
       delete (payload as any).mandal;
       delete (payload as any).village;
@@ -1694,6 +1706,7 @@ export async function dbUpdateAppUserById(id: string, updates: Partial<AppUser>)
   }
   if (updates.councilRegistrationNumber !== undefined) payload.council_registration_number = updates.councilRegistrationNumber;
   if (updates.maritalStatus !== undefined) payload.marital_status = updates.maritalStatus;
+  if (updates.city !== undefined) payload.city = updates.city;
   if (updates.district !== undefined) payload.district = updates.district;
   if (updates.mandal !== undefined) payload.mandal = updates.mandal;
   if (updates.village !== undefined) payload.village = updates.village;

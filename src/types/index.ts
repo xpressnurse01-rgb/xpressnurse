@@ -137,6 +137,7 @@ export interface NurseProfile {
   referralCode?: string;
   currentlyWorkingAt?: string;
   maritalStatus?: string;
+  city?: string;
   district?: string;
   mandal?: string;
   village?: string;
@@ -214,6 +215,7 @@ export interface AppUser {
   certificateUrl?: string;
   experienceYears?: number | string;
   maritalStatus?: string;
+  city?: string;
   district?: string;
   mandal?: string;
   village?: string;
