@@ -1,6 +1,6 @@
 /* ==========================================================================
    XPRESS NURSE - CORPORATE PREMIUM HEALTHCARE DESIGN SYSTEM
-   Font: Lexend Deca
+   Font: Be Vietnam Pro
    Brand Colors: Corporate Navy (#0A192F, #0F2744), Clinical Red (#E63946), Slate (#64748B)
    ========================================================================== */
 
@@ -38,8 +38,8 @@
   --neutral-50: #F8FAFC;
   --white: #FFFFFF;
 
-  --font-heading: 'Lexend Deca', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-  --font-family: 'Lexend Deca', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  --font-heading: 'Be Vietnam Pro', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  --font-family: 'Be Vietnam Pro', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
 
   --radius-xs: 4px;
   --radius-sm: 8px;
@@ -78,11 +78,11 @@
   box-sizing: border-box;
   margin: 0;
   padding: 0;
-  font-family: 'Lexend Deca', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  font-family: var(--font-family);
 }
 
 html, body, #root, button, input, select, textarea, optgroup {
-  font-family: 'Lexend Deca', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif !important;
+  font-family: var(--font-family) !important;
 }
 
 html, body {
@@ -92,7 +92,7 @@ html, body {
 }
 
 html {
-  font-family: 'Lexend Deca', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif !important;
+  font-family: var(--font-family) !important;
   color: var(--neutral-800);
   background-color: var(--neutral-50);
   font-size: 15px;
@@ -6086,21 +6086,20 @@ select optgroup {
 }
 
 /* ==========================================================================
-   TYPOGRAPHIC HIERARCHY SYSTEM — STRICT MAX WEIGHT 400 (NO HIGH WEIGHTS)
+   TYPOGRAPHIC HIERARCHY SYSTEM — BE VIETNAM PRO MODERN CORPORATE
    ========================================================================== */
 
-/* 1. Global font family & weight ceiling */
+/* 1. Global font family */
 html, body, #root, #root *, [class] {
-  font-family: 'Lexend Deca', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif !important;
+  font-family: var(--font-family);
 }
 
-/* 2. Base text, descriptions, details, subtitles, paragraphs, table cells: weight 300 */
+/* 2. Base text, descriptions, details, subtitles, paragraphs: weight 400 */
 body,
 p,
 span,
 div,
 li,
-a,
 td,
 label,
 input,
@@ -6118,85 +6117,102 @@ select,
 .consult-desc,
 .booking-desc,
 .review-text {
-  font-weight: 300;
+  font-weight: 400;
 }
 
-/* 3. Headings & Main Titles: weight 400 with strict typographic hierarchy */
+/* 3. Headings & Main Titles: crisp weights with balanced hierarchy */
 h1, .h1, .hero-title, .brand-title {
-  font-size: 2.25rem;
-  font-weight: 400 !important;
+  font-size: 2.35rem;
+  font-weight: 800;
+  line-height: 1.2;
+  letter-spacing: -0.03em;
+  color: var(--primary-navy-950);
+}
+
+h2, .h2, .section-title, .panel-header h2 {
+  font-size: 1.85rem;
+  font-weight: 700;
   line-height: 1.25;
   letter-spacing: -0.02em;
   color: var(--primary-navy-950);
 }
 
-h2, .h2, .section-title, .panel-header h2 {
-  font-size: 1.75rem;
-  font-weight: 400 !important;
-  line-height: 1.3;
-  letter-spacing: -0.015em;
-  color: var(--primary-navy-950);
-}
-
 h3, .h3, .card-title {
   font-size: 1.35rem;
-  font-weight: 400 !important;
-  line-height: 1.35;
+  font-weight: 700;
+  line-height: 1.3;
+  letter-spacing: -0.015em;
   color: var(--primary-navy-900);
 }
 
 h4, .h4 {
   font-size: 1.15rem;
-  font-weight: 400 !important;
-  line-height: 1.4;
+  font-weight: 600;
+  line-height: 1.35;
   color: var(--primary-navy-900);
 }
 
 h5, .h5 {
   font-size: 1.0rem;
-  font-weight: 400 !important;
-  line-height: 1.45;
+  font-weight: 600;
+  line-height: 1.4;
   color: var(--primary-navy-900);
 }
 
 h6, .h6 {
-  font-size: 0.85rem;
-  font-weight: 400 !important;
+  font-size: 0.8rem;
+  font-weight: 700;
   line-height: 1.4;
   text-transform: uppercase;
-  letter-spacing: 0.04em;
+  letter-spacing: 0.05em;
   color: var(--neutral-600);
 }
 
-/* 4. Strong elements, table headers, buttons, pills, tags: weight 400 */
+/* 4. Strong elements, table headers, buttons, pills, tags */
 strong,
 b,
-th,
+.font-bold {
+  font-weight: 700;
+}
+
+.font-semibold {
+  font-weight: 600;
+}
+
+.font-medium {
+  font-weight: 500;
+}
+
+th {
+  font-weight: 700;
+  letter-spacing: 0.01em;
+}
+
 button,
-.btn,
+.btn {
+  font-weight: 600;
+  letter-spacing: -0.01em;
+}
+
+.btn-primary,
+.btn-danger {
+  font-weight: 700;
+}
+
 .status-pill,
 .badge,
 .tag,
-.section-badge,
+.section-badge {
+  font-weight: 700;
+  font-size: 0.74rem;
+  letter-spacing: 0.01em;
+}
+
 .stat-val,
 .price-val,
 .price-amount {
-  font-weight: 400 !important;
-}
-
-/* 5. Comprehensive override capping any high weights (500-900, bold) at 400 */
-[style*="font-weight: 500"], [style*="font-weight: 550"], [style*="font-weight: 600"],
-[style*="font-weight: 650"], [style*="font-weight: 700"], [style*="font-weight: 750"],
-[style*="font-weight: 800"], [style*="font-weight: 850"], [style*="font-weight: 900"],
-[style*="font-weight: bold"], [style*="font-weight: bolder"],
-[style*="fontWeight: 500"], [style*="fontWeight: 550"], [style*="fontWeight: 600"],
-[style*="fontWeight: 650"], [style*="fontWeight: 700"], [style*="fontWeight: 750"],
-[style*="fontWeight: 800"], [style*="fontWeight: 850"], [style*="fontWeight: 900"],
-[style*="fontWeight: bold"], [style*="fontWeight: bolder"],
-[style*="fontWeight: 'bold'"], [style*="fontWeight: 'bolder'"],
-[style*="fontWeight: \"bold\""], [style*="fontWeight: \"bolder\""],
-.font-bold, .font-semibold, .font-medium, .font-extrabold {
-  font-weight: 400 !important;
+  font-weight: 800;
+  letter-spacing: -0.02em;
 }
 
 /* ==========================================================================

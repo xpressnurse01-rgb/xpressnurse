@@ -71,7 +71,19 @@ export const LoginPage: React.FC<LoginPageProps> = ({
   const [regEmail, setRegEmail] = useState('');
   const [regPin, setRegPin] = useState('');
   const [regExperienceYears, setRegExperienceYears] = useState<number>(3);
-  const [regServiceArea, setRegServiceArea] = useState<string>('Gachibowli');
+  const [regServiceArea, setRegServiceArea] = useState<string>(''); // Clean empty box (no auto Gachibowli)
+  const [regMaritalStatus, setRegMaritalStatus] = useState<string>('Single');
+  const [regDistrict, setRegDistrict] = useState<string>('Hyderabad');
+  const [regMandal, setRegMandal] = useState<string>('');
+  const [regSelectedSkills, setRegSelectedSkills] = useState<string[]>([
+    'IV Cannulation',
+    'Injections',
+    'Foley Replacement',
+    'Ryles Tube Replacement',
+    'Suture Removal',
+    'Enema',
+    'Dressings'
+  ]);
   const [regQualification, setRegQualification] = useState<string>('B.Sc Nursing (Registered RN)');
   const [regCurrentlyWorkingAt, setRegCurrentlyWorkingAt] = useState<string>('');
   const [regDoctorSpecialization, setRegDoctorSpecialization] = useState<string>('MBBS - General Physician');
@@ -131,10 +143,7 @@ export const LoginPage: React.FC<LoginPageProps> = ({
         setErrorMsg('Please enter your full name, email, and phone number.');
         return;
       }
-      if (!regDoctorCouncilNo.trim()) {
-        setErrorMsg('Please enter your Medical Council Registration Number.');
-        return;
-      }
+      // Medical Council Registration Number is now OPTIONAL
       if (regDoctorSpecialization === 'Other' && !regDoctorCustomSpecialization.trim()) {
         setErrorMsg('Please enter your specific medical specialization.');
         return;
@@ -180,6 +189,7 @@ export const LoginPage: React.FC<LoginPageProps> = ({
           ? (regDoctorCustomSpecialization.trim() || 'Specialist Physician')
           : regDoctorSpecialization;
 
+        const regSuffix = regDoctorCouncilNo.trim() ? ` • Reg: ${regDoctorCouncilNo.trim()}` : '';
         const newAppUser: AppUser = {
           id: newId,
           role: 'doctor',
@@ -188,12 +198,12 @@ export const LoginPage: React.FC<LoginPageProps> = ({
           pin: regPin.trim(),
           phone: cleanPhone || regPhone.trim(),
           email: cleanEmail,
-          designation: `[PENDING_VERIFICATION] ${effectiveDocSpec} • Reg: ${regDoctorCouncilNo.trim()}`,
-          serviceArea: regServiceArea || 'Hyderabad Multi-Zone',
+          designation: `[PENDING_VERIFICATION] ${effectiveDocSpec}${regSuffix}`,
+          serviceArea: regServiceArea.trim() || 'Hyderabad Multi-Zone',
           avatarUrl: certUrl || undefined,
           status: 'Pending Verification',
           specialization: effectiveDocSpec,
-          councilRegistrationNumber: regDoctorCouncilNo.trim(),
+          councilRegistrationNumber: regDoctorCouncilNo.trim() || undefined,
           certificateUrl: certUrl || undefined,
           experienceYears: Number(regExperienceYears) || 3,
           createdAt: new Date().toISOString()
@@ -202,7 +212,7 @@ export const LoginPage: React.FC<LoginPageProps> = ({
         await dbInsertAppUser(newAppUser);
 
         setIsLoading(false);
-        setSuccessMsg(`Doctor application submitted for ${formattedDocName}! Your Medical Council registration is pending Admin verification. You can sign in once approved.`);
+        setSuccessMsg(`Doctor application submitted for ${formattedDocName}! Your application is pending Admin verification. You can sign in once approved.`);
         setRegName(''); setRegPhone(''); setRegEmail(''); setRegPin(''); setRegCertificate(null); setRegDisclaimer(false); setRegDoctorCouncilNo(''); setRegDoctorCustomSpecialization('');
         setTimeout(() => setIsRegistering(false), 3500);
         return;
@@ -262,6 +272,8 @@ export const LoginPage: React.FC<LoginPageProps> = ({
       
       const cleanPhone = regPhone.replace(/\D/g, '');
       const cleanEmail = regEmail.trim().toLowerCase();
+      const resolvedArea = regServiceArea.trim() || (regMandal.trim() ? `${regMandal.trim()}, ${regDistrict}` : regDistrict) || 'Hyderabad';
+
       const newNurse: NurseProfile = {
         id: newId,
         name: regName.trim(),
@@ -269,7 +281,11 @@ export const LoginPage: React.FC<LoginPageProps> = ({
         email: cleanEmail,
         experienceYears: Number(regExperienceYears) || 1,
         qualification: regQualification.trim() || 'Registered Nurse (B.Sc)',
-        serviceArea: regServiceArea || 'Gachibowli',
+        serviceArea: resolvedArea,
+        maritalStatus: regMaritalStatus,
+        district: regDistrict,
+        mandal: regMandal.trim() || undefined,
+        skills: regSelectedSkills,
         pin: regPin.trim(),
         status: 'Pending Verification',
         totalLeads: 0,
@@ -296,7 +312,11 @@ export const LoginPage: React.FC<LoginPageProps> = ({
         phone: cleanPhone || regPhone.trim(),
         email: cleanEmail,
         designation: `${regQualification.trim() || 'Registered Nurse (B.Sc)'} • ${regCurrentlyWorkingAt.trim()}`,
-        serviceArea: regServiceArea || 'Gachibowli'
+        serviceArea: resolvedArea,
+        maritalStatus: regMaritalStatus,
+        district: regDistrict,
+        mandal: regMandal.trim() || undefined,
+        skills: regSelectedSkills
       };
       
       await dbInsertNurse(newNurse);
@@ -310,7 +330,7 @@ export const LoginPage: React.FC<LoginPageProps> = ({
           nurseName: matchedReferringNurse.name,
           patientName: regName.trim(),
           patientPhone: regPhone.trim(),
-          area: regServiceArea || 'Gachibowli',
+          area: resolvedArea,
           qualification: 'Registered Nurse',
           status: 'Pending Approval',
           leadValueRupees: 500,
@@ -335,7 +355,7 @@ export const LoginPage: React.FC<LoginPageProps> = ({
         ? `Application submitted with referral from ${matchedReferringNurse.name}! Profile pending verification.`
         : 'Registration submitted! Your profile is pending Admin approval.'
       );
-      setRegName(''); setRegPhone(''); setRegEmail(''); setRegPin(''); setRegCertificate(null); setRegDisclaimer(false); setRegReferralCode(''); setRegExperienceYears(3); setRegServiceArea('Gachibowli');
+      setRegName(''); setRegPhone(''); setRegEmail(''); setRegPin(''); setRegCertificate(null); setRegDisclaimer(false); setRegReferralCode(''); setRegExperienceYears(3); setRegServiceArea(''); setRegMaritalStatus('Single'); setRegDistrict('Hyderabad'); setRegMandal(''); setRegSelectedSkills(['IV Cannulation', 'Injections', 'Foley Replacement', 'Ryles Tube Replacement', 'Suture Removal', 'Enema', 'Dressings']);
       setTimeout(() => setIsRegistering(false), 3000);
     } catch (err: any) {
       setIsLoading(false);
@@ -753,14 +773,15 @@ export const LoginPage: React.FC<LoginPageProps> = ({
                     </div>
                   </div>
 
-                  {/* Medical Council Registration Number */}
+                  {/* Medical Council Registration Number (Optional) */}
                   <div className="form-group" style={{ marginBottom: '0.75rem' }}>
                     <label className="form-label" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                      <span>Medical Council Reg No. (Required)</span>
+                      <span>Medical Council Reg No. (Optional)</span>
                       <span style={{ fontSize: '0.72rem', color: '#0284C7', fontWeight: 700 }}>NMC / State Council</span>
                     </label>
                     <input 
                       type="text" 
+                      placeholder="e.g. TSMC / MCI Registration Number (Optional)"
                       value={regDoctorCouncilNo} 
                       onChange={e => setRegDoctorCouncilNo(e.target.value)} 
                       className="form-control" 
@@ -827,6 +848,7 @@ export const LoginPage: React.FC<LoginPageProps> = ({
                     <label className="form-label">Practice / Teleconsult Zone</label>
                     <input 
                       list="hyderabad-areas" 
+                      placeholder="e.g. Hyderabad Multi-Zone, Gachibowli, Kukatpally"
                       value={regServiceArea}
                       onChange={(e) => setRegServiceArea(e.target.value)}
                       className="form-control"
@@ -862,7 +884,7 @@ export const LoginPage: React.FC<LoginPageProps> = ({
                         ) : (
                           <>
                             <UploadCloud size={22} style={{ color: '#64748B' }} />
-                            <span style={{ fontSize: '0.8rem', color: '#64748B' }}>Click to upload Medical License / Degree Certificate</span>
+                            <span style={{ fontSize: '0.8rem', color: '#64748B' }}>Click to upload Medical License / Degree Certificate (Optional)</span>
                           </>
                         )}
                       </label>
@@ -891,6 +913,7 @@ export const LoginPage: React.FC<LoginPageProps> = ({
                       name="nurse_reg_fullname"
                       autoComplete="off"
                       required
+                      placeholder="e.g. S. Anitha RN"
                       value={regName} 
                       onChange={e => setRegName(e.target.value)} 
                       className="form-control" 
@@ -905,6 +928,7 @@ export const LoginPage: React.FC<LoginPageProps> = ({
                         name="nurse_reg_email"
                         autoComplete="off"
                         required
+                        placeholder="nurse.name@example.com"
                         value={regEmail} 
                         onChange={e => setRegEmail(e.target.value)} 
                         className="form-control" 
@@ -917,10 +941,95 @@ export const LoginPage: React.FC<LoginPageProps> = ({
                         name="nurse_reg_phone"
                         autoComplete="off"
                         required
+                        placeholder="+91 98765 43210"
                         value={regPhone} 
                         onChange={e => setRegPhone(e.target.value)} 
                         className="form-control" 
                       />
+                    </div>
+                  </div>
+
+                  {/* Marital Status */}
+                  <div className="form-group" style={{ marginBottom: '0.75rem' }}>
+                    <label className="form-label">Marital Status *</label>
+                    <select
+                      value={regMaritalStatus}
+                      onChange={(e) => setRegMaritalStatus(e.target.value)}
+                      className="form-control"
+                      style={{ fontWeight: 600 }}
+                    >
+                      <option value="Single">Single / Unmarried</option>
+                      <option value="Married">Married</option>
+                      <option value="Divorced">Divorced</option>
+                      <option value="Widowed">Widowed</option>
+                      <option value="Other">Other</option>
+                    </select>
+                  </div>
+
+                  {/* District & Mandal Selection */}
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem', marginBottom: '0.75rem' }}>
+                    <div className="form-group">
+                      <label className="form-label">District *</label>
+                      <select
+                        value={regDistrict}
+                        onChange={(e) => setRegDistrict(e.target.value)}
+                        className="form-control"
+                        style={{ fontWeight: 600 }}
+                      >
+                        <option value="Hyderabad">Hyderabad</option>
+                        <option value="Medchal-Malkajgiri">Medchal–Malkajgiri</option>
+                        <option value="Ranga Reddy">Ranga Reddy</option>
+                        <option value="Sangareddy">Sangareddy</option>
+                        <option value="Yadadri Bhuvanagiri">Yadadri Bhuvanagiri</option>
+                        <option value="Vikarabad">Vikarabad</option>
+                        <option value="Siddipet">Siddipet</option>
+                        <option value="Mahabubnagar">Mahabubnagar</option>
+                        <option value="Warangal">Warangal</option>
+                        <option value="Nizamabad">Nizamabad</option>
+                        <option value="Karimnagar">Karimnagar</option>
+                        <option value="Khammam">Khammam</option>
+                        <option value="Other District">Other District</option>
+                      </select>
+                    </div>
+                    <div className="form-group">
+                      <label className="form-label">Mandal *</label>
+                      <input
+                        type="text"
+                        list="telangana-mandals-list"
+                        placeholder="e.g. Serilingampally, Gandipet"
+                        value={regMandal}
+                        onChange={(e) => setRegMandal(e.target.value)}
+                        className="form-control"
+                        style={{ fontWeight: 600 }}
+                        required
+                      />
+                      <datalist id="telangana-mandals-list">
+                        <option value="Serilingampally" />
+                        <option value="Gandipet" />
+                        <option value="Rajendranagar" />
+                        <option value="Uppal" />
+                        <option value="Kukatpally" />
+                        <option value="Balanagar" />
+                        <option value="Quthbullapur" />
+                        <option value="Malkajgiri" />
+                        <option value="Alwal" />
+                        <option value="Kapra" />
+                        <option value="Secunderabad" />
+                        <option value="Musheerabad" />
+                        <option value="Amberpet" />
+                        <option value="Khairatabad" />
+                        <option value="Shaikpet" />
+                        <option value="Asifnagar" />
+                        <option value="Bandlaguda" />
+                        <option value="Charminar" />
+                        <option value="Hayathnagar" />
+                        <option value="Saroornagar" />
+                        <option value="Ibrahimpatnam" />
+                        <option value="Maheshwaram" />
+                        <option value="Shamshabad" />
+                        <option value="Patancheru" />
+                        <option value="Ameerpet" />
+                      </datalist>
                     </div>
                   </div>
 
@@ -934,6 +1043,7 @@ export const LoginPage: React.FC<LoginPageProps> = ({
                       name="nurse_reg_workplace"
                       autoComplete="off"
                       required
+                      placeholder="e.g. Apollo Hospital, Yashoda, KIMS..."
                       value={regCurrentlyWorkingAt} 
                       onChange={e => setRegCurrentlyWorkingAt(e.target.value)} 
                       className="form-control" 
@@ -962,6 +1072,7 @@ export const LoginPage: React.FC<LoginPageProps> = ({
                       value={regReferralCode}
                       onChange={(e) => setRegReferralCode(e.target.value.toUpperCase())}
                       className="form-control"
+                      placeholder="e.g. XN-PRIYA101"
                       style={{
                         textTransform: 'uppercase',
                         letterSpacing: '0.08em',
@@ -988,16 +1099,17 @@ export const LoginPage: React.FC<LoginPageProps> = ({
                     )}
                   </div>
 
-                  {/* Stay Area & Years of Experience */}
+                  {/* Locality / Stay Area (Empty Box by default) & Years of Experience */}
                   <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem', marginBottom: '0.75rem' }}>
                     <div className="form-group">
-                      <label className="form-label">Stay Area (Hyderabad) *</label>
+                      <label className="form-label">Locality / Stay Area *</label>
                       <input list="hyderabad-areas"
-                        placeholder="e.g. LB Nagar, Madhapur, Kukatpally"
+                        placeholder="e.g. LB Nagar, Madhapur, Kukatpally, Gachibowli"
                         value={regServiceArea}
                         onChange={(e) => setRegServiceArea(e.target.value)}
                         className="form-control"
                         style={{ fontWeight: 600 }}
+                        required
                       />
                     </div>
                     <div className="form-group">
@@ -1020,6 +1132,120 @@ export const LoginPage: React.FC<LoginPageProps> = ({
                         <option value="10">10+ Years Experience</option>
                         <option value="15">15+ Years Experience</option>
                       </select>
+                    </div>
+                  </div>
+
+                  {/* Clinical Services / Procedures Known (Multi-Select) */}
+                  <div className="form-group" style={{
+                    marginBottom: '0.95rem',
+                    background: '#F8FAFC',
+                    border: '1.5px solid #CBD5E1',
+                    borderRadius: 12,
+                    padding: '0.85rem'
+                  }}>
+                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '0.35rem', flexWrap: 'wrap', gap: '0.4rem' }}>
+                      <div>
+                        <label className="form-label" style={{ fontWeight: 800, color: 'var(--primary-navy-950)', margin: 0, fontSize: '0.84rem' }}>
+                          🩺 Clinical Services & Procedures You Can Perform *
+                        </label>
+                        <div style={{ fontSize: '0.72rem', color: '#64748B', marginTop: '0.15rem' }}>
+                          Select all procedures you know. This ensures admin assigns the exact matching patient requests to you!
+                        </div>
+                      </div>
+                      <div style={{ display: 'flex', gap: '0.35rem' }}>
+                        <button
+                          type="button"
+                          onClick={() => setRegSelectedSkills([
+                            'IV Cannulation',
+                            'Injections',
+                            'Foley Replacement',
+                            'Ryles Tube Replacement',
+                            'Suture Removal',
+                            'Enema',
+                            'Dressings'
+                          ])}
+                          style={{
+                            background: '#0284C7',
+                            color: '#FFF',
+                            border: 'none',
+                            borderRadius: 6,
+                            padding: '0.2rem 0.55rem',
+                            fontSize: '0.72rem',
+                            fontWeight: 700,
+                            cursor: 'pointer'
+                          }}
+                        >
+                          Select All
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setRegSelectedSkills([])}
+                          style={{
+                            background: '#E2E8F0',
+                            color: '#475569',
+                            border: 'none',
+                            borderRadius: 6,
+                            padding: '0.2rem 0.55rem',
+                            fontSize: '0.72rem',
+                            fontWeight: 700,
+                            cursor: 'pointer'
+                          }}
+                        >
+                          Clear
+                        </button>
+                      </div>
+                    </div>
+
+                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(145px, 1fr))', gap: '0.45rem', marginTop: '0.6rem' }}>
+                      {[
+                        { name: 'IV Cannulation', label: '💉 IV Cannulation' },
+                        { name: 'Injections', label: '🩺 Injections (IM/IV/SC)' },
+                        { name: 'Foley Replacement', label: '🧪 Foley Replacement' },
+                        { name: 'Ryles Tube Replacement', label: '🩹 Ryles Tube (NG)' },
+                        { name: 'Suture Removal', label: '✂️ Suture Removal' },
+                        { name: 'Enema', label: '🧴 Enema' },
+                        { name: 'Dressings', label: '🩹 Wound Dressings' }
+                      ].map((service) => {
+                        const isChecked = regSelectedSkills.includes(service.name);
+                        return (
+                          <label
+                            key={service.name}
+                            style={{
+                              display: 'flex',
+                              alignItems: 'center',
+                              gap: '0.45rem',
+                              padding: '0.45rem 0.6rem',
+                              borderRadius: 8,
+                              cursor: 'pointer',
+                              border: isChecked ? '1.5px solid #0284C7' : '1px solid #CBD5E1',
+                              background: isChecked ? '#F0F9FF' : '#FFFFFF',
+                              transition: 'all 0.15s ease',
+                              userSelect: 'none'
+                            }}
+                          >
+                            <input
+                              type="checkbox"
+                              checked={isChecked}
+                              onChange={(e) => {
+                                if (e.target.checked) {
+                                  setRegSelectedSkills((prev) => [...prev, service.name]);
+                                } else {
+                                  setRegSelectedSkills((prev) => prev.filter((s) => s !== service.name));
+                                }
+                              }}
+                              style={{ accentColor: '#0284C7', transform: 'scale(1.15)', cursor: 'pointer' }}
+                            />
+                            <span style={{
+                              fontSize: '0.76rem',
+                              fontWeight: isChecked ? 750 : 500,
+                              color: isChecked ? '#0369A1' : '#334155',
+                              lineHeight: 1.2
+                            }}>
+                              {service.label}
+                            </span>
+                          </label>
+                        );
+                      })}
                     </div>
                   </div>
 

@@ -404,7 +404,15 @@ export async function dbFetchNurses(): Promise<NurseProfile[] | null> {
       earningsPending: Number(n.earnings_pending) || 0,
       totalPayout: n.total_payout != null && !isNaN(Number(n.total_payout)) ? Number(n.total_payout) : (Number(n.earnings_pending || 0) + Number(n.referral_earnings_rupees || 0)),
       rejectionReason: n.rejection_reason || undefined,
-      currentlyWorkingAt: n.currently_working_at || n.current_workplace || undefined
+      currentlyWorkingAt: n.currently_working_at || n.current_workplace || undefined,
+      maritalStatus: n.marital_status || matchedUser?.maritalStatus || undefined,
+      district: n.district || matchedUser?.district || undefined,
+      mandal: n.mandal || matchedUser?.mandal || undefined,
+      skills: Array.isArray(n.skills)
+        ? n.skills
+        : (typeof n.skills === 'string' && n.skills.trim()
+          ? (n.skills.startsWith('[') ? (() => { try { return JSON.parse(n.skills); } catch { return []; } })() : n.skills.split(',').map((s: string) => s.trim()).filter(Boolean))
+          : (matchedUser?.skills || []))
     };
   });
 
@@ -444,13 +452,21 @@ export async function dbUpdateNurse(n: NurseProfile): Promise<boolean> {
       earnings_pending: Number(n.earningsPending) || 0,
       total_payout: totalPayoutCalc,
       rejection_reason: n.rejectionReason || null,
-      currently_working_at: n.currentlyWorkingAt || null
+      currently_working_at: n.currentlyWorkingAt || null,
+      marital_status: n.maritalStatus || null,
+      district: n.district || null,
+      mandal: n.mandal || null,
+      skills: Array.isArray(n.skills) ? n.skills : []
     };
 
     let { error } = await supabase.from('nurses').upsert(payload);
-    if (error && (error.code === '42703' || error.message?.includes('total_payout') || error.message?.includes('currently_working_at'))) {
+    if (error && (error.code === '42703' || error.message?.includes('total_payout') || error.message?.includes('currently_working_at') || error.message?.includes('marital_status') || error.message?.includes('district') || error.message?.includes('mandal') || error.message?.includes('skills'))) {
       if (error.message?.includes('total_payout') || error.code === '42703') delete payload.total_payout;
       if (error.message?.includes('currently_working_at') || error.code === '42703') delete payload.currently_working_at;
+      if (error.message?.includes('marital_status') || error.code === '42703') delete payload.marital_status;
+      if (error.message?.includes('district') || error.code === '42703') delete payload.district;
+      if (error.message?.includes('mandal') || error.code === '42703') delete payload.mandal;
+      if (error.message?.includes('skills') || error.code === '42703') delete payload.skills;
       const retry = await supabase.from('nurses').upsert(payload);
       error = retry.error;
     }
@@ -489,13 +505,21 @@ export async function dbInsertNurse(n: NurseProfile): Promise<boolean> {
       earnings_pending: Number(n.earningsPending) || 0,
       total_payout: totalPayoutCalc,
       rejection_reason: n.rejectionReason || null,
-      currently_working_at: n.currentlyWorkingAt || null
+      currently_working_at: n.currentlyWorkingAt || null,
+      marital_status: n.maritalStatus || null,
+      district: n.district || null,
+      mandal: n.mandal || null,
+      skills: Array.isArray(n.skills) ? n.skills : []
     };
 
     let { error } = await supabase.from('nurses').upsert(payload);
-    if (error && (error.code === '42703' || error.message?.includes('total_payout') || error.message?.includes('currently_working_at'))) {
+    if (error && (error.code === '42703' || error.message?.includes('total_payout') || error.message?.includes('currently_working_at') || error.message?.includes('marital_status') || error.message?.includes('district') || error.message?.includes('mandal') || error.message?.includes('skills'))) {
       if (error.message?.includes('total_payout') || error.code === '42703') delete payload.total_payout;
       if (error.message?.includes('currently_working_at') || error.code === '42703') delete payload.currently_working_at;
+      if (error.message?.includes('marital_status') || error.code === '42703') delete payload.marital_status;
+      if (error.message?.includes('district') || error.code === '42703') delete payload.district;
+      if (error.message?.includes('mandal') || error.code === '42703') delete payload.mandal;
+      if (error.message?.includes('skills') || error.code === '42703') delete payload.skills;
       const retry = await supabase.from('nurses').upsert(payload);
       error = retry.error;
     }
@@ -531,12 +555,20 @@ export async function dbUpdateNurseById(id: string, updates: Partial<NurseProfil
   if (updates.earningsPending !== undefined) payload.earnings_pending = Number(updates.earningsPending);
   if (updates.rejectionReason !== undefined) payload.rejection_reason = updates.rejectionReason;
   if (updates.currentlyWorkingAt !== undefined) payload.currently_working_at = updates.currentlyWorkingAt;
+  if (updates.maritalStatus !== undefined) payload.marital_status = updates.maritalStatus;
+  if (updates.district !== undefined) payload.district = updates.district;
+  if (updates.mandal !== undefined) payload.mandal = updates.mandal;
+  if (updates.skills !== undefined) payload.skills = Array.isArray(updates.skills) ? updates.skills : [];
 
   try {
     let { error } = await supabase.from('nurses').update(payload).eq('id', id);
-    if (error && (error.code === '42703' || error.message?.includes('total_payout') || error.message?.includes('currently_working_at'))) {
+    if (error && (error.code === '42703' || error.message?.includes('total_payout') || error.message?.includes('currently_working_at') || error.message?.includes('marital_status') || error.message?.includes('district') || error.message?.includes('mandal') || error.message?.includes('skills'))) {
       if (error.message?.includes('total_payout') || error.code === '42703') delete payload.total_payout;
       if (error.message?.includes('currently_working_at') || error.code === '42703') delete payload.currently_working_at;
+      if (error.message?.includes('marital_status') || error.code === '42703') delete payload.marital_status;
+      if (error.message?.includes('district') || error.code === '42703') delete payload.district;
+      if (error.message?.includes('mandal') || error.code === '42703') delete payload.mandal;
+      if (error.message?.includes('skills') || error.code === '42703') delete payload.skills;
       const retry = await supabase.from('nurses').update(payload).eq('id', id);
       error = retry.error;
     }
@@ -552,6 +584,10 @@ export async function dbUpdateNurseById(id: string, updates: Partial<NurseProfil
     }
     if (updates.qualification !== undefined) userPayload.designation = updates.qualification;
     if (updates.serviceArea !== undefined) userPayload.service_area = updates.serviceArea;
+    if (updates.maritalStatus !== undefined) userPayload.marital_status = updates.maritalStatus;
+    if (updates.district !== undefined) userPayload.district = updates.district;
+    if (updates.mandal !== undefined) userPayload.mandal = updates.mandal;
+    if (updates.skills !== undefined) userPayload.skills = updates.skills;
     if (Object.keys(userPayload).length > 0) {
       await supabase.from('app_users').update(userPayload).eq('id', id);
     }
@@ -1394,6 +1430,10 @@ export async function dbFetchAppUsers(): Promise<AppUser[]> {
           serviceArea: u.service_area,
           avatarUrl: u.avatar_url,
           status: u.status || status,
+          maritalStatus: u.marital_status || undefined,
+          district: u.district || undefined,
+          mandal: u.mandal || undefined,
+          skills: Array.isArray(u.skills) ? u.skills : (typeof u.skills === 'string' && u.skills.trim() ? (u.skills.startsWith('[') ? (() => { try { return JSON.parse(u.skills); } catch { return []; } })() : u.skills.split(',').map((s: string) => s.trim())) : []),
           createdAt: u.created_at
         };
       });
@@ -1549,9 +1589,21 @@ export async function dbInsertAppUser(u: AppUser): Promise<boolean> {
       email: u.email || null,
       designation: u.designation || null,
       service_area: u.serviceArea || null,
-      avatar_url: u.avatarUrl || null
+      avatar_url: u.avatarUrl || null,
+      marital_status: u.maritalStatus || null,
+      district: u.district || null,
+      mandal: u.mandal || null,
+      skills: Array.isArray(u.skills) ? u.skills : null
     };
-    const { error } = await supabase.from('app_users').upsert(payload, { onConflict: 'identifier' });
+    let { error } = await supabase.from('app_users').upsert(payload, { onConflict: 'identifier' });
+    if (error && (error.code === '42703' || error.message?.includes('marital_status') || error.message?.includes('district') || error.message?.includes('mandal') || error.message?.includes('skills'))) {
+      delete (payload as any).marital_status;
+      delete (payload as any).district;
+      delete (payload as any).mandal;
+      delete (payload as any).skills;
+      const retry = await supabase.from('app_users').upsert(payload, { onConflict: 'identifier' });
+      error = retry.error;
+    }
     if (error) {
       await supabase.from('app_users').upsert(payload, { onConflict: 'id' });
     }
@@ -1582,6 +1634,10 @@ export async function dbUpdateAppUserById(id: string, updates: Partial<AppUser>)
   if (updates.email !== undefined) payload.email = updates.email;
   if (updates.designation !== undefined) payload.designation = updates.designation;
   if (updates.serviceArea !== undefined) payload.service_area = updates.serviceArea;
+  if (updates.maritalStatus !== undefined) payload.marital_status = updates.maritalStatus;
+  if (updates.district !== undefined) payload.district = updates.district;
+  if (updates.mandal !== undefined) payload.mandal = updates.mandal;
+  if (updates.skills !== undefined) payload.skills = updates.skills;
 
   try {
     const { error } = await supabase.from('app_users').update(payload).eq('id', id);

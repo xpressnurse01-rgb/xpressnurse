@@ -153,6 +153,50 @@ interface AdminDashboardProps {
   onRefreshData?: () => Promise<void> | void;
 }
 
+export const getRequiredSkillForService = (serviceTitle: string = '', serviceId: string = ''): string | null => {
+  const sTitle = (serviceTitle || '').toLowerCase();
+  const sId = (serviceId || '').toLowerCase();
+  
+  if (sTitle.includes('saline') || sTitle.includes('iv') || sTitle.includes('cannula') || sTitle.includes('drip') || sId.includes('saline') || sId.includes('iv')) {
+    return 'IV Cannulation';
+  }
+  if (sTitle.includes('inject') || sId.includes('inject')) {
+    return 'Injections';
+  }
+  if (sTitle.includes('catheter') || sTitle.includes('foley') || sId.includes('catheter') || sId.includes('foley')) {
+    return 'Foley Replacement';
+  }
+  if (sTitle.includes('ryle') || sTitle.includes('ng tube') || sTitle.includes('tube') || sId.includes('ryle') || sId.includes('tube')) {
+    return 'Ryles Tube Replacement';
+  }
+  if (sTitle.includes('suture') || sTitle.includes('staple') || sTitle.includes('stitch') || sId.includes('suture')) {
+    return 'Suture Removal';
+  }
+  if (sTitle.includes('enema') || sId.includes('enema')) {
+    return 'Enema';
+  }
+  if (sTitle.includes('dress') || sTitle.includes('wound') || sTitle.includes('sore') || sId.includes('dressing')) {
+    return 'Dressings';
+  }
+  return null;
+};
+
+export const matchNurseSkillToService = (
+  skillsOrServiceTitle: string[] | string = [],
+  serviceTitle: string = '',
+  serviceId: string = ''
+): string | null => {
+  if (typeof skillsOrServiceTitle === 'string') {
+    return getRequiredSkillForService(skillsOrServiceTitle, serviceTitle || serviceId);
+  }
+  const reqSkill = getRequiredSkillForService(serviceTitle, serviceId);
+  if (!reqSkill) return null;
+  if (Array.isArray(skillsOrServiceTitle) && skillsOrServiceTitle.some(s => s.toLowerCase().includes(reqSkill.toLowerCase()))) {
+    return reqSkill;
+  }
+  return null;
+};
+
 export const AdminDashboard: React.FC<AdminDashboardProps> = ({
   bookings: rawBookings = [],
   nurses,
@@ -1937,6 +1981,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
   const [nurseSearch, setNurseSearch] = useState('');
   const [nurseExpFilter, setNurseExpFilter] = useState<'all' | '>10' | '5-10' | '<5'>('all');
   const [nurseOriginFilter, setNurseOriginFilter] = useState<'all' | 'referred' | 'direct'>('all');
+  const [nurseSkillFilter, setNurseSkillFilter] = useState<string>('all');
   const [copiedRefCodeId, setCopiedRefCodeId] = useState<string | null>(null);
   const [isNurseModalOpen, setIsNurseModalOpen] = useState(false);
   const [editingNurse, setEditingNurse] = useState<NurseProfile | null>(null);
@@ -1947,7 +1992,19 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
     email: '',
     qualification: 'B.Sc Nursing',
     experienceYears: 5,
-    serviceArea: 'Gachibowli' as HyderabadArea,
+    serviceArea: '' as HyderabadArea,
+    maritalStatus: 'Single',
+    district: 'Hyderabad',
+    mandal: '',
+    skills: [
+      'IV Cannulation',
+      'Injections',
+      'Foley Replacement',
+      'Ryles Tube Replacement',
+      'Suture Removal',
+      'Enema',
+      'Dressings'
+    ] as string[],
     status: 'Active',
     certificateVerified: true,
     rating: 4.9,
@@ -1977,7 +2034,19 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
       email: '',
       qualification: 'Registered Nurse (B.Sc Nursing)',
       experienceYears: 3,
-      serviceArea: 'Gachibowli',
+      serviceArea: '',
+      maritalStatus: 'Single',
+      district: 'Hyderabad',
+      mandal: '',
+      skills: [
+        'IV Cannulation',
+        'Injections',
+        'Foley Replacement',
+        'Ryles Tube Replacement',
+        'Suture Removal',
+        'Enema',
+        'Dressings'
+      ],
       status: 'Active',
       certificateVerified: true,
       rating: 4.9,
@@ -2023,7 +2092,19 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
       email: n.email,
       qualification: n.qualification,
       experienceYears: typeof n.experienceYears === 'number' ? n.experienceYears : 3,
-      serviceArea: n.serviceArea || 'Gachibowli',
+      serviceArea: n.serviceArea || '',
+      maritalStatus: n.maritalStatus || 'Single',
+      district: n.district || 'Hyderabad',
+      mandal: n.mandal || '',
+      skills: Array.isArray(n.skills) && n.skills.length > 0 ? n.skills : [
+        'IV Cannulation',
+        'Injections',
+        'Foley Replacement',
+        'Ryles Tube Replacement',
+        'Suture Removal',
+        'Enema',
+        'Dressings'
+      ],
       status: n.status || 'Active',
       certificateVerified: !!n.certificateVerified,
       rating: n.rating || 4.9,
@@ -2060,7 +2141,11 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
       email: nurseForm.email.trim(),
       qualification: nurseForm.qualification.trim(),
       experienceYears: Number(nurseForm.experienceYears) || 1,
-      serviceArea: nurseForm.serviceArea,
+      serviceArea: nurseForm.serviceArea.trim() || (nurseForm.mandal.trim() ? `${nurseForm.mandal.trim()}, ${nurseForm.district}` : nurseForm.district),
+      maritalStatus: nurseForm.maritalStatus,
+      district: nurseForm.district,
+      mandal: nurseForm.mandal.trim() || undefined,
+      skills: nurseForm.skills || [],
       pin: nurseForm.pin.trim() || undefined,
       status: (nurseForm.status as 'Active' | 'Pending Verification' | 'On Leave') || 'Active',
       totalLeads: Number(nurseForm.totalLeads) || 0,
@@ -2142,14 +2227,19 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
   };
 
   const filteredNurses = nurses.filter((n) => {
+    const q = nurseSearch.toLowerCase();
     const matchesSearch =
-      n.name.toLowerCase().includes(nurseSearch.toLowerCase()) ||
+      n.name.toLowerCase().includes(q) ||
       n.phone.includes(nurseSearch) ||
-      n.email.toLowerCase().includes(nurseSearch.toLowerCase()) ||
-      n.qualification.toLowerCase().includes(nurseSearch.toLowerCase()) ||
-      (n.serviceArea && n.serviceArea.toLowerCase().includes(nurseSearch.toLowerCase())) ||
-      (n.referredByNurseName && n.referredByNurseName.toLowerCase().includes(nurseSearch.toLowerCase())) ||
-      (n.referralCode && n.referralCode.toLowerCase().includes(nurseSearch.toLowerCase()));
+      n.email.toLowerCase().includes(q) ||
+      n.qualification.toLowerCase().includes(q) ||
+      (n.serviceArea && n.serviceArea.toLowerCase().includes(q)) ||
+      (n.district && n.district.toLowerCase().includes(q)) ||
+      (n.mandal && n.mandal.toLowerCase().includes(q)) ||
+      (n.maritalStatus && n.maritalStatus.toLowerCase().includes(q)) ||
+      (Array.isArray(n.skills) && n.skills.some((s) => s.toLowerCase().includes(q))) ||
+      (n.referredByNurseName && n.referredByNurseName.toLowerCase().includes(q)) ||
+      (n.referralCode && n.referralCode.toLowerCase().includes(q));
 
     const exp = n.experienceYears || (parseInt(n.experience || '0', 10) || 0);
     const matchesExp =
@@ -2163,7 +2253,11 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
         nurseOriginFilter === 'referred' ? Boolean(n.referredByNurseId) :
           !n.referredByNurseId;
 
-    return matchesSearch && matchesExp && matchesOrigin;
+    const matchesSkill =
+      nurseSkillFilter === 'all' ? true :
+        Array.isArray(n.skills) && n.skills.some((s) => s.toLowerCase().includes(nurseSkillFilter.toLowerCase()));
+
+    return matchesSearch && matchesExp && matchesOrigin && matchesSkill;
   });
 
   // --------------------------------------------------------------------------
@@ -3455,24 +3549,32 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                             <div style={{ display: 'flex', gap: '0.4rem', alignItems: 'center', flexWrap: 'wrap' }}>
                               {nurses
                                 .filter((n) => n.serviceArea === b.area && n.certificateVerified)
-                                .map((matchingNurse) => (
-                                  <button
-                                    key={matchingNurse.id}
-                                    onClick={() =>
-                                      onAssignOrder(
-                                        b.id,
-                                        matchingNurse.id,
-                                        `Rule 2 Matched: Verified ${b.area} Area Nurse (${matchingNurse.name})`
-                                      )
-                                    }
-                                    className="btn btn-primary btn-sm"
-                                    title={`Route to verified ${matchingNurse.name} (${b.area})`}
-                                    style={{ padding: '0.35rem 0.65rem', fontSize: '0.8rem', whiteSpace: 'nowrap' }}
-                                  >
-                                    <span>Assign to {matchingNurse.name.split(' ')[0]} RN</span>
-                                    <ArrowRight size={13} />
-                                  </button>
-                                ))}
+                                .map((matchingNurse) => {
+                                  const reqSkill = matchNurseSkillToService(matchingNurse.skills, b.serviceTitle, b.serviceId);
+                                  return (
+                                    <button
+                                      key={matchingNurse.id}
+                                      onClick={() =>
+                                        onAssignOrder(
+                                          b.id,
+                                          matchingNurse.id,
+                                          `Rule 2 Matched: Verified ${b.area} Area Nurse (${matchingNurse.name})`
+                                        )
+                                      }
+                                      className="btn btn-primary btn-sm"
+                                      title={`Route to verified ${matchingNurse.name} (${b.area})${reqSkill ? ` • Trained in ${reqSkill}` : ''}`}
+                                      style={{ padding: '0.35rem 0.65rem', fontSize: '0.8rem', whiteSpace: 'nowrap', display: 'inline-flex', alignItems: 'center', gap: '0.35rem' }}
+                                    >
+                                      <span>Assign to {matchingNurse.name.split(' ')[0]} RN</span>
+                                      {reqSkill && (
+                                        <span style={{ fontSize: '0.67rem', background: '#059669', color: '#FFF', padding: '1px 5px', borderRadius: 4, fontWeight: 800 }}>
+                                          ✓ {reqSkill}
+                                        </span>
+                                      )}
+                                      <ArrowRight size={13} />
+                                    </button>
+                                  );
+                                })}
 
                               <button
                                 type="button"
@@ -4447,6 +4549,44 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                     &lt;5 Yrs ({expUnder5Count})
                   </button>
                 </div>
+
+                {/* Clinical Procedure Skill Filter */}
+                <div style={{ display: 'flex', gap: '0.35rem', alignItems: 'center', flexWrap: 'wrap', width: '100%', paddingTop: '0.55rem', borderTop: '1px dashed #E2E8F0', marginTop: '0.25rem' }}>
+                  <span style={{ fontSize: '0.78rem', color: '#0F766E', fontWeight: 800 }}>🩺 Procedure Skill:</span>
+                  {[
+                    { id: 'all', label: 'All Services' },
+                    { id: 'IV Cannulation', label: 'IV Cannulation' },
+                    { id: 'Injections', label: 'Injections' },
+                    { id: 'Foley Replacement', label: 'Foley Replacement' },
+                    { id: 'Ryles Tube Replacement', label: "Ryle's Tube" },
+                    { id: 'Suture Removal', label: 'Suture Removal' },
+                    { id: 'Enema', label: 'Enema' },
+                    { id: 'Dressings', label: 'Dressings' }
+                  ].map((sk) => {
+                    const isSelected = nurseSkillFilter === sk.id;
+                    const count = sk.id === 'all'
+                      ? nurses.length
+                      : nurses.filter((n) => Array.isArray(n.skills) && n.skills.some((s) => s.toLowerCase().includes(sk.id.toLowerCase()))).length;
+                    return (
+                      <button
+                        key={sk.id}
+                        type="button"
+                        onClick={() => setNurseSkillFilter(sk.id)}
+                        className={`btn btn-sm ${isSelected ? 'btn-primary' : 'btn-outline'}`}
+                        style={{
+                          padding: '0.2rem 0.55rem',
+                          fontSize: '0.72rem',
+                          borderRadius: 9999,
+                          borderColor: isSelected ? undefined : '#CCFBF1',
+                          color: isSelected ? '#FFF' : '#0F766E',
+                          background: isSelected ? '#0D9488' : '#F0FDFA'
+                        }}
+                      >
+                        {sk.label} ({count})
+                      </button>
+                    );
+                  })}
+                </div>
               </div>
 
               {filteredNurses.length === 0 ? (
@@ -4500,9 +4640,10 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                               </button>
                             </div>
                           </th>
-                          <th>Service Area (Rule 2)</th>
+                          <th>Location & District (Rule 2)</th>
                           <th>Qualification</th>
                           <th>Currently Working At</th>
+                          <th>Procedures Known</th>
                           <th>Experience</th>
                           <th>Visits & Referrals (Ref Done)</th>
                           <th>Points</th>
@@ -4558,7 +4699,14 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                                     <User size={20} />
                                   </div>
                                   <div>
-                                    <strong>{n.name}</strong>
+                                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', flexWrap: 'wrap' }}>
+                                      <strong>{n.name}</strong>
+                                      {n.maritalStatus && (
+                                        <span style={{ fontSize: '0.68rem', padding: '1px 6px', borderRadius: 9999, background: '#F1F5F9', color: '#475569', border: '1px solid #E2E8F0', fontWeight: 600 }}>
+                                          {n.maritalStatus}
+                                        </span>
+                                      )}
+                                    </div>
                                     <div style={{ fontSize: '0.78rem', color: 'var(--neutral-500)' }}>{n.phone}</div>
                                   </div>
                                 </div>
@@ -4681,10 +4829,17 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                                 </div>
                               </td>
                               <td>
-                                <span className="status-pill info">
-                                  <MapPin size={12} />
-                                  <span>{n.serviceArea}</span>
-                                </span>
+                                <div style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
+                                  <span className="status-pill info" style={{ alignSelf: 'flex-start' }}>
+                                    <MapPin size={12} />
+                                    <span>{n.serviceArea || 'Not specified'}</span>
+                                  </span>
+                                  {(n.district || n.mandal) && (
+                                    <span style={{ fontSize: '0.72rem', color: '#64748B', display: 'flex', alignItems: 'center', gap: '3px' }}>
+                                      📍 {[n.mandal, n.district].filter(Boolean).join(', ')}
+                                    </span>
+                                  )}
+                                </div>
                               </td>
                               <td>{n.qualification}</td>
                               <td>
@@ -4706,6 +4861,31 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                                   </span>
                                 ) : (
                                   <span style={{ color: '#94A3B8', fontSize: '0.78rem' }}>—</span>
+                                )}
+                              </td>
+                              <td style={{ minWidth: 170, maxWidth: 220 }}>
+                                {Array.isArray(n.skills) && n.skills.length > 0 ? (
+                                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: '3px' }}>
+                                    {n.skills.map((skill, sIdx) => (
+                                      <span
+                                        key={sIdx}
+                                        style={{
+                                          fontSize: '0.68rem',
+                                          padding: '1px 6px',
+                                          borderRadius: 4,
+                                          background: '#F0FDF4',
+                                          color: '#15803D',
+                                          border: '1px solid #BBF7D0',
+                                          fontWeight: 600,
+                                          whiteSpace: 'nowrap'
+                                        }}
+                                      >
+                                        ✓ {skill}
+                                      </span>
+                                    ))}
+                                  </div>
+                                ) : (
+                                  <span style={{ color: '#94A3B8', fontSize: '0.74rem', fontStyle: 'italic' }}>None listed</span>
                                 )}
                               </td>
                               <td>{n.experienceYears} Years</td>
@@ -6682,8 +6862,42 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                                   {u.name.split(' ').map((n) => n[0]).slice(0, 2).join('')}
                                 </div>
                                 <div>
-                                  <div style={{ fontWeight: 700, color: 'var(--primary-navy-950)' }}>{u.name}</div>
+                                  <div style={{ fontWeight: 700, color: 'var(--primary-navy-950)', display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
+                                    <span>{u.name}</span>
+                                    {u.role === 'doctor' && (
+                                      <span style={{ fontSize: '0.68rem', padding: '1px 6px', borderRadius: 9999, background: '#EFF6FF', color: '#1D4ED8', border: '1px solid #BFDBFE', fontWeight: 700 }}>
+                                        Doctor
+                                      </span>
+                                    )}
+                                  </div>
                                   <div style={{ fontSize: '0.75rem', color: 'var(--neutral-500)' }}>{cleanUserDesignation(u.designation) || u.role}</div>
+                                  {u.role === 'doctor' && (
+                                    <div style={{ fontSize: '0.72rem', color: '#64748B', marginTop: '2px', display: 'flex', alignItems: 'center', gap: '0.4rem', flexWrap: 'wrap' }}>
+                                      <span>Council Reg: <strong>{u.councilRegistrationNumber || 'Optional / Not given'}</strong></span>
+                                      {(u.certificateUrl || u.avatarUrl) && (
+                                        <a
+                                          href={u.certificateUrl || u.avatarUrl}
+                                          target="_blank"
+                                          rel="noopener noreferrer"
+                                          style={{
+                                            fontSize: '0.68rem',
+                                            color: '#0284C7',
+                                            background: '#F0F9FF',
+                                            border: '1px solid #BAE6FD',
+                                            borderRadius: 4,
+                                            padding: '1px 5px',
+                                            textDecoration: 'none',
+                                            fontWeight: 750,
+                                            display: 'inline-flex',
+                                            alignItems: 'center',
+                                            gap: '2px'
+                                          }}
+                                        >
+                                          📄 View Certificate
+                                        </a>
+                                      )}
+                                    </div>
+                                  )}
                                 </div>
                               </div>
                             </td>
@@ -8058,6 +8272,34 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                               <span>•</span>
                               <span>Active Visits: <strong>{activeCount}</strong></span>
                             </div>
+
+                            {/* Procedure Skill Match Indicator */}
+                            {(() => {
+                              const reqSkill = matchNurseSkillToService(searchAssignBooking.serviceTitle || searchAssignBooking.serviceId);
+                              const isSkillMatch = reqSkill && Array.isArray(n.skills) && n.skills.includes(reqSkill);
+                              if (!reqSkill && (!n.skills || n.skills.length === 0)) return null;
+
+                              return (
+                                <div style={{ marginTop: '0.35rem', display: 'flex', alignItems: 'center', gap: '0.35rem', flexWrap: 'wrap' }}>
+                                  {reqSkill && (
+                                    isSkillMatch ? (
+                                      <span style={{ fontSize: '0.72rem', background: '#DCFCE7', color: '#15803D', border: '1px solid #86EFAC', padding: '1px 7px', borderRadius: 9999, fontWeight: 800 }}>
+                                        ✓ Trained in {reqSkill}
+                                      </span>
+                                    ) : (
+                                      <span style={{ fontSize: '0.72rem', background: '#FEF3C7', color: '#B45309', border: '1px solid #FCD34D', padding: '1px 7px', borderRadius: 9999, fontWeight: 700 }}>
+                                        ⚠️ Requires {reqSkill} (Not selected by nurse)
+                                      </span>
+                                    )
+                                  )}
+                                  {Array.isArray(n.skills) && n.skills.length > 0 && (
+                                    <span style={{ fontSize: '0.7rem', color: '#64748B' }}>
+                                      Procedures: {n.skills.join(', ')}
+                                    </span>
+                                  )}
+                                </div>
+                              );
+                            })()}
                           </div>
                         </div>
 
@@ -8617,7 +8859,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
 
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem', marginBottom: '0.85rem' }}>
                 <div>
-                  <label className="form-label" style={{ fontSize: '0.78rem', fontWeight: 700 }}>SERVICE ZONE / AREA</label>
+                  <label className="form-label" style={{ fontSize: '0.78rem', fontWeight: 700 }}>SERVICE ZONE / LOCALITY</label>
                   <input
                     type="text"
                     list="nurse-modal-areas-list"
@@ -8625,7 +8867,6 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                     placeholder="e.g. Gachibowli, Kondapur, LB Nagar..."
                     value={nurseForm.serviceArea}
                     onChange={(e) => setNurseForm({ ...nurseForm, serviceArea: e.target.value })}
-                    required
                   />
                   <datalist id="nurse-modal-areas-list">
                     <option value="Gachibowli" />
@@ -8649,6 +8890,122 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                     <option value="On-Duty">On-Duty (Currently on visit)</option>
                     <option value="Off-Duty">Off-Duty (Unavailable)</option>
                   </select>
+                </div>
+              </div>
+
+              {/* Marital Status, District & Mandal */}
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '0.75rem', marginBottom: '0.85rem' }}>
+                <div>
+                  <label className="form-label" style={{ fontSize: '0.78rem', fontWeight: 700 }}>MARITAL STATUS</label>
+                  <select
+                    className="form-control"
+                    value={nurseForm.maritalStatus}
+                    onChange={(e) => setNurseForm({ ...nurseForm, maritalStatus: e.target.value })}
+                  >
+                    <option value="Single">Single / Unmarried</option>
+                    <option value="Married">Married</option>
+                    <option value="Divorced">Divorced</option>
+                    <option value="Widowed">Widowed</option>
+                    <option value="Other">Other</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="form-label" style={{ fontSize: '0.78rem', fontWeight: 700 }}>DISTRICT</label>
+                  <select
+                    className="form-control"
+                    value={nurseForm.district}
+                    onChange={(e) => setNurseForm({ ...nurseForm, district: e.target.value })}
+                  >
+                    <option value="Hyderabad">Hyderabad</option>
+                    <option value="Ranga Reddy">Ranga Reddy</option>
+                    <option value="Medchal-Malkajgiri">Medchal-Malkajgiri</option>
+                    <option value="Sangareddy">Sangareddy</option>
+                    <option value="Other">Other District</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="form-label" style={{ fontSize: '0.78rem', fontWeight: 700 }}>MANDAL / TEHSIL</label>
+                  <input
+                    type="text"
+                    placeholder="e.g. Serilingampally"
+                    value={nurseForm.mandal}
+                    onChange={(e) => setNurseForm({ ...nurseForm, mandal: e.target.value })}
+                    className="form-control"
+                  />
+                </div>
+              </div>
+
+              {/* Clinical Procedures / Services Known Multi-Select */}
+              <div style={{ marginBottom: '1rem', background: '#F8FAFC', padding: '0.85rem', borderRadius: 8, border: '1px solid #E2E8F0' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.5rem' }}>
+                  <label className="form-label" style={{ fontSize: '0.8rem', fontWeight: 800, color: '#0F766E', margin: 0 }}>
+                    CLINICAL SERVICES / PROCEDURES KNOWN
+                  </label>
+                  <div style={{ display: 'flex', gap: '0.5rem' }}>
+                    <button
+                      type="button"
+                      onClick={() => setNurseForm({ ...nurseForm, skills: ['IV Cannulation', 'Injections', 'Foley Replacement', 'Ryles Tube Replacement', 'Suture Removal', 'Enema', 'Dressings'] })}
+                      style={{ fontSize: '0.7rem', color: '#0D9488', background: 'transparent', border: 'none', cursor: 'pointer', fontWeight: 700 }}
+                    >
+                      Select All
+                    </button>
+                    <span style={{ color: '#CBD5E1' }}>|</span>
+                    <button
+                      type="button"
+                      onClick={() => setNurseForm({ ...nurseForm, skills: [] })}
+                      style={{ fontSize: '0.7rem', color: '#EF4444', background: 'transparent', border: 'none', cursor: 'pointer', fontWeight: 700 }}
+                    >
+                      Clear
+                    </button>
+                  </div>
+                </div>
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '0.45rem' }}>
+                  {[
+                    { id: 'IV Cannulation', label: 'IV Cannulation' },
+                    { id: 'Injections', label: 'Injections (IM/IV/SC)' },
+                    { id: 'Foley Replacement', label: 'Foley Replacement' },
+                    { id: 'Ryles Tube Replacement', label: 'Ryles Tube Replacement' },
+                    { id: 'Suture Removal', label: 'Suture Removal' },
+                    { id: 'Enema', label: 'Enema' },
+                    { id: 'Dressings', label: 'Dressings (Wound Care)' }
+                  ].map((service) => {
+                    const isChecked = Array.isArray(nurseForm.skills) && nurseForm.skills.includes(service.id);
+                    return (
+                      <label
+                        key={service.id}
+                        style={{
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: '0.45rem',
+                          padding: '0.35rem 0.6rem',
+                          borderRadius: 6,
+                          background: isChecked ? '#F0FDF4' : '#FFFFFF',
+                          border: `1px solid ${isChecked ? '#86EFAC' : '#E2E8F0'}`,
+                          cursor: 'pointer',
+                          fontSize: '0.78rem',
+                          fontWeight: isChecked ? 700 : 500,
+                          color: isChecked ? '#15803D' : '#334155'
+                        }}
+                      >
+                        <input
+                          type="checkbox"
+                          checked={isChecked}
+                          onChange={(e) => {
+                            const cur = Array.isArray(nurseForm.skills) ? [...nurseForm.skills] : [];
+                            if (e.target.checked) {
+                              if (!cur.includes(service.id)) cur.push(service.id);
+                            } else {
+                              const idx = cur.indexOf(service.id);
+                              if (idx > -1) cur.splice(idx, 1);
+                            }
+                            setNurseForm({ ...nurseForm, skills: cur });
+                          }}
+                          style={{ accentColor: '#10B981', cursor: 'pointer' }}
+                        />
+                        <span>{service.label}</span>
+                      </label>
+                    );
+                  })}
                 </div>
               </div>
 

@@ -136,6 +136,10 @@ export interface NurseProfile {
   referredByNurseName?: string;
   referralCode?: string;
   currentlyWorkingAt?: string;
+  maritalStatus?: string;
+  district?: string;
+  mandal?: string;
+  skills?: string[];
 }
 
 export interface NurseLead {
@@ -208,6 +212,10 @@ export interface AppUser {
   councilRegistrationNumber?: string;
   certificateUrl?: string;
   experienceYears?: number | string;
+  maritalStatus?: string;
+  district?: string;
+  mandal?: string;
+  skills?: string[];
   createdAt?: string;
 }
 
