@@ -414,7 +414,14 @@ export async function dbFetchNurses(): Promise<NurseProfile[] | null> {
         ? n.skills
         : (typeof n.skills === 'string' && n.skills.trim()
           ? (n.skills.startsWith('[') ? (() => { try { return JSON.parse(n.skills); } catch { return []; } })() : n.skills.split(',').map((s: string) => s.trim()).filter(Boolean))
-          : (matchedUser?.skills || []))
+          : (matchedUser?.skills || [])),
+      readyForHomeVisit: n.ready_for_home_visit !== undefined && n.ready_for_home_visit !== null
+        ? Boolean(n.ready_for_home_visit)
+        : (matchedUser?.readyForHomeVisit !== undefined && matchedUser?.readyForHomeVisit !== null
+          ? Boolean(matchedUser.readyForHomeVisit)
+          : (matchedUser?.ready_for_home_visit !== undefined && matchedUser?.ready_for_home_visit !== null
+            ? Boolean(matchedUser.ready_for_home_visit)
+            : true))
     };
   });
 
@@ -461,11 +468,13 @@ export async function dbUpdateNurse(n: NurseProfile): Promise<boolean> {
       mandal: n.mandal || null,
       village: n.village || null,
       skills: Array.isArray(n.skills) ? n.skills : [],
+      ready_for_home_visit: n.readyForHomeVisit !== undefined ? Boolean(n.readyForHomeVisit) : true,
       referral_code: n.referralCode || generateNurseReferralCode(n.name, n.id, n.phone)
     };
 
     let { error } = await supabase.from('nurses').upsert(payload);
-    if (error && (error.code === '42703' || error.message?.includes('total_payout') || error.message?.includes('currently_working_at') || error.message?.includes('marital_status') || error.message?.includes('city') || error.message?.includes('district') || error.message?.includes('mandal') || error.message?.includes('village') || error.message?.includes('skills'))) {
+    if (error && (error.code === '42703' || error.message?.includes('ready_for_home_visit') || error.message?.includes('total_payout') || error.message?.includes('currently_working_at') || error.message?.includes('marital_status') || error.message?.includes('city') || error.message?.includes('district') || error.message?.includes('mandal') || error.message?.includes('village') || error.message?.includes('skills'))) {
+      if (error.message?.includes('ready_for_home_visit') || error.code === '42703') delete payload.ready_for_home_visit;
       if (error.message?.includes('total_payout') || error.code === '42703') delete payload.total_payout;
       if (error.message?.includes('currently_working_at') || error.code === '42703') delete payload.currently_working_at;
       if (error.message?.includes('marital_status') || error.code === '42703') delete payload.marital_status;
@@ -495,9 +504,14 @@ export async function dbUpdateNurse(n: NurseProfile): Promise<boolean> {
         village: n.village || null,
         skills: Array.isArray(n.skills) ? n.skills : [],
         experience_years: !isNaN(Number(n.experienceYears)) ? Math.max(0, Math.round(Number(n.experienceYears))) : 3,
+        ready_for_home_visit: n.readyForHomeVisit !== undefined ? Boolean(n.readyForHomeVisit) : true,
         certificate_url: n.certificateUrl || null
       };
-      await supabase.from('app_users').update(userPayload).eq('id', n.id);
+      let { error: uErr } = await supabase.from('app_users').update(userPayload).eq('id', n.id);
+      if (uErr && (uErr.code === '42703' || uErr.message?.includes('ready_for_home_visit'))) {
+        delete userPayload.ready_for_home_visit;
+        await supabase.from('app_users').update(userPayload).eq('id', n.id);
+      }
     } catch {}
 
     return !error;
@@ -542,11 +556,13 @@ export async function dbInsertNurse(n: NurseProfile): Promise<boolean> {
       mandal: n.mandal || null,
       village: n.village || null,
       skills: Array.isArray(n.skills) ? n.skills : [],
+      ready_for_home_visit: n.readyForHomeVisit !== undefined ? Boolean(n.readyForHomeVisit) : true,
       referral_code: n.referralCode || generateNurseReferralCode(n.name, n.id, n.phone)
     };
 
     let { error } = await supabase.from('nurses').upsert(payload);
-    if (error && (error.code === '42703' || error.message?.includes('total_payout') || error.message?.includes('currently_working_at') || error.message?.includes('marital_status') || error.message?.includes('city') || error.message?.includes('district') || error.message?.includes('mandal') || error.message?.includes('village') || error.message?.includes('skills'))) {
+    if (error && (error.code === '42703' || error.message?.includes('ready_for_home_visit') || error.message?.includes('total_payout') || error.message?.includes('currently_working_at') || error.message?.includes('marital_status') || error.message?.includes('city') || error.message?.includes('district') || error.message?.includes('mandal') || error.message?.includes('village') || error.message?.includes('skills'))) {
+      if (error.message?.includes('ready_for_home_visit') || error.code === '42703') delete payload.ready_for_home_visit;
       if (error.message?.includes('total_payout') || error.code === '42703') delete payload.total_payout;
       if (error.message?.includes('currently_working_at') || error.code === '42703') delete payload.currently_working_at;
       if (error.message?.includes('marital_status') || error.code === '42703') delete payload.marital_status;
@@ -596,11 +612,13 @@ export async function dbUpdateNurseById(id: string, updates: Partial<NurseProfil
   if (updates.mandal !== undefined) payload.mandal = updates.mandal;
   if (updates.village !== undefined) payload.village = updates.village;
   if (updates.skills !== undefined) payload.skills = Array.isArray(updates.skills) ? updates.skills : [];
+  if (updates.readyForHomeVisit !== undefined) payload.ready_for_home_visit = Boolean(updates.readyForHomeVisit);
   if (updates.referralCode !== undefined) payload.referral_code = updates.referralCode;
 
   try {
     let { error } = await supabase.from('nurses').update(payload).eq('id', id);
-    if (error && (error.code === '42703' || error.message?.includes('total_payout') || error.message?.includes('currently_working_at') || error.message?.includes('marital_status') || error.message?.includes('city') || error.message?.includes('district') || error.message?.includes('mandal') || error.message?.includes('village') || error.message?.includes('skills'))) {
+    if (error && (error.code === '42703' || error.message?.includes('ready_for_home_visit') || error.message?.includes('total_payout') || error.message?.includes('currently_working_at') || error.message?.includes('marital_status') || error.message?.includes('city') || error.message?.includes('district') || error.message?.includes('mandal') || error.message?.includes('village') || error.message?.includes('skills'))) {
+      if (error.message?.includes('ready_for_home_visit') || error.code === '42703') delete payload.ready_for_home_visit;
       if (error.message?.includes('total_payout') || error.code === '42703') delete payload.total_payout;
       if (error.message?.includes('currently_working_at') || error.code === '42703') delete payload.currently_working_at;
       if (error.message?.includes('marital_status') || error.code === '42703') delete payload.marital_status;
@@ -631,10 +649,15 @@ export async function dbUpdateNurseById(id: string, updates: Partial<NurseProfil
     if (updates.village !== undefined) userPayload.village = updates.village;
     if (updates.skills !== undefined) userPayload.skills = updates.skills;
     if (updates.status !== undefined) userPayload.status = updates.status;
+    if (updates.readyForHomeVisit !== undefined) userPayload.ready_for_home_visit = Boolean(updates.readyForHomeVisit);
     if (updates.experienceYears !== undefined) userPayload.experience_years = !isNaN(Number(updates.experienceYears)) ? Math.max(0, Math.round(Number(updates.experienceYears))) : 3;
     if (updates.certificateUrl !== undefined) userPayload.certificate_url = updates.certificateUrl;
     if (Object.keys(userPayload).length > 0) {
-      await supabase.from('app_users').update(userPayload).eq('id', id);
+      let { error: upErr } = await supabase.from('app_users').update(userPayload).eq('id', id);
+      if (upErr && (upErr.code === '42703' || upErr.message?.includes('ready_for_home_visit'))) {
+        delete userPayload.ready_for_home_visit;
+        await supabase.from('app_users').update(userPayload).eq('id', id);
+      }
     }
 
     return !error;
@@ -1658,10 +1681,12 @@ export async function dbInsertAppUser(u: AppUser): Promise<boolean> {
       district: u.district || null,
       mandal: u.mandal || null,
       village: u.village || null,
-      skills: Array.isArray(u.skills) ? u.skills : null
+      skills: Array.isArray(u.skills) ? u.skills : null,
+      ready_for_home_visit: u.readyForHomeVisit !== undefined ? Boolean(u.readyForHomeVisit) : true
     };
     let { error } = await supabase.from('app_users').upsert(payload, { onConflict: 'identifier' });
-    if (error && (error.code === '42703' || error.message?.includes('marital_status') || error.message?.includes('city') || error.message?.includes('district') || error.message?.includes('mandal') || error.message?.includes('village') || error.message?.includes('skills'))) {
+    if (error && (error.code === '42703' || error.message?.includes('ready_for_home_visit') || error.message?.includes('marital_status') || error.message?.includes('city') || error.message?.includes('district') || error.message?.includes('mandal') || error.message?.includes('village') || error.message?.includes('skills'))) {
+      delete (payload as any).ready_for_home_visit;
       delete (payload as any).marital_status;
       delete (payload as any).city;
       delete (payload as any).district;
@@ -1714,9 +1739,15 @@ export async function dbUpdateAppUserById(id: string, updates: Partial<AppUser>)
   if (updates.mandal !== undefined) payload.mandal = updates.mandal;
   if (updates.village !== undefined) payload.village = updates.village;
   if (updates.skills !== undefined) payload.skills = updates.skills;
+  if (updates.readyForHomeVisit !== undefined) payload.ready_for_home_visit = Boolean(updates.readyForHomeVisit);
 
   try {
-    const { error } = await supabase.from('app_users').update(payload).eq('id', id);
+    let { error } = await supabase.from('app_users').update(payload).eq('id', id);
+    if (error && (error.code === '42703' || error.message?.includes('ready_for_home_visit'))) {
+      delete payload.ready_for_home_visit;
+      const retry = await supabase.from('app_users').update(payload).eq('id', id);
+      error = retry.error;
+    }
     if (!error) {
       try {
         if (typeof window !== 'undefined' && typeof window.localStorage !== 'undefined') {

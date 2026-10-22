@@ -78,6 +78,7 @@ export const LoginPage: React.FC<LoginPageProps> = ({
   const [regMandal, setRegMandal] = useState<string>('');
   const [regVillage, setRegVillage] = useState<string>('');
   const [regSelectedSkills, setRegSelectedSkills] = useState<string[]>([]);
+  const [regReadyForHomeVisit, setRegReadyForHomeVisit] = useState<boolean>(true);
   const [regQualification, setRegQualification] = useState<string>('B.Sc Nursing (Registered RN)');
   const [regCurrentlyWorkingAt, setRegCurrentlyWorkingAt] = useState<string>('');
   const [regDoctorSpecialization, setRegDoctorSpecialization] = useState<string>('');
@@ -291,6 +292,7 @@ export const LoginPage: React.FC<LoginPageProps> = ({
         mandal: regCity !== 'Hyderabad' ? (regMandal.trim() || undefined) : undefined,
         village: regCity !== 'Hyderabad' ? (regVillage.trim() || undefined) : undefined,
         skills: regSelectedSkills,
+        readyForHomeVisit: regReadyForHomeVisit,
         pin: regPin.trim(),
         status: 'Pending Verification',
         totalLeads: 0,
@@ -326,7 +328,8 @@ export const LoginPage: React.FC<LoginPageProps> = ({
         district: regCity !== 'Hyderabad' ? (regDistrict.trim() || undefined) : 'Hyderabad',
         mandal: regCity !== 'Hyderabad' ? (regMandal.trim() || undefined) : undefined,
         village: regCity !== 'Hyderabad' ? (regVillage.trim() || undefined) : undefined,
-        skills: regSelectedSkills
+        skills: regSelectedSkills,
+        readyForHomeVisit: regReadyForHomeVisit
       };
       
       await dbInsertNurse(newNurse);
@@ -1133,7 +1136,8 @@ export const LoginPage: React.FC<LoginPageProps> = ({
                             'Ryles Tube Replacement',
                             'Suture Removal',
                             'Enema',
-                            'Dressings'
+                            'Dressings',
+                            'Technician'
                           ])}
                           style={{
                             background: '#0284C7',
@@ -1175,7 +1179,8 @@ export const LoginPage: React.FC<LoginPageProps> = ({
                         { name: 'Ryles Tube Replacement', label: '🩹 Ryles Tube (NG)' },
                         { name: 'Suture Removal', label: '✂️ Suture Removal' },
                         { name: 'Enema', label: '🧴 Enema' },
-                        { name: 'Dressings', label: '🩹 Wound Dressings' }
+                        { name: 'Dressings', label: '🩹 Wound Dressings' },
+                        { name: 'Technician', label: '🔬 Technician (Lab / OT / Dialysis)' }
                       ].map((service) => {
                         const isChecked = regSelectedSkills.includes(service.name);
                         return (
@@ -1220,9 +1225,70 @@ export const LoginPage: React.FC<LoginPageProps> = ({
                     </div>
                   </div>
 
+                  {/* Home Visit Readiness */}
+                  <div className="form-group" style={{ marginBottom: '0.85rem' }}>
+                    <label className="form-label" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '0.35rem' }}>
+                      <span style={{ fontWeight: 700 }}>Ready to do Home Visits? *</span>
+                      <span style={{ fontSize: '0.72rem', fontWeight: 800, color: regReadyForHomeVisit ? '#059669' : '#D97706', background: regReadyForHomeVisit ? '#ECFDF5' : '#FFFBEB', padding: '1px 8px', borderRadius: 9999, border: regReadyForHomeVisit ? '1px solid #A7F3D0' : '1px solid #FDE68A' }}>
+                        {regReadyForHomeVisit ? '✓ Ready for Home Visits' : '✗ Clinic / Teleconsultation only'}
+                      </span>
+                    </label>
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.65rem' }}>
+                      <button
+                        type="button"
+                        onClick={() => setRegReadyForHomeVisit(true)}
+                        style={{
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          gap: '0.5rem',
+                          padding: '0.65rem 0.75rem',
+                          borderRadius: 10,
+                          border: regReadyForHomeVisit ? '2px solid #059669' : '1px solid #CBD5E1',
+                          background: regReadyForHomeVisit ? '#ECFDF5' : '#FFFFFF',
+                          color: regReadyForHomeVisit ? '#065F46' : '#64748B',
+                          fontWeight: regReadyForHomeVisit ? 800 : 600,
+                          fontSize: '0.84rem',
+                          cursor: 'pointer',
+                          transition: 'all 0.15s ease'
+                        }}
+                      >
+                        <span style={{ fontSize: '1.1rem' }}>🏠</span>
+                        <span>Yes, Ready</span>
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setRegReadyForHomeVisit(false)}
+                        style={{
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          gap: '0.5rem',
+                          padding: '0.65rem 0.75rem',
+                          borderRadius: 10,
+                          border: !regReadyForHomeVisit ? '2px solid #E11D48' : '1px solid #CBD5E1',
+                          background: !regReadyForHomeVisit ? '#FFF1F2' : '#FFFFFF',
+                          color: !regReadyForHomeVisit ? '#9F1239' : '#64748B',
+                          fontWeight: !regReadyForHomeVisit ? 800 : 600,
+                          fontSize: '0.84rem',
+                          cursor: 'pointer',
+                          transition: 'all 0.15s ease'
+                        }}
+                      >
+                        <span style={{ fontSize: '1.1rem' }}>🏢</span>
+                        <span>Not Now</span>
+                      </button>
+                    </div>
+                    <div style={{ fontSize: '0.72rem', color: '#64748B', marginTop: '0.3rem' }}>
+                      {regReadyForHomeVisit 
+                        ? 'Doorstep nursing visits can be assigned to you in your selected area.' 
+                        : 'You will only be available for hospital/clinic support or consultations.'}
+                    </div>
+                  </div>
+
                   {/* Qualification */}
                   <div className="form-group" style={{ marginBottom: '0.75rem' }}>
-                    <label className="form-label">Nursing Qualification *</label>
+                    <label className="form-label">Nursing / Clinical Qualification *</label>
                     <select
                       value={regQualification}
                       onChange={(e) => setRegQualification(e.target.value)}
@@ -1233,6 +1299,9 @@ export const LoginPage: React.FC<LoginPageProps> = ({
                       <option value="Post Basic B.Sc Nursing">Post Basic B.Sc Nursing</option>
                       <option value="M.Sc Nursing">M.Sc Nursing</option>
                       <option value="ANM (Auxiliary Nurse)">ANM (Auxiliary Nurse)</option>
+                      <option value="Clinical / Medical Technician">Clinical / Medical Technician</option>
+                      <option value="Dialysis / Lab / OT Technician">Dialysis / Lab / OT Technician</option>
+                      <option value="Emergency Medical Technician (EMT)">Emergency Medical Technician (EMT)</option>
                     </select>
                   </div>
 
@@ -1252,7 +1321,7 @@ export const LoginPage: React.FC<LoginPageProps> = ({
                   </div>
 
                   <div className="form-group" style={{ marginBottom: '0.75rem' }}>
-                    <label className="form-label">Nursing Certificate Upload (Required)</label>
+                    <label className="form-label">Nursing / Professional Certificate Upload (Required)</label>
                     <div style={{ background: '#F8FAFC', border: '1.5px dashed #CBD5E1', borderRadius: 8, padding: '1rem', textAlign: 'center' }}>
                       <input type="file" id="cert-upload" accept="image/*,.pdf" style={{ display: 'none' }} onChange={e => { if(e.target.files && e.target.files[0]) setRegCertificate(e.target.files[0]) }} />
                       <label htmlFor="cert-upload" style={{ cursor: 'pointer', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '0.5rem' }}>
@@ -1264,7 +1333,7 @@ export const LoginPage: React.FC<LoginPageProps> = ({
                         ) : (
                           <>
                             <UploadCloud size={24} style={{ color: '#64748B' }} />
-                            <span style={{ fontSize: '0.8rem', color: '#64748B' }}>Click to upload Nursing Certificate</span>
+                            <span style={{ fontSize: '0.8rem', color: '#64748B' }}>Click to upload Nursing / Technician Certificate</span>
                           </>
                         )}
                       </label>

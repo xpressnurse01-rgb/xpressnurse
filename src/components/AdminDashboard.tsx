@@ -178,6 +178,9 @@ export const getRequiredSkillForService = (serviceTitle: string = '', serviceId:
   if (sTitle.includes('dress') || sTitle.includes('wound') || sTitle.includes('sore') || sId.includes('dressing')) {
     return 'Dressings';
   }
+  if (sTitle.includes('technician') || sTitle.includes('lab') || sTitle.includes('dialysis') || sTitle.includes('phlebotom') || sTitle.includes('sample') || sId.includes('technician') || sId.includes('lab')) {
+    return 'Technician';
+  }
   return null;
 };
 
@@ -275,6 +278,9 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
   const [isPatientSearchDropdownOpen, setIsPatientSearchDropdownOpen] = useState(false);
   const [adminCertModalOpen, setAdminCertModalOpen] = useState(false);
   const [adminCertModalNurse, setAdminCertModalNurse] = useState<NurseProfile | null>(null);
+  const [isEditingNurseCert, setIsEditingNurseCert] = useState(false);
+  const [certUrlInput, setCertUrlInput] = useState('');
+  const [isUploadingNurseCert, setIsUploadingNurseCert] = useState(false);
   const [isR2ConfigModalOpen, setIsR2ConfigModalOpen] = useState(false);
   const [isUploadModalOpen, setIsUploadModalOpen] = useState(false);
   const [isPrescriptionModalOpen, setIsPrescriptionModalOpen] = useState(false);
@@ -2016,7 +2022,9 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
     totalPayout: 0,
     earningsPaid: 0,
     earningsPending: 0,
-    currentlyWorkingAt: ''
+    currentlyWorkingAt: '',
+    readyForHomeVisit: true,
+    certificateUrl: ''
   });
 
   const handleOpenCreateNurseModal = () => {
@@ -2052,7 +2060,9 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
       earningsPaid: 0,
       earningsPending: 0,
       avatarUrl: '',
-      currentlyWorkingAt: ''
+      currentlyWorkingAt: '',
+      readyForHomeVisit: true,
+      certificateUrl: ''
     });
     setIsNurseModalOpen(true);
   };
@@ -2104,7 +2114,9 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
       earningsPaid: Number(n.earningsPaid) || 0,
       earningsPending: m.completedVisitsEarnings,
       avatarUrl: n.avatarUrl || '',
-      currentlyWorkingAt: n.currentlyWorkingAt || ''
+      currentlyWorkingAt: n.currentlyWorkingAt || '',
+      readyForHomeVisit: n.readyForHomeVisit !== false,
+      certificateUrl: n.certificateUrl || ''
     });
     setIsNurseModalOpen(true);
   };
@@ -2149,7 +2161,9 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
       rating: Number(nurseForm.rating) || 4.9,
       avatarUrl: nurseForm.avatarUrl || (editingNurse ? editingNurse.avatarUrl : undefined),
       currentlyWorkingAt: nurseForm.currentlyWorkingAt?.trim() || undefined,
-      certificateVerified: nurseForm.certificateVerified
+      certificateVerified: nurseForm.certificateVerified,
+      certificateUrl: nurseForm.certificateUrl?.trim() || (editingNurse ? editingNurse.certificateUrl : undefined),
+      readyForHomeVisit: nurseForm.readyForHomeVisit !== false
     };
 
     if (editingNurse && onUpdateNurseRecord) {
@@ -4570,7 +4584,8 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                     { id: 'Ryles Tube Replacement', label: "Ryle's Tube" },
                     { id: 'Suture Removal', label: 'Suture Removal' },
                     { id: 'Enema', label: 'Enema' },
-                    { id: 'Dressings', label: 'Dressings' }
+                    { id: 'Dressings', label: 'Dressings' },
+                    { id: 'Technician', label: 'Technician' }
                   ].map((sk) => {
                     const isSelected = nurseSkillFilter === sk.id;
                     const count = sk.id === 'all'
@@ -4713,6 +4728,15 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                                       {n.maritalStatus && (
                                         <span style={{ fontSize: '0.68rem', padding: '1px 6px', borderRadius: 9999, background: '#F1F5F9', color: '#475569', border: '1px solid #E2E8F0', fontWeight: 600 }}>
                                           {n.maritalStatus}
+                                        </span>
+                                      )}
+                                      {n.readyForHomeVisit !== false ? (
+                                        <span style={{ fontSize: '0.68rem', padding: '1px 7px', borderRadius: 9999, background: '#ECFDF5', color: '#047857', border: '1px solid #A7F3D0', fontWeight: 750, display: 'inline-flex', alignItems: 'center', gap: '3px' }} title="Ready for patient doorstep home visits">
+                                          🏠 Home Visits: Ready
+                                        </span>
+                                      ) : (
+                                        <span style={{ fontSize: '0.68rem', padding: '1px 7px', borderRadius: 9999, background: '#FFF1F2', color: '#BE123C', border: '1px solid #FECDD3', fontWeight: 750, display: 'inline-flex', alignItems: 'center', gap: '3px' }} title="Clinic / teleconsultation duties only (not ready for home visits)">
+                                          🏢 Home Visits: No
                                         </span>
                                       )}
                                     </div>
@@ -5050,21 +5074,53 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                                         </span>
                                       )}
 
-                                      {/* View Certificate Button - works for any nurse with a certificateUrl */}
-                                      {n.certificateUrl ? (
+                                      {/* Certificate Actions: View & Edit Certificate */}
+                                      <div style={{ display: 'flex', gap: '0.3rem', alignItems: 'center', flexWrap: 'wrap' }}>
+                                        {n.certificateUrl ? (
+                                          <button
+                                            type="button"
+                                            onClick={() => {
+                                              setAdminCertModalNurse(n);
+                                              setCertUrlInput(n.certificateUrl || '');
+                                              setIsEditingNurseCert(false);
+                                              setAdminCertModalOpen(true);
+                                            }}
+                                            className="btn btn-sm"
+                                            style={{
+                                              fontSize: '0.72rem',
+                                              padding: '0.22rem 0.55rem',
+                                              background: '#EFF6FF',
+                                              border: '1px solid #BFDBFE',
+                                              color: '#1D4ED8',
+                                              borderRadius: 5,
+                                              display: 'inline-flex',
+                                              alignItems: 'center',
+                                              gap: '0.3rem',
+                                              fontWeight: 700,
+                                              cursor: 'pointer'
+                                            }}
+                                            title="View Nurse Certificate"
+                                          >
+                                            <Eye size={12} />
+                                            <span>View</span>
+                                          </button>
+                                        ) : null}
+
                                         <button
                                           type="button"
                                           onClick={() => {
                                             setAdminCertModalNurse(n);
+                                            setCertUrlInput(n.certificateUrl || '');
+                                            setIsEditingNurseCert(true);
                                             setAdminCertModalOpen(true);
                                           }}
                                           className="btn btn-sm"
                                           style={{
                                             fontSize: '0.72rem',
                                             padding: '0.22rem 0.55rem',
-                                            background: '#EFF6FF',
-                                            border: '1px solid #BFDBFE',
-                                            color: '#1D4ED8',
+                                            background: n.certificateUrl ? '#F8FAFC' : '#FEF3C7',
+                                            border: n.certificateUrl ? '1px solid #CBD5E1' : '1px solid #FDE68A',
+                                            color: n.certificateUrl ? '#334155' : '#B45309',
                                             borderRadius: 5,
                                             display: 'inline-flex',
                                             alignItems: 'center',
@@ -5072,13 +5128,12 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                                             fontWeight: 700,
                                             cursor: 'pointer'
                                           }}
+                                          title="Edit or Replace Nurse Certificate"
                                         >
-                                          <Eye size={12} />
-                                          <span>View Certificate</span>
+                                          <Edit2 size={12} />
+                                          <span>{n.certificateUrl ? 'Edit Cert' : '+ Add Cert'}</span>
                                         </button>
-                                      ) : (
-                                        <span style={{ fontSize: '0.7rem', color: '#94A3B8' }}>No doc uploaded</span>
-                                      )}
+                                      </div>
 
                                       {!isNurseApproved && (
                                         <button
@@ -9015,7 +9070,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                   <div style={{ display: 'flex', gap: '0.5rem' }}>
                     <button
                       type="button"
-                      onClick={() => setNurseForm({ ...nurseForm, skills: ['IV Cannulation', 'Injections', 'Foley Replacement', 'Ryles Tube Replacement', 'Suture Removal', 'Enema', 'Dressings'] })}
+                      onClick={() => setNurseForm({ ...nurseForm, skills: ['IV Cannulation', 'Injections', 'Foley Replacement', 'Ryles Tube Replacement', 'Suture Removal', 'Enema', 'Dressings', 'Technician'] })}
                       style={{ fontSize: '0.7rem', color: '#0D9488', background: 'transparent', border: 'none', cursor: 'pointer', fontWeight: 700 }}
                     >
                       Select All
@@ -9038,7 +9093,8 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                     { id: 'Ryles Tube Replacement', label: 'Ryles Tube Replacement' },
                     { id: 'Suture Removal', label: 'Suture Removal' },
                     { id: 'Enema', label: 'Enema' },
-                    { id: 'Dressings', label: 'Dressings (Wound Care)' }
+                    { id: 'Dressings', label: 'Dressings (Wound Care)' },
+                    { id: 'Technician', label: 'Technician (Clinical / Lab / Dialysis)' }
                   ].map((service) => {
                     const isChecked = Array.isArray(nurseForm.skills) && nurseForm.skills.includes(service.id);
                     return (
@@ -9304,6 +9360,78 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                   <div style={{ fontSize: '0.72rem', color: '#0284C7', marginTop: '3px', fontWeight: 600 }}>
                     70% service charge for assigned completed visits
                   </div>
+                </div>
+              </div>
+
+              {/* Ready to do Home Visits */}
+              <div style={{ marginBottom: '1rem', display: 'flex', alignItems: 'center', gap: '0.65rem', background: '#F8FAFC', padding: '0.65rem 0.85rem', borderRadius: 8, border: '1px solid #E2E8F0' }}>
+                <input
+                  type="checkbox"
+                  id="nReadyHomeVisit"
+                  checked={nurseForm.readyForHomeVisit !== false}
+                  onChange={(e) => setNurseForm({ ...nurseForm, readyForHomeVisit: e.target.checked })}
+                  style={{ width: 17, height: 17, cursor: 'pointer', accentColor: '#059669' }}
+                />
+                <label htmlFor="nReadyHomeVisit" style={{ fontSize: '0.85rem', fontWeight: 700, cursor: 'pointer', margin: 0, color: nurseForm.readyForHomeVisit !== false ? '#065F46' : '#64748B' }}>
+                  🏠 Ready to do Doorstep Home Visits (Assigned for Home Care Patients)
+                </label>
+              </div>
+
+              {/* Certificate Document Edit / Upload */}
+              <div style={{ marginBottom: '1.25rem', background: '#F0F9FF', padding: '0.85rem', borderRadius: 10, border: '1px solid #BAE6FD' }}>
+                <label className="form-label" style={{ fontSize: '0.78rem', fontWeight: 800, color: '#0369A1', marginBottom: '0.4rem', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                  <span>CLINICAL NURSING CERTIFICATE (URL OR UPLOAD)</span>
+                  {nurseForm.certificateUrl && (
+                    <a href={getSafeBlobUrl(nurseForm.certificateUrl)} target="_blank" rel="noreferrer" style={{ fontSize: '0.72rem', color: '#0284C7', textDecoration: 'underline', fontWeight: 700 }}>
+                      View Current Doc ↗
+                    </a>
+                  )}
+                </label>
+                <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
+                  <input
+                    type="text"
+                    placeholder="Document URL (https://... or data:...)"
+                    value={nurseForm.certificateUrl || ''}
+                    onChange={(e) => setNurseForm({ ...nurseForm, certificateUrl: e.target.value })}
+                    className="form-control"
+                    style={{ fontSize: '0.82rem' }}
+                  />
+                  <label style={{ cursor: 'pointer', margin: 0, flexShrink: 0 }}>
+                    <input
+                      type="file"
+                      accept="image/*,.pdf"
+                      style={{ display: 'none' }}
+                      onChange={async (e) => {
+                        if (e.target.files && e.target.files[0]) {
+                          const file = e.target.files[0];
+                          try {
+                            const dataUrl = await new Promise<string>((res) => {
+                              const reader = new FileReader();
+                              reader.onload = () => res(reader.result as string);
+                              reader.onerror = () => res('');
+                              reader.readAsDataURL(file);
+                            });
+                            if (dataUrl) {
+                              const upRes = await uploadToCloudflareStorage({
+                                fileName: file.name,
+                                category: 'certificates',
+                                contentType: file.type,
+                                sizeBytes: file.size,
+                                dataUrl
+                              });
+                              setNurseForm((prev) => ({ ...prev, certificateUrl: upRes.publicUrl }));
+                              showToast('Certificate uploaded and attached to nurse profile!');
+                            }
+                          } catch {
+                            showToast('Upload error', 'error');
+                          }
+                        }
+                      }}
+                    />
+                    <span className="btn btn-sm btn-outline" style={{ display: 'inline-flex', alignItems: 'center', gap: '0.3rem', fontSize: '0.78rem', padding: '0.45rem 0.75rem', fontWeight: 750 }}>
+                      <UploadCloud size={14} /> Upload New
+                    </span>
+                  </label>
                 </div>
               </div>
 
@@ -12564,7 +12692,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
       {adminCertModalOpen && adminCertModalNurse && (
         <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.7)', zIndex: 99999, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '1rem' }}>
           <div style={{ background: '#FFFFFF', borderRadius: 16, width: '100%', maxWidth: 780, maxHeight: '92vh', overflowY: 'auto', display: 'flex', flexDirection: 'column', boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.25)' }}>
-            <div style={{ padding: '1.25rem 1.5rem', borderBottom: '1px solid #E2E8F0', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+            <div style={{ padding: '1.25rem 1.5rem', borderBottom: '1px solid #E2E8F0', display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '0.75rem' }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: '0.65rem' }}>
                 <div style={{ width: 36, height: 36, borderRadius: 10, background: '#EFF6FF', color: '#0284C7', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
                   <Shield size={18} />
@@ -12579,14 +12707,161 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                   </div>
                 </div>
               </div>
-              <button
-                type="button"
-                onClick={() => setAdminCertModalOpen(false)}
-                style={{ background: '#F1F5F9', border: 'none', borderRadius: '50%', width: 32, height: 32, display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer' }}
-              >
-                <X size={16} />
-              </button>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                <button
+                  type="button"
+                  onClick={() => setIsEditingNurseCert(!isEditingNurseCert)}
+                  className="btn btn-sm"
+                  style={{
+                    background: isEditingNurseCert ? '#0284C7' : '#EFF6FF',
+                    color: isEditingNurseCert ? '#FFFFFF' : '#0284C7',
+                    border: '1px solid #BAE6FD',
+                    fontWeight: 750,
+                    borderRadius: 8,
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    gap: '0.35rem'
+                  }}
+                >
+                  <Edit2 size={13} />
+                  <span>{isEditingNurseCert ? 'Hide Edit Panel' : 'Edit Certificate'}</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setAdminCertModalOpen(false)}
+                  style={{ background: '#F1F5F9', border: 'none', borderRadius: '50%', width: 32, height: 32, display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer' }}
+                >
+                  <X size={16} />
+                </button>
+              </div>
             </div>
+
+            {/* CERTIFICATE EDIT / REPLACE PANEL */}
+            {isEditingNurseCert && (
+              <div style={{ padding: '1.25rem 1.5rem', background: '#F0F9FF', borderBottom: '1.5px solid #BAE6FD' }}>
+                <div style={{ fontSize: '0.86rem', fontWeight: 800, color: '#0369A1', marginBottom: '0.5rem', display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
+                  <Edit2 size={15} />
+                  <span>Edit / Replace Nurse Certificate Document</span>
+                </div>
+                
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr auto', gap: '0.75rem', alignItems: 'center', marginBottom: '0.75rem' }}>
+                  <div>
+                    <label style={{ fontSize: '0.75rem', fontWeight: 700, color: '#1E293B', display: 'block', marginBottom: '0.25rem' }}>
+                      Certificate URL (or upload a file on the right):
+                    </label>
+                    <input
+                      type="text"
+                      placeholder="https://... or data:image/... or data:application/pdf;..."
+                      value={certUrlInput}
+                      onChange={(e) => setCertUrlInput(e.target.value)}
+                      className="form-control"
+                      style={{ fontSize: '0.84rem' }}
+                    />
+                  </div>
+
+                  <div>
+                    <label style={{ fontSize: '0.75rem', fontWeight: 700, color: '#1E293B', display: 'block', marginBottom: '0.25rem' }}>
+                      Upload New File:
+                    </label>
+                    <label style={{ cursor: isUploadingNurseCert ? 'not-allowed' : 'pointer', margin: 0 }}>
+                      <input
+                        type="file"
+                        accept="image/*,.pdf"
+                        disabled={isUploadingNurseCert}
+                        style={{ display: 'none' }}
+                        onChange={async (e) => {
+                          if (e.target.files && e.target.files[0]) {
+                            const file = e.target.files[0];
+                            setIsUploadingNurseCert(true);
+                            try {
+                              const dataUrl = await new Promise<string>((resolve) => {
+                                const reader = new FileReader();
+                                reader.onload = () => resolve(reader.result as string);
+                                reader.onerror = () => resolve('');
+                                reader.readAsDataURL(file);
+                              });
+                              if (dataUrl) {
+                                const uploadRes = await uploadToCloudflareStorage({
+                                  fileName: file.name,
+                                  category: 'certificates',
+                                  contentType: file.type,
+                                  sizeBytes: file.size,
+                                  dataUrl
+                                });
+                                const savedUrl = uploadRes.publicUrl || dataUrl;
+                                setCertUrlInput(savedUrl);
+                                showToast('File uploaded! Click "Save Certificate" to persist.');
+                              }
+                            } catch {
+                              showToast('Failed to upload file.', 'error');
+                            } finally {
+                              setIsUploadingNurseCert(false);
+                            }
+                          }
+                        }}
+                      />
+                      <span className="btn btn-sm btn-primary" style={{ display: 'inline-flex', alignItems: 'center', gap: '0.35rem', fontWeight: 700, padding: '0.55rem 0.9rem' }}>
+                        <UploadCloud size={14} />
+                        <span>{isUploadingNurseCert ? 'Uploading...' : 'Choose File'}</span>
+                      </span>
+                    </label>
+                  </div>
+                </div>
+
+                <div style={{ display: 'flex', gap: '0.5rem', justifyContent: 'flex-end', alignItems: 'center', flexWrap: 'wrap' }}>
+                  {adminCertModalNurse.certificateUrl && (
+                    <button
+                      type="button"
+                      onClick={async () => {
+                        if (!confirm(`Are you sure you want to remove the certificate document for ${adminCertModalNurse.name}?`)) return;
+                        await onUpdateNurseRecord?.(adminCertModalNurse.id, { certificateUrl: '', certificateVerified: false });
+                        try {
+                          await dbUpdateNurseById(adminCertModalNurse.id, { certificateUrl: '', certificateVerified: false });
+                        } catch {}
+                        setAdminCertModalNurse({ ...adminCertModalNurse, certificateUrl: undefined, certificateVerified: false });
+                        setCertUrlInput('');
+                        showToast(`Certificate removed for ${adminCertModalNurse.name}.`);
+                      }}
+                      className="btn btn-sm btn-outline"
+                      style={{ color: '#E11D48', borderColor: '#FECDD3', background: '#FFF1F2', fontWeight: 700 }}
+                    >
+                      Remove Document
+                    </button>
+                  )}
+
+                  <button
+                    type="button"
+                    onClick={async () => {
+                      const trimmed = certUrlInput.trim();
+                      if (!trimmed) {
+                        showToast('Please enter a valid certificate URL or choose a file first.', 'error');
+                        return;
+                      }
+                      await onUpdateNurseRecord?.(adminCertModalNurse.id, { certificateUrl: trimmed, certificateVerified: true });
+                      try {
+                        await dbUpdateNurseById(adminCertModalNurse.id, { certificateUrl: trimmed, certificateVerified: true });
+                      } catch {}
+                      setAdminCertModalNurse({ ...adminCertModalNurse, certificateUrl: trimmed, certificateVerified: true });
+                      setIsEditingNurseCert(false);
+                      showToast(`Certificate for ${adminCertModalNurse.name} saved and verified!`);
+                    }}
+                    className="btn btn-sm btn-primary"
+                    style={{ background: '#16A34A', borderColor: '#16A34A', fontWeight: 750 }}
+                  >
+                    ✓ Save & Apply Certificate
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => setIsEditingNurseCert(false)}
+                    className="btn btn-sm btn-outline"
+                    style={{ fontWeight: 700 }}
+                  >
+                    Cancel
+                  </button>
+                </div>
+              </div>
+            )}
 
             <div style={{ padding: '1.5rem', background: '#0F172A', display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: 400 }}>
               {adminCertModalNurse.certificateUrl ? (
@@ -12618,8 +12893,22 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                   />
                 )
               ) : (
-                <div style={{ color: '#FFFFFF', textAlign: 'center', padding: '2rem' }}>
-                  No certificate document available.
+                <div style={{ color: '#FFFFFF', textAlign: 'center', padding: '3rem 1.5rem' }}>
+                  <div style={{ width: 50, height: 50, borderRadius: '50%', background: 'rgba(255,255,255,0.1)', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 1rem auto', color: '#94A3B8' }}>
+                    <FileText size={24} />
+                  </div>
+                  <h4 style={{ margin: '0 0 0.5rem 0', color: '#F8FAFC', fontSize: '1.05rem' }}>No Certificate Document Available</h4>
+                  <p style={{ color: '#94A3B8', fontSize: '0.84rem', maxWidth: 420, margin: '0 auto 1.25rem auto' }}>
+                    This nurse profile currently has no verification certificate attached. You can upload or link one right now.
+                  </p>
+                  <button
+                    type="button"
+                    onClick={() => setIsEditingNurseCert(true)}
+                    className="btn btn-sm btn-primary"
+                    style={{ fontWeight: 750 }}
+                  >
+                    + Add / Upload Certificate Now
+                  </button>
                 </div>
               )}
             </div>
@@ -12633,7 +12922,17 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                 )}
               </div>
 
-              <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
+              <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center', flexWrap: 'wrap' }}>
+                <button
+                  type="button"
+                  onClick={() => setIsEditingNurseCert(!isEditingNurseCert)}
+                  className="btn btn-sm btn-outline"
+                  style={{ display: 'inline-flex', alignItems: 'center', gap: '0.35rem', fontWeight: 700 }}
+                >
+                  <Edit2 size={14} />
+                  <span>{isEditingNurseCert ? 'Close Editor' : 'Edit Certificate'}</span>
+                </button>
+
                 {adminCertModalNurse.certificateUrl && (
                   <button
                     type="button"

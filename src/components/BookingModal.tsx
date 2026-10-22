@@ -745,77 +745,111 @@ export const BookingModal: React.FC<BookingModalProps> = ({
         ) : (
           /* Streamlined, Ultra-Clean Single View Booking Form */
           <form onSubmit={handleFormSubmit} className="modal-body" style={{ padding: '1.25rem 1.4rem' }}>
-            {/* 1. Care Procedure Selection Section */}
-            <div style={{ marginBottom: '1.15rem' }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.45rem' }}>
-                <label style={{ fontSize: '0.78rem', fontWeight: 800, color: 'var(--primary-navy-950)', textTransform: 'uppercase', letterSpacing: '0.04em', display: 'flex', alignItems: 'center', gap: '0.35rem' }}>
-                  <span style={{ display: 'inline-flex', width: 20, height: 20, borderRadius: '50%', background: '#0284C7', color: '#FFF', fontSize: '0.7rem', fontWeight: 800, alignItems: 'center', justifyContent: 'center' }}>1</span>
-                  <span>Select Care Procedure *</span>
+            {/* 1. Care Procedure Selection Section - Restored Layout with Bold Blues & Reds */}
+            <div style={{ marginBottom: '1.25rem' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.5rem', flexWrap: 'wrap', gap: '0.4rem' }}>
+                <label style={{ fontSize: '0.8rem', fontWeight: 850, color: '#0F172A', textTransform: 'uppercase', letterSpacing: '0.04em', display: 'flex', alignItems: 'center', gap: '0.45rem', margin: 0 }}>
+                  <span style={{
+                    display: 'inline-flex',
+                    width: 22,
+                    height: 22,
+                    borderRadius: '50%',
+                    background: 'linear-gradient(135deg, #E11D48 0%, #0284C7 100%)',
+                    color: '#FFF',
+                    fontSize: '0.72rem',
+                    fontWeight: 900,
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    boxShadow: '0 2px 6px rgba(225, 29, 72, 0.35)'
+                  }}>1</span>
+                  <span>Select Care Procedure <span style={{ color: '#E11D48', fontWeight: 900 }}>*</span></span>
+                  <span style={{ fontSize: '0.67rem', fontWeight: 800, color: '#E11D48', background: '#FFF1F2', border: '1px solid #FECDD3', padding: '1px 7px', borderRadius: 9999 }}>
+                    REQUIRED
+                  </span>
                 </label>
                 {(serviceId as string) !== 'other' && baseFee > 0 && (
-                  <span style={{ fontSize: '0.86rem', fontWeight: 850, color: '#059669', background: '#ECFDF5', border: '1px solid #A7F3D0', padding: '0.15rem 0.65rem', borderRadius: 9999 }}>
-                    ₹{baseFee}
+                  <span style={{
+                    fontSize: '0.88rem',
+                    fontWeight: 850,
+                    color: '#0F172A',
+                    background: '#FFF1F2',
+                    border: '1.5px solid #FECDD3',
+                    padding: '0.2rem 0.75rem',
+                    borderRadius: 9999,
+                    boxShadow: '0 2px 5px rgba(225, 29, 72, 0.1)'
+                  }}>
+                    ₹{baseFee} <span style={{ fontSize: '0.72rem', fontWeight: 700, color: '#E11D48' }}>• Home Care</span>
                   </span>
                 )}
               </div>
 
-              {/* Selected Procedure Active Summary Card */}
+              {/* Selected Procedure Active Summary Card - High Contrast Blues & Reds */}
               <div 
                 onClick={() => setIsProcedurePickerOpen(!isProcedurePickerOpen)}
                 style={{
                   display: 'flex',
                   alignItems: 'center',
                   justifyContent: 'space-between',
-                  padding: '0.75rem 0.9rem',
-                  background: isProcedurePickerOpen ? '#F8FAFC' : '#F0F9FF',
-                  border: isProcedurePickerOpen ? '1.5px solid #0284C7' : '1.5px solid #BAE6FD',
+                  padding: '0.85rem 1rem',
+                  background: isProcedurePickerOpen ? '#F8FAFC' : '#FFFFFF',
+                  border: isProcedurePickerOpen ? '2px solid #E11D48' : '2px solid #0284C7',
+                  borderLeft: isProcedurePickerOpen ? '6px solid #0284C7' : '6px solid #E11D48',
                   borderRadius: 14,
                   cursor: 'pointer',
-                  transition: 'all 0.2s ease',
-                  boxShadow: '0 2px 8px rgba(2, 132, 199, 0.08)'
+                  transition: 'all 0.2s cubic-bezier(0.4, 0, 0.2, 1)',
+                  boxShadow: isProcedurePickerOpen 
+                    ? '0 6px 20px -2px rgba(225, 29, 72, 0.2), 0 0 0 2px rgba(2, 132, 199, 0.15)' 
+                    : '0 4px 16px rgba(2, 132, 199, 0.12), 0 0 0 1px rgba(225, 29, 72, 0.1)'
                 }}
               >
-                <div style={{ display: 'flex', alignItems: 'center', gap: '0.7rem', minWidth: 0, flex: 1 }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '0.85rem', minWidth: 0, flex: 1 }}>
                   <div style={{
-                    width: 38,
-                    height: 38,
-                    borderRadius: 10,
-                    background: '#0284C7',
+                    width: 44,
+                    height: 44,
+                    borderRadius: 12,
+                    background: 'linear-gradient(135deg, #E11D48 0%, #0284C7 100%)',
                     color: '#FFFFFF',
                     display: 'flex',
                     alignItems: 'center',
                     justifyContent: 'center',
-                    flexShrink: 0
+                    flexShrink: 0,
+                    boxShadow: '0 3px 10px rgba(225, 29, 72, 0.35)'
                   }}>
-                    <Activity size={19} />
+                    <Activity size={23} />
                   </div>
                   <div style={{ minWidth: 0, flex: 1 }}>
-                    <div style={{ fontSize: '0.92rem', fontWeight: 850, color: '#0F172A', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                    <div style={{ fontSize: '0.98rem', fontWeight: 850, color: '#0F172A', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
                       {currentService.title}
                     </div>
-                    <div style={{ fontSize: '0.73rem', color: '#64748B', marginTop: '0.1rem' }}>
-                      Registered Nurse Home Visit
+                    <div style={{ fontSize: '0.74rem', color: '#64748B', marginTop: '0.15rem', display: 'flex', alignItems: 'center', gap: '0.4rem', flexWrap: 'wrap' }}>
+                      <span style={{ display: 'inline-flex', alignItems: 'center', gap: '0.25rem', color: '#0284C7', fontWeight: 700 }}>
+                        <span style={{ width: 6, height: 6, borderRadius: '50%', background: '#E11D48', display: 'inline-block' }}></span>
+                        Registered Nurse Home Visit
+                      </span>
+                      <span>•</span>
+                      <span style={{ color: '#E11D48', fontWeight: 700 }}>Sterile Disposables Included</span>
                     </div>
                   </div>
                 </div>
 
-                <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', flexShrink: 0, marginLeft: '0.5rem' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', flexShrink: 0, marginLeft: '0.65rem' }}>
                   <span
                     style={{
-                      background: '#FFFFFF',
-                      border: '1px solid #CBD5E1',
-                      color: '#0284C7',
-                      fontSize: '0.76rem',
-                      fontWeight: 750,
-                      padding: '0.3rem 0.65rem',
+                      background: isProcedurePickerOpen ? '#0F172A' : '#E11D48',
+                      color: '#FFFFFF',
+                      fontSize: '0.78rem',
+                      fontWeight: 800,
+                      padding: '0.4rem 0.85rem',
                       borderRadius: 9999,
                       display: 'inline-flex',
                       alignItems: 'center',
-                      gap: '0.3rem'
+                      gap: '0.35rem',
+                      boxShadow: '0 2px 8px rgba(225, 29, 72, 0.35)',
+                      transition: 'all 0.15s ease'
                     }}
                   >
-                    <span>{isProcedurePickerOpen ? 'Done' : 'Change'}</span>
-                    {isProcedurePickerOpen ? <ChevronUp size={13} /> : <ChevronDown size={13} />}
+                    <span>{isProcedurePickerOpen ? 'Done' : 'Change Procedure'}</span>
+                    {isProcedurePickerOpen ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
                   </span>
                 </div>
               </div>
@@ -825,33 +859,53 @@ export const BookingModal: React.FC<BookingModalProps> = ({
                 <div style={{
                   marginTop: '0.65rem',
                   background: '#FFFFFF',
-                  border: '1.5px solid #CBD5E1',
+                  border: '2px solid #0284C7',
                   borderRadius: 14,
-                  padding: '0.75rem',
-                  boxShadow: '0 10px 25px -5px rgba(0,0,0,0.1)',
+                  padding: '0.85rem',
+                  boxShadow: '0 12px 28px -5px rgba(2, 132, 199, 0.2), 0 4px 12px rgba(225, 29, 72, 0.1)',
                   animation: 'fadeIn 0.2s ease-in-out'
                 }}>
                   {/* Search query input */}
                   <div style={{ position: 'relative', marginBottom: '0.65rem' }}>
-                    <Search size={14} style={{ position: 'absolute', left: 10, top: '50%', transform: 'translateY(-50%)', color: '#94A3B8' }} />
+                    <Search size={15} style={{ position: 'absolute', left: 10, top: '50%', transform: 'translateY(-50%)', color: '#0284C7' }} />
                     <input
                       type="text"
-                      placeholder="Search procedure..."
+                      placeholder="Search procedure name, injection, dressing, catheter..."
                       value={procedureSearchQuery}
                       onChange={(e) => setProcedureSearchQuery(e.target.value)}
                       style={{
                         width: '100%',
-                        padding: '0.5rem 0.75rem 0.5rem 2rem',
+                        padding: '0.55rem 0.75rem 0.55rem 2.1rem',
                         fontSize: '0.84rem',
-                        borderRadius: 8,
-                        border: '1px solid #E2E8F0',
-                        background: '#F8FAFC'
+                        borderRadius: 10,
+                        border: '1.5px solid #BAE6FD',
+                        background: '#F0F9FF',
+                        outline: 'none'
                       }}
                     />
+                    {procedureSearchQuery && (
+                      <button
+                        type="button"
+                        onClick={() => setProcedureSearchQuery('')}
+                        style={{
+                          position: 'absolute',
+                          right: 10,
+                          top: '50%',
+                          transform: 'translateY(-50%)',
+                          background: 'transparent',
+                          border: 'none',
+                          color: '#64748B',
+                          cursor: 'pointer',
+                          padding: 2
+                        }}
+                      >
+                        <X size={13} />
+                      </button>
+                    )}
                   </div>
 
                   {/* Procedures List */}
-                  <div style={{ maxHeight: 250, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '0.45rem', paddingRight: '0.2rem' }}>
+                  <div style={{ maxHeight: 260, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '0.5rem', paddingRight: '0.2rem' }}>
                     {serviceList.filter(s => {
                       if (s.id === 'other') return false;
                       if (!procedureSearchQuery.trim()) return true;
@@ -872,35 +926,42 @@ export const BookingModal: React.FC<BookingModalProps> = ({
                             display: 'flex',
                             alignItems: 'center',
                             justifyContent: 'space-between',
-                            padding: '0.6rem 0.75rem',
+                            padding: '0.65rem 0.85rem',
                             borderRadius: 10,
-                            border: isSelected ? '2px solid #0284C7' : '1px solid #E2E8F0',
-                            background: isSelected ? '#EFF6FF' : '#FFFFFF',
+                            border: isSelected ? '2px solid #E11D48' : '1px solid #E2E8F0',
+                            background: isSelected ? '#FFF1F2' : '#FFFFFF',
                             cursor: 'pointer',
-                            transition: 'all 0.15s ease'
+                            transition: 'all 0.15s ease',
+                            boxShadow: isSelected ? '0 2px 8px rgba(225, 29, 72, 0.2)' : 'none'
                           }}
                         >
-                          <div style={{ display: 'flex', alignItems: 'center', gap: '0.55rem', minWidth: 0, flex: 1 }}>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '0.65rem', minWidth: 0, flex: 1 }}>
                             <div style={{
-                              width: 18,
-                              height: 18,
+                              width: 20,
+                              height: 20,
                               borderRadius: '50%',
-                              border: isSelected ? '5px solid #0284C7' : '2px solid #CBD5E1',
+                              border: isSelected ? '6px solid #E11D48' : '2px solid #CBD5E1',
                               background: '#FFFFFF',
                               flexShrink: 0
                             }} />
                             <div style={{ minWidth: 0 }}>
-                              <div style={{ fontSize: '0.84rem', fontWeight: isSelected ? 800 : 600, color: '#0F172A', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                              <div style={{ fontSize: '0.86rem', fontWeight: isSelected ? 850 : 600, color: isSelected ? '#9F1239' : '#0F172A', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
                                 {srv.title}
                               </div>
+                              {srv.subtitle && (
+                                <div style={{ fontSize: '0.71rem', color: isSelected ? '#BE123C' : '#64748B' }}>
+                                  {srv.subtitle}
+                                </div>
+                              )}
                             </div>
                           </div>
                           <span style={{
-                            fontSize: '0.84rem',
-                            fontWeight: 800,
-                            color: isSelected ? '#0369A1' : '#334155',
-                            background: isSelected ? '#DBEAFE' : '#F1F5F9',
-                            padding: '0.15rem 0.55rem',
+                            fontSize: '0.86rem',
+                            fontWeight: 850,
+                            color: isSelected ? '#FFFFFF' : '#0284C7',
+                            background: isSelected ? '#E11D48' : '#EFF6FF',
+                            border: isSelected ? 'none' : '1px solid #BAE6FD',
+                            padding: '0.2rem 0.65rem',
                             borderRadius: 9999,
                             flexShrink: 0,
                             marginLeft: '0.5rem'
@@ -921,53 +982,62 @@ export const BookingModal: React.FC<BookingModalProps> = ({
                         display: 'flex',
                         alignItems: 'center',
                         justifyContent: 'space-between',
-                        padding: '0.6rem 0.75rem',
+                        padding: '0.65rem 0.85rem',
                         borderRadius: 10,
-                        border: serviceId === 'other' ? '2px solid #0284C7' : '1px dashed #CBD5E1',
-                        background: serviceId === 'other' ? '#EFF6FF' : '#F8FAFC',
+                        border: serviceId === 'other' ? '2px solid #E11D48' : '1.5px dashed #0284C7',
+                        background: serviceId === 'other' ? '#FFF1F2' : '#F0F9FF',
                         cursor: 'pointer'
                       }}
                     >
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '0.55rem' }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '0.65rem' }}>
                         <div style={{
-                          width: 18,
-                          height: 18,
+                          width: 20,
+                          height: 20,
                           borderRadius: '50%',
-                          border: serviceId === 'other' ? '5px solid #0284C7' : '2px solid #CBD5E1',
+                          border: serviceId === 'other' ? '6px solid #E11D48' : '2px solid #CBD5E1',
                           background: '#FFFFFF',
                           flexShrink: 0
                         }} />
                         <div>
-                          <div style={{ fontSize: '0.84rem', fontWeight: serviceId === 'other' ? 800 : 600, color: '#0F172A' }}>
+                          <div style={{ fontSize: '0.86rem', fontWeight: serviceId === 'other' ? 850 : 700, color: serviceId === 'other' ? '#9F1239' : '#0F172A' }}>
                             ✨ Other Nursing Service / Custom Care
                           </div>
-                          <div style={{ fontSize: '0.7rem', color: '#64748B' }}>
-                            Enter custom home procedure details
+                          <div style={{ fontSize: '0.71rem', color: '#64748B' }}>
+                            Enter custom home procedure details or specialized clinical request
                           </div>
                         </div>
                       </div>
-                      <span style={{ fontSize: '0.74rem', fontWeight: 700, color: '#0284C7', background: '#E0F2FE', padding: '0.15rem 0.5rem', borderRadius: 9999 }}>
+                      <span style={{
+                        fontSize: '0.74rem',
+                        fontWeight: 750,
+                        color: serviceId === 'other' ? '#FFFFFF' : '#E11D48',
+                        background: serviceId === 'other' ? '#E11D48' : '#FFF1F2',
+                        border: '1px solid #FECDD3',
+                        padding: '0.2rem 0.6rem',
+                        borderRadius: 9999
+                      }}>
                         Custom
                       </span>
                     </div>
                   </div>
 
-                  <div style={{ marginTop: '0.55rem', display: 'flex', justifyContent: 'flex-end' }}>
+                  <div style={{ marginTop: '0.65rem', display: 'flex', justifyContent: 'flex-end' }}>
                     <button
                       type="button"
                       onClick={() => setIsProcedurePickerOpen(false)}
                       style={{
-                        background: '#0F172A',
+                        background: 'linear-gradient(135deg, #E11D48 0%, #0284C7 100%)',
                         color: '#FFFFFF',
                         border: 'none',
                         borderRadius: 8,
-                        padding: '0.35rem 0.85rem',
-                        fontSize: '0.76rem',
-                        fontWeight: 700,
-                        cursor: 'pointer'
+                        padding: '0.4rem 1rem',
+                        fontSize: '0.78rem',
+                        fontWeight: 750,
+                        cursor: 'pointer',
+                        boxShadow: '0 2px 8px rgba(225, 29, 72, 0.3)'
                       }}
                     >
-                      Close Selector
+                      ✓ Close Selector
                     </button>
                   </div>
                 </div>

@@ -142,6 +142,7 @@ export interface NurseProfile {
   mandal?: string;
   village?: string;
   skills?: string[];
+  readyForHomeVisit?: boolean;
 }
 
 export interface NurseLead {
@@ -221,6 +222,7 @@ export interface AppUser {
   mandal?: string;
   village?: string;
   skills?: string[];
+  readyForHomeVisit?: boolean;
   createdAt?: string;
 }
 

@@ -1267,7 +1267,8 @@ export const App: React.FC = () => {
               earningsPaid: Number(raw.earnings_paid) || 0,
               earningsPending: Number(raw.earnings_pending) || 0,
               rejectionReason: raw.rejection_reason,
-              currentlyWorkingAt: raw.currently_working_at || raw.current_workplace || undefined
+              currentlyWorkingAt: raw.currently_working_at || raw.current_workplace || undefined,
+              readyForHomeVisit: raw.ready_for_home_visit !== undefined && raw.ready_for_home_visit !== null ? Boolean(raw.ready_for_home_visit) : true
             };
             setNurses((prev) => {
               const prevNurse = prev.find((n) => n.id === mapped.id);
@@ -2426,7 +2427,8 @@ export const App: React.FC = () => {
             district: updates.district ?? u.district,
             mandal: updates.mandal ?? u.mandal,
             village: updates.village ?? u.village,
-            skills: updates.skills ?? u.skills
+            skills: updates.skills ?? u.skills,
+            readyForHomeVisit: updates.readyForHomeVisit !== undefined ? updates.readyForHomeVisit : u.readyForHomeVisit
           };
         }
         return u;
