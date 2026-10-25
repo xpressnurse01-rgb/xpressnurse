@@ -1256,27 +1256,6 @@ export const NurseDashboard: React.FC<NurseDashboardProps> = ({
                 }}>
                   <div style={{ display: 'flex', flexDirection: 'column', gap: '0.85rem', fontSize: '0.9rem', color: '#1E293B' }}>
                     <div style={{ display: 'flex', alignItems: 'flex-start', gap: '0.65rem' }}>
-                      <span style={{ fontSize: '1.25rem', lineHeight: 1.2 }}>🎁</span>
-                      <div>
-                        <strong>Registration Bonus:</strong> Get <strong>300 bonus points</strong> when you register for the first time.
-                      </div>
-                    </div>
-
-                    <div style={{ display: 'flex', alignItems: 'flex-start', gap: '0.65rem' }}>
-                      <span style={{ fontSize: '1.25rem', lineHeight: 1.2 }}>👩‍⚕️</span>
-                      <div>
-                        <strong>Nurse Referral:</strong> Earn <strong>50 bonus points</strong> for every successful nurse referral.
-                      </div>
-                    </div>
-
-                    <div style={{ display: 'flex', alignItems: 'flex-start', gap: '0.65rem' }}>
-                      <span style={{ fontSize: '1.25rem', lineHeight: 1.2 }}>👫</span>
-                      <div>
-                        <strong>Patient Referral:</strong> Earn <strong>50 bonus points</strong> for every successful patient referral.
-                      </div>
-                    </div>
-
-                    <div style={{ display: 'flex', alignItems: 'flex-start', gap: '0.65rem' }}>
                       <span style={{ fontSize: '1.25rem', lineHeight: 1.2 }}>💰</span>
                       <div>
                         <strong>Patient Referral Earnings:</strong> Earn <strong>10% of the total amount</strong> for every successful patient referral.
@@ -1290,10 +1269,54 @@ export const NurseDashboard: React.FC<NurseDashboardProps> = ({
                       </div>
                     </div>
 
-                    <div style={{ display: 'flex', alignItems: 'flex-start', gap: '0.65rem' }}>
-                      <span style={{ fontSize: '1.25rem', lineHeight: 1.2 }}>🎉</span>
-                      <div>
-                        <strong>Bonus Points Redemption:</strong> For every <strong>8 successful patient leads</strong>, redeem <strong>500 bonus points = ₹500</strong>.
+                    {/* Additional Benefits Heading & List */}
+                    <div style={{
+                      marginTop: '0.4rem',
+                      paddingTop: '0.85rem',
+                      borderTop: '1.5px solid #FEF3C7',
+                      display: 'flex',
+                      flexDirection: 'column',
+                      gap: '0.85rem'
+                    }}>
+                      <div style={{
+                        fontSize: '0.92rem',
+                        fontWeight: 800,
+                        color: '#B45309',
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '0.45rem',
+                        letterSpacing: '0.02em',
+                        textTransform: 'uppercase'
+                      }}>
+                        <span>✨</span> Additional Benefits
+                      </div>
+
+                      <div style={{ display: 'flex', alignItems: 'flex-start', gap: '0.65rem' }}>
+                        <span style={{ fontSize: '1.25rem', lineHeight: 1.2 }}>🎁</span>
+                        <div>
+                          <strong>Registration Bonus:</strong> Get <strong>300 bonus points</strong> when you register for the first time.
+                        </div>
+                      </div>
+
+                      <div style={{ display: 'flex', alignItems: 'flex-start', gap: '0.65rem' }}>
+                        <span style={{ fontSize: '1.25rem', lineHeight: 1.2 }}>👩‍⚕️</span>
+                        <div>
+                          <strong>Nurse Referral:</strong> Earn <strong>50 bonus points</strong> for every successful nurse referral.
+                        </div>
+                      </div>
+
+                      <div style={{ display: 'flex', alignItems: 'flex-start', gap: '0.65rem' }}>
+                        <span style={{ fontSize: '1.25rem', lineHeight: 1.2 }}>👫</span>
+                        <div>
+                          <strong>Patient Referral:</strong> Earn <strong>50 bonus points</strong> for every successful patient referral.
+                        </div>
+                      </div>
+
+                      <div style={{ display: 'flex', alignItems: 'flex-start', gap: '0.65rem' }}>
+                        <span style={{ fontSize: '1.25rem', lineHeight: 1.2 }}>🎉</span>
+                        <div>
+                          <strong>Bonus Points Redemption:</strong> For every <strong>8 successful patient leads</strong>, redeem <strong>500 bonus points = ₹500</strong>.
+                        </div>
                       </div>
                     </div>
                   </div>

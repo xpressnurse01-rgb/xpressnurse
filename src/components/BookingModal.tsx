@@ -747,22 +747,24 @@ export const BookingModal: React.FC<BookingModalProps> = ({
           <form onSubmit={handleFormSubmit} className="modal-body" style={{ padding: '1.25rem 1.4rem' }}>
             {/* 1. Care Procedure Selection Section - Restored Layout with Bold Blues & Reds */}
             <div style={{ marginBottom: '1.25rem' }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.5rem', flexWrap: 'wrap', gap: '0.4rem' }}>
-                <label style={{ fontSize: '0.8rem', fontWeight: 850, color: '#0F172A', textTransform: 'uppercase', letterSpacing: '0.04em', display: 'flex', alignItems: 'center', gap: '0.45rem', margin: 0 }}>
+              {/* Care Procedure Selection Header & Quick Change Button */}
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.5rem', gap: '0.5rem' }}>
+                <label style={{ fontSize: '0.8rem', fontWeight: 850, color: '#0F172A', textTransform: 'uppercase', letterSpacing: '0.04em', display: 'flex', alignItems: 'center', gap: '0.45rem', margin: 0, flexWrap: 'wrap', flex: 1, minWidth: 0 }}>
                   <span style={{
                     display: 'inline-flex',
                     width: 22,
                     height: 22,
                     borderRadius: '50%',
-                    background: 'linear-gradient(135deg, #E11D48 0%, #0284C7 100%)',
+                    background: 'linear-gradient(135deg, #0284C7 0%, #0369A1 100%)',
                     color: '#FFF',
                     fontSize: '0.72rem',
                     fontWeight: 900,
                     alignItems: 'center',
                     justifyContent: 'center',
-                    boxShadow: '0 2px 6px rgba(225, 29, 72, 0.35)'
+                    boxShadow: '0 2px 6px rgba(2, 132, 199, 0.35)',
+                    flexShrink: 0
                   }}>1</span>
-                  <span>Select Care Procedure <span style={{ color: '#E11D48', fontWeight: 900 }}>*</span></span>
+                  <span style={{ whiteSpace: 'nowrap' }}>Select Care / Procedure <span style={{ color: '#E11D48', fontWeight: 900 }}>*</span></span>
                   <span style={{ fontSize: '0.67rem', fontWeight: 800, color: '#E11D48', background: '#FFF1F2', border: '1px solid #FECDD3', padding: '1px 7px', borderRadius: 9999 }}>
                     REQUIRED
                   </span>
@@ -772,83 +774,83 @@ export const BookingModal: React.FC<BookingModalProps> = ({
                     fontSize: '0.88rem',
                     fontWeight: 850,
                     color: '#0F172A',
-                    background: '#FFF1F2',
-                    border: '1.5px solid #FECDD3',
+                    background: '#F0F9FF',
+                    border: '1.5px solid #BAE6FD',
                     padding: '0.2rem 0.75rem',
                     borderRadius: 9999,
-                    boxShadow: '0 2px 5px rgba(225, 29, 72, 0.1)'
+                    boxShadow: '0 2px 5px rgba(2, 132, 199, 0.1)',
+                    marginLeft: 'auto',
+                    flexShrink: 0,
+                    whiteSpace: 'nowrap'
                   }}>
-                    ₹{baseFee} <span style={{ fontSize: '0.72rem', fontWeight: 700, color: '#E11D48' }}>• Home Care</span>
+                    ₹{baseFee}
                   </span>
                 )}
               </div>
 
-              {/* Selected Procedure Active Summary Card - High Contrast Blues & Reds */}
+              {/* Selected Procedure Active Summary Card */}
               <div 
                 onClick={() => setIsProcedurePickerOpen(!isProcedurePickerOpen)}
                 style={{
                   display: 'flex',
                   alignItems: 'center',
                   justifyContent: 'space-between',
-                  padding: '0.85rem 1rem',
+                  padding: '0.75rem 0.95rem',
                   background: isProcedurePickerOpen ? '#F8FAFC' : '#FFFFFF',
-                  border: isProcedurePickerOpen ? '2px solid #E11D48' : '2px solid #0284C7',
-                  borderLeft: isProcedurePickerOpen ? '6px solid #0284C7' : '6px solid #E11D48',
+                  border: isProcedurePickerOpen ? '2px solid #0284C7' : '1.5px solid #0284C7',
+                  borderLeft: '5px solid #0284C7',
                   borderRadius: 14,
                   cursor: 'pointer',
                   transition: 'all 0.2s cubic-bezier(0.4, 0, 0.2, 1)',
                   boxShadow: isProcedurePickerOpen 
-                    ? '0 6px 20px -2px rgba(225, 29, 72, 0.2), 0 0 0 2px rgba(2, 132, 199, 0.15)' 
-                    : '0 4px 16px rgba(2, 132, 199, 0.12), 0 0 0 1px rgba(225, 29, 72, 0.1)'
+                    ? '0 6px 20px -2px rgba(2, 132, 199, 0.25), 0 0 0 2px rgba(2, 132, 199, 0.15)' 
+                    : '0 4px 14px rgba(2, 132, 199, 0.12)',
+                  gap: '0.65rem'
                 }}
               >
-                <div style={{ display: 'flex', alignItems: 'center', gap: '0.85rem', minWidth: 0, flex: 1 }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', minWidth: 0, flex: 1 }}>
                   <div style={{
-                    width: 44,
-                    height: 44,
+                    width: 42,
+                    height: 42,
                     borderRadius: 12,
-                    background: 'linear-gradient(135deg, #E11D48 0%, #0284C7 100%)',
+                    background: 'linear-gradient(135deg, #0284C7 0%, #0369A1 100%)',
                     color: '#FFFFFF',
                     display: 'flex',
                     alignItems: 'center',
                     justifyContent: 'center',
                     flexShrink: 0,
-                    boxShadow: '0 3px 10px rgba(225, 29, 72, 0.35)'
+                    boxShadow: '0 3px 10px rgba(2, 132, 199, 0.35)'
                   }}>
-                    <Activity size={23} />
+                    <Activity size={22} />
                   </div>
                   <div style={{ minWidth: 0, flex: 1 }}>
-                    <div style={{ fontSize: '0.98rem', fontWeight: 850, color: '#0F172A', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                    <div style={{ fontSize: '0.96rem', fontWeight: 850, color: '#0F172A', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
                       {currentService.title}
                     </div>
-                    <div style={{ fontSize: '0.74rem', color: '#64748B', marginTop: '0.15rem', display: 'flex', alignItems: 'center', gap: '0.4rem', flexWrap: 'wrap' }}>
-                      <span style={{ display: 'inline-flex', alignItems: 'center', gap: '0.25rem', color: '#0284C7', fontWeight: 700 }}>
-                        <span style={{ width: 6, height: 6, borderRadius: '50%', background: '#E11D48', display: 'inline-block' }}></span>
-                        Registered Nurse Home Visit
-                      </span>
-                      <span>•</span>
-                      <span style={{ color: '#E11D48', fontWeight: 700 }}>Sterile Disposables Included</span>
+                    <div style={{ fontSize: '0.74rem', color: '#0284C7', marginTop: '0.15rem', display: 'flex', alignItems: 'center', gap: '0.35rem', fontWeight: 700 }}>
+                      <span style={{ width: 6, height: 6, borderRadius: '50%', background: '#0284C7', display: 'inline-block' }}></span>
+                      Registered Nurse Home Visit
                     </div>
                   </div>
                 </div>
 
-                <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', flexShrink: 0, marginLeft: '0.65rem' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', flexShrink: 0 }}>
                   <span
                     style={{
-                      background: isProcedurePickerOpen ? '#0F172A' : '#E11D48',
+                      background: isProcedurePickerOpen ? '#0F172A' : '#0284C7',
                       color: '#FFFFFF',
                       fontSize: '0.78rem',
                       fontWeight: 800,
-                      padding: '0.4rem 0.85rem',
+                      padding: '0.42rem 0.85rem',
                       borderRadius: 9999,
                       display: 'inline-flex',
                       alignItems: 'center',
                       gap: '0.35rem',
-                      boxShadow: '0 2px 8px rgba(225, 29, 72, 0.35)',
+                      boxShadow: '0 2px 8px rgba(2, 132, 199, 0.35)',
                       transition: 'all 0.15s ease'
                     }}
                   >
-                    <span>{isProcedurePickerOpen ? 'Done' : 'Change Procedure'}</span>
+                    <span>{isProcedurePickerOpen ? 'Done' : 'Select Procedure'}</span>
                     {isProcedurePickerOpen ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
                   </span>
                 </div>

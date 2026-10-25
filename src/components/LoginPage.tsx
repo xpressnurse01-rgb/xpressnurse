@@ -80,6 +80,7 @@ export const LoginPage: React.FC<LoginPageProps> = ({
   const [regSelectedSkills, setRegSelectedSkills] = useState<string[]>([]);
   const [regReadyForHomeVisit, setRegReadyForHomeVisit] = useState<boolean>(true);
   const [regQualification, setRegQualification] = useState<string>('B.Sc Nursing (Registered RN)');
+  const [regCustomQualification, setRegCustomQualification] = useState<string>('');
   const [regCurrentlyWorkingAt, setRegCurrentlyWorkingAt] = useState<string>('');
   const [regDoctorSpecialization, setRegDoctorSpecialization] = useState<string>('');
   const [regDoctorCustomSpecialization, setRegDoctorCustomSpecialization] = useState<string>('');
@@ -220,6 +221,10 @@ export const LoginPage: React.FC<LoginPageProps> = ({
       setErrorMsg('Please specify where you are currently working (Hospital / Clinic / Organization). This is a mandatory requirement.');
       return;
     }
+    if (regQualification === 'Technicians / Others' && !regCustomQualification.trim()) {
+      setErrorMsg('Please enter your qualification or designation.');
+      return;
+    }
     if (!/^\d{4}$/.test(regPin)) {
       setErrorMsg('PIN must be exactly 4 numeric digits.');
       return;
@@ -278,13 +283,17 @@ export const LoginPage: React.FC<LoginPageProps> = ({
       const nonHydLocation = [regVillage.trim(), regMandal.trim(), regDistrict.trim(), regCity].filter(Boolean).join(', ');
       const resolvedArea = regServiceArea.trim() || (regCity !== 'Hyderabad' && regDistrict.trim() ? nonHydLocation : regCity) || 'Hyderabad';
 
+      const resolvedQualification = regQualification === 'Technicians / Others'
+        ? (regCustomQualification.trim() || 'Technicians / Others')
+        : regQualification.trim();
+
       const newNurse: NurseProfile = {
         id: newId,
         name: regName.trim(),
         phone: cleanPhone || regPhone.trim(),
         email: cleanEmail,
         experienceYears: Number(regExperienceYears) || 1,
-        qualification: regQualification.trim() || 'Registered Nurse (B.Sc)',
+        qualification: resolvedQualification || 'Registered Nurse (B.Sc)',
         serviceArea: resolvedArea,
         maritalStatus: regMaritalStatus,
         city: regCity,
@@ -368,7 +377,7 @@ export const LoginPage: React.FC<LoginPageProps> = ({
         ? `Application submitted with referral from ${matchedReferringNurse.name}! Profile pending verification.`
         : 'Registration submitted! Your profile is pending Admin approval.'
       );
-      setRegName(''); setRegPhone(''); setRegEmail(''); setRegPin(''); setRegCertificate(null); setRegDisclaimer(false); setRegReferralCode(''); setRegExperienceYears(3); setRegServiceArea(''); setRegMaritalStatus('Single'); setRegCity('Hyderabad'); setRegDistrict(''); setRegMandal(''); setRegVillage(''); setRegSelectedSkills([]);
+      setRegName(''); setRegPhone(''); setRegEmail(''); setRegPin(''); setRegCertificate(null); setRegDisclaimer(false); setRegReferralCode(''); setRegExperienceYears(3); setRegServiceArea(''); setRegMaritalStatus('Single'); setRegCity('Hyderabad'); setRegDistrict(''); setRegMandal(''); setRegVillage(''); setRegSelectedSkills([]); setRegCustomQualification('');
       setTimeout(() => setIsRegistering(false), 3000);
     } catch (err: any) {
       setIsLoading(false);
@@ -1227,11 +1236,8 @@ export const LoginPage: React.FC<LoginPageProps> = ({
 
                   {/* Home Visit Readiness */}
                   <div className="form-group" style={{ marginBottom: '0.85rem' }}>
-                    <label className="form-label" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '0.35rem' }}>
-                      <span style={{ fontWeight: 700 }}>Ready to do Home Visits? *</span>
-                      <span style={{ fontSize: '0.72rem', fontWeight: 800, color: regReadyForHomeVisit ? '#059669' : '#D97706', background: regReadyForHomeVisit ? '#ECFDF5' : '#FFFBEB', padding: '1px 8px', borderRadius: 9999, border: regReadyForHomeVisit ? '1px solid #A7F3D0' : '1px solid #FDE68A' }}>
-                        {regReadyForHomeVisit ? '✓ Ready for Home Visits' : '✗ Clinic / Teleconsultation only'}
-                      </span>
+                    <label className="form-label" style={{ fontWeight: 700, marginBottom: '0.35rem' }}>
+                      Ready to do Home Visits? *
                     </label>
                     <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.65rem' }}>
                       <button
@@ -1279,11 +1285,6 @@ export const LoginPage: React.FC<LoginPageProps> = ({
                         <span>Not Now</span>
                       </button>
                     </div>
-                    <div style={{ fontSize: '0.72rem', color: '#64748B', marginTop: '0.3rem' }}>
-                      {regReadyForHomeVisit 
-                        ? 'Doorstep nursing visits can be assigned to you in your selected area.' 
-                        : 'You will only be available for hospital/clinic support or consultations.'}
-                    </div>
                   </div>
 
                   {/* Qualification */}
@@ -1299,10 +1300,24 @@ export const LoginPage: React.FC<LoginPageProps> = ({
                       <option value="Post Basic B.Sc Nursing">Post Basic B.Sc Nursing</option>
                       <option value="M.Sc Nursing">M.Sc Nursing</option>
                       <option value="ANM (Auxiliary Nurse)">ANM (Auxiliary Nurse)</option>
-                      <option value="Clinical / Medical Technician">Clinical / Medical Technician</option>
-                      <option value="Dialysis / Lab / OT Technician">Dialysis / Lab / OT Technician</option>
-                      <option value="Emergency Medical Technician (EMT)">Emergency Medical Technician (EMT)</option>
+                      <option value="Technicians / Others">Technicians / Others</option>
                     </select>
+                    {regQualification === 'Technicians / Others' && (
+                      <div style={{ marginTop: '0.45rem' }}>
+                        <label style={{ fontSize: '0.75rem', fontWeight: 700, color: '#0369A1', display: 'block', marginBottom: '0.25rem' }}>
+                          Enter Your Qualification or Designation *
+                        </label>
+                        <input
+                          type="text"
+                          required
+                          value={regCustomQualification}
+                          onChange={(e) => setRegCustomQualification(e.target.value)}
+                          placeholder="e.g. Lab Technician, Dialysis Technician, OT Tech, EMT..."
+                          className="form-control"
+                          style={{ fontWeight: 600, fontSize: '0.85rem' }}
+                        />
+                      </div>
+                    )}
                   </div>
 
                   <div className="form-group" style={{ marginBottom: '0.75rem' }}>
