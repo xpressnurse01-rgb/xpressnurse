@@ -995,6 +995,11 @@ export const App: React.FC = () => {
               currentlyWorkingAt: rn.currentlyWorkingAt || localMatch?.currentlyWorkingAt || undefined
             };
           });
+          merged.sort((a, b) => {
+            const timeA = a.createdAt ? new Date(a.createdAt).getTime() : 0;
+            const timeB = b.createdAt ? new Date(b.createdAt).getTime() : 0;
+            return timeB - timeA;
+          });
           if (prev.length === merged.length && JSON.stringify(prev) === JSON.stringify(merged)) {
             return prev;
           }
@@ -1070,7 +1075,12 @@ export const App: React.FC = () => {
       } else if (type === 'NURSE_CREATE' && data?.id) {
         setNurses((prev) => {
           const exists = prev.some((n) => n.id === data.id);
-          return exists ? prev.map((n) => (n.id === data.id ? { ...n, ...data } : n)) : [...prev, data];
+          const next = exists ? prev.map((n) => (n.id === data.id ? { ...n, ...data } : n)) : [data, ...prev];
+          return next.sort((a, b) => {
+            const timeA = a.createdAt ? new Date(a.createdAt).getTime() : 0;
+            const timeB = b.createdAt ? new Date(b.createdAt).getTime() : 0;
+            return timeB - timeA;
+          });
         });
       } else if (type === 'NURSE_DELETE' && data?.id) {
         setNurses((prev) => prev.filter((n) => n.id !== data.id));
@@ -2356,7 +2366,7 @@ export const App: React.FC = () => {
 
   // 2. Nurses CRUD Handlers
   const handleCreateNurse = async (n: NurseProfile) => {
-    setNurses((prev) => [...prev, n]);
+    setNurses((prev) => [n, ...prev.filter((item) => item.id !== n.id)]);
     broadcastRealtimeUpdate('NURSE_CREATE', n);
     await dbInsertNurse(n);
   };
@@ -3064,7 +3074,14 @@ export const App: React.FC = () => {
                   dbFetchNurses(),
                   dbFetchLeads()
                 ]);
-                if (remoteNurses) setNurses(remoteNurses);
+                if (remoteNurses) {
+                  remoteNurses.sort((a, b) => {
+                    const timeA = a.createdAt ? new Date(a.createdAt).getTime() : 0;
+                    const timeB = b.createdAt ? new Date(b.createdAt).getTime() : 0;
+                    return timeB - timeA;
+                  });
+                  setNurses(remoteNurses);
+                }
                 if (remoteLeads) setLeads(remoteLeads);
               }}
             />

@@ -353,7 +353,7 @@ export async function dbFetchNurses(): Promise<NurseProfile[] | null> {
       return await supabase
         .from('nurses')
         .select('*')
-        .order('name', { ascending: true });
+        .order('created_at', { ascending: false, nullsFirst: false });
     }),
     Promise.resolve(supabase.from('app_users').select('*')).then(r => r.data || [], () => [])
   ]);
@@ -423,6 +423,12 @@ export async function dbFetchNurses(): Promise<NurseProfile[] | null> {
             ? Boolean(matchedUser.ready_for_home_visit)
             : true))
     };
+  });
+
+  nursesList.sort((a, b) => {
+    const timeA = a.createdAt ? new Date(a.createdAt).getTime() : 0;
+    const timeB = b.createdAt ? new Date(b.createdAt).getTime() : 0;
+    return timeB - timeA;
   });
 
   return nursesList;
@@ -1811,3 +1817,20 @@ export async function dbDeleteMultipleAppUsers(ids: string[]): Promise<boolean> 
     return false;
   }
 }
+
+export function broadcastRealtimeUpdate(type: string, data: any): void {
+  const payload = { type, data, timestamp: Date.now() };
+  try {
+    if (typeof window !== 'undefined' && 'BroadcastChannel' in window) {
+      const bc = new BroadcastChannel('xn_live_sync_bus');
+      bc.postMessage(payload);
+      bc.close();
+    }
+  } catch { }
+  try {
+    if (typeof window !== 'undefined' && window.localStorage) {
+      localStorage.setItem('xn_realtime_sync_event', JSON.stringify(payload));
+    }
+  } catch { }
+}
+

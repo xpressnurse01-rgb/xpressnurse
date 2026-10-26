@@ -2277,6 +2277,10 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
         Array.isArray(n.skills) && n.skills.some((s) => s.toLowerCase().includes(nurseSkillFilter.toLowerCase()));
 
     return matchesSearch && matchesExp && matchesOrigin && matchesSkill;
+  }).sort((a, b) => {
+    const timeA = a.createdAt ? new Date(a.createdAt).getTime() : 0;
+    const timeB = b.createdAt ? new Date(b.createdAt).getTime() : 0;
+    return timeB - timeA;
   });
 
   // --------------------------------------------------------------------------
@@ -4725,6 +4729,14 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                                   <div>
                                     <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', flexWrap: 'wrap' }}>
                                       <strong>{n.name}</strong>
+                                      {(() => {
+                                        const isNew = n.createdAt && (Date.now() - new Date(n.createdAt).getTime()) < 3 * 24 * 60 * 60 * 1000;
+                                        return isNew ? (
+                                          <span style={{ fontSize: '0.66rem', padding: '1px 6px', borderRadius: 9999, background: '#EFF6FF', color: '#1D4ED8', border: '1px solid #BFDBFE', fontWeight: 800 }}>
+                                            ✨ NEW
+                                          </span>
+                                        ) : null;
+                                      })()}
                                       {n.maritalStatus && (
                                         <span style={{ fontSize: '0.68rem', padding: '1px 6px', borderRadius: 9999, background: '#F1F5F9', color: '#475569', border: '1px solid #E2E8F0', fontWeight: 600 }}>
                                           {n.maritalStatus}
@@ -4741,6 +4753,11 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                                       )}
                                     </div>
                                     <div style={{ fontSize: '0.78rem', color: 'var(--neutral-500)' }}>{n.phone}</div>
+                                    {n.createdAt && (
+                                      <div style={{ fontSize: '0.70rem', color: '#64748B', marginTop: '2px' }}>
+                                        Reg: {formatDateTimeDDMMYY(n.createdAt)}
+                                      </div>
+                                    )}
                                   </div>
                                 </div>
                               </td>
@@ -8305,6 +8322,10 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                       n.serviceArea.toLowerCase().includes(query) ||
                       (n.qualification && n.qualification.toLowerCase().includes(query))
                     );
+                  }).sort((a, b) => {
+                    const timeA = a.createdAt ? new Date(a.createdAt).getTime() : 0;
+                    const timeB = b.createdAt ? new Date(b.createdAt).getTime() : 0;
+                    return timeB - timeA;
                   });
 
                   if (filteredNurses.length === 0) {
@@ -8914,7 +8935,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                   <input
                     type="text"
                     required
-                    placeholder="e.g. Apollo Hospital, Yashoda..."
+                    placeholder="Enter Hospital / Clinic / Organization name"
                     value={nurseForm.currentlyWorkingAt}
                     onChange={(e) => setNurseForm({ ...nurseForm, currentlyWorkingAt: e.target.value })}
                     className="form-control"

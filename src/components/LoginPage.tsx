@@ -25,7 +25,8 @@ import {
   dbInsertLead, 
   dbUpdateNurseById, 
   findNurseByReferralCode, 
-  generateNurseReferralCode 
+  generateNurseReferralCode,
+  broadcastRealtimeUpdate 
 } from '../lib/supabase';
 import { uploadToCloudflareStorage } from '../lib/cloudflareStorage';
 import { AppUser, NurseProfile, NurseLead } from '../types';
@@ -343,6 +344,7 @@ export const LoginPage: React.FC<LoginPageProps> = ({
       
       await dbInsertNurse(newNurse);
       await dbInsertAppUser(newAppUser);
+      broadcastRealtimeUpdate('NURSE_CREATE', newNurse);
 
       // Record referral in leads table so referring nurse and admin track it in real-time
       if (matchedReferringNurse) {
@@ -1026,7 +1028,7 @@ export const LoginPage: React.FC<LoginPageProps> = ({
                       name="nurse_reg_workplace"
                       autoComplete="off"
                       required
-                      placeholder="e.g. Apollo Hospital, Yashoda, KIMS..."
+                      placeholder="Enter Hospital / Clinic / Organization name"
                       value={regCurrentlyWorkingAt} 
                       onChange={e => setRegCurrentlyWorkingAt(e.target.value)} 
                       className="form-control" 
