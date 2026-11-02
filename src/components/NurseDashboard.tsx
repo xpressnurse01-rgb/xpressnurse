@@ -149,14 +149,14 @@ export const NurseDashboard: React.FC<NurseDashboardProps> = ({
     const base = matched || currentNurse || (allNurses && allNurses.length > 0 ? allNurses[0] : null);
     if (!base) return null;
     const certUrl = matched?.certificateUrl || currentNurse?.certificateUrl || base.certificateUrl;
-    const hasCert = Boolean(certUrl && certUrl.trim().length > 0);
-    const isAct = matched?.status === 'Active' || currentNurse?.status === 'Active' || base.status === 'Active' || hasCert;
-    const isVer = Boolean(matched?.certificateVerified || currentNurse?.certificateVerified || base.certificateVerified || isAct || hasCert);
+    const isAct = matched?.status === 'Active' || currentNurse?.status === 'Active';
+    const isPending = (matched?.status === 'Pending Verification' || currentNurse?.status === 'Pending Verification' || base.status === 'Pending Verification') && !isAct;
+    const isVer = !isPending && Boolean(matched?.certificateVerified || currentNurse?.certificateVerified || base.certificateVerified || isAct);
     return {
       ...base,
       certificateUrl: certUrl,
       certificateVerified: isVer,
-      status: isVer ? 'Active' : (base.status || 'Active')
+      status: isPending ? 'Pending Verification' : (isVer ? 'Active' : (base.status || 'Active'))
     } as NurseProfile;
   }, [allNurses, currentNurse]);
 
@@ -179,10 +179,10 @@ export const NurseDashboard: React.FC<NurseDashboardProps> = ({
   };
 
   const matchingLead = useMemo(() => findMatchingLeadForNurse(nurse, leads), [nurse, leads]);
-  const isNurseVerified = Boolean(
+  const isPendingNurse = nurse.status === 'Pending Verification' && !nurse.certificateVerified;
+  const isNurseVerified = !isPendingNurse && Boolean(
     nurse.certificateVerified ||
     nurse.status === 'Active' ||
-    (nurse.certificateUrl && nurse.certificateUrl.trim().length > 0 && nurse.status !== 'Rejected') ||
     (matchingLead && (matchingLead.status === 'Approved' || matchingLead.status === 'Converted'))
   );
 

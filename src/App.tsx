@@ -737,24 +737,26 @@ export const App: React.FC = () => {
       pointsEarned: 300,
       referralEarningsRupees: 0,
       rating: 4.9,
-      certificateVerified: Boolean((authUser as any).certificateVerified || authUser.status === 'Active' || authUser.certificateUrl),
+      certificateVerified: Boolean((authUser as any).certificateVerified || authUser.status === 'Active'),
       certificateUrl: authUser.certificateUrl
     } : (nurses[0] || fallbackNurse));
 
   const resolvedCertUrl = rawActiveNurse?.certificateUrl || authUser?.certificateUrl;
-  const isNurseVerifiedResolved = Boolean(
+  const isPending = (rawActiveNurse?.status === 'Pending Verification' || authUser?.status === 'Pending Verification') &&
+    rawActiveNurse?.status !== 'Active' && authUser?.status !== 'Active';
+
+  const isNurseVerifiedResolved = !isPending && Boolean(
     rawActiveNurse?.certificateVerified ||
     rawActiveNurse?.status === 'Active' ||
     authUser?.status === 'Active' ||
-    (authUser as any)?.certificateVerified ||
-    (resolvedCertUrl && resolvedCertUrl.trim().length > 0)
+    (authUser as any)?.certificateVerified
   );
 
   const activeNurse: NurseProfile = rawActiveNurse ? {
     ...rawActiveNurse,
     certificateUrl: resolvedCertUrl,
     certificateVerified: isNurseVerifiedResolved,
-    status: isNurseVerifiedResolved ? 'Active' : (rawActiveNurse.status || 'Active')
+    status: isPending ? 'Pending Verification' : (isNurseVerifiedResolved ? 'Active' : (rawActiveNurse.status || 'Active'))
   } : fallbackNurse;
 
   // Modal States

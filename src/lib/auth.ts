@@ -226,10 +226,8 @@ export async function authenticateUserSecure(
             }
 
             const isApprovedNurse = Boolean(
-              (liveNurse && (liveNurse.status === 'Active' || liveNurse.certificate_verified || liveNurse.certificate_url)) ||
-              matchedUser.status === 'Active' ||
-              matchedUser.certificate_url ||
-              (matchedUser as any).certificateVerified
+              (liveNurse && (liveNurse.status === 'Active' || liveNurse.certificate_verified)) ||
+              (matchedUser.status === 'Active' || (matchedUser as any).certificateVerified)
             );
 
             if (!isApprovedNurse && (liveNurse?.status === 'Pending Verification' || matchedUser.status === 'Pending Verification')) {
@@ -294,10 +292,8 @@ export async function authenticateUserSecure(
           if (matchedUser.phone) clearFailedAttempts(matchedUser.phone.toLowerCase());
 
           const isApprovedNurse = matchedUser.role === 'nurse' && Boolean(
-            (liveNurseRecord && (liveNurseRecord.status === 'Active' || liveNurseRecord.certificate_verified || liveNurseRecord.certificate_url)) ||
-            matchedUser.status === 'Active' ||
-            matchedUser.certificate_url ||
-            (matchedUser as any).certificateVerified
+            (liveNurseRecord && (liveNurseRecord.status === 'Active' || liveNurseRecord.certificate_verified)) ||
+            (matchedUser.status === 'Active' || (matchedUser as any).certificateVerified)
           );
           const nurseCertUrl = (liveNurseRecord?.certificate_url || matchedUser.certificate_url || (matchedUser as any).certificateUrl) || undefined;
 
@@ -311,11 +307,11 @@ export async function authenticateUserSecure(
               pin: '••••', // Never expose plaintext pin
               phone: matchedUser.phone,
               email: matchedUser.email,
-              status: isApprovedNurse ? 'Active' : (matchedUser.status || 'Active'),
+              status: isApprovedNurse ? 'Active' : (matchedUser.status || 'Pending Verification'),
               designation: matchedUser.designation,
               serviceArea: matchedUser.service_area || matchedUser.serviceArea,
               certificateUrl: nurseCertUrl,
-              certificateVerified: isApprovedNurse || Boolean(nurseCertUrl)
+              certificateVerified: isApprovedNurse
             },
             message: `Authenticated successfully as ${matchedUser.role.toUpperCase()}.`
           };

@@ -157,7 +157,7 @@ interface AdminDashboardProps {
 export const getRequiredSkillForService = (serviceTitle: string = '', serviceId: string = ''): string | null => {
   const sTitle = (serviceTitle || '').toLowerCase();
   const sId = (serviceId || '').toLowerCase();
-  
+
   if (sTitle.includes('saline') || sTitle.includes('iv') || sTitle.includes('cannula') || sTitle.includes('drip') || sId.includes('saline') || sId.includes('iv')) {
     return 'IV Cannulation';
   }
@@ -4046,8 +4046,8 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                                   📅 Scheduled
                                 </span>
                                 <span style={{ fontSize: '0.74rem', color: '#475569', fontWeight: 600, whiteSpace: 'nowrap' }}>
-                                  {b.preferredDate 
-                                    ? `📅 ${formatDateDDMMYY(b.preferredDate)} • ⏰ ${b.preferredTime || b.scheduledSlot || 'Standard Slot'}` 
+                                  {b.preferredDate
+                                    ? `📅 ${formatDateDDMMYY(b.preferredDate)} • ⏰ ${b.preferredTime || b.scheduledSlot || 'Standard Slot'}`
                                     : `📅 ${formatDateDDMMYY(b.createdAt, 'Today')} • ⏰ ${b.scheduledSlot || b.preferredTime || 'Standard Slot'}`}
                                 </span>
                               </div>
@@ -4254,7 +4254,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                               return (
                                 <div>
                                   <span className={`status-pill ${b.status === 'Pending' ? 'warning' :
-                                      b.status === 'Rejected' || b.status === 'Cancelled' ? 'danger' : 'neutral'
+                                    b.status === 'Rejected' || b.status === 'Cancelled' ? 'danger' : 'neutral'
                                     }`} style={{ whiteSpace: 'nowrap' }}>
                                     {b.status === 'Rejected' ? '✕ Rejected by Admin' : b.status === 'Cancelled' ? '✕ Cancelled' : b.status}
                                   </span>
@@ -5220,7 +5220,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                                             await onUpdateNurseRecord?.(n.id, { certificateVerified: true, status: 'Active' });
                                             try {
                                               await dbUpdateNurseById(n.id, { certificateVerified: true, status: 'Active' });
-                                            } catch {}
+                                            } catch { }
                                             showToast(`Nurse "${n.name}" verified and approved!`);
                                           }}
                                           className="btn btn-sm btn-primary"
@@ -5519,7 +5519,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                                 {s.id === 'other' ? (
                                   ''
                                 ) : (s.priceNumber === 0 || s.singleVisitPrice === 0) ? (
-                                  (s.indicativePrice ? s.indicativePrice.replace(/•\s*₹0/g, '').trim() : 'Decided at visit') 
+                                  (s.indicativePrice ? s.indicativePrice.replace(/•\s*₹0/g, '').trim() : 'Decided at visit')
                                 ) : (
                                   'per home visit'
                                 )}
@@ -5877,8 +5877,8 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                         {leadTypeFilter === 'patient' || leadTypeFilter === 'patient-converted'
                           ? 'Patient Name'
                           : leadTypeFilter === 'nurse' || leadTypeFilter === 'nurse-converted'
-                          ? 'Referred Nurse'
-                          : 'Referred Name (Patient / Nurse)'}
+                            ? 'Referred Nurse'
+                            : 'Referred Name (Patient / Nurse)'}
                       </th>
                       <th>Phone</th>
                       <th>Service / Details</th>
@@ -7696,7 +7696,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                                           await onUpdateNurseRecord(matchedNurse.id, { certificateVerified: true, status: 'Active' });
                                           try {
                                             await dbUpdateNurseById(matchedNurse.id, { certificateVerified: true, status: 'Active' });
-                                          } catch {}
+                                          } catch { }
                                           broadcastRealtimeUpdate('NURSE_UPDATE', { ...matchedNurse, certificateVerified: true, status: 'Active' });
                                           showToast(`Verified & Approved Certificate for ${matchedNurse.name}!`);
                                         }}
@@ -12887,7 +12887,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                   <Edit2 size={15} />
                   <span>Edit / Replace Nurse Certificate Document</span>
                 </div>
-                
+
                 <div style={{ display: 'grid', gridTemplateColumns: '1fr auto', gap: '0.75rem', alignItems: 'center', marginBottom: '0.75rem' }}>
                   <div>
                     <label style={{ fontSize: '0.75rem', fontWeight: 700, color: '#1E293B', display: 'block', marginBottom: '0.25rem' }}>
@@ -12961,7 +12961,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                         await onUpdateNurseRecord?.(adminCertModalNurse.id, { certificateUrl: '', certificateVerified: false });
                         try {
                           await dbUpdateNurseById(adminCertModalNurse.id, { certificateUrl: '', certificateVerified: false });
-                        } catch {}
+                        } catch { }
                         setAdminCertModalNurse({ ...adminCertModalNurse, certificateUrl: undefined, certificateVerified: false });
                         setCertUrlInput('');
                         showToast(`Certificate removed for ${adminCertModalNurse.name}.`);
@@ -12984,7 +12984,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                       await onUpdateNurseRecord?.(adminCertModalNurse.id, { certificateUrl: trimmed, certificateVerified: true, status: 'Active' });
                       try {
                         await dbUpdateNurseById(adminCertModalNurse.id, { certificateUrl: trimmed, certificateVerified: true, status: 'Active' });
-                      } catch {}
+                      } catch { }
                       setAdminCertModalNurse({ ...adminCertModalNurse, certificateUrl: trimmed, certificateVerified: true, status: 'Active' });
                       setIsEditingNurseCert(false);
                       showToast(`Certificate for ${adminCertModalNurse.name} saved and verified! Nurse account is now active.`);
@@ -13099,7 +13099,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                       await onUpdateNurseRecord?.(adminCertModalNurse.id, { certificateVerified: true, status: 'Active' });
                       try {
                         await dbUpdateNurseById(adminCertModalNurse.id, { certificateVerified: true, status: 'Active' });
-                      } catch {}
+                      } catch { }
                       setAdminCertModalNurse({ ...adminCertModalNurse, certificateVerified: true, status: 'Active' });
                       showToast(`Nurse ${adminCertModalNurse.name} certificate verified and approved!`);
                       setAdminCertModalOpen(false);

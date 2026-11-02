@@ -380,17 +380,15 @@ export async function dbFetchNurses(): Promise<NurseProfile[] | null> {
 
     const resolvedCertUrl = n.certificate_url || matchedUser?.certificate_url || matchedUser?.certificateUrl || undefined;
     const hasCert = Boolean(resolvedCertUrl && resolvedCertUrl.trim().length > 0);
-    const isVerified = Boolean(
-      n.certificate_verified ||
-      (matchedUser?.certificate_verified) ||
-      (n.status === 'Active' && hasCert) ||
-      (matchedUser?.status === 'Active' && hasCert) ||
-      (n.status === 'Active' && n.certificate_verified !== false) ||
-      (hasCert && n.status !== 'Rejected' && matchedUser?.status !== 'Rejected')
-    );
-    const resolvedStatus = (isVerified && (n.status === 'Pending Verification' || !n.status))
-      ? 'Active'
-      : (n.status || matchedUser?.status || 'Active');
+    const isExplicitlyPending = n.status === 'Pending Verification' || matchedUser?.status === 'Pending Verification';
+    const isExplicitlyActive = n.status === 'Active' || matchedUser?.status === 'Active';
+    const isExplicitlyVerified = Boolean(n.certificate_verified || matchedUser?.certificate_verified);
+
+    // Newly registered nurses who are pending admin review MUST NOT be auto-approved
+    const isVerified = (isExplicitlyVerified || isExplicitlyActive) && (!isExplicitlyPending || isExplicitlyVerified || isExplicitlyActive);
+    const resolvedStatus = (isExplicitlyPending && !isExplicitlyVerified && !isExplicitlyActive)
+      ? 'Pending Verification'
+      : (isVerified ? 'Active' : (n.status || matchedUser?.status || 'Pending Verification'));
 
     return {
       id: n.id,

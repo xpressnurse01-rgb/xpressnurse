@@ -433,10 +433,8 @@ export const LoginPage: React.FC<LoginPageProps> = ({
             .maybeSingle();
 
           const isApprovedNurse = Boolean(
-            (nurseData && (nurseData.status === 'Active' || nurseData.certificate_verified || nurseData.certificate_url)) ||
-            matchedUser.status === 'Active' ||
-            matchedUser.certificateUrl ||
-            (matchedUser as any).certificateVerified
+            (nurseData && (nurseData.status === 'Active' || nurseData.certificate_verified)) ||
+            (matchedUser.status === 'Active' || (matchedUser as any).certificateVerified)
           );
 
           if (nurseData && (nurseData.status === 'Removed' || nurseData.status === 'Deleted' || nurseData.status === 'Inactive' || nurseData.status === 'Suspended' || nurseData.status === 'Terminated')) {
@@ -463,10 +461,8 @@ export const LoginPage: React.FC<LoginPageProps> = ({
             (n.email && matchedUser.email && n.email.toLowerCase() === matchedUser.email.toLowerCase())
           );
           const isApprovedProfile = Boolean(
-            (nurseProfile && (nurseProfile.status === 'Active' || nurseProfile.certificateVerified || nurseProfile.certificateUrl)) ||
-            matchedUser.status === 'Active' ||
-            matchedUser.certificateUrl ||
-            (matchedUser as any).certificateVerified
+            (nurseProfile && (nurseProfile.status === 'Active' || nurseProfile.certificateVerified)) ||
+            (matchedUser.status === 'Active' || (matchedUser as any).certificateVerified)
           );
           if (nurseProfile && (nurseProfile.status === 'Removed' || nurseProfile.status === 'Deleted')) {
             setIsLoading(false);
