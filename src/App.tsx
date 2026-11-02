@@ -714,7 +714,7 @@ export const App: React.FC = () => {
   };
 
   // Strictly resolve logged-in nurse first to prevent role/account hijacking
-  const activeNurse = (authUser?.role === 'nurse'
+  const rawActiveNurse = (authUser?.role === 'nurse'
     ? nurses.find((n) =>
       n.id === authUser.id ||
       (n.phone && authUser.phone && n.phone.replace(/\D/g, '') === authUser.phone.replace(/\D/g, '')) ||
@@ -727,18 +727,35 @@ export const App: React.FC = () => {
       name: authUser.name,
       phone: authUser.phone || '',
       email: authUser.email || authUser.identifier,
-      experienceYears: 5,
+      experienceYears: Number(authUser.experienceYears) || 5,
       qualification: authUser.designation || 'Registered Nurse',
       serviceArea: authUser.serviceArea || 'Hyderabad Central',
-      status: 'Pending Verification' as const,
+      status: (authUser.status as any) || 'Active',
       totalLeads: 0,
       convertedLeads: 0,
       totalReferrals: 0,
-      pointsEarned: 0,
+      pointsEarned: 300,
       referralEarningsRupees: 0,
       rating: 4.9,
-      certificateVerified: false
+      certificateVerified: Boolean((authUser as any).certificateVerified || authUser.status === 'Active' || authUser.certificateUrl),
+      certificateUrl: authUser.certificateUrl
     } : (nurses[0] || fallbackNurse));
+
+  const resolvedCertUrl = rawActiveNurse?.certificateUrl || authUser?.certificateUrl;
+  const isNurseVerifiedResolved = Boolean(
+    rawActiveNurse?.certificateVerified ||
+    rawActiveNurse?.status === 'Active' ||
+    authUser?.status === 'Active' ||
+    (authUser as any)?.certificateVerified ||
+    (resolvedCertUrl && resolvedCertUrl.trim().length > 0)
+  );
+
+  const activeNurse: NurseProfile = rawActiveNurse ? {
+    ...rawActiveNurse,
+    certificateUrl: resolvedCertUrl,
+    certificateVerified: isNurseVerifiedResolved,
+    status: isNurseVerifiedResolved ? 'Active' : (rawActiveNurse.status || 'Active')
+  } : fallbackNurse;
 
   // Modal States
   const [isBookingOpen, setIsBookingOpen] = useState(false);
@@ -797,6 +814,7 @@ export const App: React.FC = () => {
         }
         if (remoteNurses !== null) {
           setNurses(remoteNurses);
+          try { localStorage.setItem('xn_cached_nurses', JSON.stringify(remoteNurses)); } catch {}
           // If in nurse portal, verify logged-in nurse is active in live database
           const nurseAuthRaw = sessionStorage.getItem('xn_auth_user_nurse') || localStorage.getItem('xn_auth_user_nurse');
           if (nurseAuthRaw) {
@@ -806,9 +824,27 @@ export const App: React.FC = () => {
                 const found = remoteNurses.find(
                   (n) => n.id === u.id || (n.email && n.email.toLowerCase() === (u.email || u.identifier || '').toLowerCase()) || (n.phone && n.phone.replace(/\D/g, '') === (u.phone || '').replace(/\D/g, ''))
                 );
-                if (found && found.status === 'Active') {
+                if (found && (found.status === 'Active' || found.certificateVerified)) {
                   setActiveNurseId(found.id);
                   try { localStorage.setItem('xn_active_nurse_id', found.id); } catch {}
+                  setAuthUser((prev) => {
+                    if (prev && (prev.id === found.id || (prev.phone && found.phone && prev.phone.replace(/\D/g, '') === found.phone.replace(/\D/g, '')) || (prev.email && found.email && prev.email.toLowerCase() === found.email.toLowerCase()))) {
+                      const updatedUser: AppUser = {
+                        ...prev,
+                        status: 'Active',
+                        certificateUrl: found.certificateUrl || prev.certificateUrl
+                      };
+                      try {
+                        const roleKey = `xn_auth_user_${updatedUser.role}`;
+                        sessionStorage.setItem('xn_auth_user', JSON.stringify(updatedUser));
+                        sessionStorage.setItem(roleKey, JSON.stringify(updatedUser));
+                        localStorage.setItem(roleKey, JSON.stringify(updatedUser));
+                        localStorage.setItem('xn_auth_user', JSON.stringify(updatedUser));
+                      } catch {}
+                      return updatedUser;
+                    }
+                    return prev;
+                  });
                 } else if (found && found.status !== 'Active') {
                   try {
                     localStorage.removeItem('xn_auth_user_nurse');
@@ -1003,6 +1039,7 @@ export const App: React.FC = () => {
           if (prev.length === merged.length && JSON.stringify(prev) === JSON.stringify(merged)) {
             return prev;
           }
+          try { localStorage.setItem('xn_cached_nurses', JSON.stringify(merged)); } catch {}
           return merged;
         });
 
@@ -1012,7 +1049,21 @@ export const App: React.FC = () => {
             const found = remoteNurses.find(
               (n) => n.id === prev.id || (n.phone && prev.phone && n.phone.replace(/\D/g, '') === prev.phone.replace(/\D/g, ''))
             );
-            if (!found || found.status !== 'Active') {
+            if (found && (found.status === 'Active' || found.certificateVerified)) {
+              const updatedUser: AppUser = {
+                ...prev,
+                status: 'Active',
+                certificateUrl: found.certificateUrl || prev.certificateUrl
+              };
+              try {
+                const roleKey = `xn_auth_user_${updatedUser.role}`;
+                sessionStorage.setItem('xn_auth_user', JSON.stringify(updatedUser));
+                sessionStorage.setItem(roleKey, JSON.stringify(updatedUser));
+                localStorage.setItem(roleKey, JSON.stringify(updatedUser));
+                localStorage.setItem('xn_auth_user', JSON.stringify(updatedUser));
+              } catch {}
+              return updatedUser;
+            } else if (!found || (found.status !== 'Active' && !found.certificateVerified)) {
               try {
                 sessionStorage.removeItem('xn_auth_user');
                 sessionStorage.removeItem('xn_auth_user_nurse');
@@ -1071,7 +1122,31 @@ export const App: React.FC = () => {
       } else if (type === 'BOOKING_DELETE' && data?.id) {
         setBookings((prev) => prev.filter((b) => b.id !== data.id));
       } else if (type === 'NURSE_UPDATE' && data?.id) {
-        setNurses((prev) => prev.map((n) => (n.id === data.id ? { ...n, ...data } : n)));
+        setNurses((prev) => {
+          const exists = prev.some((n) => n.id === data.id);
+          const next = exists ? prev.map((n) => (n.id === data.id ? { ...n, ...data } : n)) : [data, ...prev];
+          try { localStorage.setItem('xn_cached_nurses', JSON.stringify(next)); } catch { }
+          return next;
+        });
+        setAuthUser((prev) => {
+          if (prev && (prev.id === data.id || (prev.phone && data.phone && prev.phone.replace(/\D/g, '') === data.phone.replace(/\D/g, '')) || (prev.email && data.email && prev.email.toLowerCase() === data.email.toLowerCase()))) {
+            const next = {
+              ...prev,
+              ...data,
+              status: data.status || prev.status,
+              certificateVerified: data.certificateVerified !== undefined ? data.certificateVerified : (prev as any).certificateVerified
+            };
+            try {
+              const roleKey = `xn_auth_user_${next.role}`;
+              sessionStorage.setItem('xn_auth_user', JSON.stringify(next));
+              sessionStorage.setItem(roleKey, JSON.stringify(next));
+              localStorage.setItem(roleKey, JSON.stringify(next));
+              localStorage.setItem('xn_auth_user', JSON.stringify(next));
+            } catch { }
+            return next;
+          }
+          return prev;
+        });
       } else if (type === 'NURSE_CREATE' && data?.id) {
         setNurses((prev) => {
           const exists = prev.some((n) => n.id === data.id);
@@ -2415,7 +2490,8 @@ export const App: React.FC = () => {
     }
 
     setNurses((prev) => {
-      const next = prev.map((n) => (n.id === id ? { ...n, ...updates } : n));
+      const exists = prev.some((n) => n.id === id);
+      const next = exists ? prev.map((n) => (n.id === id ? { ...n, ...updates } : n)) : [{ ...mergedNurse, ...updates }, ...prev];
       try { localStorage.setItem('xn_cached_nurses', JSON.stringify(next)); } catch { }
       return next;
     });
@@ -2446,8 +2522,9 @@ export const App: React.FC = () => {
       try { localStorage.setItem('xn_cached_app_users', JSON.stringify(next)); } catch { }
       return next;
     });
+    const isNurseApproved = Boolean(updates.certificateVerified || updates.certificateUrl || updates.status === 'Active' || mergedNurse.certificateVerified || mergedNurse.certificateUrl);
     setAuthUser((prev) => {
-      if (prev && prev.id === id) {
+      if (prev && (prev.id === id || (prev.phone && mergedNurse.phone && prev.phone.replace(/\D/g, '') === mergedNurse.phone.replace(/\D/g, '')) || (prev.email && mergedNurse.email && prev.email.toLowerCase() === mergedNurse.email.toLowerCase()))) {
         const next = {
           ...prev,
           name: updates.name ?? prev.name,
@@ -2455,6 +2532,9 @@ export const App: React.FC = () => {
           email: updates.email ?? prev.email,
           designation: updates.qualification ?? prev.designation,
           serviceArea: updates.serviceArea ?? prev.serviceArea,
+          status: isNurseApproved ? 'Active' : (updates.status ?? prev.status),
+          certificateUrl: updates.certificateUrl ?? (prev as any).certificateUrl,
+          certificateVerified: isNurseApproved
         };
         try {
           const roleKey = `xn_auth_user_${next.role}`;
@@ -2467,8 +2547,14 @@ export const App: React.FC = () => {
       }
       return prev;
     });
-    broadcastRealtimeUpdate('NURSE_UPDATE', { id, ...updates });
-    await dbUpdateNurseById(id, updates);
+    const broadcastPayload = {
+      ...mergedNurse,
+      ...updates,
+      certificateVerified: isNurseApproved,
+      status: isNurseApproved ? 'Active' : (updates.status || mergedNurse.status || 'Active')
+    };
+    broadcastRealtimeUpdate('NURSE_UPDATE', broadcastPayload);
+    await dbUpdateNurseById(id, { ...updates, certificateVerified: isNurseApproved, status: isNurseApproved ? 'Active' : updates.status });
   };
   const handleDeleteNurse = async (id: string) => {
     const nurseToDelete = nurses.find((n) => n.id === id);

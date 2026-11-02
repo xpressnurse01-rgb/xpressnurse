@@ -378,6 +378,20 @@ export async function dbFetchNurses(): Promise<NurseProfile[] | null> {
       ? Math.max(0, Number(n.experience_years))
       : 3;
 
+    const resolvedCertUrl = n.certificate_url || matchedUser?.certificate_url || matchedUser?.certificateUrl || undefined;
+    const hasCert = Boolean(resolvedCertUrl && resolvedCertUrl.trim().length > 0);
+    const isVerified = Boolean(
+      n.certificate_verified ||
+      (matchedUser?.certificate_verified) ||
+      (n.status === 'Active' && hasCert) ||
+      (matchedUser?.status === 'Active' && hasCert) ||
+      (n.status === 'Active' && n.certificate_verified !== false) ||
+      (hasCert && n.status !== 'Rejected' && matchedUser?.status !== 'Rejected')
+    );
+    const resolvedStatus = (isVerified && (n.status === 'Pending Verification' || !n.status))
+      ? 'Active'
+      : (n.status || matchedUser?.status || 'Active');
+
     return {
       id: n.id,
       name: n.name,
@@ -387,7 +401,7 @@ export async function dbFetchNurses(): Promise<NurseProfile[] | null> {
       qualification: n.qualification || 'Registered Nurse',
       serviceArea: n.service_area || 'Gachibowli',
       pin: matchedUser?.pin ? String(matchedUser.pin).trim() : (n.pin ? String(n.pin).trim() : undefined),
-      status: n.status || 'Active',
+      status: resolvedStatus,
       totalLeads: Number(n.total_leads) || 0,
       convertedLeads: Number(n.converted_leads) || 0,
       totalReferrals: Number(n.total_referrals) || 0,
@@ -395,8 +409,8 @@ export async function dbFetchNurses(): Promise<NurseProfile[] | null> {
       referralEarningsRupees: n.referral_earnings_rupees != null && !isNaN(Number(n.referral_earnings_rupees)) ? Math.max(0, Number(n.referral_earnings_rupees)) : 0,
       rating: Number(n.rating) || 4.90,
       avatarUrl: n.avatar_url || undefined,
-      certificateVerified: Boolean(n.certificate_verified),
-      certificateUrl: n.certificate_url || undefined,
+      certificateVerified: isVerified,
+      certificateUrl: resolvedCertUrl,
       createdAt: n.created_at,
       referredByNurseId: n.referred_by_nurse_id || undefined,
       referralCode: n.referral_code || generateNurseReferralCode(n.name, n.id, n.phone),
@@ -423,6 +437,51 @@ export async function dbFetchNurses(): Promise<NurseProfile[] | null> {
             ? Boolean(matchedUser.ready_for_home_visit)
             : true))
     };
+  });
+
+  // Synthesize any registered nurses present in app_users but missing from nurses table
+  (appUsersData || []).forEach((u: any) => {
+    if (u.role !== 'nurse') return;
+    const uPhone = (u.phone || '').replace(/\D/g, '');
+    const uEmail = (u.email || u.identifier || '').toLowerCase().trim();
+    const exists = nursesList.some(
+      (n) => n.id === u.id ||
+      (uPhone && n.phone && n.phone.replace(/\D/g, '') === uPhone) ||
+      (uEmail && n.email && n.email.toLowerCase().trim() === uEmail)
+    );
+    if (!exists) {
+      const resolvedCert = u.certificate_url || u.certificateUrl || undefined;
+      const isVerified = Boolean(u.status === 'Active' || u.certificate_verified || (u.status === 'Active' && resolvedCert));
+      nursesList.push({
+        id: u.id,
+        name: u.name || 'Staff Nurse',
+        phone: u.phone || '',
+        email: u.email || u.identifier || '',
+        experienceYears: Number(u.experience_years) || 3,
+        qualification: u.designation || 'Registered Nurse',
+        serviceArea: u.service_area || u.serviceArea || 'Hyderabad',
+        pin: u.pin ? String(u.pin).trim() : undefined,
+        status: u.status || 'Active',
+        totalLeads: 0,
+        convertedLeads: 0,
+        totalReferrals: 0,
+        pointsEarned: 300,
+        referralEarningsRupees: 0,
+        rating: 4.90,
+        avatarUrl: u.avatar_url || undefined,
+        certificateVerified: isVerified,
+        certificateUrl: resolvedCert,
+        createdAt: u.created_at || new Date().toISOString(),
+        referralCode: generateNurseReferralCode(u.name || 'Nurse', u.id, u.phone || ''),
+        maritalStatus: u.marital_status || undefined,
+        city: u.city || (u.district && u.district.toLowerCase().includes('non') ? 'Non-Hyderabad' : 'Hyderabad'),
+        district: u.district || undefined,
+        mandal: u.mandal || undefined,
+        village: u.village || undefined,
+        skills: Array.isArray(u.skills) ? u.skills : [],
+        readyForHomeVisit: u.ready_for_home_visit !== undefined ? Boolean(u.ready_for_home_visit) : true
+      });
+    }
   });
 
   nursesList.sort((a, b) => {
@@ -604,8 +663,24 @@ export async function dbUpdateNurseById(id: string, updates: Partial<NurseProfil
     payload.total_payout = Number(updates.totalPayout ?? updates.total_payout ?? (updates as any).totalEarningsRupees);
   }
   if (updates.rating !== undefined) payload.rating = Number(updates.rating);
-  if (updates.certificateVerified !== undefined) payload.certificate_verified = Boolean(updates.certificateVerified);
-  if (updates.certificateUrl !== undefined) payload.certificate_url = updates.certificateUrl;
+  if (updates.certificateVerified !== undefined) {
+    payload.certificate_verified = Boolean(updates.certificateVerified);
+    if (updates.certificateVerified === true && updates.status === undefined) {
+      payload.status = 'Active';
+    }
+  }
+  if (updates.certificateUrl !== undefined) {
+    payload.certificate_url = updates.certificateUrl;
+    if (updates.certificateUrl && updates.certificateUrl.trim().length > 0) {
+      payload.certificate_verified = true;
+      if (updates.status === undefined || updates.status === 'Pending Verification') {
+        payload.status = 'Active';
+      }
+    }
+  }
+  if (updates.status === 'Active') {
+    payload.certificate_verified = true;
+  }
   if (updates.avatarUrl !== undefined) payload.avatar_url = updates.avatarUrl;
   if (updates.referredByNurseId !== undefined) payload.referred_by_nurse_id = updates.referredByNurseId;
   if (updates.earningsPaid !== undefined) payload.earnings_paid = Number(updates.earningsPaid);
@@ -636,6 +711,45 @@ export async function dbUpdateNurseById(id: string, updates: Partial<NurseProfil
       const retry = await supabase.from('nurses').update(payload).eq('id', id);
       error = retry.error;
     }
+
+    // Resilient fallback: ensure row exists in nurses table or update by phone/email
+    const cleanPhoneDigits = updates.phone ? updates.phone.replace(/\D/g, '') : '';
+    if (cleanPhoneDigits || updates.email) {
+      const orClauses: string[] = [];
+      if (cleanPhoneDigits) orClauses.push(`phone.eq.${updates.phone}`);
+      if (updates.email) orClauses.push(`email.eq.${updates.email.trim()}`);
+      try {
+        await supabase.from('nurses').update(payload).or(orClauses.join(','));
+      } catch {}
+    }
+
+    // If nurse was not yet in nurses table (e.g. only in app_users), upsert them now
+    try {
+      const { data: existingRows } = await supabase.from('nurses').select('id').eq('id', id).maybeSingle();
+      if (!existingRows) {
+        const fullNewNurse: any = {
+          id,
+          name: updates.name || 'Staff Nurse',
+          phone: updates.phone || '',
+          email: updates.email || '',
+          experience_years: updates.experienceYears || 3,
+          qualification: updates.qualification || 'Registered Nurse',
+          service_area: updates.serviceArea || 'Hyderabad',
+          status: payload.status || 'Active',
+          certificate_verified: payload.certificate_verified ?? true,
+          certificate_url: payload.certificate_url || null,
+          total_leads: 0,
+          converted_leads: 0,
+          total_referrals: 0,
+          points_earned: 300,
+          referral_earnings_rupees: 0,
+          rating: 4.90,
+          created_at: new Date().toISOString()
+        };
+        await supabase.from('nurses').upsert(fullNewNurse);
+      }
+    } catch {}
+
     if (error) console.error("Supabase Update Error:", error.message, error.details);
 
     // Also sync matching user in app_users table
@@ -654,15 +768,35 @@ export async function dbUpdateNurseById(id: string, updates: Partial<NurseProfil
     if (updates.mandal !== undefined) userPayload.mandal = updates.mandal;
     if (updates.village !== undefined) userPayload.village = updates.village;
     if (updates.skills !== undefined) userPayload.skills = updates.skills;
-    if (updates.status !== undefined) userPayload.status = updates.status;
+    if (updates.status !== undefined) {
+      userPayload.status = updates.status;
+    } else if (updates.certificateVerified === true || (updates.certificateUrl && updates.certificateUrl.trim().length > 0)) {
+      userPayload.status = 'Active';
+    }
+    if (updates.certificateVerified === true || (updates.certificateUrl && updates.certificateUrl.trim().length > 0)) {
+      userPayload.status = 'Active';
+      userPayload.certificate_verified = true;
+    }
     if (updates.readyForHomeVisit !== undefined) userPayload.ready_for_home_visit = Boolean(updates.readyForHomeVisit);
     if (updates.experienceYears !== undefined) userPayload.experience_years = !isNaN(Number(updates.experienceYears)) ? Math.max(0, Math.round(Number(updates.experienceYears))) : 3;
     if (updates.certificateUrl !== undefined) userPayload.certificate_url = updates.certificateUrl;
     if (Object.keys(userPayload).length > 0) {
       let { error: upErr } = await supabase.from('app_users').update(userPayload).eq('id', id);
-      if (upErr && (upErr.code === '42703' || upErr.message?.includes('ready_for_home_visit'))) {
+      if (upErr && (upErr.code === '42703' || upErr.message?.includes('ready_for_home_visit') || upErr.message?.includes('certificate_verified'))) {
         delete userPayload.ready_for_home_visit;
+        delete userPayload.certificate_verified;
         await supabase.from('app_users').update(userPayload).eq('id', id);
+      }
+      if (cleanPhoneDigits || updates.email) {
+        const userOrClauses: string[] = [];
+        if (cleanPhoneDigits) userOrClauses.push(`phone.eq.${updates.phone}`);
+        if (updates.email) {
+          userOrClauses.push(`email.eq.${updates.email.trim()}`);
+          userOrClauses.push(`identifier.eq.${updates.email.trim().toLowerCase()}`);
+        }
+        try {
+          await supabase.from('app_users').update(userPayload).or(userOrClauses.join(','));
+        } catch {}
       }
     }
 

@@ -53,7 +53,7 @@ import {
   uploadCertificateToCloudflareBucket
 } from '../lib/cloudflareStorage';
 import { generateNurseReferralCode } from '../lib/supabase';
-import { calculateNurseMetrics, deduplicateBookings, deduplicateLeads } from '../lib/nurseCalculations';
+import { calculateNurseMetrics, deduplicateBookings, deduplicateLeads, findMatchingLeadForNurse } from '../lib/nurseCalculations';
 import { useBodyScrollLock } from '../hooks/useBodyScrollLock';
 import { formatDateDDMMYY, formatDateTimeDDMMYY } from '../lib/dateUtils';
 
@@ -140,9 +140,25 @@ export const NurseDashboard: React.FC<NurseDashboardProps> = ({
     { id: 'vitals-monitoring', title: 'Senior Citizen General Health Check', priceNumber: 699, singleVisitPrice: 699, indicativePrice: '₹699' }
   ];
   const serviceList: ServiceItem[] = (services && services.length > 0) ? services : fallbackServices;
-  const liveNurse = (allNurses && currentNurse)
-    ? (allNurses.find((n) => n.id === currentNurse.id || (n.phone && currentNurse.phone && n.phone.replace(/\D/g, '') === currentNurse.phone.replace(/\D/g, ''))) || currentNurse)
-    : (currentNurse || (allNurses && allNurses.length > 0 ? allNurses[0] : null));
+  const liveNurse = useMemo(() => {
+    const matched = allNurses?.find((n) =>
+      (currentNurse?.id && n.id === currentNurse.id) ||
+      (n.phone && currentNurse?.phone && n.phone.replace(/\D/g, '') === currentNurse.phone.replace(/\D/g, '')) ||
+      (n.email && currentNurse?.email && n.email.toLowerCase().trim() === currentNurse.email.toLowerCase().trim())
+    );
+    const base = matched || currentNurse || (allNurses && allNurses.length > 0 ? allNurses[0] : null);
+    if (!base) return null;
+    const certUrl = matched?.certificateUrl || currentNurse?.certificateUrl || base.certificateUrl;
+    const hasCert = Boolean(certUrl && certUrl.trim().length > 0);
+    const isAct = matched?.status === 'Active' || currentNurse?.status === 'Active' || base.status === 'Active' || hasCert;
+    const isVer = Boolean(matched?.certificateVerified || currentNurse?.certificateVerified || base.certificateVerified || isAct || hasCert);
+    return {
+      ...base,
+      certificateUrl: certUrl,
+      certificateVerified: isVer,
+      status: isVer ? 'Active' : (base.status || 'Active')
+    } as NurseProfile;
+  }, [allNurses, currentNurse]);
 
   const nurse: NurseProfile = (liveNurse as NurseProfile) || {
     id: 'nurse-primary',
@@ -161,6 +177,14 @@ export const NurseDashboard: React.FC<NurseDashboardProps> = ({
     rating: 5.0,
     certificateVerified: true
   };
+
+  const matchingLead = useMemo(() => findMatchingLeadForNurse(nurse, leads), [nurse, leads]);
+  const isNurseVerified = Boolean(
+    nurse.certificateVerified ||
+    nurse.status === 'Active' ||
+    (nurse.certificateUrl && nurse.certificateUrl.trim().length > 0 && nurse.status !== 'Rejected') ||
+    (matchingLead && (matchingLead.status === 'Approved' || matchingLead.status === 'Converted'))
+  );
 
   // Ultra-simple 5 tabs with easy English words
   const [activeTab, setActiveTab] = useState<'home' | 'visits' | 'add-patient' | 'my-money' | 'profile'>('home');
@@ -542,7 +566,7 @@ export const NurseDashboard: React.FC<NurseDashboardProps> = ({
                 <h2 style={{ margin: 0, fontSize: '1.25rem', fontWeight: 800, color: '#0F172A' }}>
                   {nurse.name}
                 </h2>
-                {nurse.certificateVerified ? (
+                {isNurseVerified ? (
                   <span style={{
                     background: '#DCFCE7',
                     color: '#15803D',
@@ -2785,9 +2809,9 @@ export const NurseDashboard: React.FC<NurseDashboardProps> = ({
                     <span style={{
                       fontSize: '0.8rem',
                       fontWeight: 700,
-                      color: nurse.certificateVerified ? '#15803D' : '#B45309'
+                      color: isNurseVerified ? '#15803D' : '#B45309'
                     }}>
-                      {nurse.certificateVerified ? '✓ Verified by Admin' : '⏳ Pending Admin Verification'}
+                      {isNurseVerified ? '✓ Verified by Admin' : '⏳ Pending Admin Verification'}
                     </span>
                     <button
                       type="button"
@@ -3472,7 +3496,7 @@ export const NurseDashboard: React.FC<NurseDashboardProps> = ({
                 {nurse.name}'s Nursing License
               </div>
               <div style={{ fontSize: '0.78rem', color: '#64748B', marginTop: '4px' }}>
-                Status: {nurse.certificateVerified ? '✓ Verified by Admin' : 'Pending Verification'}
+                Status: {isNurseVerified ? '✓ Verified by Admin' : 'Pending Verification'}
               </div>
             </div>
             {nurse.certificateUrl ? (

@@ -427,47 +427,60 @@ export const LoginPage: React.FC<LoginPageProps> = ({
         try {
           const { data: nurseData } = await supabase
             .from('nurses')
-            .select('id, name, phone, email, status')
+            .select('id, name, phone, email, status, certificate_verified, certificate_url')
             .or(`id.eq.${matchedUser.id},phone.eq.${matchedUser.phone || matchedUser.identifier},email.eq.${matchedUser.email || matchedUser.identifier}`)
             .limit(1)
             .maybeSingle();
 
-          if (!nurseData) {
+          const isApprovedNurse = Boolean(
+            (nurseData && (nurseData.status === 'Active' || nurseData.certificate_verified || nurseData.certificate_url)) ||
+            matchedUser.status === 'Active' ||
+            matchedUser.certificateUrl ||
+            (matchedUser as any).certificateVerified
+          );
+
+          if (nurseData && (nurseData.status === 'Removed' || nurseData.status === 'Deleted' || nurseData.status === 'Inactive' || nurseData.status === 'Suspended' || nurseData.status === 'Terminated')) {
             setIsLoading(false);
-            setErrorMsg('Access denied. This nurse profile has been removed or deleted.');
+            setErrorMsg(`Access denied. Nurse profile is ${nurseData.status.toLowerCase()}.`);
             return;
           }
 
-          if (nurseData.status === 'Pending Verification') {
+          if (!isApprovedNurse && (nurseData?.status === 'Pending Verification' || matchedUser.status === 'Pending Verification')) {
             setIsLoading(false);
             setErrorMsg('Your profile is pending Admin verification. Please wait for approval before logging in.');
             return;
           }
 
-          if (nurseData.status !== 'Active') {
-            setIsLoading(false);
-            setErrorMsg(`Access denied. Nurse profile status is "${nurseData.status}". Only Active nurses can log in.`);
-            return;
+          if (isApprovedNurse) {
+            matchedUser.status = 'Active';
+            (matchedUser as any).certificateVerified = true;
+            if (nurseData?.certificate_url) matchedUser.certificateUrl = nurseData.certificate_url;
           }
         } catch (err) {
           const nurseProfile = activeNursesList.find(n => 
             n.id === matchedUser.id || 
-            (n.phone && matchedUser.phone && n.phone.replace(/\D/g, '') === matchedUser.phone.replace(/\D/g, ''))
+            (n.phone && matchedUser.phone && n.phone.replace(/\D/g, '') === matchedUser.phone.replace(/\D/g, '')) ||
+            (n.email && matchedUser.email && n.email.toLowerCase() === matchedUser.email.toLowerCase())
           );
-          if (!nurseProfile) {
+          const isApprovedProfile = Boolean(
+            (nurseProfile && (nurseProfile.status === 'Active' || nurseProfile.certificateVerified || nurseProfile.certificateUrl)) ||
+            matchedUser.status === 'Active' ||
+            matchedUser.certificateUrl ||
+            (matchedUser as any).certificateVerified
+          );
+          if (nurseProfile && (nurseProfile.status === 'Removed' || nurseProfile.status === 'Deleted')) {
             setIsLoading(false);
             setErrorMsg('Access denied. This nurse profile has been removed or deleted.');
             return;
           }
-          if (nurseProfile.status === 'Pending Verification') {
+          if (!isApprovedProfile && (nurseProfile?.status === 'Pending Verification' || matchedUser.status === 'Pending Verification')) {
             setIsLoading(false);
             setErrorMsg('Your profile is pending Admin verification. Please wait for approval before logging in.');
             return;
           }
-          if (nurseProfile.status !== 'Active') {
-            setIsLoading(false);
-            setErrorMsg(`Access denied. Nurse profile status is "${nurseProfile.status}".`);
-            return;
+          if (isApprovedProfile) {
+            matchedUser.status = 'Active';
+            (matchedUser as any).certificateVerified = true;
           }
         }
       }

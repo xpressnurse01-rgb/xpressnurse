@@ -207,45 +207,35 @@ export async function authenticateUserSecure(
 
           // STRICT DATABASE CROSS-CHECK FOR NURSES:
           // If nurse was deleted or removed from the database `nurses` table, BLOCK IMMEDIATELY!
+          let liveNurseRecord: any = null;
           if (matchedUser.role === 'nurse') {
             const { data: liveNurse } = await supabase
               .from('nurses')
-              .select('id, name, phone, email, status')
+              .select('id, name, phone, email, status, certificate_verified, certificate_url')
               .or(`id.eq.${matchedUser.id},phone.eq.${matchedUser.phone || matchedUser.identifier},email.eq.${matchedUser.email || matchedUser.identifier}`)
               .limit(1)
               .maybeSingle();
 
-            if (!liveNurse) {
-              // Nurse was deleted/removed from database nurses table
-              // Auto-purge any orphaned record from app_users
-              try {
-                await supabase.from('app_users').delete().eq('id', matchedUser.id);
-              } catch {}
+            liveNurseRecord = liveNurse;
 
-              return {
-                success: false,
-                message: 'Access denied. This nurse account has been removed or deleted.'
-              };
-            }
-
-            if (liveNurse.status === 'Pending Verification') {
-              return {
-                success: false,
-                message: 'Your profile is pending Admin verification. Please wait for approval before logging in.'
-              };
-            }
-
-            if (liveNurse.status === 'Removed' || liveNurse.status === 'Deleted' || liveNurse.status === 'Inactive' || liveNurse.status === 'Suspended' || liveNurse.status === 'Terminated') {
+            if (liveNurse && (liveNurse.status === 'Removed' || liveNurse.status === 'Deleted' || liveNurse.status === 'Inactive' || liveNurse.status === 'Suspended' || liveNurse.status === 'Terminated')) {
               return {
                 success: false,
                 message: 'Access denied. This nurse account has been removed or deactivated.'
               };
             }
 
-            if (liveNurse.status !== 'Active') {
+            const isApprovedNurse = Boolean(
+              (liveNurse && (liveNurse.status === 'Active' || liveNurse.certificate_verified || liveNurse.certificate_url)) ||
+              matchedUser.status === 'Active' ||
+              matchedUser.certificate_url ||
+              (matchedUser as any).certificateVerified
+            );
+
+            if (!isApprovedNurse && (liveNurse?.status === 'Pending Verification' || matchedUser.status === 'Pending Verification')) {
               return {
                 success: false,
-                message: `Access denied. Nurse account status is "${liveNurse.status}". Only Active nurses can log in.`
+                message: 'Your profile is pending Admin verification. Please wait for approval before logging in.'
               };
             }
           }
@@ -303,6 +293,14 @@ export async function authenticateUserSecure(
           if (matchedUser.identifier) clearFailedAttempts(matchedUser.identifier.toLowerCase());
           if (matchedUser.phone) clearFailedAttempts(matchedUser.phone.toLowerCase());
 
+          const isApprovedNurse = matchedUser.role === 'nurse' && Boolean(
+            (liveNurseRecord && (liveNurseRecord.status === 'Active' || liveNurseRecord.certificate_verified || liveNurseRecord.certificate_url)) ||
+            matchedUser.status === 'Active' ||
+            matchedUser.certificate_url ||
+            (matchedUser as any).certificateVerified
+          );
+          const nurseCertUrl = (liveNurseRecord?.certificate_url || matchedUser.certificate_url || (matchedUser as any).certificateUrl) || undefined;
+
           return {
             success: true,
             user: {
@@ -313,9 +311,11 @@ export async function authenticateUserSecure(
               pin: '••••', // Never expose plaintext pin
               phone: matchedUser.phone,
               email: matchedUser.email,
-              status: matchedUser.status || 'Active',
+              status: isApprovedNurse ? 'Active' : (matchedUser.status || 'Active'),
               designation: matchedUser.designation,
-              serviceArea: matchedUser.service_area || matchedUser.serviceArea
+              serviceArea: matchedUser.service_area || matchedUser.serviceArea,
+              certificateUrl: nurseCertUrl,
+              certificateVerified: isApprovedNurse || Boolean(nurseCertUrl)
             },
             message: `Authenticated successfully as ${matchedUser.role.toUpperCase()}.`
           };

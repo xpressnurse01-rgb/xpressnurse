@@ -215,6 +215,7 @@ export interface AppUser {
   specialization?: string;
   councilRegistrationNumber?: string;
   certificateUrl?: string;
+  certificateVerified?: boolean;
   experienceYears?: number | string;
   maritalStatus?: string;
   city?: string;

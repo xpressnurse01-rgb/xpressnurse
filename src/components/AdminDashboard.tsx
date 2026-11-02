@@ -65,10 +65,11 @@ import {
   UserCheck,
   AlertTriangle,
   LogOut,
-  User
+  User,
+  MessageCircle
 } from 'lucide-react';
 import { EmptyState } from './EmptyState';
-import { generateNurseReferralCode, dbLogAuditEvent } from '../lib/supabase';
+import { generateNurseReferralCode, dbLogAuditEvent, broadcastRealtimeUpdate } from '../lib/supabase';
 import { getSafeBlobUrl, HYDERABAD_AREAS } from './NurseDashboard';
 import { formatDateDDMMYY, formatDateTimeDDMMYY, formatTimeOnly } from '../lib/dateUtils';
 import {
@@ -2129,6 +2130,8 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
     }
     const cleanPhone = nurseForm.phone.replace(/\D/g, '') || nurseForm.phone.trim();
     const nonHydLoc = [nurseForm.village.trim(), nurseForm.mandal.trim(), nurseForm.district.trim(), nurseForm.city].filter(Boolean).join(', ');
+    const hasCertDoc = Boolean(nurseForm.certificateUrl?.trim() || editingNurse?.certificateUrl);
+    const isVerifiedNow = Boolean(nurseForm.certificateVerified || hasCertDoc || nurseForm.status === 'Active');
     const nursePayload: NurseProfile = {
       id: editingNurse ? editingNurse.id : nurseForm.id,
       name: nurseForm.name.trim(),
@@ -2144,7 +2147,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
       village: nurseForm.city !== 'Hyderabad' ? (nurseForm.village.trim() || undefined) : undefined,
       skills: nurseForm.skills || [],
       pin: nurseForm.pin.trim() || undefined,
-      status: (nurseForm.status as 'Active' | 'Pending Verification' | 'On Leave') || 'Active',
+      status: (isVerifiedNow ? 'Active' : (nurseForm.status as 'Active' | 'Pending Verification' | 'On Leave')) || 'Active',
       totalLeads: Number(nurseForm.totalLeads) || 0,
       convertedLeads: Number(nurseForm.convertedLeads) || 0,
       patientLeads: Number(nurseForm.patientLeads) || 0,
@@ -2161,7 +2164,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
       rating: Number(nurseForm.rating) || 4.9,
       avatarUrl: nurseForm.avatarUrl || (editingNurse ? editingNurse.avatarUrl : undefined),
       currentlyWorkingAt: nurseForm.currentlyWorkingAt?.trim() || undefined,
-      certificateVerified: nurseForm.certificateVerified,
+      certificateVerified: isVerifiedNow,
       certificateUrl: nurseForm.certificateUrl?.trim() || (editingNurse ? editingNurse.certificateUrl : undefined),
       readyForHomeVisit: nurseForm.readyForHomeVisit !== false
     };
@@ -2171,6 +2174,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
       try {
         await dbUpdateNurseById(editingNurse.id, nursePayload);
       } catch { }
+      broadcastRealtimeUpdate('NURSE_UPDATE', nursePayload);
       // Also update app_user pin and details if exists
       if (onUpdateAppUser) {
         const u = appUsers.find((x) => x.id === editingNurse.id || x.phone === editingNurse.phone || (x.email && x.email.toLowerCase() === editingNurse.email.toLowerCase()));
@@ -4094,13 +4098,24 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                                   <div style={{ fontWeight: 750, color: '#0F172A', whiteSpace: 'nowrap', display: 'flex', alignItems: 'center', gap: '0.35rem' }}>
                                     <span>{b.assignedNurseName}</span>
                                     {phoneNum && b.status !== 'Cancelled' && b.status !== 'Rejected' && (
-                                      <a
-                                        href={`tel:${phoneNum.replace(/\s+/g, '')}`}
-                                        style={{ color: '#059669', display: 'inline-flex', alignItems: 'center' }}
-                                        title={`Call ${b.assignedNurseName} (${phoneNum})`}
-                                      >
-                                        <Phone size={12} />
-                                      </a>
+                                      <>
+                                        <a
+                                          href={`tel:${phoneNum.replace(/\s+/g, '')}`}
+                                          style={{ color: '#059669', display: 'inline-flex', alignItems: 'center' }}
+                                          title={`Call ${b.assignedNurseName} (${phoneNum})`}
+                                        >
+                                          <Phone size={12} />
+                                        </a>
+                                        <a
+                                          href={`https://wa.me/91${phoneNum.replace(/\D/g, '').slice(-10)}?text=${encodeURIComponent(`Hello ${b.assignedNurseName}, regarding booking #${b.id} for patient ${b.patientName} (${b.serviceTitle} at ${b.area}):`)}`}
+                                          target="_blank"
+                                          rel="noreferrer"
+                                          style={{ color: '#16A34A', display: 'inline-flex', alignItems: 'center' }}
+                                          title={`WhatsApp chat with ${b.assignedNurseName} (${phoneNum})`}
+                                        >
+                                          <MessageCircle size={13} fill="#16A34A" />
+                                        </a>
+                                      </>
                                     )}
                                   </div>
                                   <div style={{ fontSize: '0.72rem', color: '#64748B', whiteSpace: 'nowrap', marginTop: '1px' }}>
@@ -4729,6 +4744,30 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                                   <div>
                                     <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', flexWrap: 'wrap' }}>
                                       <strong>{n.name}</strong>
+                                      {nursePhoneDigits && (
+                                        <a
+                                          href={`https://wa.me/91${nursePhoneDigits.slice(-10)}?text=${encodeURIComponent(`Hello ${n.name}, contacting you from XpressNurse Admin Dispatch.`)}`}
+                                          target="_blank"
+                                          rel="noreferrer"
+                                          style={{
+                                            display: 'inline-flex',
+                                            alignItems: 'center',
+                                            justifyContent: 'center',
+                                            width: 20,
+                                            height: 20,
+                                            borderRadius: '50%',
+                                            background: '#25D366',
+                                            color: '#FFFFFF',
+                                            textDecoration: 'none',
+                                            boxShadow: '0 1px 3px rgba(37, 211, 102, 0.4)',
+                                            flexShrink: 0
+                                          }}
+                                          title={`Chat with ${n.name} on WhatsApp (+91 ${nursePhoneDigits.slice(-10)})`}
+                                          aria-label={`WhatsApp chat with ${n.name}`}
+                                        >
+                                          <MessageCircle size={12} fill="#FFFFFF" />
+                                        </a>
+                                      )}
                                       {(() => {
                                         const isNew = n.createdAt && (Date.now() - new Date(n.createdAt).getTime()) < 3 * 24 * 60 * 60 * 1000;
                                         return isNew ? (
@@ -4752,7 +4791,29 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                                         </span>
                                       )}
                                     </div>
-                                    <div style={{ fontSize: '0.78rem', color: 'var(--neutral-500)' }}>{n.phone}</div>
+                                    <div style={{ fontSize: '0.78rem', color: 'var(--neutral-500)', display: 'flex', alignItems: 'center', gap: '0.4rem', marginTop: '2px' }}>
+                                      <span>{n.phone}</span>
+                                      {nursePhoneDigits && (
+                                        <a
+                                          href={`https://wa.me/91${nursePhoneDigits.slice(-10)}?text=${encodeURIComponent(`Hello ${n.name}, contacting you from XpressNurse Admin Dispatch.`)}`}
+                                          target="_blank"
+                                          rel="noreferrer"
+                                          style={{
+                                            display: 'inline-flex',
+                                            alignItems: 'center',
+                                            gap: '3px',
+                                            color: '#16A34A',
+                                            fontWeight: 700,
+                                            fontSize: '0.72rem',
+                                            textDecoration: 'none'
+                                          }}
+                                          title={`Open WhatsApp chat with ${n.name}`}
+                                        >
+                                          <MessageCircle size={11} fill="#16A34A" />
+                                          <span>WhatsApp</span>
+                                        </a>
+                                      )}
+                                    </div>
                                     {n.createdAt && (
                                       <div style={{ fontSize: '0.70rem', color: '#64748B', marginTop: '2px' }}>
                                         Reg: {formatDateTimeDDMMYY(n.createdAt)}
@@ -5157,6 +5218,9 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                                           type="button"
                                           onClick={async () => {
                                             await onUpdateNurseRecord?.(n.id, { certificateVerified: true, status: 'Active' });
+                                            try {
+                                              await dbUpdateNurseById(n.id, { certificateVerified: true, status: 'Active' });
+                                            } catch {}
                                             showToast(`Nurse "${n.name}" verified and approved!`);
                                           }}
                                           className="btn btn-sm btn-primary"
@@ -5171,6 +5235,27 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                               </td>
                               <td style={{ textAlign: 'right' }}>
                                 <div style={{ display: 'inline-flex', alignItems: 'center', gap: '0.35rem' }}>
+                                  {nursePhoneDigits && (
+                                    <a
+                                      href={`https://wa.me/91${nursePhoneDigits.slice(-10)}?text=${encodeURIComponent(`Hello ${n.name}, contacting you from XpressNurse Admin Dispatch.`)}`}
+                                      target="_blank"
+                                      rel="noreferrer"
+                                      title={`Chat with ${n.name} on WhatsApp (+91 ${nursePhoneDigits.slice(-10)})`}
+                                      style={{
+                                        background: '#DCFCE7',
+                                        border: '1px solid #86EFAC',
+                                        color: '#15803D',
+                                        padding: '0.3rem 0.45rem',
+                                        borderRadius: 6,
+                                        cursor: 'pointer',
+                                        display: 'flex',
+                                        alignItems: 'center',
+                                        textDecoration: 'none'
+                                      }}
+                                    >
+                                      <MessageCircle size={13} fill="#15803D" />
+                                    </a>
+                                  )}
                                   <button
                                     type="button"
                                     onClick={() => handleOpenEditNurseModal(n)}
@@ -7608,7 +7693,11 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                                       <button
                                         type="button"
                                         onClick={async () => {
-                                          await onUpdateNurseRecord(matchedNurse.id, { certificateVerified: true });
+                                          await onUpdateNurseRecord(matchedNurse.id, { certificateVerified: true, status: 'Active' });
+                                          try {
+                                            await dbUpdateNurseById(matchedNurse.id, { certificateVerified: true, status: 'Active' });
+                                          } catch {}
+                                          broadcastRealtimeUpdate('NURSE_UPDATE', { ...matchedNurse, certificateVerified: true, status: 'Active' });
                                           showToast(`Verified & Approved Certificate for ${matchedNurse.name}!`);
                                         }}
                                         className="btn btn-sm"
@@ -8376,6 +8465,27 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                           <div>
                             <div style={{ fontWeight: 800, color: 'var(--primary-navy-950)', fontSize: '0.92rem', display: 'flex', alignItems: 'center', gap: '0.4rem', flexWrap: 'wrap' }}>
                               <span>{n.name}</span>
+                              {n.phone && (
+                                <a
+                                  href={`https://wa.me/91${n.phone.replace(/\D/g, '').slice(-10)}?text=${encodeURIComponent(`Hello ${n.name}, contacting you from XpressNurse Admin Dispatch.`)}`}
+                                  target="_blank"
+                                  rel="noreferrer"
+                                  style={{
+                                    display: 'inline-flex',
+                                    alignItems: 'center',
+                                    justifyContent: 'center',
+                                    width: 20,
+                                    height: 20,
+                                    borderRadius: '50%',
+                                    background: '#25D366',
+                                    color: '#FFFFFF',
+                                    textDecoration: 'none'
+                                  }}
+                                  title={`Chat with ${n.name} on WhatsApp (+91 ${n.phone.replace(/\D/g, '').slice(-10)})`}
+                                >
+                                  <MessageCircle size={12} fill="#FFFFFF" />
+                                </a>
+                              )}
                               {n.certificateVerified ? (
                                 <span className="status-pill success" style={{ fontSize: '0.68rem', padding: '1px 6px' }}>✓ Verified RN</span>
                               ) : (
@@ -9413,7 +9523,15 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                     type="text"
                     placeholder="Document URL (https://... or data:...)"
                     value={nurseForm.certificateUrl || ''}
-                    onChange={(e) => setNurseForm({ ...nurseForm, certificateUrl: e.target.value })}
+                    onChange={(e) => {
+                      const val = e.target.value;
+                      setNurseForm({
+                        ...nurseForm,
+                        certificateUrl: val,
+                        certificateVerified: val.trim().length > 0 ? true : nurseForm.certificateVerified,
+                        status: val.trim().length > 0 ? 'Active' : nurseForm.status
+                      });
+                    }}
                     className="form-control"
                     style={{ fontSize: '0.82rem' }}
                   />
@@ -9440,8 +9558,13 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                                 sizeBytes: file.size,
                                 dataUrl
                               });
-                              setNurseForm((prev) => ({ ...prev, certificateUrl: upRes.publicUrl }));
-                              showToast('Certificate uploaded and attached to nurse profile!');
+                              setNurseForm((prev) => ({
+                                ...prev,
+                                certificateUrl: upRes.publicUrl,
+                                certificateVerified: true,
+                                status: 'Active'
+                              }));
+                              showToast('Certificate uploaded and attached to nurse profile! Verified & Active.');
                             }
                           } catch {
                             showToast('Upload error', 'error');
@@ -12858,13 +12981,13 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                         showToast('Please enter a valid certificate URL or choose a file first.', 'error');
                         return;
                       }
-                      await onUpdateNurseRecord?.(adminCertModalNurse.id, { certificateUrl: trimmed, certificateVerified: true });
+                      await onUpdateNurseRecord?.(adminCertModalNurse.id, { certificateUrl: trimmed, certificateVerified: true, status: 'Active' });
                       try {
-                        await dbUpdateNurseById(adminCertModalNurse.id, { certificateUrl: trimmed, certificateVerified: true });
+                        await dbUpdateNurseById(adminCertModalNurse.id, { certificateUrl: trimmed, certificateVerified: true, status: 'Active' });
                       } catch {}
-                      setAdminCertModalNurse({ ...adminCertModalNurse, certificateUrl: trimmed, certificateVerified: true });
+                      setAdminCertModalNurse({ ...adminCertModalNurse, certificateUrl: trimmed, certificateVerified: true, status: 'Active' });
                       setIsEditingNurseCert(false);
-                      showToast(`Certificate for ${adminCertModalNurse.name} saved and verified!`);
+                      showToast(`Certificate for ${adminCertModalNurse.name} saved and verified! Nurse account is now active.`);
                     }}
                     className="btn btn-sm btn-primary"
                     style={{ background: '#16A34A', borderColor: '#16A34A', fontWeight: 750 }}
@@ -12974,6 +13097,10 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                     type="button"
                     onClick={async () => {
                       await onUpdateNurseRecord?.(adminCertModalNurse.id, { certificateVerified: true, status: 'Active' });
+                      try {
+                        await dbUpdateNurseById(adminCertModalNurse.id, { certificateVerified: true, status: 'Active' });
+                      } catch {}
+                      setAdminCertModalNurse({ ...adminCertModalNurse, certificateVerified: true, status: 'Active' });
                       showToast(`Nurse ${adminCertModalNurse.name} certificate verified and approved!`);
                       setAdminCertModalOpen(false);
                     }}
