@@ -8,6 +8,7 @@ import {
   CheckCircle2, 
   AlertCircle, 
   Stethoscope, 
+  Users,
   UserCheck, 
   KeyRound,
   ArrowLeft,
@@ -308,7 +309,7 @@ export const LoginPage: React.FC<LoginPageProps> = ({
         totalLeads: 0,
         convertedLeads: 0,
         totalReferrals: 0,
-        pointsEarned: 300,
+        pointsEarned: 1000,
         referralEarningsRupees: 0,
         rating: 4.9,
         certificateVerified: false,
@@ -596,13 +597,13 @@ export const LoginPage: React.FC<LoginPageProps> = ({
 
             <h1 style={{ fontSize: '1.25rem', color: 'var(--primary-navy-900)', fontWeight: 700, marginBottom: '0.35rem' }}>
               {isRegistering 
-                ? (role === 'doctor' ? 'Register as Consulting Doctor' : 'Register as Certified Nurse')
+                ? (role === 'doctor' ? 'Register (Others / Doctor)' : 'Register as Certified Nurse')
                 : 'Sign In to Your Account'}
             </h1>
             <p style={{ fontSize: '0.86rem', color: 'var(--neutral-500)', margin: 0 }}>
               {isRegistering
                 ? (role === 'doctor'
-                    ? 'Join Xpress Nurse medical panel for teleconsultations & digital prescriptions'
+                    ? 'Join Xpress Nurse consulting physician & clinical partner network'
                     : 'Join Hyderabad’s fastest growing certified home nursing network')
                 : 'Secure access for certified nurses, doctors, and medical administrators'}
             </p>
@@ -624,8 +625,8 @@ export const LoginPage: React.FC<LoginPageProps> = ({
               className={`login-role-tab ${role === 'doctor' ? 'active' : ''}`}
               onClick={() => handleRoleChange('doctor')}
             >
-              <Stethoscope size={15} />
-              <span>Doctor</span>
+              <Users size={15} />
+              <span>Others</span>
             </button>
 
             <button
@@ -663,7 +664,7 @@ export const LoginPage: React.FC<LoginPageProps> = ({
                   {role === 'admin' 
                     ? 'Admin Email / Staff ID' 
                     : role === 'doctor'
-                    ? 'Doctor Email or Mobile Number'
+                    ? 'Others / Doctor Email or Phone Number'
                     : 'Nurse Email or Mobile Number'}
                 </label>
                 <div className="login-input-wrap">
@@ -741,7 +742,7 @@ export const LoginPage: React.FC<LoginPageProps> = ({
                       {role === 'nurse'
                         ? 'Nurse Dashboard'
                         : role === 'doctor'
-                        ? 'Doctor Panel'
+                        ? 'Others Portal'
                         : 'Admin Dispatch'}
                     </span>
                     <ArrowRight size={16} />
@@ -1388,13 +1389,13 @@ export const LoginPage: React.FC<LoginPageProps> = ({
             <div style={{ textAlign: 'center', marginTop: '1rem' }}>
               {!isRegistering ? (
                 <div style={{ fontSize: '0.86rem', color: 'var(--neutral-600)' }}>
-                  {role === 'nurse' ? 'New to Xpress Nurse? ' : 'New Consulting Physician? '}
+                  {role === 'nurse' ? 'New to Xpress Nurse? ' : 'New Physician or Partner? '}
                   <button 
                     type="button" 
                     onClick={() => { setIsRegistering(true); setErrorMsg(''); setSuccessMsg(''); }} 
                     style={{ background: 'none', border: 'none', color: '#0284C7', fontWeight: 700, cursor: 'pointer', padding: 0 }}
                   >
-                    {role === 'nurse' ? 'Register as Nurse' : 'Register as Doctor'}
+                    {role === 'nurse' ? 'Register as Nurse' : 'Register (Others / Doctor)'}
                   </button>
                 </div>
               ) : (
@@ -1405,7 +1406,7 @@ export const LoginPage: React.FC<LoginPageProps> = ({
                     onClick={() => { setIsRegistering(false); setErrorMsg(''); setSuccessMsg(''); }} 
                     style={{ background: 'none', border: 'none', color: '#0284C7', fontWeight: 700, cursor: 'pointer', padding: 0 }}
                   >
-                    {role === 'nurse' ? 'Sign In' : 'Sign In to Doctor Panel'}
+                    {role === 'nurse' ? 'Sign In' : 'Sign In to Others Panel'}
                   </button>
                 </div>
               )}

@@ -734,7 +734,7 @@ export const App: React.FC = () => {
       totalLeads: 0,
       convertedLeads: 0,
       totalReferrals: 0,
-      pointsEarned: 300,
+      pointsEarned: 1000,
       referralEarningsRupees: 0,
       rating: 4.9,
       certificateVerified: Boolean((authUser as any).certificateVerified || authUser.status === 'Active'),

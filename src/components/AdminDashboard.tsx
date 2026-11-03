@@ -2018,7 +2018,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
     nurseLeads: 0,
     nurseConverted: 0,
     totalReferrals: 0,
-    pointsEarned: 300,
+    pointsEarned: 1000,
     referralEarningsRupees: 0,
     totalPayout: 0,
     earningsPaid: 0,
@@ -2055,7 +2055,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
       nurseLeads: 0,
       nurseConverted: 0,
       totalReferrals: 0,
-      pointsEarned: 300,
+      pointsEarned: 1000,
       referralEarningsRupees: 0,
       totalPayout: 0,
       earningsPaid: 0,
@@ -2282,6 +2282,18 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
 
     return matchesSearch && matchesExp && matchesOrigin && matchesSkill;
   }).sort((a, b) => {
+    // Show unapproved nurses and nurses waiting for approval ON TOP
+    const matchLeadA = findMatchingLeadForNurse(a, leads);
+    const isLeadApprovedA = matchLeadA && (matchLeadA.status === 'Approved' || matchLeadA.status === 'Converted');
+    const isApprovedA = Boolean(a.certificateVerified || (a.status === 'Active' && isLeadApprovedA !== false));
+
+    const matchLeadB = findMatchingLeadForNurse(b, leads);
+    const isLeadApprovedB = matchLeadB && (matchLeadB.status === 'Approved' || matchLeadB.status === 'Converted');
+    const isApprovedB = Boolean(b.certificateVerified || (b.status === 'Active' && isLeadApprovedB !== false));
+
+    if (!isApprovedA && isApprovedB) return -1;
+    if (isApprovedA && !isApprovedB) return 1;
+
     const timeA = a.createdAt ? new Date(a.createdAt).getTime() : 0;
     const timeB = b.createdAt ? new Date(b.createdAt).getTime() : 0;
     return timeB - timeA;
@@ -4744,30 +4756,6 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                                   <div>
                                     <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', flexWrap: 'wrap' }}>
                                       <strong>{n.name}</strong>
-                                      {nursePhoneDigits && (
-                                        <a
-                                          href={`https://wa.me/91${nursePhoneDigits.slice(-10)}?text=${encodeURIComponent(`Hello ${n.name}, contacting you from XpressNurse Admin Dispatch.`)}`}
-                                          target="_blank"
-                                          rel="noreferrer"
-                                          style={{
-                                            display: 'inline-flex',
-                                            alignItems: 'center',
-                                            justifyContent: 'center',
-                                            width: 20,
-                                            height: 20,
-                                            borderRadius: '50%',
-                                            background: '#25D366',
-                                            color: '#FFFFFF',
-                                            textDecoration: 'none',
-                                            boxShadow: '0 1px 3px rgba(37, 211, 102, 0.4)',
-                                            flexShrink: 0
-                                          }}
-                                          title={`Chat with ${n.name} on WhatsApp (+91 ${nursePhoneDigits.slice(-10)})`}
-                                          aria-label={`WhatsApp chat with ${n.name}`}
-                                        >
-                                          <MessageCircle size={12} fill="#FFFFFF" />
-                                        </a>
-                                      )}
                                       {(() => {
                                         const isNew = n.createdAt && (Date.now() - new Date(n.createdAt).getTime()) < 3 * 24 * 60 * 60 * 1000;
                                         return isNew ? (
@@ -4791,27 +4779,53 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                                         </span>
                                       )}
                                     </div>
-                                    <div style={{ fontSize: '0.78rem', color: 'var(--neutral-500)', display: 'flex', alignItems: 'center', gap: '0.4rem', marginTop: '2px' }}>
-                                      <span>{n.phone}</span>
+                                    <div style={{ fontSize: '0.78rem', color: 'var(--neutral-500)', display: 'flex', alignItems: 'center', gap: '0.45rem', marginTop: '3px' }}>
+                                      <span style={{ fontWeight: 600 }}>{n.phone}</span>
                                       {nursePhoneDigits && (
-                                        <a
-                                          href={`https://wa.me/91${nursePhoneDigits.slice(-10)}?text=${encodeURIComponent(`Hello ${n.name}, contacting you from XpressNurse Admin Dispatch.`)}`}
-                                          target="_blank"
-                                          rel="noreferrer"
-                                          style={{
-                                            display: 'inline-flex',
-                                            alignItems: 'center',
-                                            gap: '3px',
-                                            color: '#16A34A',
-                                            fontWeight: 700,
-                                            fontSize: '0.72rem',
-                                            textDecoration: 'none'
-                                          }}
-                                          title={`Open WhatsApp chat with ${n.name}`}
-                                        >
-                                          <MessageCircle size={11} fill="#16A34A" />
-                                          <span>WhatsApp</span>
-                                        </a>
+                                        <>
+                                          <a
+                                            href={`https://wa.me/91${nursePhoneDigits.slice(-10)}?text=${encodeURIComponent(`Hello ${n.name}, contacting you from XpressNurse Admin Dispatch.`)}`}
+                                            target="_blank"
+                                            rel="noreferrer"
+                                            style={{
+                                              display: 'inline-flex',
+                                              alignItems: 'center',
+                                              justifyContent: 'center',
+                                              width: 22,
+                                              height: 22,
+                                              borderRadius: '50%',
+                                              background: '#25D366',
+                                              color: '#FFFFFF',
+                                              textDecoration: 'none',
+                                              boxShadow: '0 1px 3px rgba(37, 211, 102, 0.4)',
+                                              flexShrink: 0
+                                            }}
+                                            title={`Chat with ${n.name} on WhatsApp (+91 ${nursePhoneDigits.slice(-10)})`}
+                                            aria-label={`WhatsApp chat with ${n.name}`}
+                                          >
+                                            <MessageCircle size={12} fill="#FFFFFF" />
+                                          </a>
+                                          <a
+                                            href={`tel:${n.phone}`}
+                                            style={{
+                                              display: 'inline-flex',
+                                              alignItems: 'center',
+                                              justifyContent: 'center',
+                                              width: 22,
+                                              height: 22,
+                                              borderRadius: '50%',
+                                              background: '#0284C7',
+                                              color: '#FFFFFF',
+                                              textDecoration: 'none',
+                                              boxShadow: '0 1px 3px rgba(2, 132, 199, 0.4)',
+                                              flexShrink: 0
+                                            }}
+                                            title={`Call ${n.name} (${n.phone})`}
+                                            aria-label={`Call ${n.name}`}
+                                          >
+                                            <Phone size={11} fill="#FFFFFF" />
+                                          </a>
+                                        </>
                                       )}
                                     </div>
                                     {n.createdAt && (
@@ -5235,27 +5249,6 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                               </td>
                               <td style={{ textAlign: 'right' }}>
                                 <div style={{ display: 'inline-flex', alignItems: 'center', gap: '0.35rem' }}>
-                                  {nursePhoneDigits && (
-                                    <a
-                                      href={`https://wa.me/91${nursePhoneDigits.slice(-10)}?text=${encodeURIComponent(`Hello ${n.name}, contacting you from XpressNurse Admin Dispatch.`)}`}
-                                      target="_blank"
-                                      rel="noreferrer"
-                                      title={`Chat with ${n.name} on WhatsApp (+91 ${nursePhoneDigits.slice(-10)})`}
-                                      style={{
-                                        background: '#DCFCE7',
-                                        border: '1px solid #86EFAC',
-                                        color: '#15803D',
-                                        padding: '0.3rem 0.45rem',
-                                        borderRadius: 6,
-                                        cursor: 'pointer',
-                                        display: 'flex',
-                                        alignItems: 'center',
-                                        textDecoration: 'none'
-                                      }}
-                                    >
-                                      <MessageCircle size={13} fill="#15803D" />
-                                    </a>
-                                  )}
                                   <button
                                     type="button"
                                     onClick={() => handleOpenEditNurseModal(n)}

@@ -1318,7 +1318,7 @@ export const NurseDashboard: React.FC<NurseDashboardProps> = ({
                       <div style={{ display: 'flex', alignItems: 'flex-start', gap: '0.65rem' }}>
                         <span style={{ fontSize: '1.25rem', lineHeight: 1.2 }}>🎁</span>
                         <div>
-                          <strong>Registration Bonus:</strong> Get <strong>300 bonus points</strong> when you register for the first time.
+                          <strong>Registration Bonus:</strong> Get <strong>1000 bonus points</strong> when you register for the first time.
                         </div>
                       </div>
 

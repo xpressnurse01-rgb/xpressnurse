@@ -463,7 +463,7 @@ export async function dbFetchNurses(): Promise<NurseProfile[] | null> {
         totalLeads: 0,
         convertedLeads: 0,
         totalReferrals: 0,
-        pointsEarned: 300,
+        pointsEarned: 1000,
         referralEarningsRupees: 0,
         rating: 4.90,
         avatarUrl: u.avatar_url || undefined,
@@ -739,7 +739,7 @@ export async function dbUpdateNurseById(id: string, updates: Partial<NurseProfil
           total_leads: 0,
           converted_leads: 0,
           total_referrals: 0,
-          points_earned: 300,
+          points_earned: 1000,
           referral_earnings_rupees: 0,
           rating: 4.90,
           created_at: new Date().toISOString()
