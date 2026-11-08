@@ -154,9 +154,37 @@ export async function authenticateUserSecure(
     const last10 = cleanDigits.length >= 10 ? cleanDigits.slice(-10) : cleanDigits;
 
     try {
-      const { data: dbUsers, error: dbErr } = await supabase
+      // SECURITY: Target ONLY the user being authenticated instead of downloading the entire database table
+      let userQuery = supabase
         .from('app_users')
-        .select('*');
+        .select('id, role, identifier, name, pin, phone, email, designation, service_area, avatar_url, status, certificate_url, experience_years');
+
+      if (expectedRole && expectedRole !== 'any') {
+        userQuery = userQuery.eq('role', expectedRole);
+      }
+
+      // Build targeted or filter: match specifically against input identifier, email, phone, or id
+      const orClauses: string[] = [];
+      if (cleanId.includes('@')) {
+        orClauses.push(`email.ilike.${cleanId}`);
+        orClauses.push(`identifier.ilike.${cleanId}`);
+      } else if (cleanDigits && cleanDigits.length >= 7) {
+        orClauses.push(`phone.ilike.%${cleanDigits.slice(-10)}%`);
+        orClauses.push(`identifier.ilike.%${cleanDigits.slice(-10)}%`);
+      } else {
+        orClauses.push(`id.eq.${cleanId}`);
+        orClauses.push(`identifier.ilike.${cleanId}`);
+        orClauses.push(`name.ilike.${cleanId}`);
+      }
+      if (cleanId === 'admin') {
+        orClauses.push(`role.eq.admin`);
+      }
+
+      if (orClauses.length > 0) {
+        userQuery = userQuery.or(orClauses.join(','));
+      }
+
+      const { data: dbUsers, error: dbErr } = await userQuery.limit(5);
 
       if (!dbErr && dbUsers && dbUsers.length > 0) {
         const candidates = dbUsers.filter((u: any) => {
@@ -309,7 +337,7 @@ export async function authenticateUserSecure(
               email: matchedUser.email,
               status: isApprovedNurse ? 'Active' : (matchedUser.status || 'Pending Verification'),
               designation: matchedUser.designation,
-              serviceArea: matchedUser.service_area || matchedUser.serviceArea,
+              serviceArea: (matchedUser as any).service_area || (matchedUser as any).serviceArea,
               certificateUrl: nurseCertUrl,
               certificateVerified: isApprovedNurse
             },

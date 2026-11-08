@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { Header } from './components/Header';
 import { Hero } from './components/Hero';
 import { PrescriptionBanner } from './components/PrescriptionBanner';
@@ -226,9 +226,12 @@ export const App: React.FC = () => {
     return [];
   });
 
+  // SECURITY & PRIVACY: Patient bookings contain protected health information (PHI)
+  // They are strictly stored in memory and temporary tab sessionStorage, NEVER in permanent localStorage
   const [bookings, setBookings] = useState<Booking[]>(() => {
     try {
-      const cached = localStorage.getItem('xn_cached_bookings');
+      localStorage.removeItem('xn_cached_bookings'); // Purge legacy permanent cache
+      const cached = sessionStorage.getItem('xn_session_bookings');
       if (cached !== null) {
         const parsed = JSON.parse(cached);
         if (Array.isArray(parsed)) {
@@ -241,7 +244,7 @@ export const App: React.FC = () => {
 
   const [nurses, setNurses] = useState<NurseProfile[]>(() => {
     try {
-      const cached = localStorage.getItem('xn_cached_nurses');
+      const cached = sessionStorage.getItem('xn_session_nurses') || localStorage.getItem('xn_cached_nurses');
       if (cached !== null) {
         const parsed = JSON.parse(cached);
         if (Array.isArray(parsed)) {
@@ -267,9 +270,11 @@ export const App: React.FC = () => {
     return [];
   });
 
+  // SECURITY: Patient leads contain phone numbers & personal addresses - never store in permanent localStorage
   const [leads, setLeads] = useState<NurseLead[]>(() => {
     try {
-      const cached = localStorage.getItem('xn_cached_leads');
+      localStorage.removeItem('xn_cached_leads');
+      const cached = sessionStorage.getItem('xn_session_leads');
       if (cached !== null) {
         const parsed = JSON.parse(cached);
         if (Array.isArray(parsed)) {
@@ -280,9 +285,11 @@ export const App: React.FC = () => {
     return [];
   });
 
+  // SECURITY: Doctor consultations contain private patient symptoms & prescriptions
   const [consultations, setConsultations] = useState<DoctorConsultation[]>(() => {
     try {
-      const cached = localStorage.getItem('xn_cached_consultations');
+      localStorage.removeItem('xn_cached_consultations');
+      const cached = sessionStorage.getItem('xn_session_consultations');
       if (cached !== null) {
         const parsed = JSON.parse(cached);
         if (Array.isArray(parsed)) return parsed;
@@ -305,9 +312,11 @@ export const App: React.FC = () => {
     return BASELINE_COUPONS;
   });
 
+  // SECURITY: System users contain internal staff data - never store in permanent localStorage
   const [appUsers, setAppUsers] = useState<AppUser[]>(() => {
     try {
-      const cached = localStorage.getItem('xn_cached_app_users');
+      localStorage.removeItem('xn_cached_app_users');
+      const cached = sessionStorage.getItem('xn_session_app_users');
       if (cached !== null) {
         const parsed = JSON.parse(cached);
         if (Array.isArray(parsed)) {
@@ -320,25 +329,37 @@ export const App: React.FC = () => {
 
   const [dbLoading, setDbLoading] = useState(false);
 
-  // Synchronize collections to localStorage on every change
+  // Synchronize collections: public catalog in localStorage, sensitive PHI in sessionStorage
   useEffect(() => {
     try { localStorage.setItem('xn_cached_services', JSON.stringify(services)); } catch { }
   }, [services]);
 
   useEffect(() => {
-    try { localStorage.setItem('xn_cached_bookings', JSON.stringify(deduplicateBookings(bookings))); } catch { }
+    try {
+      localStorage.removeItem('xn_cached_bookings');
+      sessionStorage.setItem('xn_session_bookings', JSON.stringify(deduplicateBookings(bookings)));
+    } catch { }
   }, [bookings]);
 
   useEffect(() => {
-    try { localStorage.setItem('xn_cached_nurses', JSON.stringify(nurses)); } catch { }
+    try {
+      sessionStorage.setItem('xn_session_nurses', JSON.stringify(nurses));
+      localStorage.setItem('xn_cached_nurses', JSON.stringify(nurses));
+    } catch { }
   }, [nurses]);
 
   useEffect(() => {
-    try { localStorage.setItem('xn_cached_leads', JSON.stringify(deduplicateLeads(leads))); } catch { }
+    try {
+      localStorage.removeItem('xn_cached_leads');
+      sessionStorage.setItem('xn_session_leads', JSON.stringify(deduplicateLeads(leads)));
+    } catch { }
   }, [leads]);
 
   useEffect(() => {
-    try { localStorage.setItem('xn_cached_consultations', JSON.stringify(consultations)); } catch { }
+    try {
+      localStorage.removeItem('xn_cached_consultations');
+      sessionStorage.setItem('xn_session_consultations', JSON.stringify(consultations));
+    } catch { }
   }, [consultations]);
 
   useEffect(() => {
@@ -346,7 +367,10 @@ export const App: React.FC = () => {
   }, [coupons]);
 
   useEffect(() => {
-    try { localStorage.setItem('xn_cached_app_users', JSON.stringify(appUsers)); } catch { }
+    try {
+      localStorage.removeItem('xn_cached_app_users');
+      sessionStorage.setItem('xn_session_app_users', JSON.stringify(appUsers));
+    } catch { }
   }, [appUsers]);
 
   // Treat approved referred patients as bookings: ensure ONLY APPROVED patient leads appear in bookings or assign nurse
@@ -443,7 +467,7 @@ export const App: React.FC = () => {
     const finalDeduplicated = deduplicateBookings(validBookings);
     if (hasChanges || finalDeduplicated.length !== bookings.length) {
       setBookings(finalDeduplicated);
-      try { localStorage.setItem('xn_cached_bookings', JSON.stringify(finalDeduplicated)); } catch { }
+      try { sessionStorage.setItem('xn_session_bookings', JSON.stringify(finalDeduplicated)); } catch { }
     }
   }, [leads, services, nurses]);
 
@@ -727,7 +751,7 @@ export const App: React.FC = () => {
       name: authUser.name,
       phone: authUser.phone || '',
       email: authUser.email || authUser.identifier,
-      experienceYears: Number(authUser.experienceYears) || 5,
+      experienceYears: authUser.experienceYears !== undefined && !isNaN(Number(authUser.experienceYears)) ? Math.max(0, Number(authUser.experienceYears)) : 5,
       qualification: authUser.designation || 'Registered Nurse',
       serviceArea: authUser.serviceArea || 'Hyderabad Central',
       status: (authUser.status as any) || 'Active',
@@ -759,6 +783,31 @@ export const App: React.FC = () => {
     status: isPending ? 'Pending Verification' : (isNurseVerifiedResolved ? 'Active' : (rawActiveNurse.status || 'Active'))
   } : fallbackNurse;
 
+  // SECURITY & DATA PRIVACY: A nurse strictly receives patient bookings assigned to or referred by them
+  const nurseVisibleBookings = useMemo(() => {
+    if (!activeNurse) return [];
+    const nursePhone10 = activeNurse.phone ? normalizePhone10(activeNurse.phone) : '';
+    const nurseNameLower = (activeNurse.name || '').toLowerCase().trim();
+    return deduplicateBookings(bookings).filter((b) => {
+      if (b.assignedNurseId === activeNurse.id) return true;
+      if (b.assignedNurseName && b.assignedNurseName.toLowerCase().trim() === nurseNameLower) return true;
+      if (b.referringNurseId === activeNurse.id) return true;
+      if (b.referringNurseName && b.referringNurseName.toLowerCase().trim() === nurseNameLower) return true;
+      return false;
+    });
+  }, [bookings, activeNurse]);
+
+  // SECURITY: A nurse strictly receives leads submitted through their Refer & Earn code
+  const nurseVisibleLeads = useMemo(() => {
+    if (!activeNurse) return [];
+    const nursePhone10 = activeNurse.phone ? normalizePhone10(activeNurse.phone) : '';
+    return deduplicateLeads(leads).filter((l) => {
+      if (l.nurseId === activeNurse.id) return true;
+      if (l.referredNursePhone && nursePhone10 && normalizePhone10(l.referredNursePhone) === nursePhone10) return true;
+      return false;
+    });
+  }, [leads, activeNurse]);
+
   // Modal States
   const [isBookingOpen, setIsBookingOpen] = useState(false);
   const [preSelectedServiceId, setPreSelectedServiceId] = useState<ServiceId>('saline-infusion');
@@ -784,110 +833,103 @@ export const App: React.FC = () => {
   };
 
   // =========================================================================
-  // FETCH ALL DATA FROM SUPABASE DB ON MOUNT
+  // SECURE ROLE-AWARE DATA INITIALIZATION
+  // Public visitors: only public services & coupons (ZERO patient data transmitted)
+  // Authenticated staff: only data required for their specific authorized role
   // =========================================================================
   useEffect(() => {
     async function loadAllDataFromDb() {
       setDbLoading(true);
       try {
-        const [
-          remoteServices,
-          remoteBookings,
-          remoteNurses,
-          remoteLeads,
-          remoteConsults,
-          remoteCoupons,
-          remoteAppUsers
-        ] = await Promise.all([
+        // 1. Purge legacy sensitive storage from localStorage
+        try {
+          localStorage.removeItem('xn_cached_bookings');
+          localStorage.removeItem('xn_cached_leads');
+          localStorage.removeItem('xn_cached_consultations');
+          localStorage.removeItem('xn_cached_app_users');
+        } catch {}
+
+        // 2. Always fetch public catalog services & active coupons (safe for public display)
+        const [remoteServices, remoteCoupons] = await Promise.all([
           dbFetchServices(),
-          dbFetchBookings(),
-          dbFetchNurses(),
-          dbFetchLeads(),
-          dbFetchConsultations(),
-          dbFetchCoupons(),
-          dbFetchAppUsers()
+          dbFetchCoupons()
         ]);
 
         if (remoteServices !== null) {
           setServices(sortServicesWithCustomOrder(remoteServices));
         }
-        if (remoteBookings !== null) {
-          setBookings(remoteBookings);
-        }
-        if (remoteNurses !== null) {
-          setNurses(remoteNurses);
-          try { localStorage.setItem('xn_cached_nurses', JSON.stringify(remoteNurses)); } catch {}
-          // If in nurse portal, verify logged-in nurse is active in live database
-          const nurseAuthRaw = sessionStorage.getItem('xn_auth_user_nurse') || localStorage.getItem('xn_auth_user_nurse');
-          if (nurseAuthRaw) {
-            try {
-              const u = JSON.parse(nurseAuthRaw);
-              if (u && u.role === 'nurse') {
-                const found = remoteNurses.find(
-                  (n) => n.id === u.id || (n.email && n.email.toLowerCase() === (u.email || u.identifier || '').toLowerCase()) || (n.phone && n.phone.replace(/\D/g, '') === (u.phone || '').replace(/\D/g, ''))
-                );
-                if (found && (found.status === 'Active' || found.certificateVerified)) {
-                  setActiveNurseId(found.id);
-                  try { localStorage.setItem('xn_active_nurse_id', found.id); } catch {}
-                  setAuthUser((prev) => {
-                    if (prev && (prev.id === found.id || (prev.phone && found.phone && prev.phone.replace(/\D/g, '') === found.phone.replace(/\D/g, '')) || (prev.email && found.email && prev.email.toLowerCase() === found.email.toLowerCase()))) {
-                      const updatedUser: AppUser = {
-                        ...prev,
-                        status: 'Active',
-                        certificateUrl: found.certificateUrl || prev.certificateUrl
-                      };
-                      try {
-                        const roleKey = `xn_auth_user_${updatedUser.role}`;
-                        sessionStorage.setItem('xn_auth_user', JSON.stringify(updatedUser));
-                        sessionStorage.setItem(roleKey, JSON.stringify(updatedUser));
-                        localStorage.setItem(roleKey, JSON.stringify(updatedUser));
-                        localStorage.setItem('xn_auth_user', JSON.stringify(updatedUser));
-                      } catch {}
-                      return updatedUser;
-                    }
-                    return prev;
-                  });
-                } else if (found && found.status !== 'Active') {
-                  try {
-                    localStorage.removeItem('xn_auth_user_nurse');
-                    localStorage.removeItem('xn_active_nurse_id');
-                    sessionStorage.removeItem('xn_auth_user_nurse');
-                  } catch {}
-                  if (window.location.pathname === '/nurse') {
-                    setAuthUser(null);
-                    try { sessionStorage.removeItem('xn_auth_user'); } catch {}
-                    navigate('/login?portal=nurse');
-                  }
-                }
-              }
-            } catch { }
-          }
-        }
-        if (remoteLeads !== null) {
-          setLeads(remoteLeads);
-        }
-        if (remoteConsults !== null) {
-          setConsultations(remoteConsults);
-        }
         if (remoteCoupons !== null) {
           setCoupons(remoteCoupons);
         }
-        if (remoteAppUsers !== null) {
-          setAppUsers(remoteAppUsers);
-        }
 
-        console.log('[DB] Loaded from Supabase:', {
-          services: remoteServices?.length || 0,
-          bookings: remoteBookings?.length || 0,
-          nurses: remoteNurses?.length || 0,
-          leads: remoteLeads?.length || 0,
-          consultations: remoteConsults?.length || 0,
-          coupons: remoteCoupons?.length || 0,
-          appUsers: remoteAppUsers?.length || 0
-        });
+        // 3. Inspect if an authenticated session is active (Admin, Nurse, or Doctor)
+        const sessionUser = resolveSessionUser(window.location.pathname);
+        const role = sessionUser?.role;
+
+        // ONLY load sensitive operational/patient collections if an authenticated session exists:
+        if (role === 'admin') {
+          const [remoteBookings, remoteNurses, remoteLeads, remoteConsults, remoteAppUsers] = await Promise.all([
+            dbFetchBookings(),
+            dbFetchNurses(),
+            dbFetchLeads(),
+            dbFetchConsultations(),
+            dbFetchAppUsers()
+          ]);
+          if (remoteBookings !== null) setBookings(remoteBookings);
+          if (remoteNurses !== null) setNurses(remoteNurses);
+          if (remoteLeads !== null) setLeads(remoteLeads);
+          if (remoteConsults !== null) setConsultations(remoteConsults);
+          if (remoteAppUsers !== null) setAppUsers(remoteAppUsers);
+        } else if (role === 'nurse') {
+          const [remoteBookings, remoteNurses, remoteLeads] = await Promise.all([
+            dbFetchBookings(),
+            dbFetchNurses(),
+            dbFetchLeads()
+          ]);
+          if (remoteBookings !== null) setBookings(remoteBookings);
+          if (remoteNurses !== null) {
+            setNurses(remoteNurses);
+            // Verify logged-in nurse is active in live database
+            const found = sessionUser ? remoteNurses.find(
+              (n) => n.id === sessionUser.id || 
+                     (n.email && n.email.toLowerCase() === (sessionUser.email || sessionUser.identifier || '').toLowerCase()) || 
+                     (n.phone && n.phone.replace(/\D/g, '') === (sessionUser.phone || '').replace(/\D/g, ''))
+            ) : undefined;
+            if (found && (found.status === 'Active' || found.certificateVerified)) {
+              setActiveNurseId(found.id);
+              try { localStorage.setItem('xn_active_nurse_id', found.id); } catch {}
+              setAuthUser((prev) => {
+                if (prev) {
+                  return {
+                    ...prev,
+                    status: 'Active',
+                    certificateUrl: found.certificateUrl || prev.certificateUrl
+                  };
+                }
+                return prev;
+              });
+            } else if (found && found.status !== 'Active') {
+              try {
+                localStorage.removeItem('xn_auth_user_nurse');
+                localStorage.removeItem('xn_active_nurse_id');
+                sessionStorage.removeItem('xn_auth_user_nurse');
+              } catch {}
+              if (window.location.pathname === '/nurse') {
+                setAuthUser(null);
+                try { sessionStorage.removeItem('xn_auth_user'); } catch {}
+                navigate('/login?portal=nurse');
+              }
+            }
+          }
+          if (remoteLeads !== null) setLeads(remoteLeads);
+        } else if (role === 'doctor') {
+          const remoteConsults = await dbFetchConsultations();
+          if (remoteConsults !== null) setConsultations(remoteConsults);
+        }
       } catch (err) {
-        console.error('[DB] Error loading from Supabase:', err);
+        console.error('[DB] Secure data loading error:', err);
       }
+      setDbLoading(false);
       setDbLoading(false);
     }
     loadAllDataFromDb();
@@ -924,12 +966,28 @@ export const App: React.FC = () => {
     }
     lastRefreshTimestampRef.current = now;
 
+    const sessionUser = authUser || resolveSessionUser(window.location.pathname);
+    const role = sessionUser?.role;
+
+    // SECURITY: Unauthenticated visitors never fetch patient bookings, consults, or leads
+    if (!role) {
+      try {
+        const [remoteServices, remoteCoupons] = await Promise.all([
+          dbFetchServices(),
+          dbFetchCoupons()
+        ]);
+        if (remoteServices !== null) setServices(sortServicesWithCustomOrder(remoteServices));
+        if (remoteCoupons !== null) setCoupons(remoteCoupons);
+      } catch {}
+      return;
+    }
+
     try {
       const [remoteBookings, remoteNurses, remoteLeads, remoteConsults] = await Promise.all([
         dbFetchBookings(),
         dbFetchNurses(),
         dbFetchLeads(),
-        dbFetchConsultations()
+        role === 'admin' || role === 'doctor' ? dbFetchConsultations() : Promise.resolve(null)
       ]);
 
       if (remoteBookings !== null) {
@@ -1277,7 +1335,6 @@ export const App: React.FC = () => {
         'postgres_changes',
         { event: '*', schema: 'public', table: 'bookings' },
         async (payload) => {
-          console.log('[Realtime DB] Live Booking update:', payload);
           if (payload.new && (payload.eventType === 'UPDATE' || payload.eventType === 'INSERT')) {
             const raw: any = payload.new;
             setBookings((prev) => {
@@ -1336,7 +1393,7 @@ export const App: React.FC = () => {
               name: raw.name || '',
               phone: raw.phone || '',
               email: raw.email || '',
-              experienceYears: Number(raw.experience_years) || 5,
+              experienceYears: raw.experience_years !== undefined && raw.experience_years !== null && !isNaN(Number(raw.experience_years)) ? Math.max(0, Number(raw.experience_years)) : 5,
               qualification: raw.qualification || 'B.Sc Nursing',
               serviceArea: raw.service_area || 'Hyderabad',
               status: raw.status || 'Active',
@@ -1378,7 +1435,6 @@ export const App: React.FC = () => {
         'postgres_changes',
         { event: '*', schema: 'public', table: 'leads' },
         async (payload) => {
-          console.log('[Realtime DB] Live Lead update:', payload);
           if (payload.new && (payload.eventType === 'UPDATE' || payload.eventType === 'INSERT')) {
             const raw: any = payload.new;
             const mapped: NurseLead = {
@@ -1418,7 +1474,6 @@ export const App: React.FC = () => {
         'postgres_changes',
         { event: '*', schema: 'public', table: 'consultations' },
         async (payload) => {
-          console.log('[Realtime DB] Live Consultation update:', payload);
           if (payload.new && (payload.eventType === 'UPDATE' || payload.eventType === 'INSERT')) {
             const raw: any = payload.new;
             const mapped: DoctorConsultation = {
@@ -1632,7 +1687,7 @@ export const App: React.FC = () => {
 
     setLeads((prev) => {
       const next = deduplicateLeads([pendingLead, ...prev]);
-      try { localStorage.setItem('xn_cached_leads', JSON.stringify(next)); } catch { }
+      try { sessionStorage.setItem('xn_session_leads', JSON.stringify(next)); } catch { }
       return next;
     });
     broadcastRealtimeUpdate('LEAD_CREATE', pendingLead);
@@ -1777,7 +1832,7 @@ export const App: React.FC = () => {
         };
         setBookings((prev) => {
           const next = deduplicateBookings(prev.map((b) => (b.id === existingBooking.id ? updatedB : b)));
-          try { localStorage.setItem('xn_cached_bookings', JSON.stringify(next)); } catch { }
+          try { sessionStorage.setItem('xn_session_bookings', JSON.stringify(next)); } catch { }
           return next;
         });
         broadcastRealtimeUpdate('BOOKING_UPDATE', updatedB);
@@ -1808,7 +1863,7 @@ export const App: React.FC = () => {
         };
         setBookings((prev) => {
           const next = deduplicateBookings([newBooking, ...prev]);
-          try { localStorage.setItem('xn_cached_bookings', JSON.stringify(next)); } catch { }
+          try { sessionStorage.setItem('xn_session_bookings', JSON.stringify(next)); } catch { }
           return next;
         });
         broadcastRealtimeUpdate('BOOKING_UPDATE', newBooking);
@@ -1951,7 +2006,7 @@ export const App: React.FC = () => {
         }
         return u;
       });
-      try { localStorage.setItem('xn_cached_app_users', JSON.stringify(next)); } catch { }
+      try { sessionStorage.setItem('xn_session_app_users', JSON.stringify(next)); } catch { }
       return next;
     });
     setAuthUser((prev) => {
@@ -2371,7 +2426,7 @@ export const App: React.FC = () => {
 
     setBookings((prev) => {
       const next = prev.map((b) => (b.id === id ? { ...b, ...updates } : b));
-      try { localStorage.setItem('xn_cached_bookings', JSON.stringify(next)); } catch { }
+      try { sessionStorage.setItem('xn_session_bookings', JSON.stringify(next)); } catch { }
       return next;
     });
     broadcastRealtimeUpdate('BOOKING_UPDATE', { id, ...updates });
@@ -2431,7 +2486,7 @@ export const App: React.FC = () => {
 
     setBookings((prev) => {
       const next = prev.filter((b) => !idsToDelete.has(b.id));
-      try { localStorage.setItem('xn_cached_bookings', JSON.stringify(next)); } catch { }
+      try { sessionStorage.setItem('xn_session_bookings', JSON.stringify(next)); } catch { }
       return next;
     });
 
@@ -2521,7 +2576,7 @@ export const App: React.FC = () => {
         }
         return u;
       });
-      try { localStorage.setItem('xn_cached_app_users', JSON.stringify(next)); } catch { }
+      try { sessionStorage.setItem('xn_session_app_users', JSON.stringify(next)); } catch { }
       return next;
     });
     const isNurseApproved = Boolean(updates.certificateVerified || updates.certificateUrl || updates.status === 'Active' || mergedNurse.certificateVerified || mergedNurse.certificateUrl);
@@ -2600,7 +2655,7 @@ export const App: React.FC = () => {
     });
     setAppUsers((prev) => {
       const next = prev.filter((u) => u.id !== id);
-      try { localStorage.setItem('xn_cached_app_users', JSON.stringify(next)); } catch { }
+      try { sessionStorage.setItem('xn_session_app_users', JSON.stringify(next)); } catch { }
       return next;
     });
 
@@ -2664,7 +2719,7 @@ export const App: React.FC = () => {
 
     setLeads((prev) => {
       const next = prev.filter((l) => l.id !== id);
-      try { localStorage.setItem('xn_cached_leads', JSON.stringify(next)); } catch { }
+      try { sessionStorage.setItem('xn_session_leads', JSON.stringify(next)); } catch { }
       return next;
     });
     broadcastRealtimeUpdate('LEAD_DELETE', { id });
@@ -2754,7 +2809,7 @@ export const App: React.FC = () => {
   const handleDeleteAppUser = async (id: string) => {
     setAppUsers((prev) => {
       const next = prev.filter((u) => u.id !== id);
-      try { localStorage.setItem('xn_cached_app_users', JSON.stringify(next)); } catch { }
+      try { sessionStorage.setItem('xn_session_app_users', JSON.stringify(next)); } catch { }
       return next;
     });
     setNurses((prev) => {
@@ -2819,7 +2874,7 @@ export const App: React.FC = () => {
       const leadIdSet = new Set(leadsToDeleteIds);
       setLeads((prev) => {
         const next = prev.filter((l) => !leadIdSet.has(l.id));
-        try { localStorage.setItem('xn_cached_leads', JSON.stringify(next)); } catch { }
+        try { sessionStorage.setItem('xn_session_leads', JSON.stringify(next)); } catch { }
         return next;
       });
       leadsToDeleteIds.forEach((lid) => broadcastRealtimeUpdate('LEAD_DELETE', { id: lid }));
@@ -2829,7 +2884,7 @@ export const App: React.FC = () => {
     const allIdsToDelete = Array.from(idSet);
     setBookings((prev) => {
       const next = prev.filter((b) => !idSet.has(b.id));
-      try { localStorage.setItem('xn_cached_bookings', JSON.stringify(next)); } catch { }
+      try { sessionStorage.setItem('xn_session_bookings', JSON.stringify(next)); } catch { }
       return next;
     });
     allIdsToDelete.forEach((id) => broadcastRealtimeUpdate('BOOKING_DELETE', { id }));
@@ -2875,7 +2930,7 @@ export const App: React.FC = () => {
       const leadIdSet = new Set(leadsToDeleteIds);
       setLeads((prev) => {
         const next = prev.filter((l) => !leadIdSet.has(l.id));
-        try { localStorage.setItem('xn_cached_leads', JSON.stringify(next)); } catch { }
+        try { sessionStorage.setItem('xn_session_leads', JSON.stringify(next)); } catch { }
         return next;
       });
       leadsToDeleteIds.forEach((lid) => broadcastRealtimeUpdate('LEAD_DELETE', { id: lid }));
@@ -2889,7 +2944,7 @@ export const App: React.FC = () => {
     });
     setAppUsers((prev) => {
       const next = prev.filter((u) => !idSet.has(u.id));
-      try { localStorage.setItem('xn_cached_app_users', JSON.stringify(next)); } catch { }
+      try { sessionStorage.setItem('xn_session_app_users', JSON.stringify(next)); } catch { }
       return next;
     });
 
@@ -2940,7 +2995,7 @@ export const App: React.FC = () => {
 
     setLeads((prev) => {
       const next = prev.filter((l) => !idSet.has(l.id));
-      try { localStorage.setItem('xn_cached_leads', JSON.stringify(next)); } catch { }
+      try { sessionStorage.setItem('xn_session_leads', JSON.stringify(next)); } catch { }
       return next;
     });
     ids.forEach((id) => broadcastRealtimeUpdate('LEAD_DELETE', { id }));
@@ -2962,7 +3017,7 @@ export const App: React.FC = () => {
     const idSet = new Set(ids);
     setConsultations((prev) => {
       const next = prev.filter((c) => !idSet.has(c.id));
-      try { localStorage.setItem('xn_cached_consultations', JSON.stringify(next)); } catch { }
+      try { sessionStorage.setItem('xn_session_consultations', JSON.stringify(next)); } catch { }
       return next;
     });
     ids.forEach((id) => broadcastRealtimeUpdate('CONSULTATION_DELETE', { id }));
@@ -2984,7 +3039,7 @@ export const App: React.FC = () => {
     const idSet = new Set(ids);
     setAppUsers((prev) => {
       const next = prev.filter((u) => !idSet.has(u.id));
-      try { localStorage.setItem('xn_cached_app_users', JSON.stringify(next)); } catch { }
+      try { sessionStorage.setItem('xn_session_app_users', JSON.stringify(next)); } catch { }
       return next;
     });
     setNurses((prev) => {
@@ -3069,8 +3124,8 @@ export const App: React.FC = () => {
                 currentNurse={activeNurse}
                 allNurses={nurses}
                 onSelectNurse={(n) => setActiveNurseId(n.id)}
-                bookings={deduplicateBookings(bookings)}
-                leads={deduplicateLeads(leads)}
+                bookings={nurseVisibleBookings}
+                leads={nurseVisibleLeads}
                 services={services}
                 onAddNewLead={handleAddNewLead}
                 onUpdateNurse={handleUpdateNurse}

@@ -72,15 +72,15 @@ export const LoginPage: React.FC<LoginPageProps> = ({
   const [regPhone, setRegPhone] = useState('');
   const [regEmail, setRegEmail] = useState('');
   const [regPin, setRegPin] = useState('');
-  const [regExperienceYears, setRegExperienceYears] = useState<number>(3);
+  const [regExperienceYears, setRegExperienceYears] = useState<number>(0);
   const [regServiceArea, setRegServiceArea] = useState<string>(''); // Clean empty box (no auto Gachibowli)
   const [regMaritalStatus, setRegMaritalStatus] = useState<string>('Single');
-  const [regCity, setRegCity] = useState<string>('Hyderabad');
+  const [regCity, setRegCity] = useState<string>(''); // No auto-selection (Hyderabad vs Non-Hyderabad)
   const [regDistrict, setRegDistrict] = useState<string>('');
   const [regMandal, setRegMandal] = useState<string>('');
   const [regVillage, setRegVillage] = useState<string>('');
   const [regSelectedSkills, setRegSelectedSkills] = useState<string[]>([]);
-  const [regReadyForHomeVisit, setRegReadyForHomeVisit] = useState<boolean>(true);
+  const [regReadyForHomeVisit, setRegReadyForHomeVisit] = useState<boolean | null>(null); // No auto-selection
   const [regQualification, setRegQualification] = useState<string>('B.Sc Nursing (Registered RN)');
   const [regCustomQualification, setRegCustomQualification] = useState<string>('');
   const [regCurrentlyWorkingAt, setRegCurrentlyWorkingAt] = useState<string>('');
@@ -239,6 +239,10 @@ export const LoginPage: React.FC<LoginPageProps> = ({
       setErrorMsg('You must agree to the clinical disclaimer.');
       return;
     }
+    if (!regCity) {
+      setErrorMsg('Please select your City (Hyderabad or Non-Hyderabad).');
+      return;
+    }
     if (regCity !== 'Hyderabad') {
       if (!regDistrict.trim()) {
         setErrorMsg('Please enter your District for Non-Hyderabad city.');
@@ -252,6 +256,10 @@ export const LoginPage: React.FC<LoginPageProps> = ({
         setErrorMsg('Please enter your Village for Non-Hyderabad city.');
         return;
       }
+    }
+    if (regReadyForHomeVisit === null) {
+      setErrorMsg('Please choose whether you are ready to do home visits.');
+      return;
     }
 
     setIsLoading(true);
@@ -294,7 +302,7 @@ export const LoginPage: React.FC<LoginPageProps> = ({
         name: regName.trim(),
         phone: cleanPhone || regPhone.trim(),
         email: cleanEmail,
-        experienceYears: Number(regExperienceYears) || 1,
+        experienceYears: !isNaN(Number(regExperienceYears)) ? Math.max(0, Number(regExperienceYears)) : 0,
         qualification: resolvedQualification || 'Registered Nurse (B.Sc)',
         serviceArea: resolvedArea,
         maritalStatus: regMaritalStatus,
@@ -303,7 +311,7 @@ export const LoginPage: React.FC<LoginPageProps> = ({
         mandal: regCity !== 'Hyderabad' ? (regMandal.trim() || undefined) : undefined,
         village: regCity !== 'Hyderabad' ? (regVillage.trim() || undefined) : undefined,
         skills: regSelectedSkills,
-        readyForHomeVisit: regReadyForHomeVisit,
+        readyForHomeVisit: Boolean(regReadyForHomeVisit),
         pin: regPin.trim(),
         status: 'Pending Verification',
         totalLeads: 0,
@@ -333,14 +341,14 @@ export const LoginPage: React.FC<LoginPageProps> = ({
         serviceArea: resolvedArea,
         status: 'Pending Verification',
         certificateUrl: certUrl || undefined,
-        experienceYears: Number(regExperienceYears) || 1,
+        experienceYears: !isNaN(Number(regExperienceYears)) ? Math.max(0, Number(regExperienceYears)) : 0,
         maritalStatus: regMaritalStatus,
         city: regCity,
         district: regCity !== 'Hyderabad' ? (regDistrict.trim() || undefined) : 'Hyderabad',
         mandal: regCity !== 'Hyderabad' ? (regMandal.trim() || undefined) : undefined,
         village: regCity !== 'Hyderabad' ? (regVillage.trim() || undefined) : undefined,
         skills: regSelectedSkills,
-        readyForHomeVisit: regReadyForHomeVisit
+        readyForHomeVisit: Boolean(regReadyForHomeVisit)
       };
       
       await dbInsertNurse(newNurse);
@@ -380,7 +388,7 @@ export const LoginPage: React.FC<LoginPageProps> = ({
         ? `Application submitted with referral from ${matchedReferringNurse.name}! Profile pending verification.`
         : 'Registration submitted! Your profile is pending Admin approval.'
       );
-      setRegName(''); setRegPhone(''); setRegEmail(''); setRegPin(''); setRegCertificate(null); setRegDisclaimer(false); setRegReferralCode(''); setRegExperienceYears(3); setRegServiceArea(''); setRegMaritalStatus('Single'); setRegCity('Hyderabad'); setRegDistrict(''); setRegMandal(''); setRegVillage(''); setRegSelectedSkills([]); setRegCustomQualification('');
+      setRegName(''); setRegPhone(''); setRegEmail(''); setRegPin(''); setRegCertificate(null); setRegDisclaimer(false); setRegReferralCode(''); setRegExperienceYears(0); setRegServiceArea(''); setRegMaritalStatus('Single'); setRegCity(''); setRegDistrict(''); setRegMandal(''); setRegVillage(''); setRegSelectedSkills([]); setRegCustomQualification(''); setRegReadyForHomeVisit(null);
       setTimeout(() => setIsRegistering(false), 3000);
     } catch (err: any) {
       setIsLoading(false);
@@ -959,40 +967,81 @@ export const LoginPage: React.FC<LoginPageProps> = ({
                     </select>
                   </div>
 
-                  {/* City, District, Mandal & Village Selection */}
-                  <div style={{
-                    display: 'grid',
-                    gridTemplateColumns: regCity === 'Hyderabad' ? '1fr' : 'repeat(auto-fit, minmax(130px, 1fr))',
-                    gap: '0.75rem',
-                    marginBottom: '0.75rem'
-                  }}>
-                    <div className="form-group">
-                      <label className="form-label">City *</label>
-                      <select
-                        value={regCity}
-                        onChange={(e) => {
-                          const val = e.target.value;
-                          setRegCity(val);
-                          if (val === 'Hyderabad') {
-                            setRegDistrict('');
-                            setRegMandal('');
-                            setRegVillage('');
-                          }
+                  {/* City Selection: Hyderabad & Non-Hyderabad side-by-side (No Dropdown, No Auto-Selection) */}
+                  <div className="form-group" style={{ marginBottom: '0.85rem' }}>
+                    <label className="form-label" style={{ fontWeight: 700, marginBottom: '0.4rem', display: 'block' }}>
+                      City / Location <span style={{ color: '#E11D48' }}>*</span>
+                    </label>
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.65rem' }}>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setRegCity('Hyderabad');
+                          setRegDistrict('');
+                          setRegMandal('');
+                          setRegVillage('');
                         }}
-                        className="form-control"
-                        style={{ fontWeight: 600 }}
+                        style={{
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          gap: '0.5rem',
+                          padding: '0.65rem 0.85rem',
+                          borderRadius: 10,
+                          border: regCity === 'Hyderabad' ? '2px solid #0284C7' : '1.5px solid #CBD5E1',
+                          background: regCity === 'Hyderabad' ? '#F0F9FF' : '#FFFFFF',
+                          color: regCity === 'Hyderabad' ? '#0369A1' : '#475569',
+                          fontWeight: regCity === 'Hyderabad' ? 800 : 600,
+                          fontSize: '0.86rem',
+                          cursor: 'pointer',
+                          boxShadow: regCity === 'Hyderabad' ? '0 2px 8px rgba(2, 132, 199, 0.15)' : 'none',
+                          transition: 'all 0.15s ease'
+                        }}
                       >
-                        <option value="Hyderabad">Hyderabad</option>
-                        <option value="Non-Hyderabad">Non-Hyderabad</option>
-                      </select>
+                        <span style={{ fontSize: '1.1rem' }}>🏙️</span>
+                        <span>Hyderabad</span>
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setRegCity('Non-Hyderabad')}
+                        style={{
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          gap: '0.5rem',
+                          padding: '0.65rem 0.85rem',
+                          borderRadius: 10,
+                          border: regCity === 'Non-Hyderabad' ? '2px solid #0284C7' : '1.5px solid #CBD5E1',
+                          background: regCity === 'Non-Hyderabad' ? '#F0F9FF' : '#FFFFFF',
+                          color: regCity === 'Non-Hyderabad' ? '#0369A1' : '#475569',
+                          fontWeight: regCity === 'Non-Hyderabad' ? 800 : 600,
+                          fontSize: '0.86rem',
+                          cursor: 'pointer',
+                          boxShadow: regCity === 'Non-Hyderabad' ? '0 2px 8px rgba(2, 132, 199, 0.15)' : 'none',
+                          transition: 'all 0.15s ease'
+                        }}
+                      >
+                        <span style={{ fontSize: '1.1rem' }}>🌾</span>
+                        <span>Non-Hyderabad</span>
+                      </button>
                     </div>
-                    {regCity !== 'Hyderabad' && (
-                      <>
-                        <div className="form-group">
-                          <label className="form-label">District *</label>
+
+                    {regCity === 'Non-Hyderabad' && (
+                      <div style={{
+                        display: 'grid',
+                        gridTemplateColumns: 'repeat(auto-fit, minmax(130px, 1fr))',
+                        gap: '0.65rem',
+                        marginTop: '0.65rem',
+                        background: '#F8FAFC',
+                        padding: '0.75rem',
+                        borderRadius: 10,
+                        border: '1px solid #E2E8F0'
+                      }}>
+                        <div className="form-group" style={{ margin: 0 }}>
+                          <label className="form-label" style={{ fontSize: '0.74rem' }}>District *</label>
                           <input
                             type="text"
-                            placeholder="Enter District name"
+                            placeholder="District name"
                             value={regDistrict}
                             onChange={(e) => setRegDistrict(e.target.value)}
                             className="form-control"
@@ -1000,11 +1049,11 @@ export const LoginPage: React.FC<LoginPageProps> = ({
                             required
                           />
                         </div>
-                        <div className="form-group">
-                          <label className="form-label">Mandal *</label>
+                        <div className="form-group" style={{ margin: 0 }}>
+                          <label className="form-label" style={{ fontSize: '0.74rem' }}>Mandal *</label>
                           <input
                             type="text"
-                            placeholder="Enter Mandal name"
+                            placeholder="Mandal name"
                             value={regMandal}
                             onChange={(e) => setRegMandal(e.target.value)}
                             className="form-control"
@@ -1012,11 +1061,11 @@ export const LoginPage: React.FC<LoginPageProps> = ({
                             required
                           />
                         </div>
-                        <div className="form-group">
-                          <label className="form-label">Village *</label>
+                        <div className="form-group" style={{ margin: 0 }}>
+                          <label className="form-label" style={{ fontSize: '0.74rem' }}>Village *</label>
                           <input
                             type="text"
-                            placeholder="Enter Village name"
+                            placeholder="Village name"
                             value={regVillage}
                             onChange={(e) => setRegVillage(e.target.value)}
                             className="form-control"
@@ -1024,7 +1073,7 @@ export const LoginPage: React.FC<LoginPageProps> = ({
                             required
                           />
                         </div>
-                      </>
+                      </div>
                     )}
                   </div>
 
@@ -1049,16 +1098,16 @@ export const LoginPage: React.FC<LoginPageProps> = ({
                     </div>
                   </div>
 
-                  {/* Colleague Referral Code Input */}
+                  {/* Refer and Earn Code Input (Formerly Colleague Referral Code) */}
                   <div className="form-group" style={{ marginBottom: '0.85rem' }}>
                     <label className="form-label" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', margin: '0 0 0.35rem 0' }}>
                       <span style={{ display: 'inline-flex', alignItems: 'center', gap: '0.35rem', fontWeight: 700, fontSize: '0.82rem' }}>
                         <Sparkles size={14} style={{ color: '#9333EA' }} />
-                        <span>Colleague Referral Code (Optional)</span>
+                        <span>Refer and Earn Code (Optional)</span>
                       </span>
                       {matchedReferringNurse && (
                         <span style={{ fontSize: '0.72rem', color: '#059669', fontWeight: 750 }}>
-                          ✓ Verified Colleague
+                          ✓ Verified Referral
                         </span>
                       )}
                     </label>
@@ -1089,7 +1138,7 @@ export const LoginPage: React.FC<LoginPageProps> = ({
                       </div>
                     ) : (
                       <div style={{ fontSize: '0.72rem', color: '#64748B', marginTop: '0.25rem' }}>
-                        Enter the referral code sent by an existing nurse to link your registration.
+                        Have a Refer &amp; Earn code from a nurse or friend? Enter it here to link your bonus.
                       </div>
                     )}
                   </div>
@@ -1115,6 +1164,7 @@ export const LoginPage: React.FC<LoginPageProps> = ({
                         className="form-control"
                         style={{ fontWeight: 600 }}
                       >
+                        <option value="0">0 Years (Fresher)</option>
                         <option value="1">1 Year Experience</option>
                         <option value="2">2 Years Experience</option>
                         <option value="3">3 Years Experience</option>
@@ -1246,10 +1296,10 @@ export const LoginPage: React.FC<LoginPageProps> = ({
                     </div>
                   </div>
 
-                  {/* Home Visit Readiness */}
+                  {/* Home Visit Readiness (No Auto-Selection) */}
                   <div className="form-group" style={{ marginBottom: '0.85rem' }}>
                     <label className="form-label" style={{ fontWeight: 700, marginBottom: '0.35rem' }}>
-                      Ready to do Home Visits? *
+                      Ready to do Home Visits? <span style={{ color: '#E11D48' }}>*</span>
                     </label>
                     <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.65rem' }}>
                       <button
@@ -1262,12 +1312,13 @@ export const LoginPage: React.FC<LoginPageProps> = ({
                           gap: '0.5rem',
                           padding: '0.65rem 0.75rem',
                           borderRadius: 10,
-                          border: regReadyForHomeVisit ? '2px solid #059669' : '1px solid #CBD5E1',
-                          background: regReadyForHomeVisit ? '#ECFDF5' : '#FFFFFF',
-                          color: regReadyForHomeVisit ? '#065F46' : '#64748B',
-                          fontWeight: regReadyForHomeVisit ? 800 : 600,
+                          border: regReadyForHomeVisit === true ? '2px solid #059669' : '1.5px solid #CBD5E1',
+                          background: regReadyForHomeVisit === true ? '#ECFDF5' : '#FFFFFF',
+                          color: regReadyForHomeVisit === true ? '#065F46' : '#64748B',
+                          fontWeight: regReadyForHomeVisit === true ? 800 : 600,
                           fontSize: '0.84rem',
                           cursor: 'pointer',
+                          boxShadow: regReadyForHomeVisit === true ? '0 2px 8px rgba(5, 150, 105, 0.15)' : 'none',
                           transition: 'all 0.15s ease'
                         }}
                       >
@@ -1284,12 +1335,13 @@ export const LoginPage: React.FC<LoginPageProps> = ({
                           gap: '0.5rem',
                           padding: '0.65rem 0.75rem',
                           borderRadius: 10,
-                          border: !regReadyForHomeVisit ? '2px solid #E11D48' : '1px solid #CBD5E1',
-                          background: !regReadyForHomeVisit ? '#FFF1F2' : '#FFFFFF',
-                          color: !regReadyForHomeVisit ? '#9F1239' : '#64748B',
-                          fontWeight: !regReadyForHomeVisit ? 800 : 600,
+                          border: regReadyForHomeVisit === false ? '2px solid #E11D48' : '1.5px solid #CBD5E1',
+                          background: regReadyForHomeVisit === false ? '#FFF1F2' : '#FFFFFF',
+                          color: regReadyForHomeVisit === false ? '#9F1239' : '#64748B',
+                          fontWeight: regReadyForHomeVisit === false ? 800 : 600,
                           fontSize: '0.84rem',
                           cursor: 'pointer',
+                          boxShadow: regReadyForHomeVisit === false ? '0 2px 8px rgba(225, 29, 72, 0.15)' : 'none',
                           transition: 'all 0.15s ease'
                         }}
                       >

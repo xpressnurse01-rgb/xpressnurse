@@ -355,7 +355,13 @@ export async function dbFetchNurses(): Promise<NurseProfile[] | null> {
         .select('*')
         .order('created_at', { ascending: false, nullsFirst: false });
     }),
-    Promise.resolve(supabase.from('app_users').select('*')).then(r => r.data || [], () => [])
+    // SECURITY: Only query nurse directory metadata strictly for role=nurse without exposing admin or doctor records
+    Promise.resolve(
+      supabase
+        .from('app_users')
+        .select('*')
+        .eq('role', 'nurse')
+    ).then((r: any) => r.data || [], () => [])
   ]);
 
   if (data === null && (!appUsersData || appUsersData.length === 0)) return null;

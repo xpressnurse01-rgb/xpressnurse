@@ -450,7 +450,7 @@ export const NurseDashboard: React.FC<NurseDashboardProps> = ({
 
   const handleShareWhatsApp = () => {
     const text = encodeURIComponent(
-      `Namaste! I am ${nurse.name} from Xpress Nurse Hyderabad. Book certified home nursing services (IV saline, wound dressing, injection, doctor consult) at home. Use my code *${referralCode}* for special care: https://xpressnurse.in/?ref=${referralCode} or Call/WhatsApp: +917569657371`
+      `Hello! I am ${nurse.name} from Xpress Nurse Hyderabad. Book certified home nursing services (IV saline, wound dressing, injection, doctor consult) at home. Use my code *${referralCode}* for special care: https://xpressnurse.in/?ref=${referralCode} or Call/WhatsApp: +917569657371`
     );
     window.open(`https://wa.me/?text=${text}`, '_blank');
   };
@@ -625,23 +625,51 @@ export const NurseDashboard: React.FC<NurseDashboardProps> = ({
 
           {/* Quick Stats Pill */}
           <div className="nurse-top-stats">
-            <div className="nurse-top-stat-box" style={{
-              background: '#ECFDF5',
-              border: '1px solid #A7F3D0',
-              padding: '0.45rem 0.9rem',
-              borderRadius: 12,
-              textAlign: 'center'
-            }}>
-              <div style={{ fontSize: '0.7rem', color: '#065F46', fontWeight: 600 }}>My Points</div>
+            <div
+              className="nurse-top-stat-box"
+              onClick={() => setActiveTab('my-money')}
+              style={{
+                background: '#ECFDF5',
+                border: '1px solid #A7F3D0',
+                padding: '0.45rem 0.9rem',
+                borderRadius: 12,
+                textAlign: 'center',
+                cursor: 'pointer'
+              }}
+              title="Click to view Bonus Points statement"
+            >
+              <div style={{ fontSize: '0.7rem', color: '#065F46', fontWeight: 600 }}>Bonus Points</div>
               <div style={{ fontSize: '1.1rem', fontWeight: 900, color: '#059669' }}>⭐ {totalPoints}</div>
             </div>
-            <div className="nurse-top-stat-box" style={{
-              background: '#EFF6FF',
-              border: '1px solid #BFDBFE',
-              padding: '0.45rem 0.9rem',
-              borderRadius: 12,
-              textAlign: 'center'
-            }}>
+            <div
+              className="nurse-top-stat-box"
+              onClick={() => setActiveTab('my-money')}
+              style={{
+                background: '#FEF3C7',
+                border: '1px solid #FDE68A',
+                padding: '0.45rem 0.9rem',
+                borderRadius: 12,
+                textAlign: 'center',
+                cursor: 'pointer'
+              }}
+              title="Click to view Duty & Referral Earnings"
+            >
+              <div style={{ fontSize: '0.7rem', color: '#92400E', fontWeight: 600 }}>Earnings</div>
+              <div style={{ fontSize: '1.1rem', fontWeight: 900, color: '#B45309' }}>₹{totalMoney.toLocaleString('en-IN')}</div>
+            </div>
+            <div
+              className="nurse-top-stat-box"
+              onClick={() => setActiveTab('visits')}
+              style={{
+                background: '#EFF6FF',
+                border: '1px solid #BFDBFE',
+                padding: '0.45rem 0.9rem',
+                borderRadius: 12,
+                textAlign: 'center',
+                cursor: 'pointer'
+              }}
+              title="Click to view Active Visits"
+            >
               <div style={{ fontSize: '0.7rem', color: '#1E40AF', fontWeight: 600 }}>Active Visits</div>
               <div style={{ fontSize: '1.1rem', fontWeight: 900, color: '#1D4ED8' }}>{activeVisits.length}</div>
             </div>
@@ -761,7 +789,7 @@ export const NurseDashboard: React.FC<NurseDashboardProps> = ({
             }}>
               <div>
                 <h3 style={{ margin: 0, fontSize: '1.35rem', fontWeight: 800, color: '#FFFFFF' }}>
-                  Namaste, {nurse.name.replace('Nurse ', '')}! 👋
+                  Hello, {nurse.name.replace('Nurse ', '')}! 👋
                 </h3>
                 <p style={{ margin: '0.35rem 0 0', fontSize: '0.9rem', color: '#CBD5E1' }}>
                   {activeVisits.length > 0
@@ -874,7 +902,7 @@ export const NurseDashboard: React.FC<NurseDashboardProps> = ({
                 </div>
               </div>
 
-              {/* Card 2b: Colleague Nurses Referred (Shown if nurse has referred any colleague nurses) */}
+              {/* Card 2b: Refer & Earn Nurses Referred (Shown if nurse has referred any nurses) */}
               {nurseLeadsCount > 0 && (
                 <div
                   onClick={() => setActiveTab('my-money')}
@@ -887,7 +915,7 @@ export const NurseDashboard: React.FC<NurseDashboardProps> = ({
                   }}
                 >
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                    <span style={{ fontSize: '0.85rem', color: '#64748B', fontWeight: 600 }}>Colleague Nurses</span>
+                    <span style={{ fontSize: '0.85rem', color: '#64748B', fontWeight: 600 }}>Refer &amp; Earn Nurses</span>
                     <div style={{ width: 36, height: 36, borderRadius: 10, background: '#FAF5FF', color: '#9333EA', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
                       <Users size={18} />
                     </div>
@@ -1170,12 +1198,12 @@ export const NurseDashboard: React.FC<NurseDashboardProps> = ({
               gap: '1rem'
             }}>
               <div>
-                <div style={{ fontSize: '0.8rem', color: '#64748B', fontWeight: 600 }}>Your Personal Code</div>
+                <div style={{ fontSize: '0.8rem', color: '#64748B', fontWeight: 600 }}>Your Refer &amp; Earn Code</div>
                 <div style={{ fontSize: '1.25rem', fontWeight: 900, color: '#0F172A', letterSpacing: 1 }}>
                   {referralCode}
                 </div>
-                <div style={{ fontSize: '0.8rem', color: '#16A34A', marginTop: '0.2rem' }}>
-                  Get 50 Reward Points every time a patient books with this code!
+                <div style={{ fontSize: '0.8rem', color: '#16A34A', marginTop: '0.2rem', fontWeight: 700 }}>
+                  🎁 Refer a friend, get 50 bonus points!
                 </div>
               </div>
 
@@ -1602,7 +1630,7 @@ export const NurseDashboard: React.FC<NurseDashboardProps> = ({
                                       <Phone size={12} /> Call Patient
                                     </a>
                                     <a
-                                      href={`https://wa.me/91${visit.patientPhone.replace(/\D/g, '').slice(-10)}?text=${encodeURIComponent(`Namaste ${visit.patientName}, I am ${nurse.name} from Xpress Nurse regarding your booking #${visit.id}.`)}`}
+                                      href={`https://wa.me/91${visit.patientPhone.replace(/\D/g, '').slice(-10)}?text=${encodeURIComponent(`Hello ${visit.patientName}, I am ${nurse.name} from Xpress Nurse regarding your booking #${visit.id}.`)}`}
                                       target="_blank"
                                       rel="noreferrer"
                                       style={{
@@ -1651,7 +1679,7 @@ export const NurseDashboard: React.FC<NurseDashboardProps> = ({
                                 </a>
 
                                 <a
-                                  href={`https://wa.me/91${visit.patientPhone.replace(/\D/g, '').slice(-10)}?text=${encodeURIComponent(`Namaste ${visit.patientName}, I am ${nurse.name} from Xpress Nurse for your scheduled ${visit.serviceTitle} visit.`)}`}
+                                  href={`https://wa.me/91${visit.patientPhone.replace(/\D/g, '').slice(-10)}?text=${encodeURIComponent(`Hello ${visit.patientName}, I am ${nurse.name} from Xpress Nurse for your scheduled ${visit.serviceTitle} visit.`)}`}
                                   target="_blank"
                                   rel="noreferrer"
                                   style={{
@@ -2512,11 +2540,11 @@ export const NurseDashboard: React.FC<NurseDashboardProps> = ({
                       </div>
                     )}
 
-                    {/* Colleague Nurses You Referred */}
+                    {/* Refer & Earn Nurses You Referred */}
                     {nurseLeads.length > 0 && (
                       <div style={{ marginTop: '1.5rem', paddingTop: '1.25rem', borderTop: '1px dashed #CBD5E1' }}>
                         <h5 style={{ margin: '0 0 0.75rem 0', fontSize: '0.95rem', fontWeight: 800, color: '#334155' }}>
-                          Colleague Nurses You Referred ({nurseLeads.length})
+                          Refer &amp; Earn Nurses You Referred ({nurseLeads.length})
                         </h5>
                         <div style={{ display: 'flex', flexDirection: 'column', gap: '0.6rem' }}>
                           {nurseLeads.map((nurseLead) => {
@@ -2539,7 +2567,7 @@ export const NurseDashboard: React.FC<NurseDashboardProps> = ({
                                 <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '0.5rem' }}>
                                   <div>
                                     <div style={{ fontWeight: 800, fontSize: '0.9rem', color: isNurseRejected ? '#991B1B' : '#0F172A' }}>
-                                      {nurseLead.referredNurseName || nurseLead.nurseName || 'Colleague Nurse'}
+                                      {nurseLead.referredNurseName || nurseLead.nurseName || 'Referred Nurse'}
                                     </div>
                                     <div style={{ fontSize: '0.76rem', color: isNurseRejected ? '#7F1D1D' : '#64748B', marginTop: '1px' }}>
                                       {nurseLead.referredNursePhone || nurseLead.patientPhone || 'No Phone'} • {nurseLead.area || 'Hyderabad'}
@@ -3399,7 +3427,7 @@ export const NurseDashboard: React.FC<NurseDashboardProps> = ({
 
                 {previewInvoice.patientPhone && (
                   <a
-                    href={`https://wa.me/91${previewInvoice.patientPhone.replace(/\D/g, '').slice(-10)}?text=${encodeURIComponent(`Namaste ${previewInvoice.patientName}, here is your official Xpress Nurse Doorstep Bill #${previewInvoice.invoiceNumber} for ${previewInvoice.serviceTitle}: Amount ₹${previewInvoice.totalAmount} (Status: ${previewInvoice.paymentStatus}). Thank you for choosing Xpress Nurse Hyderabad!`)}`}
+                    href={`https://wa.me/91${previewInvoice.patientPhone.replace(/\D/g, '').slice(-10)}?text=${encodeURIComponent(`Hello ${previewInvoice.patientName}, here is your official Xpress Nurse Doorstep Bill #${previewInvoice.invoiceNumber} for ${previewInvoice.serviceTitle}: Amount ₹${previewInvoice.totalAmount} (Status: ${previewInvoice.paymentStatus}). Thank you for choosing Xpress Nurse Hyderabad!`)}`}
                     target="_blank"
                     rel="noreferrer"
                     className="btn"

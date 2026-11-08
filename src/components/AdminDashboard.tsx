@@ -2138,7 +2138,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
       phone: cleanPhone,
       email: nurseForm.email.trim(),
       qualification: nurseForm.qualification.trim(),
-      experienceYears: Number(nurseForm.experienceYears) || 1,
+      experienceYears: !isNaN(Number(nurseForm.experienceYears)) ? Math.max(0, Number(nurseForm.experienceYears)) : 0,
       serviceArea: nurseForm.serviceArea.trim() || (nurseForm.city !== 'Hyderabad' && nurseForm.district.trim() ? nonHydLoc : nurseForm.city),
       maritalStatus: nurseForm.maritalStatus,
       city: nurseForm.city,
@@ -9061,7 +9061,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                   <label className="form-label" style={{ fontSize: '0.78rem', fontWeight: 700 }}>EXP. (YEARS)</label>
                   <input
                     type="number"
-                    min={1}
+                    min={0}
                     max={40}
                     value={nurseForm.experienceYears}
                     onChange={(e) => setNurseForm({ ...nurseForm, experienceYears: Number(e.target.value) })}
