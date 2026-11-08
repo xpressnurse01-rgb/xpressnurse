@@ -836,12 +836,13 @@ export const NurseDashboard: React.FC<NurseDashboardProps> = ({
                     fontSize: '0.85rem',
                     display: 'flex',
                     alignItems: 'center',
-                    gap: '0.35rem',
+                    gap: '0.4rem',
                     cursor: 'pointer'
                   }}
+                  title="Share your code on WhatsApp"
                 >
                   <MessageCircle size={16} />
-                  <span>Share on WhatsApp</span>
+                  <span>🎁 Refer a friend, get 50 bonus points!</span>
                 </button>
               </div>
             </div>
@@ -1243,9 +1244,10 @@ export const NurseDashboard: React.FC<NurseDashboardProps> = ({
                     alignItems: 'center',
                     gap: '0.35rem'
                   }}
+                  title="Share your code on WhatsApp"
                 >
                   <MessageCircle size={14} />
-                  <span>WhatsApp</span>
+                  <span>🎁 Refer a friend, get 50 bonus points!</span>
                 </button>
               </div>
             </div>
@@ -2225,18 +2227,19 @@ export const NurseDashboard: React.FC<NurseDashboardProps> = ({
                     color: '#FFFFFF',
                     border: 'none',
                     borderRadius: 8,
-                    padding: '0.35rem 0.8rem',
-                    fontSize: '0.78rem',
+                    padding: '0.45rem 0.85rem',
+                    fontSize: '0.8rem',
                     fontWeight: 800,
                     cursor: 'pointer',
                     display: 'inline-flex',
                     alignItems: 'center',
-                    gap: '0.3rem',
-                    marginTop: '0.3rem'
+                    gap: '0.35rem',
+                    marginTop: '0.35rem'
                   }}
+                  title="Share your code on WhatsApp"
                 >
-                  <MessageCircle size={13} />
-                  <span>Share on WhatsApp</span>
+                  <MessageCircle size={14} />
+                  <span>🎁 Refer a friend, get 50 bonus points!</span>
                 </button>
               </div>
             </div>
