@@ -68,6 +68,12 @@ export const LoginPage: React.FC<LoginPageProps> = ({
 
   // Nurse & Doctor Registration States
   const [isRegistering, setIsRegistering] = useState(false);
+  const [submittedAppInfo, setSubmittedAppInfo] = useState<{
+    name: string;
+    phone: string;
+    role: string;
+    points?: number;
+  } | null>(null);
   const [regName, setRegName] = useState('');
   const [regPhone, setRegPhone] = useState('');
   const [regEmail, setRegEmail] = useState('');
@@ -203,10 +209,20 @@ export const LoginPage: React.FC<LoginPageProps> = ({
 
         await dbInsertAppUser(newAppUser);
 
+        const submittedDocName = formattedDocName;
+        const submittedDocPhone = regPhone.trim();
         setIsLoading(false);
-        setSuccessMsg(`Doctor application submitted for ${formattedDocName}! Your application is pending Admin verification. You can sign in once approved.`);
+        setSuccessMsg(`Application submitted for ${submittedDocName}! Pending Admin verification.`);
+        setSubmittedAppInfo({
+          name: submittedDocName,
+          phone: submittedDocPhone,
+          role: 'doctor'
+        });
+        setIdentifier(submittedDocPhone || cleanPhone || cleanEmail);
+        setPin('');
         setRegName(''); setRegPhone(''); setRegEmail(''); setRegPin(''); setRegCertificate(null); setRegDisclaimer(false); setRegDoctorSpecialization(''); setRegDoctorCustomSpecialization(''); setRegDoctorCouncilNo('');
-        setTimeout(() => setIsRegistering(false), 3500);
+        setIsRegistering(false);
+        window.scrollTo({ top: 0, behavior: 'smooth' });
         return;
       } catch (err: any) {
         setIsLoading(false);
@@ -382,14 +398,30 @@ export const LoginPage: React.FC<LoginPageProps> = ({
         });
       }
       
+      const submittedName = regName.trim();
+      const submittedPhone = regPhone.trim();
+      
       onRefreshNurses?.();
       setIsLoading(false);
       setSuccessMsg(matchedReferringNurse 
-        ? `Application submitted with referral from ${matchedReferringNurse.name}! Profile pending verification.`
+        ? `Application submitted with referral from ${matchedReferringNurse.name}! Profile pending Admin approval.`
         : 'Registration submitted! Your profile is pending Admin approval.'
       );
+      setSubmittedAppInfo({
+        name: submittedName,
+        phone: submittedPhone,
+        role: 'nurse',
+        points: 1000
+      });
+      // Pre-fill login identifier with registered phone so nurse sees ready-to-login state
+      setIdentifier(submittedPhone || cleanPhone || cleanEmail);
+      setPin('');
+      
       setRegName(''); setRegPhone(''); setRegEmail(''); setRegPin(''); setRegCertificate(null); setRegDisclaimer(false); setRegReferralCode(''); setRegExperienceYears(0); setRegServiceArea(''); setRegMaritalStatus('Single'); setRegCity(''); setRegDistrict(''); setRegMandal(''); setRegVillage(''); setRegSelectedSkills([]); setRegCustomQualification(''); setRegReadyForHomeVisit(null);
-      setTimeout(() => setIsRegistering(false), 3000);
+      
+      // Immediately switch back to login and scroll to top of login card (no dropping to footer)
+      setIsRegistering(false);
+      window.scrollTo({ top: 0, behavior: 'smooth' });
     } catch (err: any) {
       setIsLoading(false);
       setErrorMsg('Error submitting application. Please try again.');
@@ -650,6 +682,86 @@ export const LoginPage: React.FC<LoginPageProps> = ({
           {/* Form */}
           {!isRegistering ? (
             <form onSubmit={handleLoginSubmit} className="login-form">
+              {/* Application Status Banner (Displayed immediately after registration) */}
+              {submittedAppInfo && (
+                <div style={{
+                  background: '#F0FDF4',
+                  border: '1.5px solid #86EFAC',
+                  borderRadius: 14,
+                  padding: '1.1rem 1.25rem',
+                  marginBottom: '1.25rem',
+                  boxShadow: '0 4px 14px rgba(16, 185, 129, 0.08)'
+                }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.65rem', marginBottom: '0.5rem' }}>
+                    <div style={{
+                      width: 36,
+                      height: 36,
+                      borderRadius: '50%',
+                      background: '#10B981',
+                      color: '#FFFFFF',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      flexShrink: 0
+                    }}>
+                      <CheckCircle2 size={20} />
+                    </div>
+                    <div>
+                      <div style={{ fontWeight: 800, fontSize: '0.96rem', color: '#065F46' }}>
+                        Application Submitted Successfully!
+                      </div>
+                      <div style={{
+                        display: 'inline-flex',
+                        alignItems: 'center',
+                        gap: '0.35rem',
+                        background: '#FEF3C7',
+                        border: '1px solid #FDE68A',
+                        color: '#92400E',
+                        fontSize: '0.74rem',
+                        fontWeight: 750,
+                        padding: '0.15rem 0.55rem',
+                        borderRadius: 999,
+                        marginTop: '0.2rem'
+                      }}>
+                        <span>⏳</span>
+                        <span>Status: Waiting for Admin Approval</span>
+                      </div>
+                    </div>
+                  </div>
+
+                  <p style={{ margin: '0.45rem 0 0.65rem 0', fontSize: '0.82rem', color: '#047857', lineHeight: 1.45 }}>
+                    Hello <strong>{submittedAppInfo.name}</strong>, your application has been received! Our admin team is reviewing your nursing certificate.
+                  </p>
+
+                  <div style={{
+                    background: '#FFFFFF',
+                    borderRadius: 10,
+                    border: '1px solid #BBF7D0',
+                    padding: '0.65rem 0.85rem',
+                    fontSize: '0.78rem',
+                    display: 'grid',
+                    gridTemplateColumns: submittedAppInfo.points ? '1fr 1fr' : '1fr',
+                    gap: '0.5rem',
+                    color: '#334155'
+                  }}>
+                    <div>
+                      <span style={{ color: '#64748B', display: 'block', fontSize: '0.72rem' }}>Registered Login ID:</span>
+                      <strong style={{ fontSize: '0.86rem' }}>{submittedAppInfo.phone}</strong>
+                    </div>
+                    {submittedAppInfo.points && (
+                      <div>
+                        <span style={{ color: '#64748B', display: 'block', fontSize: '0.72rem' }}>Welcome Bonus:</span>
+                        <strong style={{ fontSize: '0.86rem', color: '#059669' }}>⭐ {submittedAppInfo.points} Points Queued</strong>
+                      </div>
+                    )}
+                  </div>
+
+                  <div style={{ fontSize: '0.75rem', color: '#475569', marginTop: '0.65rem', lineHeight: 1.45 }}>
+                    ℹ️ <strong>What next?</strong> Once Admin verifies your certificate, your profile will be active. You can then enter your 4-digit PIN below to sign in.
+                  </div>
+                </div>
+              )}
+
               {/* Error Message */}
               {errorMsg && (
                 <div className="login-alert-box error">
@@ -659,7 +771,7 @@ export const LoginPage: React.FC<LoginPageProps> = ({
               )}
 
               {/* Success Message */}
-              {successMsg && (
+              {successMsg && !submittedAppInfo && (
                 <div className="login-alert-box success">
                   <CheckCircle2 size={16} />
                   <span>{successMsg}</span>
@@ -1444,7 +1556,12 @@ export const LoginPage: React.FC<LoginPageProps> = ({
                   {role === 'nurse' ? 'New to Xpress Nurse? ' : 'New Physician or Partner? '}
                   <button 
                     type="button" 
-                    onClick={() => { setIsRegistering(true); setErrorMsg(''); setSuccessMsg(''); }} 
+                    onClick={() => { 
+                      setIsRegistering(true); 
+                      setErrorMsg(''); 
+                      setSuccessMsg(''); 
+                      window.scrollTo({ top: 0, behavior: 'smooth' });
+                    }} 
                     style={{ background: 'none', border: 'none', color: '#0284C7', fontWeight: 700, cursor: 'pointer', padding: 0 }}
                   >
                     {role === 'nurse' ? 'Register as Nurse' : 'Register (Others / Doctor)'}
@@ -1455,7 +1572,12 @@ export const LoginPage: React.FC<LoginPageProps> = ({
                   Already registered?{' '}
                   <button 
                     type="button" 
-                    onClick={() => { setIsRegistering(false); setErrorMsg(''); setSuccessMsg(''); }} 
+                    onClick={() => { 
+                      setIsRegistering(false); 
+                      setErrorMsg(''); 
+                      setSuccessMsg(''); 
+                      window.scrollTo({ top: 0, behavior: 'smooth' });
+                    }} 
                     style={{ background: 'none', border: 'none', color: '#0284C7', fontWeight: 700, cursor: 'pointer', padding: 0 }}
                   >
                     {role === 'nurse' ? 'Sign In' : 'Sign In to Others Panel'}
