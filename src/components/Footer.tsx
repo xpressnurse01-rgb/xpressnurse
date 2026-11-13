@@ -81,16 +81,6 @@ export const Footer: React.FC<FooterProps> = ({
                 <span>info@xpressnurse.in</span>
               </a>
 
-              <a
-                href="https://wa.me/917569657371?text=Hi%20Xpress%20Nurse,%20I%20would%20like%20to%20request%20home%20nursing%20care."
-                target="_blank"
-                rel="noreferrer"
-                className="footer-contact-chip wa"
-                title="WhatsApp: 75696 57371"
-              >
-                <MessageCircle size={13} style={{ color: '#25D366' }} />
-                <span>WhatsApp: 75696 57371</span>
-              </a>
             </div>
           </div>
 

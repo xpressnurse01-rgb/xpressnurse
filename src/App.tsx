@@ -849,10 +849,11 @@ export const App: React.FC = () => {
           localStorage.removeItem('xn_cached_app_users');
         } catch {}
 
-        // 2. Always fetch public catalog services & active coupons (safe for public display)
-        const [remoteServices, remoteCoupons] = await Promise.all([
+        // 2. Always fetch public catalog services, active coupons, and certified nurse directory (safe for public registration & referral lookup)
+        const [remoteServices, remoteCoupons, remoteNursesPublic] = await Promise.all([
           dbFetchServices(),
-          dbFetchCoupons()
+          dbFetchCoupons(),
+          dbFetchNurses()
         ]);
 
         if (remoteServices !== null) {
@@ -860,6 +861,9 @@ export const App: React.FC = () => {
         }
         if (remoteCoupons !== null) {
           setCoupons(remoteCoupons);
+        }
+        if (remoteNursesPublic !== null && remoteNursesPublic.length > 0) {
+          setNurses(remoteNursesPublic);
         }
 
         // 3. Inspect if an authenticated session is active (Admin, Nurse, or Doctor)
@@ -1779,7 +1783,22 @@ export const App: React.FC = () => {
     }
 
     // For Nurse Referral: credit referring nurse 50 points upon nurse verification (strictly once upon approval).
-    const referringNurse = nurses.find((n) => n.id === lead.nurseId);
+    const leadNurseId = (lead.nurseId || '').trim();
+    const leadCodeHint = leadNurseId.toUpperCase();
+    const leadCodeNoPrefix = leadCodeHint.replace(/^XN-?/, '');
+    const leadPhoneDigits = leadNurseId.replace(/\D/g, '');
+    const leadNurseName = (lead.nurseName || '').toLowerCase().trim();
+
+    const referringNurse = nurses.find((n) => {
+      if (leadNurseId && n.id === leadNurseId) return true;
+      const nCode = (n.referralCode || '').toUpperCase();
+      if (leadCodeHint && (nCode === leadCodeHint || nCode.replace(/^XN-?/, '') === leadCodeNoPrefix)) return true;
+      const nPhone = (n.phone || '').replace(/\D/g, '');
+      if (leadPhoneDigits && (nPhone === leadPhoneDigits || (leadPhoneDigits.length >= 10 && nPhone.slice(-10) === leadPhoneDigits.slice(-10)))) return true;
+      if (leadNurseName && n.name.toLowerCase().trim() === leadNurseName) return true;
+      return false;
+    });
+
     const nurseWasAlreadyVerified = Boolean(referredNurse?.certificateVerified && referredNurse?.status === 'Active');
     if (referringNurse && isNurseReferral && !isAlreadyApproved && !nurseWasAlreadyVerified) {
       const updatedNurse: NurseProfile = {
@@ -1795,6 +1814,11 @@ export const App: React.FC = () => {
       });
       broadcastRealtimeUpdate('NURSE_UPDATE', updatedNurse);
       await dbUpdateNurse(updatedNurse);
+      await dbUpdateNurseById(updatedNurse.id, {
+        pointsEarned: updatedNurse.pointsEarned,
+        convertedLeads: updatedNurse.convertedLeads,
+        totalReferrals: updatedNurse.totalReferrals
+      });
     }
 
     // For patient referrals: Guarantee a fresh booking is queued in "Assign Nurses" (or assigned to chosen nurse)
@@ -2526,8 +2550,22 @@ export const App: React.FC = () => {
       }
 
       // Strictly credit 50 points to referrer ONCE upon verification
-      if (referrerId && targetNurse && !targetNurse.certificateVerified) {
-        const referrer = nurses.find((rn) => rn.id === referrerId);
+      const refNameHint = updates.referredByNurseName || targetNurse?.referredByNurseName || matchLead?.nurseName;
+      const refCodeHint = referrerId ? referrerId.toUpperCase() : '';
+      const refCodeNoPrefix = refCodeHint.replace(/^XN-?/, '');
+      const refPhoneDigits = referrerId ? referrerId.replace(/\D/g, '') : '';
+
+      if ((referrerId || refNameHint) && (!targetNurse || !targetNurse.certificateVerified || targetNurse.status !== 'Active')) {
+        const referrer = nurses.find((rn) => {
+          if (referrerId && rn.id === referrerId) return true;
+          const rnCode = (rn.referralCode || '').toUpperCase();
+          if (refCodeHint && (rnCode === refCodeHint || rnCode.replace(/^XN-?/, '') === refCodeNoPrefix)) return true;
+          const rnPhone = (rn.phone || '').replace(/\D/g, '');
+          if (refPhoneDigits && (rnPhone === refPhoneDigits || (refPhoneDigits.length >= 10 && rnPhone.slice(-10) === refPhoneDigits.slice(-10)))) return true;
+          if (refNameHint && rn.name.toLowerCase().trim() === refNameHint.toLowerCase().trim()) return true;
+          return false;
+        });
+
         if (referrer) {
           const updatedReferrer: NurseProfile = {
             ...referrer,
@@ -2542,6 +2580,11 @@ export const App: React.FC = () => {
           });
           broadcastRealtimeUpdate('NURSE_UPDATE', updatedReferrer);
           await dbUpdateNurse(updatedReferrer);
+          await dbUpdateNurseById(updatedReferrer.id, {
+            pointsEarned: updatedReferrer.pointsEarned,
+            convertedLeads: updatedReferrer.convertedLeads,
+            totalReferrals: updatedReferrer.totalReferrals
+          });
         }
       }
     }

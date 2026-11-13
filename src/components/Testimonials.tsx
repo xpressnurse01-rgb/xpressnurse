@@ -1,5 +1,5 @@
 import React from 'react';
-import { Star, Quote, CheckCircle2, ShieldCheck } from 'lucide-react';
+import { Star, CheckCircle2 } from 'lucide-react';
 
 export const Testimonials: React.FC = () => {
   const reviews = [
@@ -36,11 +36,11 @@ export const Testimonials: React.FC = () => {
         <div className="section-header text-center reveal-on-scroll">
           <span className="section-badge">
             <CheckCircle2 size={13} />
-            <span>Verified Patient Experiences</span>
+            <span>Patient &amp; Caregiver Stories</span>
           </span>
-          <h2 className="section-title">Trusted by 1000+ Families in Hyderabad</h2>
+          <h2 className="section-title">Care that makes a difference at home</h2>
           <p className="section-subtitle">
-            Read authentic feedback from patients, physicians, and family caregivers across Hyderabad’s residential neighborhoods.
+            Hear from patients and caregivers who have used home nursing and consultation services in Hyderabad.
           </p>
         </div>
 
@@ -68,9 +68,8 @@ export const Testimonials: React.FC = () => {
                 <div className="author-details">
                   <div className="author-name-row">
                     <h4 className="author-name">{rev.name}</h4>
-                    <span className="author-verified-chip" title="Verified Home Care Patient">
-                      <ShieldCheck size={12} />
-                      <span>Verified</span>
+                    <span className="author-verified-chip" title="Patient or caregiver story">
+                      <span>Patient story</span>
                     </span>
                   </div>
                   <p className="author-role">{rev.role}</p>

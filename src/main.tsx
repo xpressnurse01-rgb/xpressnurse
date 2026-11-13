@@ -3,6 +3,7 @@ import ReactDOM from 'react-dom/client';
 import Lenis from 'lenis';
 import { App } from './App';
 import './styles/index.css';
+import './styles/corporate-overrides.css';
 
 // Desktop & Laptop: Use the luxury Lenis momentum scrolling engine (District / Apple Style)
 // Mobile: Use native 120Hz kinetic touch scrolling so phone users experience 100% fluid, responsive scrolling

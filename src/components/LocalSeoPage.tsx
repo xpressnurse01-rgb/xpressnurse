@@ -368,7 +368,7 @@ export const LocalSeoPage: React.FC<LocalSeoPageProps> = ({
         borderBottom: '1px solid #E2E8F0'
       }}>
         <div className="container">
-          <div style={{
+          <div className="local-seo-hero-grid" style={{
             display: 'grid',
             gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))',
             gap: '2.5rem',

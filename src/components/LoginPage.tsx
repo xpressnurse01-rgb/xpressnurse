@@ -26,6 +26,7 @@ import {
   dbInsertLead, 
   dbUpdateNurseById, 
   findNurseByReferralCode, 
+  dbFindNurseByReferralCode,
   generateNurseReferralCode,
   broadcastRealtimeUpdate 
 } from '../lib/supabase';
@@ -94,6 +95,8 @@ export const LoginPage: React.FC<LoginPageProps> = ({
   const [regDoctorCustomSpecialization, setRegDoctorCustomSpecialization] = useState<string>('');
   const [regDoctorCouncilNo, setRegDoctorCouncilNo] = useState<string>('');
   const [regReferralCode, setRegReferralCode] = useState('');
+  const [asyncMatchedNurse, setAsyncMatchedNurse] = useState<NurseProfile | null>(null);
+  const [isCheckingRefCode, setIsCheckingRefCode] = useState(false);
   const [regCertificate, setRegCertificate] = useState<File | null>(null);
   const [regDisclaimer, setRegDisclaimer] = useState(false);
 
@@ -120,10 +123,43 @@ export const LoginPage: React.FC<LoginPageProps> = ({
     }
   }, []);
 
+  // Real-time lookup of referring nurse across active fleet and live database
+  useEffect(() => {
+    const code = regReferralCode.trim();
+    if (!code || code.length < 3) {
+      setAsyncMatchedNurse(null);
+      setIsCheckingRefCode(false);
+      return;
+    }
+
+    const inMemoryMatch = findNurseByReferralCode(code, nurses || []);
+    if (inMemoryMatch) {
+      setAsyncMatchedNurse(inMemoryMatch);
+      setIsCheckingRefCode(false);
+      return;
+    }
+
+    let isMounted = true;
+    setIsCheckingRefCode(true);
+    const timer = setTimeout(async () => {
+      const match = await dbFindNurseByReferralCode(code);
+      if (isMounted) {
+        setAsyncMatchedNurse(match);
+        setIsCheckingRefCode(false);
+      }
+    }, 350);
+
+    return () => {
+      isMounted = false;
+      clearTimeout(timer);
+    };
+  }, [regReferralCode, nurses]);
+
   const activeNursesList = nurses || [];
-  const matchedReferringNurse = regReferralCode.trim()
+  const inMemoryMatch = regReferralCode.trim()
     ? findNurseByReferralCode(regReferralCode.trim(), activeNursesList)
     : undefined;
+  const matchedReferringNurse = inMemoryMatch || asyncMatchedNurse || undefined;
 
   // Switch roles and reset inputs cleanly (no pins or ids shown)
   const handleRoleChange = (newRole: LoginRole) => {
@@ -313,6 +349,14 @@ export const LoginPage: React.FC<LoginPageProps> = ({
         ? (regCustomQualification.trim() || 'Technicians / Others')
         : regQualification.trim();
 
+      // Guarantee referring nurse resolution directly before registration insert
+      let resolvedReferrer = matchedReferringNurse;
+      if (!resolvedReferrer && regReferralCode.trim()) {
+        resolvedReferrer = (await dbFindNurseByReferralCode(regReferralCode.trim())) || undefined;
+      }
+      const resolvedRefId = resolvedReferrer?.id || (regReferralCode.trim() ? regReferralCode.trim().toUpperCase() : undefined);
+      const resolvedRefName = resolvedReferrer?.name || undefined;
+
       const newNurse: NurseProfile = {
         id: newId,
         name: regName.trim(),
@@ -339,8 +383,8 @@ export const LoginPage: React.FC<LoginPageProps> = ({
         certificateVerified: false,
         certificateUrl: certUrl,
         createdAt: new Date().toISOString(),
-        referredByNurseId: matchedReferringNurse?.id || undefined,
-        referredByNurseName: matchedReferringNurse?.name || undefined,
+        referredByNurseId: resolvedRefId,
+        referredByNurseName: resolvedRefName,
         referralCode: myReferralCode,
         currentlyWorkingAt: regCurrentlyWorkingAt.trim()
       };
@@ -372,30 +416,32 @@ export const LoginPage: React.FC<LoginPageProps> = ({
       broadcastRealtimeUpdate('NURSE_CREATE', newNurse);
 
       // Record referral in leads table so referring nurse and admin track it in real-time
-      if (matchedReferringNurse) {
+      if (resolvedReferrer || regReferralCode.trim()) {
         const refLead: NurseLead = {
           id: `RN-${Date.now().toString().slice(-6)}`,
-          nurseId: matchedReferringNurse.id,
-          nurseName: matchedReferringNurse.name,
+          nurseId: resolvedReferrer ? resolvedReferrer.id : regReferralCode.trim().toUpperCase(),
+          nurseName: resolvedReferrer ? resolvedReferrer.name : (regReferralCode.trim() ? `Referral Code: ${regReferralCode.trim().toUpperCase()}` : undefined),
           patientName: regName.trim(),
-          patientPhone: regPhone.trim(),
+          patientPhone: cleanPhone || regPhone.trim(),
           area: resolvedArea,
-          qualification: 'Registered Nurse',
+          qualification: resolvedQualification || 'Registered Nurse',
           status: 'Pending Approval',
-          leadValueRupees: 500,
+          leadValueRupees: 50,
           pointsAwarded: 50,
-          referralCommissionRupees: 500,
+          referralCommissionRupees: 50,
           referralType: 'nurse',
           referredNurseName: regName.trim(),
-          referredNursePhone: regPhone.trim(),
+          referredNursePhone: cleanPhone || regPhone.trim(),
           submittedAt: new Date().toISOString()
         };
         await dbInsertLead(refLead);
 
         // Update referring nurse pending stats in DB (Points are credited strictly AFTER Admin approval)
-        await dbUpdateNurseById(matchedReferringNurse.id, {
-          totalReferrals: (matchedReferringNurse.totalReferrals || 0) + 1
-        });
+        if (resolvedReferrer) {
+          await dbUpdateNurseById(resolvedReferrer.id, {
+            totalReferrals: (resolvedReferrer.totalReferrals || 0) + 1
+          });
+        }
       }
       
       const submittedName = regName.trim();
@@ -403,9 +449,11 @@ export const LoginPage: React.FC<LoginPageProps> = ({
       
       onRefreshNurses?.();
       setIsLoading(false);
-      setSuccessMsg(matchedReferringNurse 
-        ? `Application submitted with referral from ${matchedReferringNurse.name}! Profile pending Admin approval.`
-        : 'Registration submitted! Your profile is pending Admin approval.'
+      setSuccessMsg(resolvedReferrer 
+        ? `Application submitted with referral from ${resolvedReferrer.name}! Profile pending Admin approval.`
+        : regReferralCode.trim()
+          ? `Application submitted with referral code ${regReferralCode.trim().toUpperCase()}! Profile pending Admin approval.`
+          : 'Registration submitted! Your profile is pending Admin approval.'
       );
       setSubmittedAppInfo({
         name: submittedName,
@@ -1237,7 +1285,12 @@ export const LoginPage: React.FC<LoginPageProps> = ({
                         background: matchedReferringNurse ? '#F0FDF4' : undefined
                       }}
                     />
-                    {matchedReferringNurse ? (
+                    {isCheckingRefCode ? (
+                      <div style={{ fontSize: '0.74rem', color: '#0284C7', background: '#F0F9FF', border: '1px solid #BAE6FD', padding: '0.35rem 0.65rem', borderRadius: 6, marginTop: '0.35rem', display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
+                        <span className="spinner-border spinner-border-sm" style={{ width: 12, height: 12, borderTopColor: '#0284C7' }} />
+                        <span>Verifying referral code in fleet...</span>
+                      </div>
+                    ) : matchedReferringNurse ? (
                       <div style={{ fontSize: '0.76rem', color: '#047857', background: '#ECFDF5', border: '1px solid #A7F3D0', padding: '0.45rem 0.65rem', borderRadius: 8, marginTop: '0.4rem', display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
                         <CheckCircle2 size={14} style={{ color: '#10B981', flexShrink: 0 }} />
                         <span>
@@ -1246,7 +1299,7 @@ export const LoginPage: React.FC<LoginPageProps> = ({
                       </div>
                     ) : regReferralCode.trim().length >= 4 ? (
                       <div style={{ fontSize: '0.74rem', color: '#B45309', background: '#FFFBEB', border: '1px solid #FDE68A', padding: '0.35rem 0.65rem', borderRadius: 6, marginTop: '0.35rem' }}>
-                        ℹ️ Code not found in registered fleet, but you can continue registration as an individual nurse.
+                        ℹ️ Code not recognized in fleet, but you can continue registration.
                       </div>
                     ) : (
                       <div style={{ fontSize: '0.72rem', color: '#64748B', marginTop: '0.25rem' }}>

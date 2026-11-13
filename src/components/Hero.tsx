@@ -2,6 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { 
   HeartPulse, 
   MessageCircle, 
+  Phone,
   ArrowRight, 
   ShieldCheck, 
   Clock, 
@@ -175,9 +176,9 @@ export const Hero: React.FC<HeroProps> = ({ onOpenBooking }) => {
 
             {/* Direct Helpline Fast-dial */}
             <div className="hero-helpline-row">
-              <span className="helpline-label">Need immediate nursing care? WhatsApp our coordination desk:</span>
-              <a href="https://wa.me/917569657371" target="_blank" rel="noreferrer" className="helpline-link">
-                <MessageCircle size={14} style={{ color: '#25D366' }} />
+              <span className="helpline-label">Need immediate nursing care? Call our coordination desk:</span>
+              <a href="tel:+917569657371" className="helpline-link">
+                <Phone size={14} />
                 <span>+91 75696 57371</span>
               </a>
             </div>

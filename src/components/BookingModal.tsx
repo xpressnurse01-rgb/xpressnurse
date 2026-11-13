@@ -113,7 +113,7 @@ export const BookingModal: React.FC<BookingModalProps> = ({
   const [fullAddress, setFullAddress] = useState('');
   const [preferredDate, setPreferredDate] = useState('Today (Immediate)');
   const [preferredTime, setPreferredTime] = useState('Immediate (ASAP)');
-  const [bookingType, setBookingType] = useState<'Instant' | 'Scheduled'>('Instant');
+  const [bookingType, setBookingType] = useState<'Instant' | 'Scheduled' | null>(null);
   const [selectedScheduledDate, setSelectedScheduledDate] = useState<string>(() => {
     return new Date().toISOString().split('T')[0];
   });
@@ -159,6 +159,10 @@ export const BookingModal: React.FC<BookingModalProps> = ({
   useEffect(() => {
     if (preSelectedServiceId) {
       setServiceId(preSelectedServiceId);
+    }
+    if (isOpen) {
+      setBookingType(null);
+      setErrors((prev) => ({ ...prev, bookingType: '' }));
     }
   }, [preSelectedServiceId, isOpen]);
 
@@ -435,10 +439,17 @@ export const BookingModal: React.FC<BookingModalProps> = ({
       errs.customProcedure = 'Please enter the nursing service needed.';
     }
 
+    if (!bookingType) {
+      errs.bookingType = 'Please choose Instant or Schedule Slot.';
+    }
+
     if (Object.keys(errs).length > 0) {
       setErrors(errs);
       return;
     }
+
+    if (!bookingType) return;
+    const selectedBookingType = bookingType;
 
     setIsSubmitting(true);
 
@@ -479,10 +490,10 @@ export const BookingModal: React.FC<BookingModalProps> = ({
       serviceTitle: (serviceId as string) === 'other' ? (customProcedureName.trim() || 'Other Nursing Service') : currentService.title,
       area: resolvedArea,
       fullAddress: fullAddress.trim(),
-      bookingType,
-      preferredDate: bookingType === 'Instant' ? 'Today (Instant ASAP)' : formatDateDDMMYY(selectedScheduledDate),
-      preferredTime: bookingType === 'Instant' ? 'Immediate (ASAP Dispatch)' : selectedSlot,
-      scheduledSlot: bookingType === 'Scheduled' ? selectedSlot : undefined,
+      bookingType: selectedBookingType,
+      preferredDate: selectedBookingType === 'Instant' ? 'Today (Instant ASAP)' : formatDateDDMMYY(selectedScheduledDate),
+      preferredTime: selectedBookingType === 'Instant' ? 'Immediate (ASAP Dispatch)' : selectedSlot,
+      scheduledSlot: selectedBookingType === 'Scheduled' ? selectedSlot : undefined,
       hasPrescription: isPrescriptionRequired ? true : Boolean(prescriptionFileName || prescriptionFile),
       prescriptionFileName: finalRxName || (isDoctorConsult ? undefined : 'Rx_HomeVisit_Verified.pdf'),
       prescriptionUrl: finalRxUrl || (finalRxName ? `https://pub-830eaa9d07034c8d985d7d00577f77e9.r2.dev/prescriptions/${finalRxName}` : undefined),
@@ -575,7 +586,7 @@ export const BookingModal: React.FC<BookingModalProps> = ({
 
   return (
     <div 
-      className="modal-overlay" 
+      className="modal-overlay booking-modal-overlay"
       data-lenis-prevent="true" 
       onClick={onClose} 
       style={{ 
@@ -1429,7 +1440,11 @@ export const BookingModal: React.FC<BookingModalProps> = ({
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.5rem', marginBottom: '0.75rem' }}>
                 <button
                   type="button"
-                  onClick={() => setBookingType('Instant')}
+                  aria-pressed={bookingType === 'Instant'}
+                  onClick={() => {
+                    setBookingType('Instant');
+                    setErrors((prev) => ({ ...prev, bookingType: '' }));
+                  }}
                   style={{
                     padding: '0.55rem 0.65rem',
                     borderRadius: 10,
@@ -1456,7 +1471,11 @@ export const BookingModal: React.FC<BookingModalProps> = ({
 
                 <button
                   type="button"
-                  onClick={() => setBookingType('Scheduled')}
+                  aria-pressed={bookingType === 'Scheduled'}
+                  onClick={() => {
+                    setBookingType('Scheduled');
+                    setErrors((prev) => ({ ...prev, bookingType: '' }));
+                  }}
                   style={{
                     padding: '0.55rem 0.65rem',
                     borderRadius: 10,
@@ -1482,6 +1501,12 @@ export const BookingModal: React.FC<BookingModalProps> = ({
                 </button>
               </div>
 
+              {errors.bookingType && (
+                <div role="alert" style={{ color: '#DC2626', fontSize: '0.76rem', fontWeight: 600, marginBottom: '0.65rem' }}>
+                  {errors.bookingType}
+                </div>
+              )}
+
               {bookingType === 'Instant' ? (
                 <div style={{ background: '#FFFBEB', border: '1px solid #FDE68A', borderRadius: 10, padding: '0.65rem 0.85rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
                   <Clock size={16} style={{ color: '#D97706', flexShrink: 0 }} />
@@ -1489,7 +1514,7 @@ export const BookingModal: React.FC<BookingModalProps> = ({
                     <strong>Instant Nurse Request:</strong> We will dispatch the closest available certified nurse to your address immediately.
                   </div>
                 </div>
-              ) : (
+              ) : bookingType === 'Scheduled' ? (
                 <div style={{ background: '#F8FAFC', border: '1px solid #E2E8F0', borderRadius: 12, padding: '0.75rem 0.85rem' }}>
                   <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.6rem', marginBottom: '0.6rem' }}>
                     <div>
@@ -1529,6 +1554,10 @@ export const BookingModal: React.FC<BookingModalProps> = ({
                   <div style={{ fontSize: '0.72rem', color: '#0284C7', fontWeight: 600 }}>
                     ✓ Nurse will arrive during your selected 2-hour window ({selectedSlot})
                   </div>
+                </div>
+              ) : (
+                <div style={{ background: '#F8FAFC', border: '1px dashed #CBD5E1', borderRadius: 10, padding: '0.65rem 0.85rem', color: '#64748B', fontSize: '0.76rem' }}>
+                  Select a visit timing option to continue.
                 </div>
               )}
             </div>

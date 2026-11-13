@@ -10,6 +10,7 @@ import {
 } from '../types';
 import {
   Phone,
+  Home,
   MapPin,
   Calendar,
   Clock,
@@ -32,7 +33,6 @@ import {
   X,
   ArrowRight,
   Sparkles,
-  RefreshCw,
   TrendingUp,
   Coins,
   ShieldCheck,
@@ -249,7 +249,6 @@ export const NurseDashboard: React.FC<NurseDashboardProps> = ({
 
   // Referral Link Copy
   const [copiedCode, setCopiedCode] = useState(false);
-  const [isRefreshing, setIsRefreshing] = useState(false);
 
   // Centralized calculations engine ensuring 100% sync with Admin Dashboard
   const metrics = calculateNurseMetrics(nurse, bookings, leads, services);
@@ -362,17 +361,6 @@ export const NurseDashboard: React.FC<NurseDashboardProps> = ({
     if (historyFilter === 'all') return transactions;
     return transactions.filter((tx) => tx.category === historyFilter);
   }, [transactions, historyFilter]);
-
-  const handleSync = async () => {
-    if (onRefreshData) {
-      setIsRefreshing(true);
-      try {
-        await onRefreshData();
-      } finally {
-        setTimeout(() => setIsRefreshing(false), 500);
-      }
-    }
-  };
 
   // Handlers
   const handleAcceptVisit = async (booking: Booking) => {
@@ -525,8 +513,8 @@ export const NurseDashboard: React.FC<NurseDashboardProps> = ({
   };
 
   return (
-    <div style={{ background: '#F8FAFC', minHeight: '90vh', padding: '1rem 0 3rem' }}>
-      <div className="container" style={{ maxWidth: 960 }}>
+    <div className="nurse-dashboard" style={{ background: '#F8FAFC', minHeight: '90vh', padding: '1rem 0 3rem' }}>
+      <div className="container nurse-dashboard-container" style={{ maxWidth: 960 }}>
 
         {/* ================================================================= */}
         {/* 1. TOP NURSE PROFILE BAR (Clean, Friendly, Simple) */}
@@ -544,7 +532,7 @@ export const NurseDashboard: React.FC<NurseDashboardProps> = ({
           flexWrap: 'wrap',
           gap: '1rem'
         }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '0.9rem' }}>
+          <div className="nurse-profile-identity" style={{ display: 'flex', alignItems: 'center', gap: '0.9rem' }}>
             <div style={{
               width: 52,
               height: 52,
@@ -593,7 +581,7 @@ export const NurseDashboard: React.FC<NurseDashboardProps> = ({
                   </span>
                 )}
               </div>
-              <div style={{
+              <div className="nurse-profile-meta" style={{
                 fontSize: '0.82rem',
                 color: '#64748B',
                 display: 'flex',
@@ -603,22 +591,22 @@ export const NurseDashboard: React.FC<NurseDashboardProps> = ({
                 rowGap: '0.2rem',
                 marginTop: '0.25rem'
               }}>
-                <span style={{ display: 'inline-flex', alignItems: 'center', gap: '0.2rem', whiteSpace: 'nowrap' }}>
+                <span className="nurse-profile-detail" style={{ display: 'inline-flex', alignItems: 'center', gap: '0.2rem', whiteSpace: 'nowrap' }}>
                   <MapPin size={13} style={{ color: '#0284C7' }} />
                   {nurse.serviceArea || 'Hyderabad'}
                 </span>
                 <span style={{ color: '#CBD5E1' }}>•</span>
-                <span style={{ whiteSpace: 'nowrap' }}>{nurse.qualification || 'Registered Nurse'}</span>
+                <span className="nurse-profile-detail" style={{ whiteSpace: 'nowrap' }}>{nurse.qualification || 'Registered Nurse'}</span>
                 {nurse.currentlyWorkingAt && (
                   <>
                     <span style={{ color: '#CBD5E1' }}>•</span>
-                    <span style={{ whiteSpace: 'nowrap', color: '#0369A1', fontWeight: 700 }}>
+                    <span className="nurse-profile-detail" style={{ whiteSpace: 'nowrap', color: '#0369A1', fontWeight: 700 }}>
                       🏥 {nurse.currentlyWorkingAt}
                     </span>
                   </>
                 )}
                 <span style={{ color: '#CBD5E1' }}>•</span>
-                <span style={{ whiteSpace: 'nowrap' }}>{nurse.phone}</span>
+                <span className="nurse-profile-detail" style={{ whiteSpace: 'nowrap' }}>{nurse.phone}</span>
               </div>
             </div>
           </div>
@@ -694,33 +682,8 @@ export const NurseDashboard: React.FC<NurseDashboardProps> = ({
               <svg width="18" height="18" viewBox="0 0 24 24" fill="#25D366" aria-hidden="true">
                 <path d="M12.04 2C6.58 2 2.13 6.45 2.13 11.91C2.13 13.66 2.59 15.36 3.45 16.86L2.05 22L7.3 20.62C8.75 21.41 10.38 21.83 12.04 21.83C17.5 21.83 21.95 17.38 21.95 11.92C21.95 9.27 20.92 6.78 19.05 4.91C17.18 3.03 14.69 2 12.04 2ZM12.04 20.15C10.56 20.15 9.11 19.76 7.85 19.01L7.55 18.83L4.43 19.65L5.26 16.61L5.06 16.29C4.24 14.99 3.8 13.47 3.8 11.91C3.8 7.37 7.5 3.67 12.05 3.67C14.25 3.67 16.31 4.53 17.87 6.09C19.42 7.65 20.28 9.72 20.28 11.92C20.28 16.46 16.58 20.15 12.04 20.15ZM16.56 14.41C16.31 14.29 15.09 13.69 14.86 13.6C14.64 13.52 14.47 13.48 14.31 13.73C14.14 13.97 13.66 14.54 13.51 14.71C13.37 14.87 13.22 14.89 12.97 14.77C12.73 14.64 11.94 14.38 11 13.55C10.27 12.9 9.78 12.1 9.64 11.85C9.49 11.61 9.62 11.47 9.75 11.35C9.86 11.23 10 11.06 10.12 10.92C10.25 10.78 10.29 10.67 10.37 10.51C10.45 10.35 10.41 10.2 10.35 10.08C10.29 9.96 9.8 8.75 9.59 8.25C9.39 7.76 9.19 7.83 9.04 7.82C8.9 7.81 8.73 7.81 8.57 7.81C8.41 7.81 8.14 7.87 7.92 8.11C7.7 8.35 7.07 8.94 7.07 10.15C7.07 11.36 7.95 12.52 8.07 12.69C8.2 12.85 9.8 15.31 12.25 16.37C12.83 16.62 13.28 16.77 13.64 16.88C14.23 17.07 14.76 17.04 15.19 16.98C15.66 16.91 16.65 16.38 16.86 15.8C17.06 15.23 17.06 14.74 17 14.64C16.94 14.54 16.81 14.49 16.56 14.41Z"/>
               </svg>
-              <span style={{ fontSize: '0.65rem', fontWeight: 700 }}>Helpline</span>
+              <span style={{ fontSize: '0.65rem', fontWeight: 700 }}>WhatsApp support</span>
             </a>
-            {onRefreshData && (
-              <button
-                type="button"
-                onClick={handleSync}
-                disabled={isRefreshing}
-                className="btn btn-outline nurse-top-stat-box"
-                style={{
-                  display: 'flex',
-                  flexDirection: 'column',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  padding: '0.45rem 0.9rem',
-                  borderRadius: 12,
-                  border: '1px solid #CBD5E1',
-                  color: '#0284C7',
-                  background: '#F0F9FF',
-                  cursor: isRefreshing ? 'wait' : 'pointer',
-                  gap: '0.1rem'
-                }}
-                title="Sync with live database"
-              >
-                <RefreshCw size={18} className={isRefreshing ? 'spin' : ''} style={{ color: '#0284C7' }} />
-                <span style={{ fontSize: '0.65rem', fontWeight: 700 }}>{isRefreshing ? 'Syncing...' : 'Sync'}</span>
-              </button>
-            )}
           </div>
 
         </div>
@@ -730,11 +693,11 @@ export const NurseDashboard: React.FC<NurseDashboardProps> = ({
         {/* ================================================================= */}
         <div className="nurse-nav-tabs-bar">
           {[
-            { id: 'home', icon: '🏠', label: 'Home', badge: null },
-            { id: 'visits', icon: '🚗', label: 'Visits', badge: activeVisits.length > 0 ? activeVisits.length : null },
-            { id: 'add-patient', icon: '➕', label: 'Add Patient', badge: '+50' },
-            { id: 'my-money', icon: '💰', label: 'Earnings', badge: null },
-            { id: 'profile', icon: '👤', label: 'Profile', badge: null }
+            { id: 'home', icon: <Home size={18} />, label: 'Home', description: 'Today at a glance', badge: null },
+            { id: 'visits', icon: <Calendar size={18} />, label: 'My visits', description: 'Patient visits and status', badge: activeVisits.length > 0 ? activeVisits.length : null },
+            { id: 'add-patient', icon: <Plus size={18} />, label: 'Add a patient', description: 'Share a patient referral', badge: '+50' },
+            { id: 'my-money', icon: <Coins size={18} />, label: 'My earnings', description: 'Points and payments', badge: null },
+            { id: 'profile', icon: <User size={18} />, label: 'My profile', description: 'Your details and documents', badge: null }
           ].map((tab) => {
             const isSelected = activeTab === tab.id;
             return (
@@ -742,15 +705,19 @@ export const NurseDashboard: React.FC<NurseDashboardProps> = ({
                 key={tab.id}
                 type="button"
                 onClick={() => setActiveTab(tab.id as any)}
-                className="nurse-nav-tab-btn"
+                className={`nurse-nav-tab-btn ${isSelected ? 'active' : ''}`}
+                aria-current={isSelected ? 'page' : undefined}
                 style={{
                   background: isSelected ? '#0284C7' : 'transparent',
                   color: isSelected ? '#FFFFFF' : '#475569',
                   fontWeight: isSelected ? 800 : 600
                 }}
               >
-                <span className="tab-icon">{tab.icon}</span>
-                <span className="tab-title">{tab.label}</span>
+                <span className="tab-icon" aria-hidden="true">{tab.icon}</span>
+                <span className="tab-copy">
+                  <span className="tab-title">{tab.label}</span>
+                  <span className="tab-description">{tab.description}</span>
+                </span>
                 {tab.badge !== null && (
                   <span style={{
                     background: isSelected ? '#FFFFFF' : '#EF4444',
@@ -776,7 +743,7 @@ export const NurseDashboard: React.FC<NurseDashboardProps> = ({
           <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
 
             {/* Friendly Greeting Card */}
-            <div style={{
+            <div className="nurse-home-welcome" style={{
               background: 'linear-gradient(135deg, #0A192F 0%, #1E3A5F 100%)',
               color: '#FFFFFF',
               borderRadius: 18,
@@ -820,7 +787,7 @@ export const NurseDashboard: React.FC<NurseDashboardProps> = ({
                   }}
                 >
                   <Plus size={16} />
-                  <span>Add Patient (+50 Pts)</span>
+                  <span>Add a patient · +50 points</span>
                 </button>
                 <button
                   type="button"
@@ -842,13 +809,13 @@ export const NurseDashboard: React.FC<NurseDashboardProps> = ({
                   title="Share your code on WhatsApp"
                 >
                   <MessageCircle size={16} />
-                  <span>🎁 Refer a friend, get 50 bonus points!</span>
+                  <span>Refer a friend · +50 points</span>
                 </button>
               </div>
             </div>
 
             {/* 3 Big Action Cards */}
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: '1rem' }}>
+            <div className="nurse-home-actions-grid" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: '1rem' }}>
 
               {/* Card 1: Visits */}
               <div

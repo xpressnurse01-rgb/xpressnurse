@@ -336,15 +336,73 @@ export function generateNurseReferralCode(name: string, id: string, phone?: stri
 export function findNurseByReferralCode(code: string, nurses: NurseProfile[]): NurseProfile | undefined {
   if (!code || !code.trim()) return undefined;
   const clean = code.trim().toUpperCase().replace(/\s+/g, '');
+  const cleanWithoutPrefix = clean.replace(/^XN-?/, '');
+  const cleanDigits = clean.replace(/\D/g, '');
   return nurses.find((n) => {
-    const genCode = generateNurseReferralCode(n.name, n.id, n.phone);
+    const genCode = generateNurseReferralCode(n.name, n.id, n.phone).toUpperCase();
+    const nRef = (n.referralCode || '').toUpperCase();
+    const nPhoneDigits = (n.phone || '').replace(/\D/g, '');
     return (
-      (n.referralCode && n.referralCode.toUpperCase() === clean) ||
+      (nRef && (nRef === clean || nRef.replace(/^XN-?/, '') === cleanWithoutPrefix)) ||
       genCode === clean ||
+      genCode.replace(/^XN-?/, '') === cleanWithoutPrefix ||
       n.id.toUpperCase() === clean ||
-      n.phone.replace(/\D/g, '') === clean
+      (cleanDigits && (nPhoneDigits === cleanDigits || (cleanDigits.length >= 10 && nPhoneDigits.slice(-10) === cleanDigits.slice(-10))))
     );
   });
+}
+
+export async function dbFindNurseByReferralCode(code: string): Promise<NurseProfile | null> {
+  if (!code || !code.trim()) return null;
+  const clean = code.trim().toUpperCase().replace(/\s+/g, '');
+  const cleanWithoutPrefix = clean.replace(/^XN-?/, '');
+  const digitsOnly = clean.replace(/\D/g, '');
+
+  try {
+    const { data, error } = await supabase.from('nurses').select('*');
+    if (!error && Array.isArray(data)) {
+      const match = data.find((n: any) => {
+        const nRef = (n.referral_code || generateNurseReferralCode(n.name, n.id, n.phone)).toUpperCase();
+        const nId = (n.id || '').toUpperCase();
+        const nPhoneDigits = (n.phone || '').replace(/\D/g, '');
+        const nLast10 = nPhoneDigits.slice(-10);
+
+        if (nRef === clean || nRef.replace(/^XN-?/, '') === cleanWithoutPrefix) return true;
+        if (nId === clean) return true;
+        if (digitsOnly && (nPhoneDigits === digitsOnly || (digitsOnly.length >= 10 && nLast10 === digitsOnly.slice(-10)))) return true;
+        return false;
+      });
+
+      if (match) {
+        return {
+          id: match.id,
+          name: match.name,
+          phone: match.phone,
+          email: match.email,
+          experienceYears: Number(match.experience_years) || 3,
+          qualification: match.qualification || 'Registered Nurse',
+          serviceArea: match.service_area || 'Hyderabad',
+          status: match.status || 'Active',
+          totalLeads: Number(match.total_leads) || 0,
+          convertedLeads: Number(match.converted_leads) || 0,
+          totalReferrals: Number(match.total_referrals) || 0,
+          pointsEarned: Number(match.points_earned) || 1000,
+          referralEarningsRupees: Number(match.referral_earnings_rupees) || 0,
+          rating: Number(match.rating) || 4.9,
+          avatarUrl: match.avatar_url || undefined,
+          certificateVerified: Boolean(match.certificate_verified),
+          certificateUrl: match.certificate_url || undefined,
+          createdAt: match.created_at,
+          referredByNurseId: match.referred_by_nurse_id || undefined,
+          referredByNurseName: match.referred_by_nurse_name || undefined,
+          referralCode: match.referral_code || generateNurseReferralCode(match.name, match.id, match.phone)
+        };
+      }
+    }
+  } catch (err) {
+    console.error('[DB] dbFindNurseByReferralCode error:', err);
+  }
+  return null;
 }
 
 export async function dbFetchNurses(): Promise<NurseProfile[] | null> {
@@ -416,7 +474,8 @@ export async function dbFetchNurses(): Promise<NurseProfile[] | null> {
       certificateVerified: isVerified,
       certificateUrl: resolvedCertUrl,
       createdAt: n.created_at,
-      referredByNurseId: n.referred_by_nurse_id || undefined,
+      referredByNurseId: n.referred_by_nurse_id || matchedUser?.referred_by_nurse_id || matchedUser?.referredByNurseId || undefined,
+      referredByNurseName: n.referred_by_nurse_name || matchedUser?.referred_by_nurse_name || matchedUser?.referredByNurseName || undefined,
       referralCode: n.referral_code || generateNurseReferralCode(n.name, n.id, n.phone),
       earningsPaid: Number(n.earnings_paid) || 0,
       earningsPending: Number(n.earnings_pending) || 0,
@@ -526,6 +585,7 @@ export async function dbUpdateNurse(n: NurseProfile): Promise<boolean> {
       certificate_verified: Boolean(n.certificateVerified ?? true),
       certificate_url: n.certificateUrl || null,
       referred_by_nurse_id: n.referredByNurseId || null,
+      referred_by_nurse_name: n.referredByNurseName || null,
       earnings_paid: Number(n.earningsPaid) || 0,
       earnings_pending: Number(n.earningsPending) || 0,
       total_payout: totalPayoutCalc,
@@ -542,7 +602,8 @@ export async function dbUpdateNurse(n: NurseProfile): Promise<boolean> {
     };
 
     let { error } = await supabase.from('nurses').upsert(payload);
-    if (error && (error.code === '42703' || error.message?.includes('ready_for_home_visit') || error.message?.includes('total_payout') || error.message?.includes('currently_working_at') || error.message?.includes('marital_status') || error.message?.includes('city') || error.message?.includes('district') || error.message?.includes('mandal') || error.message?.includes('village') || error.message?.includes('skills'))) {
+    if (error && (error.code === '42703' || error.message?.includes('referred_by_nurse_name') || error.message?.includes('ready_for_home_visit') || error.message?.includes('total_payout') || error.message?.includes('currently_working_at') || error.message?.includes('marital_status') || error.message?.includes('city') || error.message?.includes('district') || error.message?.includes('mandal') || error.message?.includes('village') || error.message?.includes('skills'))) {
+      if (error.message?.includes('referred_by_nurse_name') || error.code === '42703') delete payload.referred_by_nurse_name;
       if (error.message?.includes('ready_for_home_visit') || error.code === '42703') delete payload.ready_for_home_visit;
       if (error.message?.includes('total_payout') || error.code === '42703') delete payload.total_payout;
       if (error.message?.includes('currently_working_at') || error.code === '42703') delete payload.currently_working_at;
@@ -614,6 +675,7 @@ export async function dbInsertNurse(n: NurseProfile): Promise<boolean> {
       certificate_verified: Boolean(n.certificateVerified ?? true),
       certificate_url: n.certificateUrl || null,
       referred_by_nurse_id: n.referredByNurseId || null,
+      referred_by_nurse_name: n.referredByNurseName || null,
       earnings_paid: Number(n.earningsPaid) || 0,
       earnings_pending: Number(n.earningsPending) || 0,
       total_payout: totalPayoutCalc,
@@ -630,7 +692,8 @@ export async function dbInsertNurse(n: NurseProfile): Promise<boolean> {
     };
 
     let { error } = await supabase.from('nurses').upsert(payload);
-    if (error && (error.code === '42703' || error.message?.includes('ready_for_home_visit') || error.message?.includes('total_payout') || error.message?.includes('currently_working_at') || error.message?.includes('marital_status') || error.message?.includes('city') || error.message?.includes('district') || error.message?.includes('mandal') || error.message?.includes('village') || error.message?.includes('skills'))) {
+    if (error && (error.code === '42703' || error.message?.includes('referred_by_nurse_name') || error.message?.includes('ready_for_home_visit') || error.message?.includes('total_payout') || error.message?.includes('currently_working_at') || error.message?.includes('marital_status') || error.message?.includes('city') || error.message?.includes('district') || error.message?.includes('mandal') || error.message?.includes('village') || error.message?.includes('skills'))) {
+      if (error.message?.includes('referred_by_nurse_name') || error.code === '42703') delete payload.referred_by_nurse_name;
       if (error.message?.includes('ready_for_home_visit') || error.code === '42703') delete payload.ready_for_home_visit;
       if (error.message?.includes('total_payout') || error.code === '42703') delete payload.total_payout;
       if (error.message?.includes('currently_working_at') || error.code === '42703') delete payload.currently_working_at;
@@ -686,7 +749,8 @@ export async function dbUpdateNurseById(id: string, updates: Partial<NurseProfil
     payload.certificate_verified = true;
   }
   if (updates.avatarUrl !== undefined) payload.avatar_url = updates.avatarUrl;
-  if (updates.referredByNurseId !== undefined) payload.referred_by_nurse_id = updates.referredByNurseId;
+  if (updates.referredByNurseId !== undefined) payload.referred_by_nurse_id = updates.referredByNurseId || null;
+  if (updates.referredByNurseName !== undefined) payload.referred_by_nurse_name = updates.referredByNurseName || null;
   if (updates.earningsPaid !== undefined) payload.earnings_paid = Number(updates.earningsPaid);
   if (updates.earningsPending !== undefined) payload.earnings_pending = Number(updates.earningsPending);
   if (updates.rejectionReason !== undefined) payload.rejection_reason = updates.rejectionReason;
@@ -702,7 +766,8 @@ export async function dbUpdateNurseById(id: string, updates: Partial<NurseProfil
 
   try {
     let { error } = await supabase.from('nurses').update(payload).eq('id', id);
-    if (error && (error.code === '42703' || error.message?.includes('ready_for_home_visit') || error.message?.includes('total_payout') || error.message?.includes('currently_working_at') || error.message?.includes('marital_status') || error.message?.includes('city') || error.message?.includes('district') || error.message?.includes('mandal') || error.message?.includes('village') || error.message?.includes('skills'))) {
+    if (error && (error.code === '42703' || error.message?.includes('referred_by_nurse_name') || error.message?.includes('ready_for_home_visit') || error.message?.includes('total_payout') || error.message?.includes('currently_working_at') || error.message?.includes('marital_status') || error.message?.includes('city') || error.message?.includes('district') || error.message?.includes('mandal') || error.message?.includes('village') || error.message?.includes('skills'))) {
+      if (error.message?.includes('referred_by_nurse_name') || error.code === '42703') delete payload.referred_by_nurse_name;
       if (error.message?.includes('ready_for_home_visit') || error.code === '42703') delete payload.ready_for_home_visit;
       if (error.message?.includes('total_payout') || error.code === '42703') delete payload.total_payout;
       if (error.message?.includes('currently_working_at') || error.code === '42703') delete payload.currently_working_at;

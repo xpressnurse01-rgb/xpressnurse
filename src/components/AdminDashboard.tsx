@@ -2025,7 +2025,9 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
     earningsPending: 0,
     currentlyWorkingAt: '',
     readyForHomeVisit: true,
-    certificateUrl: ''
+    certificateUrl: '',
+    referredByNurseId: '',
+    referredByNurseName: ''
   });
 
   const handleOpenCreateNurseModal = () => {
@@ -2063,7 +2065,9 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
       avatarUrl: '',
       currentlyWorkingAt: '',
       readyForHomeVisit: true,
-      certificateUrl: ''
+      certificateUrl: '',
+      referredByNurseId: '',
+      referredByNurseName: ''
     });
     setIsNurseModalOpen(true);
   };
@@ -2117,7 +2121,9 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
       avatarUrl: n.avatarUrl || '',
       currentlyWorkingAt: n.currentlyWorkingAt || '',
       readyForHomeVisit: n.readyForHomeVisit !== false,
-      certificateUrl: n.certificateUrl || ''
+      certificateUrl: n.certificateUrl || '',
+      referredByNurseId: n.referredByNurseId || '',
+      referredByNurseName: n.referredByNurseName || ''
     });
     setIsNurseModalOpen(true);
   };
@@ -2166,6 +2172,9 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
       currentlyWorkingAt: nurseForm.currentlyWorkingAt?.trim() || undefined,
       certificateVerified: isVerifiedNow,
       certificateUrl: nurseForm.certificateUrl?.trim() || (editingNurse ? editingNurse.certificateUrl : undefined),
+      referredByNurseId: nurseForm.referredByNurseId.trim() || editingNurse?.referredByNurseId || undefined,
+      referredByNurseName: nurseForm.referredByNurseName.trim() || editingNurse?.referredByNurseName || undefined,
+      referralCode: editingNurse?.referralCode || generateNurseReferralCode(nurseForm.name, editingNurse ? editingNurse.id : nurseForm.id, cleanPhone),
       readyForHomeVisit: nurseForm.readyForHomeVisit !== false
     };
 
@@ -2247,6 +2256,36 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
     });
   };
 
+  const getNurseReferralInfo = (nurse: NurseProfile) => {
+    const matchLead = findMatchingLeadForNurse(nurse, leads);
+    const referrerId = nurse.referredByNurseId || matchLead?.nurseId;
+    const refCode = (referrerId || '').toUpperCase();
+    const refCodeNoPrefix = refCode.replace(/^XN-?/, '');
+    const refPhoneDigits = (referrerId || '').replace(/\D/g, '');
+
+    const refNurse = referrerId ? nurses.find((rn) => {
+      if (rn.id === referrerId) return true;
+      const rnCode = (rn.referralCode || '').toUpperCase();
+      if (refCode && (rnCode === refCode || rnCode.replace(/^XN-?/, '') === refCodeNoPrefix)) return true;
+      const rnPhone = (rn.phone || '').replace(/\D/g, '');
+      if (refPhoneDigits && (rnPhone === refPhoneDigits || (refPhoneDigits.length >= 10 && rnPhone.slice(-10) === refPhoneDigits.slice(-10)))) return true;
+      return false;
+    }) : undefined;
+
+    const refName = refNurse?.name || nurse.referredByNurseName || matchLead?.nurseName || (referrerId ? `Nurse (${referrerId})` : null);
+    const isReferred = Boolean(referrerId || refName || nurse.referredByNurseId || nurse.referredByNurseName || matchLead?.nurseId);
+    const isApproved = Boolean(nurse.certificateVerified || (nurse.status === 'Active') || (matchLead && (matchLead.status === 'Approved' || matchLead.status === 'Converted')));
+
+    return {
+      isReferred,
+      referrerId,
+      refNurse,
+      refName,
+      matchLead,
+      isApproved
+    };
+  };
+
   const filteredNurses = nurses.filter((n) => {
     const q = nurseSearch.toLowerCase();
     const matchesSearch =
@@ -2271,10 +2310,11 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
           nurseExpFilter === '5-10' ? (exp >= 5 && exp < 10) :
             exp < 5;
 
+    const { isReferred } = getNurseReferralInfo(n);
     const matchesOrigin =
       nurseOriginFilter === 'all' ? true :
-        nurseOriginFilter === 'referred' ? Boolean(n.referredByNurseId) :
-          !n.referredByNurseId;
+        nurseOriginFilter === 'referred' ? isReferred :
+          !isReferred;
 
     const matchesSkill =
       nurseSkillFilter === 'all' ? true :
@@ -4479,8 +4519,8 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
         const activeNursesCount = nurses.filter((n) => n.status === 'Active' || (n.activeVisits && n.activeVisits > 0)).length;
         const verifiedNursesCount = nurses.filter((n) => n.certificateVerified).length;
         const pendingNursesCount = nurses.filter((n) => !n.certificateVerified).length;
-        const referredNursesCount = nurses.filter((n) => Boolean(n.referredByNurseId)).length;
-        const directNursesCount = nurses.filter((n) => !n.referredByNurseId).length;
+        const referredNursesCount = nurses.filter((n) => getNurseReferralInfo(n).isReferred).length;
+        const directNursesCount = nurses.filter((n) => !getNurseReferralInfo(n).isReferred).length;
         const expOver10Count = nurses.filter((n) => (n.experienceYears || (parseInt(n.experience || '0', 10) || 0)) >= 10).length;
         const exp5to10Count = nurses.filter((n) => {
           const exp = n.experienceYears || (parseInt(n.experience || '0', 10) || 0);
@@ -4840,13 +4880,9 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                               {/* Origin (Referred vs Direct) */}
                               <td>
                                 {(() => {
-                                  const matchLead = findMatchingLeadForNurse(n, leads);
-                                  const referrerId = n.referredByNurseId || matchLead?.nurseId;
-                                  const refNurse = referrerId ? nurses.find((rn) => rn.id === referrerId) : undefined;
-                                  const refName = refNurse?.name || n.referredByNurseName || (referrerId ? `Nurse ${referrerId}` : null);
-                                  const isNurseApproved = Boolean(n.certificateVerified || (matchLead && (matchLead.status === 'Approved' || matchLead.status === 'Converted')));
+                                  const { isReferred, refName, isApproved } = getNurseReferralInfo(n);
 
-                                  if (referrerId || refName) {
+                                  if (isReferred && refName) {
                                     return (
                                       <div>
                                         <span style={{
@@ -4864,8 +4900,8 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                                         }}>
                                           ⚡ Referred by {refName}
                                         </span>
-                                        <div style={{ fontSize: '0.7rem', color: isNurseApproved ? '#059669' : '#D97706', fontWeight: 700, marginTop: '2px' }}>
-                                          Bonus: 50 points {isNurseApproved ? '✓ Credited' : '⏳ Pending'}
+                                        <div style={{ fontSize: '0.7rem', color: isApproved ? '#059669' : '#D97706', fontWeight: 700, marginTop: '2px' }}>
+                                          Bonus: 50 points {isApproved ? '✓ Credited' : '⏳ Pending'}
                                         </div>
                                       </div>
                                     );
@@ -5890,6 +5926,9 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
 
                       const referringNurse = nurses.find((n) => {
                         if (n.id === l.nurseId) return true;
+                        const lCode = (l.nurseId || '').toUpperCase();
+                        const nCode = (n.referralCode || '').toUpperCase();
+                        if (lCode && (nCode === lCode || nCode.replace(/^XN-?/, '') === lCode.replace(/^XN-?/, ''))) return true;
                         const nPhone = (n.phone || '').replace(/\D/g, '');
                         const lNursePhone = (l.nurseId || '').replace(/\D/g, '');
                         if (nPhone && lNursePhone && (nPhone === lNursePhone || nPhone.endsWith(lNursePhone) || lNursePhone.endsWith(nPhone))) return true;
@@ -6064,7 +6103,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                             )}
                           </td>
                           <td>
-                            <div style={{ fontWeight: 600 }}>{referringNurse ? referringNurse.name : l.nurseId}</div>
+                            <div style={{ fontWeight: 600 }}>{referringNurse ? `${referringNurse.name} (${referringNurse.referralCode || referringNurse.id})` : (l.nurseName || l.nurseId || 'Unknown')}</div>
                             {referringNurse && (
                               <div style={{ fontSize: '0.72rem', color: 'var(--neutral-500)' }}>
                                 Station: {referringNurse.serviceArea}
@@ -9569,6 +9608,48 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                       <UploadCloud size={14} /> Upload New
                     </span>
                   </label>
+                </div>
+              </div>
+
+              {/* Referral & Origin Tracking */}
+              <div style={{ marginBottom: '1.25rem', background: '#EFF6FF', padding: '0.85rem', borderRadius: 10, border: '1px solid #BFDBFE' }}>
+                <div style={{ fontSize: '0.78rem', fontWeight: 800, color: '#1D4ED8', marginBottom: '0.5rem', display: 'flex', alignItems: 'center', gap: '0.35rem' }}>
+                  <Sparkles size={14} style={{ color: '#2563EB' }} />
+                  <span>REFERRAL &amp; ORIGIN TRACKING</span>
+                </div>
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem' }}>
+                  <div>
+                    <label className="form-label" style={{ fontSize: '0.74rem', fontWeight: 700, color: '#1E40AF' }}>
+                      REFERRED BY (CODE / ID)
+                    </label>
+                    <input
+                      type="text"
+                      placeholder="e.g. XN-PRIYA101 or nurse-3"
+                      value={nurseForm.referredByNurseId || ''}
+                      onChange={(e) => setNurseForm({ ...nurseForm, referredByNurseId: e.target.value.toUpperCase() })}
+                      className="form-control"
+                      style={{ fontSize: '0.8rem', fontWeight: 700, background: '#FFFFFF', borderColor: '#BFDBFE' }}
+                    />
+                    <div style={{ fontSize: '0.7rem', color: '#3B82F6', marginTop: '2px' }}>
+                      Referral code or nurse ID
+                    </div>
+                  </div>
+                  <div>
+                    <label className="form-label" style={{ fontSize: '0.74rem', fontWeight: 700, color: '#1E40AF' }}>
+                      REFERRING NURSE NAME
+                    </label>
+                    <input
+                      type="text"
+                      placeholder="e.g. Priya Sharma"
+                      value={nurseForm.referredByNurseName || ''}
+                      onChange={(e) => setNurseForm({ ...nurseForm, referredByNurseName: e.target.value })}
+                      className="form-control"
+                      style={{ fontSize: '0.8rem', fontWeight: 700, background: '#FFFFFF', borderColor: '#BFDBFE' }}
+                    />
+                    <div style={{ fontSize: '0.7rem', color: '#3B82F6', marginTop: '2px' }}>
+                      Display name of referring colleague
+                    </div>
+                  </div>
                 </div>
               </div>
 

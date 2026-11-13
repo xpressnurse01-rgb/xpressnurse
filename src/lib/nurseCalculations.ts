@@ -310,8 +310,15 @@ export function calculateNurseMetrics(
 
   // 2. Filter Leads submitted by THIS nurse
   // Strictly attribute leads submitted by this nurse; NEVER match referred nurse phone or patient phone to referring nurse
+  const nurseRefCode = (nurse.referralCode || generateNurseReferralCode(nurse.name, nurse.id, nurse.phone || '')).toUpperCase();
+  const nurseCleanRefCode = nurseRefCode.replace(/^XN-?/, '');
+
   const directLeads = cleanLeads.filter((l) => {
     if (l.nurseId && l.nurseId === nurseId) return true;
+    if (l.nurseId) {
+      const lCode = l.nurseId.toUpperCase();
+      if (lCode === nurseRefCode || lCode.replace(/^XN-?/, '') === nurseCleanRefCode) return true;
+    }
     const refNurseClean = (l.nurseId || '').replace(/\D/g, '');
     if (nurseLast10 && refNurseClean && refNurseClean.endsWith(nurseLast10)) return true;
     const lNursePhone = ((l as any).nursePhone || (l as any).referringNursePhone || '').replace(/\D/g, '');
@@ -366,7 +373,20 @@ export function calculateNurseMetrics(
   const directNurseLeads = myLeads.filter((l) => l.referralType === 'nurse' || Boolean(l.referredNursePhone));
   const extraNurseLeads: NurseLead[] = [];
   if (allNurses && allNurses.length > 0) {
-    const colleagues = allNurses.filter((n) => n.referredByNurseId === nurseId);
+    const colleagues = allNurses.filter((n) => {
+      if (!n || n.id === nurse.id) return false;
+      const refId = (n.referredByNurseId || '').trim();
+      const refName = (n.referredByNurseName || '').toLowerCase().trim();
+      if (refId) {
+        if (refId === nurseId) return true;
+        const cleanRef = refId.toUpperCase();
+        if (cleanRef === nurseRefCode || cleanRef.replace(/^XN-?/, '') === nurseCleanRefCode) return true;
+        const refPhoneDigits = refId.replace(/\D/g, '');
+        if (nurseLast10 && refPhoneDigits && (refPhoneDigits === nurseLast10 || refPhoneDigits.endsWith(nurseLast10))) return true;
+      }
+      if (refName && nurseNameClean && (refName === nurseNameClean || refName.includes(nurseNameClean) || nurseNameClean.includes(refName))) return true;
+      return false;
+    });
     colleagues.forEach((colleague) => {
       const cPhone = normalizePhone10(colleague.phone);
       const cName = (colleague.name || '').toLowerCase().trim();
