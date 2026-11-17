@@ -1294,6 +1294,82 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
   const pendingDoctorsList = useMemo(() => doctorsList.filter((u) => parseUserStatus(u) === 'Pending Verification'), [doctorsList]);
   const pendingDoctorsCount = pendingDoctorsList.length;
 
+  // Partner Management & Referrals Sub-System
+  const [partnerSubTab, setPartnerSubTab] = useState<'referrals' | 'partners' | 'consultations'>('partners');
+  const [partnerSearch, setPartnerSearch] = useState('');
+  const [partnerStatusFilter, setPartnerStatusFilter] = useState<'all' | 'Active' | 'Pending Verification' | 'Rejected'>('all');
+  const [partnerReferralFilter, setPartnerReferralFilter] = useState<'all' | 'pending' | 'accepted' | 'rejected'>('all');
+  const [editingBilledLeadId, setEditingBilledLeadId] = useState<string | null>(null);
+  const [inlineBilledInput, setInlineBilledInput] = useState<number>(0);
+
+  const filteredDoctorsList = useMemo(() => {
+    return doctorsList.filter((doc) => {
+      const q = partnerSearch.toLowerCase().trim();
+      const docStatus = parseUserStatus(doc);
+      const matchesStatus = partnerStatusFilter === 'all' ? true : docStatus === partnerStatusFilter;
+      const matchesSearch = !q ||
+        doc.name.toLowerCase().includes(q) ||
+        (doc.phone || '').includes(q) ||
+        (doc.email || '').toLowerCase().includes(q) ||
+        (doc.profession || '').toLowerCase().includes(q) ||
+        (doc.currentlyWorkingAt || '').toLowerCase().includes(q) ||
+        (doc.designation || '').toLowerCase().includes(q);
+      return matchesStatus && matchesSearch;
+    });
+  }, [doctorsList, partnerSearch, partnerStatusFilter]);
+
+  const partnerLeads = useMemo(() => {
+    const partnerIdSet = new Set(doctorsList.map((d) => d.id));
+    const partnerPhoneSet = new Set(doctorsList.map((d) => (d.phone || '').replace(/\D/g, '')).filter(Boolean));
+
+    return leads.filter((l) => {
+      if (l.referralType === 'nurse') return false;
+      if (l.partnerId) return true;
+      if (l.nurseId && partnerIdSet.has(l.nurseId)) return true;
+      const cleanNursePhone = (l.referredNursePhone || l.nursePhone || '').replace(/\D/g, '');
+      if (cleanNursePhone && partnerPhoneSet.has(cleanNursePhone)) return true;
+      if (l.nurseName && (l.nurseName.toLowerCase().includes('partner') || l.nurseName.toLowerCase().includes('doctor'))) return true;
+      return false;
+    });
+  }, [leads, doctorsList]);
+
+  const pendingPartnerLeadsCount = useMemo(() => {
+    return partnerLeads.filter((l) => l.status === 'Pending Approval' || l.status === 'Submitted').length;
+  }, [partnerLeads]);
+
+  const totalPartnerBilled = useMemo(() => {
+    return partnerLeads
+      .filter((l) => l.status === 'Approved' || l.status === 'Converted')
+      .reduce((sum, l) => sum + (Number(l.billedAmount) || 0), 0);
+  }, [partnerLeads]);
+
+  const totalPartnerCommissions = useMemo(() => {
+    return partnerLeads
+      .filter((l) => l.status === 'Approved' || l.status === 'Converted')
+      .reduce((sum, l) => {
+        const billed = Number(l.billedAmount) || 0;
+        const partnerUser = doctorsList.find(d => d.id === l.partnerId || (d.phone && l.nursePhone && d.phone.replace(/\D/g, '') === l.nursePhone.replace(/\D/g, '')));
+        const commPct = (partnerUser && partnerUser.commissionPercent !== undefined) ? Number(partnerUser.commissionPercent) : (Number(l.partnerCommissionPercent) || 10);
+        const commRupees = Number(l.referralCommissionRupees) > 0 ? Number(l.referralCommissionRupees) : Math.round((billed * commPct) / 100);
+        return sum + commRupees;
+      }, 0);
+  }, [partnerLeads, doctorsList]);
+
+  const filteredPartnerLeads = useMemo(() => {
+    return partnerLeads.filter((l) => {
+      if (partnerReferralFilter === 'pending') {
+        return l.status === 'Pending Approval' || l.status === 'Submitted';
+      }
+      if (partnerReferralFilter === 'accepted') {
+        return l.status === 'Approved' || l.status === 'Converted';
+      }
+      if (partnerReferralFilter === 'rejected') {
+        return l.status === 'Rejected';
+      }
+      return true;
+    });
+  }, [partnerLeads, partnerReferralFilter]);
+
   const togglePinVisibility = (userId: string) => {
     setRevealedPinIds((prev) => ({ ...prev, [userId]: !prev[userId] }));
   };
@@ -2691,7 +2767,10 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
     nurseId: nurses[0]?.id || '',
     status: 'Pending Approval' as NurseLead['status'],
     leadValueRupees: 800,
-    pointsAwarded: 50
+    pointsAwarded: 50,
+    billedAmount: 0,
+    notes: '',
+    rejectionReason: ''
   });
 
   const handleOpenCreateLeadModal = () => {
@@ -2706,7 +2785,10 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
       nurseId: nurses[0]?.id || '',
       status: 'Pending Approval',
       leadValueRupees: 800,
-      pointsAwarded: 50
+      pointsAwarded: 50,
+      billedAmount: 0,
+      notes: '',
+      rejectionReason: ''
     });
     setIsLeadModalOpen(true);
   };
@@ -2719,11 +2801,14 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
       patientPhone: l.patientPhone || l.referredNursePhone || '',
       serviceId: l.serviceId || 'saline-infusion',
       customProcedure: l.notes?.replace(/^Procedure:\s*/i, '') || '',
-      area: l.area,
+      area: (l.area as HyderabadArea) || 'LB Nagar',
       nurseId: l.nurseId || 'nurse-101',
       status: l.status,
       leadValueRupees: l.leadValueRupees || 800,
-      pointsAwarded: l.pointsAwarded || 50
+      pointsAwarded: l.pointsAwarded || 50,
+      billedAmount: l.billedAmount || 0,
+      notes: l.notes || '',
+      rejectionReason: l.rejectionReason || ''
     });
     setIsLeadModalOpen(true);
   };
@@ -2734,9 +2819,17 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
       showToast('Patient name and phone are required.', 'error');
       return;
     }
+    const partnerUser = appUsers.find(u => u.id === editingLead?.partnerId || u.id === leadForm.nurseId || (editingLead?.nursePhone && u.phone === editingLead.nursePhone));
+    const effectiveCommissionPct = Number(editingLead?.partnerCommissionPercent) || Number(partnerUser?.commissionPercent) || 10;
+    const computedCommission = Math.round((Number(leadForm.billedAmount) || 0) * (effectiveCommissionPct / 100));
+
     const leadPayload: NurseLead = {
       id: editingLead ? editingLead.id : leadForm.id,
       nurseId: leadForm.nurseId,
+      partnerId: editingLead?.partnerId || (partnerUser?.role === 'doctor' ? partnerUser.id : undefined),
+      partnerCommissionPercent: effectiveCommissionPct,
+      billedAmount: Number(leadForm.billedAmount) || 0,
+      referralCommissionRupees: computedCommission || editingLead?.referralCommissionRupees,
       patientName: leadForm.patientName.trim(),
       patientPhone: leadForm.patientPhone.trim(),
       serviceId: leadForm.serviceId,
@@ -2745,7 +2838,8 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
       status: leadForm.status,
       leadValueRupees: Number(leadForm.leadValueRupees),
       pointsAwarded: Number(leadForm.pointsAwarded),
-      notes: leadForm.customProcedure.trim() ? `Procedure: ${leadForm.customProcedure.trim()}` : (editingLead?.notes || undefined)
+      notes: leadForm.notes.trim() || undefined,
+      rejectionReason: leadForm.rejectionReason.trim() || undefined
     };
 
     if (editingLead && onUpdateLead) {
@@ -2918,17 +3012,28 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
       (l.area || '').toLowerCase().includes(query);
     const matchesStatus = leadStatusFilter === 'all' ? true : l.status === leadStatusFilter;
     const isNurseRef = l.referralType === 'nurse' || !!l.referredNursePhone;
+    const partnerIdSet = new Set(doctorsList.map((d) => d.id));
+    const partnerPhoneSet = new Set(doctorsList.map((d) => (d.phone || '').replace(/\D/g, '')).filter(Boolean));
+    const isPartnerRef = Boolean(
+      l.partnerId ||
+      (l.nurseId && partnerIdSet.has(l.nurseId)) ||
+      (l.referredNursePhone && partnerPhoneSet.has(l.referredNursePhone.replace(/\D/g, ''))) ||
+      (l.nursePhone && partnerPhoneSet.has(l.nursePhone.replace(/\D/g, ''))) ||
+      (l.nurseName && (l.nurseName.toLowerCase().includes('partner') || l.nurseName.toLowerCase().includes('doctor')))
+    );
     const isLeadConverted = l.status === 'Converted' || (isNurseRef ? l.status === 'Approved' : bookings.some(b => b.status === 'Completed' && ((b.referringNurseId && b.referringNurseId === l.nurseId && (b.patientPhone === l.patientPhone || b.patientName === l.patientName)) || (l.patientPhone && b.patientPhone === l.patientPhone))));
 
     let matchesType = true;
     if (leadTypeFilter === 'patient') {
-      matchesType = !isNurseRef;
+      matchesType = !isNurseRef && !isPartnerRef;
     } else if (leadTypeFilter === 'patient-converted') {
-      matchesType = !isNurseRef && isLeadConverted;
+      matchesType = !isNurseRef && !isPartnerRef && isLeadConverted;
     } else if (leadTypeFilter === 'nurse') {
       matchesType = isNurseRef;
     } else if (leadTypeFilter === 'nurse-converted') {
       matchesType = isNurseRef && isLeadConverted;
+    } else if (leadTypeFilter === 'partner') {
+      matchesType = isPartnerRef;
     } else if (leadTypeFilter === 'ref-done') {
       matchesType = isLeadConverted;
     }
@@ -3063,7 +3168,8 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
     email: '',
     designation: '',
     serviceArea: 'Gachibowli',
-    status: 'Active' as 'Active' | 'Pending Verification' | 'Rejected'
+    status: 'Active' as 'Active' | 'Pending Verification' | 'Rejected',
+    commissionPercent: 10
   });
 
   const handleOpenCreateUserModal = () => {
@@ -3078,7 +3184,8 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
       email: '',
       designation: 'Registered Nurse',
       serviceArea: 'Gachibowli',
-      status: 'Active'
+      status: 'Active',
+      commissionPercent: 10
     });
     setIsUserModalOpen(true);
   };
@@ -3095,7 +3202,8 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
       email: u.email || '',
       designation: cleanUserDesignation(u.designation) || '',
       serviceArea: u.serviceArea || 'Hyderabad Multi-Zone',
-      status: parseUserStatus(u)
+      status: parseUserStatus(u),
+      commissionPercent: u.commissionPercent !== undefined ? u.commissionPercent : 10
     });
     setIsUserModalOpen(true);
   };
@@ -3125,7 +3233,8 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
       email: userForm.email.trim(),
       designation: finalDesignation,
       serviceArea: userForm.serviceArea.trim() as any,
-      status: userForm.status
+      status: userForm.status,
+      commissionPercent: userForm.role === 'doctor' ? (Number(userForm.commissionPercent) || 10) : undefined
     };
 
     if (editingUser && onUpdateAppUser) {
@@ -3191,7 +3300,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
               Office Care Desk
             </h2>
             <p style={{ fontSize: '0.82rem', color: 'var(--neutral-600)', margin: '0.15rem 0 0' }}>
-              Simple office manager for bookings, nurses, referrals, and doctor calls
+              Simple office manager for bookings, nurses, referrals, and partners
             </p>
           </div>
         </div>
@@ -3229,8 +3338,8 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
             className={`btn btn-sm ${activeTab === 'consultations' ? 'btn-primary' : 'btn-outline'}`}
             onClick={() => setActiveTab('consultations')}
           >
-            <Stethoscope size={14} />
-            <span>🩺 Doctor Calls ({consultations.length})</span>
+            <Users size={14} />
+            <span>👥 Others / Partners ({doctorsList.length})</span>
             {pendingDoctorsCount > 0 && (
               <span style={{
                 background: '#D97706',
@@ -3241,7 +3350,20 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                 borderRadius: 9999,
                 marginLeft: '0.25rem'
               }}>
-                ⏳ {pendingDoctorsCount} Doc
+                ⏳ {pendingDoctorsCount} Partner
+              </span>
+            )}
+            {pendingPartnerLeadsCount > 0 && (
+              <span style={{
+                background: '#2563EB',
+                color: '#FFF',
+                fontSize: '0.68rem',
+                fontWeight: 700,
+                padding: '1px 6px',
+                borderRadius: 9999,
+                marginLeft: '0.25rem'
+              }}>
+                ⭐ {pendingPartnerLeadsCount} Leads
               </span>
             )}
           </button>
@@ -3563,19 +3685,37 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                             <div style={{ fontWeight: 750, color: 'var(--primary-navy-950)' }}>{b.patientName}</div>
                             <div style={{ fontSize: '0.76rem', color: '#64748B', fontFamily: 'monospace' }}>{b.patientPhone}</div>
                             <div style={{ marginTop: '0.2rem' }}>
-                              {(b.bookingType?.toLowerCase() === 'scheduled' || (b.preferredTime && !b.preferredTime.toLowerCase().includes('immediate') && !b.preferredTime.toLowerCase().includes('asap') && !b.preferredTime.toLowerCase().includes('instant'))) ? (
-                                <span style={{ fontSize: '0.72rem', background: '#F0FDF4', color: '#166534', padding: '2px 8px', borderRadius: 9999, fontWeight: 700, border: '1px solid #BBF7D0', whiteSpace: 'nowrap', display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
-                                  <span>📅 {formatDateDDMMYY(b.preferredDate || b.createdAt, 'Today')}</span>
-                                  <span>•</span>
-                                  <span>⏰ {b.scheduledSlot || b.preferredTime || 'Scheduled Slot'}</span>
-                                </span>
-                              ) : (
-                                <span style={{ fontSize: '0.72rem', background: '#EFF6FF', color: '#1D4ED8', padding: '2px 8px', borderRadius: 9999, fontWeight: 700, border: '1px solid #BFDBFE', whiteSpace: 'nowrap', display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
-                                  <span>⚡ Instant</span>
-                                  <span>•</span>
-                                  <span>📅 {formatDateDDMMYY(b.preferredDate || b.createdAt, 'Today')}</span>
-                                </span>
-                              )}
+                              {(() => {
+                                const isScheduled = b.bookingType?.toLowerCase() === 'scheduled' ||
+                                  (b.preferredTime && !b.preferredTime.toLowerCase().includes('immediate') && !b.preferredTime.toLowerCase().includes('asap') && !b.preferredTime.toLowerCase().includes('instant'));
+
+                                const rawDateStr = b.preferredDate && !b.preferredDate.toLowerCase().startsWith('today')
+                                  ? b.preferredDate
+                                  : (b.createdAt || new Date());
+                                const cleanBookingDate = formatDateDDMMYY(rawDateStr, 'Today');
+
+                                const rawSlot = (b.scheduledSlot || b.preferredTime || '').trim();
+                                const isTbdOrEmpty = !rawSlot || rawSlot.toLowerCase().includes('tbd');
+                                const cleanBookingTime = !isTbdOrEmpty
+                                  ? rawSlot
+                                  : (b.createdAt ? new Date(b.createdAt).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', hour12: true }) : 'Standard Slot');
+
+                                return isScheduled ? (
+                                  <span style={{ fontSize: '0.72rem', background: '#F0FDF4', color: '#166534', padding: '2px 8px', borderRadius: 9999, fontWeight: 700, border: '1px solid #BBF7D0', whiteSpace: 'nowrap', display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
+                                    <span>📅 {cleanBookingDate}</span>
+                                    <span>•</span>
+                                    <span>⏰ {cleanBookingTime}</span>
+                                  </span>
+                                ) : (
+                                  <span style={{ fontSize: '0.72rem', background: '#EFF6FF', color: '#1D4ED8', padding: '2px 8px', borderRadius: 9999, fontWeight: 700, border: '1px solid #BFDBFE', whiteSpace: 'nowrap', display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
+                                    <span>⚡ Instant</span>
+                                    <span>•</span>
+                                    <span>📅 {cleanBookingDate}</span>
+                                    <span>•</span>
+                                    <span>⏰ {cleanBookingTime}</span>
+                                  </span>
+                                );
+                              })()}
                             </div>
                             {b.referringNurseId && (
                               <div style={{ marginTop: '0.2rem' }}>
@@ -5805,7 +5945,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                   cursor: 'pointer'
                 }}
               >
-                🩺 Patients ({leads.filter((l) => l.referralType !== 'nurse' && !l.referredNursePhone).length})
+                🩺 Patients ({leads.filter((l) => l.referralType !== 'nurse' && !l.referredNursePhone && !partnerLeads.some(pl => pl.id === l.id)).length})
               </button>
               <button
                 type="button"
@@ -5822,6 +5962,22 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                 }}
               >
                 👩‍⚕️ Nurses ({leads.filter((l) => l.referralType === 'nurse' || Boolean(l.referredNursePhone)).length})
+              </button>
+              <button
+                type="button"
+                onClick={() => setLeadTypeFilter('partner')}
+                style={{
+                  padding: '0.35rem 0.75rem',
+                  fontSize: '0.8rem',
+                  fontWeight: 700,
+                  borderRadius: 20,
+                  border: leadTypeFilter === 'partner' ? '1px solid #7C3AED' : '1px solid #CBD5E1',
+                  background: leadTypeFilter === 'partner' ? '#EDE9FE' : '#FFFFFF',
+                  color: leadTypeFilter === 'partner' ? '#6D28D9' : '#475569',
+                  cursor: 'pointer'
+                }}
+              >
+                🤝 Others / Partners ({partnerLeads.length})
               </button>
             </div>
 
@@ -5844,6 +6000,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                 <option value="patient-converted">✓ Patient Conv (Completed)</option>
                 <option value="nurse">👩‍⚕️ Nurse Lead (All)</option>
                 <option value="nurse-converted">✓ Nurse Converted (Approved)</option>
+                <option value="partner">🤝 Others / Partner Referrals ({partnerLeads.length})</option>
               </select>
             </div>
 
@@ -5921,6 +6078,15 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                   <tbody>
                     {filteredLeads.map((l) => {
                       const isNurseRef = l.referralType === 'nurse' || Boolean(l.referredNursePhone);
+                      const partnerIdSet = new Set(doctorsList.map((d) => d.id));
+                      const partnerPhoneSet = new Set(doctorsList.map((d) => (d.phone || '').replace(/\D/g, '')).filter(Boolean));
+                      const isPartnerRef = Boolean(
+                        l.partnerId ||
+                        (l.nurseId && partnerIdSet.has(l.nurseId)) ||
+                        (l.referredNursePhone && partnerPhoneSet.has(l.referredNursePhone.replace(/\D/g, ''))) ||
+                        (l.nursePhone && partnerPhoneSet.has(l.nursePhone.replace(/\D/g, ''))) ||
+                        (l.nurseName && (l.nurseName.toLowerCase().includes('partner') || l.nurseName.toLowerCase().includes('doctor')))
+                      );
                       const matchingNurse = isNurseRef ? findMatchingNurseForLead(l, nurses) : undefined;
                       const matchingBooking = !isNurseRef ? findMatchingBookingForPatientLead(l, bookings) : undefined;
 
@@ -5990,7 +6156,23 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                             </div>
                           </td>
                           <td style={{ verticalAlign: 'middle' }}>
-                            {isNurseRef ? (
+                            {isPartnerRef ? (
+                              <span style={{
+                                fontSize: '0.72rem',
+                                fontWeight: 800,
+                                textTransform: 'uppercase',
+                                padding: '3px 8px',
+                                borderRadius: 6,
+                                display: 'inline-flex',
+                                alignItems: 'center',
+                                gap: '0.25rem',
+                                background: '#EDE9FE',
+                                color: '#6D28D9',
+                                border: '1px solid #DDD6FE'
+                              }}>
+                                🤝 Partner
+                              </span>
+                            ) : isNurseRef ? (
                               <span style={{
                                 fontSize: '0.72rem',
                                 fontWeight: 800,
@@ -6103,16 +6285,39 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                             )}
                           </td>
                           <td>
-                            <div style={{ fontWeight: 600 }}>{referringNurse ? `${referringNurse.name} (${referringNurse.referralCode || referringNurse.id})` : (l.nurseName || l.nurseId || 'Unknown')}</div>
-                            {referringNurse && (
-                              <div style={{ fontSize: '0.72rem', color: 'var(--neutral-500)' }}>
-                                Station: {referringNurse.serviceArea}
+                            {isPartnerRef ? (
+                              <div>
+                                <div style={{ fontWeight: 600, color: '#0F172A' }}>{l.nurseName || 'Referral Partner'}</div>
+                                <div style={{ fontSize: '0.72rem', color: '#7C3AED', fontWeight: 600 }}>
+                                  Partner ({l.partnerCommissionPercent || 10}%)
+                                </div>
                               </div>
+                            ) : (
+                              <>
+                                <div style={{ fontWeight: 600 }}>{referringNurse ? `${referringNurse.name} (${referringNurse.referralCode || referringNurse.id})` : (l.nurseName || l.nurseId || 'Unknown')}</div>
+                                {referringNurse && (
+                                  <div style={{ fontSize: '0.72rem', color: 'var(--neutral-500)' }}>
+                                    Station: {referringNurse.serviceArea}
+                                  </div>
+                                )}
+                              </>
                             )}
                           </td>
                           <td>
                             {isRejected ? (
                               <span style={{ color: 'var(--neutral-400)', fontSize: '0.8rem' }}>0 pts (Rejected)</span>
+                            ) : isPartnerRef ? (
+                              <div>
+                                <strong style={{ color: '#059669', fontSize: '0.9rem' }}>
+                                  ₹{l.referralCommissionRupees || Math.round(((Number(l.billedAmount) || 0) * (Number(l.partnerCommissionPercent) || 10)) / 100)}
+                                </strong>
+                                <div style={{ fontSize: '0.72rem', color: '#7C3AED', fontWeight: 600, marginTop: '2px' }}>
+                                  {l.partnerCommissionPercent || 10}% Commission
+                                </div>
+                                <div style={{ fontSize: '0.7rem', color: 'var(--neutral-500)' }}>
+                                  Billed: ₹{l.billedAmount || 0}
+                                </div>
+                              </div>
                             ) : (
                               <div>
                                 <strong style={{ color: '#059669', fontSize: '0.9rem' }}>
@@ -6155,7 +6360,42 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                           </td>
                           <td style={{ textAlign: 'right' }}>
                             <div style={{ display: 'inline-flex', alignItems: 'center', gap: '0.35rem' }}>
-                              {isPending && (
+                              {isPending && isPartnerRef && (
+                                <button
+                                  type="button"
+                                  onClick={async () => {
+                                    if (onUpdateLead) {
+                                      const billed = Number(l.billedAmount) || 0;
+                                      const commPct = Number(l.partnerCommissionPercent) || 10;
+                                      const commRupees = Math.round((billed * commPct) / 100);
+                                      await onUpdateLead(l.id, {
+                                        status: 'Approved',
+                                        referralCommissionRupees: commRupees
+                                      });
+                                      showToast(`✓ Partner referral for ${l.patientName} approved!`);
+                                    }
+                                  }}
+                                  style={{
+                                    background: 'linear-gradient(135deg, #059669 0%, #047857 100%)',
+                                    color: '#FFFFFF',
+                                    border: 'none',
+                                    borderRadius: 8,
+                                    padding: '0.35rem 0.75rem',
+                                    fontWeight: 700,
+                                    fontSize: '0.78rem',
+                                    cursor: 'pointer',
+                                    display: 'inline-flex',
+                                    alignItems: 'center',
+                                    gap: '0.3rem',
+                                    boxShadow: '0 2px 5px rgba(5,150,105,0.25)'
+                                  }}
+                                  title="Approve Partner Referral"
+                                >
+                                  <CheckCircle size={13} />
+                                  <span>Accept Lead</span>
+                                </button>
+                              )}
+                              {isPending && !isPartnerRef && (
                                 <button
                                   type="button"
                                   onClick={() => handleOpenApproveModal(l)}
@@ -6276,336 +6516,1257 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
         </div>
       )}
 
-      {/* DOCTOR TELECONSULTATIONS TAB (FULL SUPABASE CRUD) */}
+      {/* OTHERS / PARTNERS & CONSULTATIONS TAB */}
       {activeTab === 'consultations' && (
         <div style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
-          {pendingDoctorsCount > 0 && (
-            <div style={{
-              background: '#FFFBEB',
-              border: '1px solid #FDE68A',
-              borderRadius: 10,
-              padding: '0.85rem 1.25rem',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'space-between',
-              gap: '1rem',
-              flexWrap: 'wrap'
-            }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '0.65rem' }}>
-                <Clock size={18} style={{ color: '#D97706', flexShrink: 0 }} />
-                <div>
-                  <div style={{ fontWeight: 700, color: '#92400E', fontSize: '0.88rem' }}>
-                    {pendingDoctorsCount} Doctor Registration{pendingDoctorsCount > 1 ? 's' : ''} Awaiting Admin Approval
+
+          {/* Sub-Tabs Navigation */}
+          <div style={{
+            display: 'flex',
+            gap: '0.5rem',
+            borderBottom: '2px solid #E2E8F0',
+            paddingBottom: '0.65rem',
+            flexWrap: 'wrap',
+            alignItems: 'center'
+          }}>
+            <button
+              type="button"
+              onClick={() => setPartnerSubTab('partners')}
+              style={{
+                padding: '0.55rem 1.15rem',
+                borderRadius: 10,
+                fontWeight: 700,
+                fontSize: '0.88rem',
+                border: partnerSubTab === 'partners' ? '1px solid #0F172A' : '1px solid #E2E8F0',
+                cursor: 'pointer',
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: '0.45rem',
+                background: partnerSubTab === 'partners' ? '#0F172A' : '#FFFFFF',
+                color: partnerSubTab === 'partners' ? '#FFFFFF' : '#475569',
+                boxShadow: partnerSubTab === 'partners' ? '0 2px 6px rgba(15,23,42,0.15)' : 'none',
+                transition: 'all 0.15s ease'
+              }}
+            >
+              <Users size={16} />
+              <span>👥 Registered Partners ({doctorsList.length})</span>
+              {pendingDoctorsCount > 0 && (
+                <span style={{
+                  background: '#EF4444',
+                  color: '#FFFFFF',
+                  padding: '2px 7px',
+                  borderRadius: 9999,
+                  fontSize: '0.72rem',
+                  fontWeight: 800
+                }}>
+                  {pendingDoctorsCount} Pending
+                </span>
+              )}
+            </button>
+
+            <button
+              type="button"
+              onClick={() => setPartnerSubTab('referrals')}
+              style={{
+                padding: '0.55rem 1.15rem',
+                borderRadius: 10,
+                fontWeight: 700,
+                fontSize: '0.88rem',
+                border: partnerSubTab === 'referrals' ? '1px solid #0F172A' : '1px solid #E2E8F0',
+                cursor: 'pointer',
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: '0.45rem',
+                background: partnerSubTab === 'referrals' ? '#0F172A' : '#FFFFFF',
+                color: partnerSubTab === 'referrals' ? '#FFFFFF' : '#475569',
+                boxShadow: partnerSubTab === 'referrals' ? '0 2px 6px rgba(15,23,42,0.15)' : 'none',
+                transition: 'all 0.15s ease'
+              }}
+            >
+              <Award size={16} />
+              <span>⭐ Partner Patient Referrals ({partnerLeads.length})</span>
+              {pendingPartnerLeadsCount > 0 && (
+                <span style={{
+                  background: '#F59E0B',
+                  color: '#FFFFFF',
+                  padding: '2px 7px',
+                  borderRadius: 9999,
+                  fontSize: '0.72rem',
+                  fontWeight: 800
+                }}>
+                  {pendingPartnerLeadsCount} Pending
+                </span>
+              )}
+            </button>
+
+            <button
+              type="button"
+              onClick={() => setPartnerSubTab('consultations')}
+              style={{
+                padding: '0.55rem 1.15rem',
+                borderRadius: 10,
+                fontWeight: 700,
+                fontSize: '0.88rem',
+                border: partnerSubTab === 'consultations' ? '1px solid #0F172A' : '1px solid #E2E8F0',
+                cursor: 'pointer',
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: '0.45rem',
+                background: partnerSubTab === 'consultations' ? '#0F172A' : '#FFFFFF',
+                color: partnerSubTab === 'consultations' ? '#FFFFFF' : '#475569',
+                boxShadow: partnerSubTab === 'consultations' ? '0 2px 6px rgba(15,23,42,0.15)' : 'none',
+                transition: 'all 0.15s ease'
+              }}
+            >
+              <Stethoscope size={16} />
+              <span>🩺 Doctor Consultations ({consultations.length})</span>
+            </button>
+          </div>
+
+          {/* SUB-TAB 1: REGISTERED PARTNERS (DOCTORS, CLINICS, PHARMACIES, REFERRAL AGENTS) */}
+          {partnerSubTab === 'partners' && (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
+              {pendingDoctorsCount > 0 && (
+                <div style={{
+                  background: '#FFFBEB',
+                  border: '1px solid #FDE68A',
+                  borderRadius: 12,
+                  padding: '1rem 1.25rem',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'space-between',
+                  gap: '1rem',
+                  flexWrap: 'wrap'
+                }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+                    <Clock size={20} style={{ color: '#D97706', flexShrink: 0 }} />
+                    <div>
+                      <div style={{ fontWeight: 800, color: '#92400E', fontSize: '0.92rem' }}>
+                        {pendingDoctorsCount} Partner Registration{pendingDoctorsCount > 1 ? 's' : ''} Awaiting Admin Approval
+                      </div>
+                      <div style={{ fontSize: '0.8rem', color: '#B45309', marginTop: '2px' }}>
+                        Newly registered partners cannot log in until you verify and approve their profile.
+                      </div>
+                    </div>
                   </div>
-                  <div style={{ fontSize: '0.78rem', color: '#B45309' }}>
-                    Doctors cannot log in to the medical panel until you verify and approve their Medical Council credentials.
+                  <button
+                    type="button"
+                    onClick={() => setPartnerStatusFilter('Pending Verification')}
+                    className="btn btn-sm"
+                    style={{
+                      background: '#D97706',
+                      color: '#FFFFFF',
+                      border: 'none',
+                      fontWeight: 700,
+                      fontSize: '0.8rem',
+                      borderRadius: 6,
+                      padding: '0.4rem 0.95rem'
+                    }}
+                  >
+                    View Pending ({pendingDoctorsCount})
+                  </button>
+                </div>
+              )}
+
+              {/* Metric Summary Cards */}
+              <div style={{
+                display: 'grid',
+                gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))',
+                gap: '1rem'
+              }}>
+                <div className="card" style={{ padding: '1rem 1.25rem', background: '#F8FAFC', border: '1px solid #E2E8F0', borderRadius: 12 }}>
+                  <div style={{ fontSize: '0.75rem', fontWeight: 700, color: '#64748B', textTransform: 'uppercase' }}>
+                    Total Partners
+                  </div>
+                  <div style={{ fontSize: '1.65rem', fontWeight: 800, color: '#0F172A', marginTop: '0.25rem' }}>
+                    {doctorsList.length}
+                  </div>
+                  <div style={{ fontSize: '0.74rem', color: '#64748B', marginTop: '0.2rem' }}>
+                    Doctors, clinics & agents
+                  </div>
+                </div>
+
+                <div className="card" style={{ padding: '1rem 1.25rem', background: pendingDoctorsCount > 0 ? '#FEF3C7' : '#F8FAFC', border: pendingDoctorsCount > 0 ? '1px solid #FCD34D' : '1px solid #E2E8F0', borderRadius: 12 }}>
+                  <div style={{ fontSize: '0.75rem', fontWeight: 700, color: pendingDoctorsCount > 0 ? '#92400E' : '#64748B', textTransform: 'uppercase' }}>
+                    Pending Verification
+                  </div>
+                  <div style={{ fontSize: '1.65rem', fontWeight: 800, color: pendingDoctorsCount > 0 ? '#B45309' : '#0F172A', marginTop: '0.25rem' }}>
+                    {pendingDoctorsCount}
+                  </div>
+                  <div style={{ fontSize: '0.74rem', color: pendingDoctorsCount > 0 ? '#92400E' : '#64748B', marginTop: '0.2rem' }}>
+                    Waiting for approval
+                  </div>
+                </div>
+
+                <div className="card" style={{ padding: '1rem 1.25rem', background: '#F0FDF4', border: '1px solid #BBF7D0', borderRadius: 12 }}>
+                  <div style={{ fontSize: '0.75rem', fontWeight: 700, color: '#166534', textTransform: 'uppercase' }}>
+                    Active / Verified
+                  </div>
+                  <div style={{ fontSize: '1.65rem', fontWeight: 800, color: '#15803D', marginTop: '0.25rem' }}>
+                    {doctorsList.filter((d) => parseUserStatus(d) === 'Active').length}
+                  </div>
+                  <div style={{ fontSize: '0.74rem', color: '#166534', marginTop: '0.2rem' }}>
+                    Can log in & refer patients
+                  </div>
+                </div>
+
+                <div className="card" style={{ padding: '1rem 1.25rem', background: '#FAF5FF', border: '1px solid #E9D5FF', borderRadius: 12 }}>
+                  <div style={{ fontSize: '0.75rem', fontWeight: 700, color: '#6B21A8', textTransform: 'uppercase' }}>
+                    Patient Referrals
+                  </div>
+                  <div style={{ fontSize: '1.65rem', fontWeight: 800, color: '#7E22CE', marginTop: '0.25rem' }}>
+                    {partnerLeads.length}
+                  </div>
+                  <div style={{ fontSize: '0.74rem', color: '#6B21A8', marginTop: '0.2rem' }}>
+                    Total leads generated
                   </div>
                 </div>
               </div>
-              <button
-                type="button"
-                onClick={() => {
-                  setCredentialRoleFilter('pending_doctors');
-                  setActiveTab('credentials');
-                }}
-                className="btn btn-sm"
-                style={{
-                  background: '#D97706',
-                  color: '#FFFFFF',
-                  border: 'none',
-                  fontWeight: 700,
-                  fontSize: '0.8rem',
-                  borderRadius: 6,
-                  padding: '0.35rem 0.85rem'
-                }}
-              >
-                Review & Approve Doctors →
-              </button>
+
+              {/* Partners Roster Card */}
+              <div className="card">
+                <div className="card-header" style={{ flexWrap: 'wrap', gap: '0.75rem' }}>
+                  <div>
+                    <h3 className="card-title">Registered Referral Partners & Affiliates</h3>
+                    <p style={{ fontSize: '0.82rem', color: 'var(--neutral-500)', margin: 0 }}>
+                      Manage login credentials, set commission percentages (e.g. 10%, 20%), and approve pending partner accounts.
+                    </p>
+                  </div>
+
+                  <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center', flexWrap: 'wrap' }}>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setEditingUser(null);
+                        setUserForm({
+                          id: 'user_doc_' + Date.now().toString().slice(-6),
+                          name: '',
+                          phone: '',
+                          email: '',
+                          role: 'doctor',
+                          identifier: '',
+                          pin: '1234',
+                          designation: '',
+                          serviceArea: 'Hyderabad Multi-Zone',
+                          status: 'Active',
+                          commissionPercent: 10
+                        });
+                        setIsUserModalOpen(true);
+                      }}
+                      className="btn btn-danger btn-sm"
+                      style={{ borderRadius: 9999, fontWeight: 700, gap: '0.4rem' }}
+                    >
+                      <Plus size={16} />
+                      <span>Add Partner</span>
+                    </button>
+                  </div>
+                </div>
+
+                {/* Filter & Search Toolbar */}
+                <div style={{
+                  padding: '0.85rem 1.25rem',
+                  borderBottom: '1px solid var(--neutral-200)',
+                  background: '#FAFAFA',
+                  display: 'flex',
+                  gap: '0.75rem',
+                  flexWrap: 'wrap',
+                  alignItems: 'center',
+                  justifyContent: 'space-between'
+                }}>
+                  <div style={{ position: 'relative', minWidth: 260, flex: 1 }}>
+                    <input
+                      type="text"
+                      value={partnerSearch}
+                      onChange={(e) => setPartnerSearch(e.target.value)}
+                      style={{
+                        width: '100%',
+                        padding: '0.45rem 0.75rem 0.45rem 2rem',
+                        fontSize: '0.85rem',
+                        borderRadius: 8,
+                        border: '1px solid #CBD5E1'
+                      }}
+                    />
+                    <Search size={14} style={{ position: 'absolute', left: 8, top: '50%', transform: 'translateY(-50%)', color: 'var(--neutral-400)' }} />
+                  </div>
+
+                  <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
+                    <span style={{ fontSize: '0.8rem', color: 'var(--neutral-600)', fontWeight: 600 }}>Status:</span>
+                    <select
+                      value={partnerStatusFilter}
+                      onChange={(e) => setPartnerStatusFilter(e.target.value as any)}
+                      style={{
+                        padding: '0.4rem 0.75rem',
+                        fontSize: '0.82rem',
+                        borderRadius: 8,
+                        border: '1px solid #CBD5E1',
+                        background: '#FFFFFF',
+                        fontWeight: 600
+                      }}
+                    >
+                      <option value="all">All Partners ({doctorsList.length})</option>
+                      <option value="Pending Verification">⏳ Pending Verification ({pendingDoctorsCount})</option>
+                      <option value="Active">✓ Active ({doctorsList.filter(d => parseUserStatus(d) === 'Active').length})</option>
+                      <option value="Rejected">✕ Rejected ({doctorsList.filter(d => parseUserStatus(d) === 'Rejected').length})</option>
+                    </select>
+                  </div>
+                </div>
+
+                {/* Partners Table */}
+                {filteredDoctorsList.length === 0 ? (
+                  <EmptyState
+                    title="No Partners Found"
+                    description={partnerSearch ? 'No partners matched your search query.' : 'No referral partners registered yet.'}
+                  />
+                ) : (
+                  <div className="table-responsive">
+                    <table className="data-table">
+                      <thead>
+                        <tr>
+                          <th>Partner Name</th>
+                          <th>Profession / Designation</th>
+                          <th>Currently Working At</th>
+                          <th>Phone / Login</th>
+                          <th>Security PIN</th>
+                          <th>Commission %</th>
+                          <th>Status</th>
+                          <th style={{ textAlign: 'right' }}>Actions</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {filteredDoctorsList.map((doc) => {
+                          const docStatus = parseUserStatus(doc);
+                          const isPending = docStatus === 'Pending Verification';
+                          const isRevealed = revealedPinIds[doc.id];
+                          const rawDesignation = cleanUserDesignation(doc.designation);
+                          const professionText = doc.profession || (rawDesignation.includes('•') ? rawDesignation.split('•')[0]?.trim() : rawDesignation) || 'Healthcare Professional';
+                          const workplaceText = doc.currentlyWorkingAt || (rawDesignation.includes('•') ? rawDesignation.split('•')[1]?.trim() : '') || '—';
+
+                          return (
+                            <tr key={doc.id} style={{ background: isPending ? '#FFFDF5' : undefined, borderLeft: isPending ? '4px solid #F59E0B' : undefined }}>
+                              <td>
+                                <div style={{ fontWeight: 700, color: '#0F172A', fontSize: '0.92rem' }}>
+                                  {doc.name}
+                                </div>
+                                <div style={{ fontSize: '0.74rem', color: '#64748B' }}>
+                                  ID: {doc.id}
+                                </div>
+                              </td>
+                              <td>
+                                <div style={{ fontWeight: 600, color: '#1E293B', fontSize: '0.86rem' }}>
+                                  {professionText}
+                                </div>
+                              </td>
+                              <td>
+                                <div style={{ fontSize: '0.84rem', color: '#475569' }}>
+                                  {workplaceText}
+                                </div>
+                              </td>
+                              <td>
+                                <div style={{ fontWeight: 600, color: '#0F172A' }}>
+                                  {doc.phone || doc.email || '—'}
+                                </div>
+                                {doc.email && doc.phone && (
+                                  <div style={{ fontSize: '0.74rem', color: '#64748B' }}>
+                                    {doc.email}
+                                  </div>
+                                )}
+                              </td>
+                              <td>
+                                <div style={{ display: 'inline-flex', alignItems: 'center', gap: '0.35rem' }}>
+                                  <span style={{
+                                    fontFamily: 'monospace',
+                                    fontWeight: 700,
+                                    fontSize: '0.95rem',
+                                    letterSpacing: '0.15em',
+                                    background: '#F1F5F9',
+                                    padding: '2px 8px',
+                                    borderRadius: 6,
+                                    color: '#0F172A'
+                                  }}>
+                                    {isRevealed ? (doc.pin || '1234') : '••••'}
+                                  </span>
+                                  <button
+                                    type="button"
+                                    onClick={() => togglePinVisibility(doc.id)}
+                                    title={isRevealed ? 'Hide PIN' : 'Reveal PIN'}
+                                    style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#64748B', padding: 2 }}
+                                  >
+                                    {isRevealed ? <EyeOff size={14} /> : <Eye size={14} />}
+                                  </button>
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      navigator.clipboard.writeText(doc.pin || '1234');
+                                      showToast('PIN copied to clipboard!');
+                                    }}
+                                    title="Copy PIN"
+                                    style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#64748B', padding: 2 }}
+                                  >
+                                    <Copy size={13} />
+                                  </button>
+                                </div>
+                              </td>
+                              <td>
+                                <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
+                                  <select
+                                    value={doc.commissionPercent !== undefined ? doc.commissionPercent : 10}
+                                    onChange={async (e) => {
+                                      const newPct = Number(e.target.value) || 10;
+                                      if (onUpdateAppUser) {
+                                        await onUpdateAppUser(doc.id, { commissionPercent: newPct });
+                                        showToast(`Updated ${doc.name}'s commission to ${newPct}%!`);
+                                      }
+                                    }}
+                                    style={{
+                                      fontSize: '0.8rem',
+                                      fontWeight: 700,
+                                      padding: '0.25rem 0.5rem',
+                                      borderRadius: 6,
+                                      border: '1px solid #CBD5E1',
+                                      background: '#FFFFFF',
+                                      color: '#0284C7'
+                                    }}
+                                  >
+                                    <option value={5}>5%</option>
+                                    <option value={10}>10%</option>
+                                    <option value={15}>15%</option>
+                                    <option value={20}>20%</option>
+                                    <option value={25}>25%</option>
+                                    <option value={30}>30%</option>
+                                  </select>
+                                </div>
+                              </td>
+                              <td>
+                                {docStatus === 'Active' ? (
+                                  <span className="status-pill success" style={{ display: 'inline-flex', alignItems: 'center', gap: '0.25rem' }}>
+                                    <CheckCircle size={12} />
+                                    <span>Active</span>
+                                  </span>
+                                ) : docStatus === 'Pending Verification' ? (
+                                  <span className="status-pill warning" style={{ display: 'inline-flex', alignItems: 'center', gap: '0.25rem' }}>
+                                    <Clock size={12} />
+                                    <span>Pending Approval</span>
+                                  </span>
+                                ) : (
+                                  <span className="status-pill error" style={{ display: 'inline-flex', alignItems: 'center', gap: '0.25rem' }}>
+                                    <XCircle size={12} />
+                                    <span>Rejected</span>
+                                  </span>
+                                )}
+                              </td>
+                              <td style={{ textAlign: 'right' }}>
+                                <div style={{ display: 'inline-flex', alignItems: 'center', gap: '0.35rem', flexWrap: 'wrap', justifyContent: 'flex-end' }}>
+                                  {docStatus !== 'Active' && (
+                                    <button
+                                      type="button"
+                                      onClick={async () => {
+                                        if (onUpdateAppUser) {
+                                          const cleanDes = cleanUserDesignation(doc.designation);
+                                          await onUpdateAppUser(doc.id, {
+                                            status: 'Active',
+                                            designation: `[ACTIVE] ${cleanDes}`.trim()
+                                          });
+                                          showToast(`✓ Partner ${doc.name} approved! They can now log in with PIN.`);
+                                        }
+                                      }}
+                                      className="btn btn-sm"
+                                      style={{
+                                        background: '#059669',
+                                        color: '#ffffff',
+                                        border: 'none',
+                                        fontSize: '0.75rem',
+                                        fontWeight: 700,
+                                        padding: '0.3rem 0.65rem',
+                                        borderRadius: 6,
+                                        cursor: 'pointer',
+                                        display: 'inline-flex',
+                                        alignItems: 'center',
+                                        gap: '0.25rem'
+                                      }}
+                                      title="Approve partner account"
+                                    >
+                                      <CheckCircle size={13} />
+                                      <span>Approve</span>
+                                    </button>
+                                  )}
+
+                                  {docStatus !== 'Rejected' && (
+                                    <button
+                                      type="button"
+                                      onClick={async () => {
+                                        if (onUpdateAppUser) {
+                                          const cleanDes = cleanUserDesignation(doc.designation);
+                                          await onUpdateAppUser(doc.id, {
+                                            status: 'Rejected',
+                                            designation: `[REJECTED] ${cleanDes}`.trim()
+                                          });
+                                          showToast(`✕ Partner ${doc.name} rejected.`);
+                                        }
+                                      }}
+                                      className="btn btn-sm"
+                                      style={{
+                                        background: '#FEE2E2',
+                                        color: '#DC2626',
+                                        border: '1px solid #FECACA',
+                                        fontSize: '0.75rem',
+                                        fontWeight: 700,
+                                        padding: '0.3rem 0.55rem',
+                                        borderRadius: 6,
+                                        cursor: 'pointer'
+                                      }}
+                                      title="Reject partner"
+                                    >
+                                      Reject
+                                    </button>
+                                  )}
+
+                                  <button
+                                    type="button"
+                                    onClick={() => handleOpenEditUserModal(doc)}
+                                    title="Edit Partner Profile"
+                                    style={{
+                                      background: '#EFF6FF',
+                                      border: '1px solid #BFDBFE',
+                                      color: '#1D4ED8',
+                                      padding: '0.3rem 0.45rem',
+                                      borderRadius: 6,
+                                      cursor: 'pointer',
+                                      display: 'flex',
+                                      alignItems: 'center'
+                                    }}
+                                  >
+                                    <Edit2 size={13} />
+                                  </button>
+
+                                  <button
+                                    type="button"
+                                    onClick={() => handleDeleteUserClick(doc)}
+                                    title="Delete Partner"
+                                    style={{
+                                      background: '#FEF2F2',
+                                      border: '1px solid #FECDD3',
+                                      color: '#E11D48',
+                                      padding: '0.3rem 0.45rem',
+                                      borderRadius: 6,
+                                      cursor: 'pointer',
+                                      display: 'flex',
+                                      alignItems: 'center'
+                                    }}
+                                  >
+                                    <Trash2 size={13} />
+                                  </button>
+                                </div>
+                              </td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+              </div>
             </div>
           )}
-          <div className="card">
-            <div className="card-header" style={{ flexWrap: 'wrap', gap: '0.75rem' }}>
-              <div>
-                <h3 className="card-title">Doctor Teleconsultation Triage & Rx Queue</h3>
-                <p style={{ fontSize: '0.82rem', color: 'var(--neutral-500)', margin: 0 }}>
-                  Manage patient tele-triage requests, issued clinical prescriptions, and service conversions synced with Supabase <code>consultations</code> table
-                </p>
+
+          {/* SUB-TAB 2: PARTNER PATIENT REFERRALS (WHERE OTHERS' REFERRALS ARE SEEN) */}
+          {partnerSubTab === 'referrals' && (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
+              {/* Financial Metric Cards */}
+              <div style={{
+                display: 'grid',
+                gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))',
+                gap: '1rem'
+              }}>
+                <div className="card" style={{ padding: '1rem 1.25rem', background: '#F8FAFC', border: '1px solid #E2E8F0', borderRadius: 12 }}>
+                  <div style={{ fontSize: '0.75rem', fontWeight: 700, color: '#64748B', textTransform: 'uppercase' }}>
+                    Total Referred Patients
+                  </div>
+                  <div style={{ fontSize: '1.65rem', fontWeight: 800, color: '#0F172A', marginTop: '0.25rem' }}>
+                    {partnerLeads.length}
+                  </div>
+                  <div style={{ fontSize: '0.74rem', color: '#64748B', marginTop: '0.2rem' }}>
+                    Leads submitted by partners
+                  </div>
+                </div>
+
+                <div className="card" style={{ padding: '1rem 1.25rem', background: pendingPartnerLeadsCount > 0 ? '#FEF3C7' : '#F8FAFC', border: pendingPartnerLeadsCount > 0 ? '1px solid #FCD34D' : '1px solid #E2E8F0', borderRadius: 12 }}>
+                  <div style={{ fontSize: '0.75rem', fontWeight: 700, color: pendingPartnerLeadsCount > 0 ? '#92400E' : '#64748B', textTransform: 'uppercase' }}>
+                    Pending Review
+                  </div>
+                  <div style={{ fontSize: '1.65rem', fontWeight: 800, color: pendingPartnerLeadsCount > 0 ? '#B45309' : '#0F172A', marginTop: '0.25rem' }}>
+                    {pendingPartnerLeadsCount}
+                  </div>
+                  <div style={{ fontSize: '0.74rem', color: pendingPartnerLeadsCount > 0 ? '#92400E' : '#64748B', marginTop: '0.2rem' }}>
+                    Awaiting office decision
+                  </div>
+                </div>
+
+                <div className="card" style={{ padding: '1rem 1.25rem', background: '#EFF6FF', border: '1px solid #BFDBFE', borderRadius: 12 }}>
+                  <div style={{ fontSize: '0.75rem', fontWeight: 700, color: '#1E40AF', textTransform: 'uppercase' }}>
+                    Total Billed Amount
+                  </div>
+                  <div style={{ fontSize: '1.65rem', fontWeight: 800, color: '#1D4ED8', marginTop: '0.25rem' }}>
+                    ₹{totalPartnerBilled.toLocaleString('en-IN')}
+                  </div>
+                  <div style={{ fontSize: '0.74rem', color: '#1E40AF', marginTop: '0.2rem' }}>
+                    Revenue charged to patients
+                  </div>
+                </div>
+
+                <div className="card" style={{ padding: '1rem 1.25rem', background: '#ECFDF5', border: '1px solid #A7F3D0', borderRadius: 12 }}>
+                  <div style={{ fontSize: '0.75rem', fontWeight: 700, color: '#065F46', textTransform: 'uppercase' }}>
+                    Total Partner Payouts
+                  </div>
+                  <div style={{ fontSize: '1.65rem', fontWeight: 800, color: '#059669', marginTop: '0.25rem' }}>
+                    ₹{totalPartnerCommissions.toLocaleString('en-IN')}
+                  </div>
+                  <div style={{ fontSize: '0.74rem', color: '#065F46', marginTop: '0.2rem' }}>
+                    Calculated partner commissions
+                  </div>
+                </div>
               </div>
 
-              <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center', flexWrap: 'wrap' }}>
-                <button
-                  onClick={exportConsultationsToCSV}
-                  className="btn btn-outline btn-sm"
-                  style={{ borderRadius: 9999, fontWeight: 700, gap: '0.4rem', borderColor: '#10B981', color: '#059669', background: '#ECFDF5' }}
-                >
-                  <Download size={16} />
-                  <span>Export Consults</span>
-                </button>
-                <button
-                  onClick={handleOpenCreateConsultModal}
-                  className="btn btn-danger btn-sm"
-                  style={{ borderRadius: 9999, fontWeight: 700, gap: '0.4rem' }}
-                >
-                  <Plus size={16} />
-                  <span>New Consultation</span>
-                </button>
-              </div>
-            </div>
+              {/* Referrals List Card */}
+              <div className="card">
+                <div className="card-header" style={{ flexWrap: 'wrap', gap: '0.75rem' }}>
+                  <div>
+                    <h3 className="card-title">Partner Patient Referrals</h3>
+                    <p style={{ fontSize: '0.82rem', color: 'var(--neutral-500)', margin: 0 }}>
+                      View patient leads referred by external partners. Set the billed amount charged to the patient to auto-compute partner earnings.
+                    </p>
+                  </div>
 
-            {/* Filter & Search Toolbar */}
-            <div style={{ padding: '0.85rem 1.25rem', borderBottom: '1px solid var(--neutral-200)', background: '#FAFAFA', display: 'flex', gap: '0.75rem', flexWrap: 'wrap', alignItems: 'center', justifyContent: 'space-between' }}>
-              <div style={{ position: 'relative', minWidth: 260, flex: 1 }}>
-                <input
-                  type="text"
-                  placeholder="Search by patient, symptoms, contact phone, or area..."
-                  value={consultSearch}
-                  onChange={(e) => setConsultSearch(e.target.value)}
-                  style={{
-                    width: '100%',
-                    padding: '0.45rem 0.75rem 0.45rem 2rem',
-                    fontSize: '0.85rem',
-                    borderRadius: 8,
-                    border: '1px solid #CBD5E1'
-                  }}
-                />
-                <Search size={14} style={{ position: 'absolute', left: 8, top: '50%', transform: 'translateY(-50%)', color: 'var(--neutral-400)' }} />
-              </div>
+                  <div style={{ display: 'flex', gap: '0.35rem', alignItems: 'center', flexWrap: 'wrap' }}>
+                    <button
+                      type="button"
+                      onClick={() => setPartnerReferralFilter('all')}
+                      style={{
+                        padding: '0.35rem 0.75rem',
+                        fontSize: '0.8rem',
+                        fontWeight: 700,
+                        borderRadius: 20,
+                        border: partnerReferralFilter === 'all' ? '1px solid #0284C7' : '1px solid #CBD5E1',
+                        background: partnerReferralFilter === 'all' ? '#E0F2FE' : '#FFFFFF',
+                        color: partnerReferralFilter === 'all' ? '#0369A1' : '#475569',
+                        cursor: 'pointer'
+                      }}
+                    >
+                      All ({partnerLeads.length})
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setPartnerReferralFilter('pending')}
+                      style={{
+                        padding: '0.35rem 0.75rem',
+                        fontSize: '0.8rem',
+                        fontWeight: 700,
+                        borderRadius: 20,
+                        border: partnerReferralFilter === 'pending' ? '1px solid #D97706' : '1px solid #CBD5E1',
+                        background: partnerReferralFilter === 'pending' ? '#FEF3C7' : '#FFFFFF',
+                        color: partnerReferralFilter === 'pending' ? '#B45309' : '#475569',
+                        cursor: 'pointer'
+                      }}
+                    >
+                      ⏳ Pending ({pendingPartnerLeadsCount})
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setPartnerReferralFilter('accepted')}
+                      style={{
+                        padding: '0.35rem 0.75rem',
+                        fontSize: '0.8rem',
+                        fontWeight: 700,
+                        borderRadius: 20,
+                        border: partnerReferralFilter === 'accepted' ? '1px solid #059669' : '1px solid #CBD5E1',
+                        background: partnerReferralFilter === 'accepted' ? '#ECFDF5' : '#FFFFFF',
+                        color: partnerReferralFilter === 'accepted' ? '#065F46' : '#475569',
+                        cursor: 'pointer'
+                      }}
+                    >
+                      ✓ Accepted ({partnerLeads.filter(l => l.status === 'Approved' || l.status === 'Converted').length})
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setPartnerReferralFilter('rejected')}
+                      style={{
+                        padding: '0.35rem 0.75rem',
+                        fontSize: '0.8rem',
+                        fontWeight: 700,
+                        borderRadius: 20,
+                        border: partnerReferralFilter === 'rejected' ? '1px solid #DC2626' : '1px solid #CBD5E1',
+                        background: partnerReferralFilter === 'rejected' ? '#FEF2F2' : '#FFFFFF',
+                        color: partnerReferralFilter === 'rejected' ? '#DC2626' : '#475569',
+                        cursor: 'pointer'
+                      }}
+                    >
+                      ✕ Rejected ({partnerLeads.filter(l => l.status === 'Rejected').length})
+                    </button>
+                  </div>
+                </div>
 
-              <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
-                <span style={{ fontSize: '0.8rem', color: 'var(--neutral-600)', fontWeight: 600 }}>Status:</span>
-                <select
-                  value={consultStatusFilter}
-                  onChange={(e) => setConsultStatusFilter(e.target.value)}
-                  style={{
-                    padding: '0.4rem 0.75rem',
-                    fontSize: '0.82rem',
-                    borderRadius: 8,
-                    border: '1px solid #CBD5E1',
-                    background: '#FFFFFF',
-                    fontWeight: 600
-                  }}
-                >
-                  <option value="all">All Consultation Statuses ({consultations.length})</option>
-                  <option value="Awaiting Call">Awaiting Call</option>
-                  <option value="In Progress">In Progress</option>
-                  <option value="Completed">Completed</option>
-                  <option value="Cancelled">Cancelled</option>
-                </select>
-              </div>
-            </div>
+                {filteredPartnerLeads.length === 0 ? (
+                  <EmptyState
+                    title="No Partner Referrals Found"
+                    description="No patient referrals match the selected filter."
+                  />
+                ) : (
+                  <div className="table-responsive">
+                    <table className="data-table">
+                      <thead>
+                        <tr>
+                          <th>Lead ID & Date</th>
+                          <th>Patient Name & Phone</th>
+                          <th>Patient Notes / Problem</th>
+                          <th>Referring Partner</th>
+                          <th>Billed Amount (₹)</th>
+                          <th>Partner Earnings (₹)</th>
+                          <th>Status</th>
+                          <th style={{ textAlign: 'right' }}>Actions</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {filteredPartnerLeads.map((l) => {
+                          const isPending = l.status === 'Pending Approval' || l.status === 'Submitted';
+                          const isAccepted = l.status === 'Approved' || l.status === 'Converted';
+                          const isRejected = l.status === 'Rejected';
+                          const billed = Number(l.billedAmount) || 0;
+                          const partnerUser = doctorsList.find(d => d.id === l.partnerId || (d.phone && l.nursePhone && d.phone.replace(/\D/g, '') === l.nursePhone.replace(/\D/g, '')));
+                          const commPct = (partnerUser && partnerUser.commissionPercent !== undefined) ? Number(partnerUser.commissionPercent) : (Number(l.partnerCommissionPercent) || 10);
+                          const commRupees = Number(l.referralCommissionRupees) > 0 ? Number(l.referralCommissionRupees) : Math.round((billed * commPct) / 100);
 
-            {filteredConsults.length === 0 ? (
-              <EmptyState
-                title="No Consultations Found"
-                description={consultSearch ? 'No consultation records matched your search.' : 'No patient teleconsultation requests logged.'}
-              />
-            ) : (
-              <>
-                {renderBulkActionBar({
-                  entityName: 'Consultations',
-                  filteredIds: filteredConsults.map((c) => c.id),
-                  selectedSet: selectedConsultIds,
-                  setSelectedSet: setSelectedConsultIds,
-                  onDeleteMultiple: onDeleteMultipleConsultations
-                })}
-                <div className="table-responsive">
-                  <table className="data-table">
-                    <thead>
-                      <tr>
-                        <th style={{ width: 40, textAlign: 'center' }}>
-                          <input
-                            type="checkbox"
-                            checked={filteredConsults.length > 0 && filteredConsults.every((c) => selectedConsultIds.has(c.id))}
-                            onChange={() => toggleSelectAll(filteredConsults.map((c) => c.id), selectedConsultIds, setSelectedConsultIds)}
-                            style={{ cursor: 'pointer', accentColor: '#E11D48', width: 16, height: 16 }}
-                            title="Select / Deselect All Consultations"
-                          />
-                        </th>
-                        <th>Request ID</th>
-                        <th>Patient Name & Age</th>
-                        <th>Phone</th>
-                        <th>Symptoms / Chief Complaint</th>
-                        <th>Area</th>
-                        <th>Prescription</th>
-                        <th>Recommended Service</th>
-                        <th>Attending Doctor</th>
-                        <th>Status</th>
-                        <th style={{ textAlign: 'right' }}>Actions</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {filteredConsults.map((c) => {
-                        const isSelected = selectedConsultIds.has(c.id);
-                        return (
-                          <tr key={c.id} style={{ background: isSelected ? '#FFF1F2' : undefined }}>
-                            <td style={{ textAlign: 'center', width: 40 }}>
-                              <input
-                                type="checkbox"
-                                checked={isSelected}
-                                onChange={() => toggleItemSelection(c.id, setSelectedConsultIds)}
-                                style={{ cursor: 'pointer', accentColor: '#E11D48', width: 16, height: 16 }}
-                              />
-                            </td>
-                            <td><strong style={{ fontFamily: 'monospace' }}>{c.id}</strong></td>
-                            <td>
-                              <div><strong>{c.patientName}</strong></div>
-                              <div style={{ fontSize: '0.75rem', color: 'var(--neutral-500)' }}>Age: {c.patientAge || '—'}</div>
-                            </td>
-                            <td>{c.patientPhone}</td>
-                            <td style={{ maxWidth: 220 }}>
-                              <div style={{ fontSize: '0.82rem', color: 'var(--neutral-700)', lineHeight: 1.4 }}>
-                                {c.symptoms}
-                              </div>
-                            </td>
-                            <td>
-                              <div style={{ display: 'flex', alignItems: 'center', gap: '0.3rem' }}>
-                                <MapPin size={13} style={{ color: 'var(--neutral-500)' }} />
-                                <span>{c.area}</span>
-                              </div>
-                            </td>
-                            <td>
-                              {c.prescriptionIssued ? (
-                                <button
-                                  type="button"
-                                  onClick={() => handleViewConsultPrescription(c)}
-                                  title="Click to inspect doctor prescription"
-                                  style={{
-                                    background: '#ECFDF5',
-                                    border: '1px solid #A7F3D0',
-                                    padding: '0.35rem 0.65rem',
-                                    borderRadius: 8,
-                                    textAlign: 'left',
-                                    cursor: 'pointer',
-                                    display: 'block',
-                                    width: '100%',
-                                    transition: 'all 0.15s ease'
-                                  }}
-                                >
-                                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.35rem' }}>
-                                    <span className="status-pill success" style={{ fontSize: '0.74rem', padding: '1px 6px' }}>✓ Rx Issued</span>
-                                    <Eye size={12} style={{ color: '#059669' }} />
+                          return (
+                            <tr key={l.id} style={{ background: isPending ? '#FFFDF5' : undefined, borderLeft: isPending ? '4px solid #F59E0B' : undefined }}>
+                              <td>
+                                <strong style={{ fontFamily: 'monospace' }}>{l.id}</strong>
+                                <div style={{ fontSize: '0.75rem', color: 'var(--neutral-500)', marginTop: '0.2rem' }}>
+                                  {l.submittedAt ? formatDateDDMMYY(l.submittedAt) : 'Recent'}
+                                </div>
+                              </td>
+
+                              <td>
+                                <div style={{ fontWeight: 700, color: '#0F172A', fontSize: '0.92rem' }}>
+                                  {l.patientName}
+                                </div>
+                                <div style={{ fontWeight: 600, color: '#334155', fontSize: '0.84rem', marginTop: '2px' }}>
+                                  {l.patientPhone}
+                                </div>
+                              </td>
+
+                              <td style={{ maxWidth: 240 }}>
+                                {l.notes ? (
+                                  <div style={{
+                                    fontSize: '0.8rem',
+                                    color: '#0F172A',
+                                    background: '#F8FAFC',
+                                    border: '1px solid #E2E8F0',
+                                    padding: '0.4rem 0.6rem',
+                                    borderRadius: 6,
+                                    lineHeight: 1.4
+                                  }}>
+                                    {l.notes}
                                   </div>
-                                  {c.prescriptionText && (
-                                    <div style={{ fontSize: '0.72rem', color: '#065F46', marginTop: '0.25rem', maxWidth: 170, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', fontWeight: 600 }}>
-                                      {c.prescriptionText}
-                                    </div>
+                                ) : (
+                                  <span style={{ color: '#94A3B8', fontSize: '0.8rem' }}>No notes provided</span>
+                                )}
+                              </td>
+
+                              <td>
+                                <div style={{ fontWeight: 700, color: '#0F172A' }}>
+                                  {l.nurseName || 'Referral Partner'}
+                                </div>
+                                <div style={{ fontSize: '0.74rem', color: '#6D28D9', fontWeight: 600, marginTop: '2px' }}>
+                                  Commission: {commPct}%
+                                </div>
+                              </td>
+
+                              <td>
+                                {editingBilledLeadId === l.id ? (
+                                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.35rem' }}>
+                                    <input
+                                      type="number"
+                                      value={inlineBilledInput}
+                                      onChange={(e) => setInlineBilledInput(Number(e.target.value) || 0)}
+                                      style={{
+                                        width: 85,
+                                        padding: '0.3rem 0.45rem',
+                                        fontSize: '0.82rem',
+                                        borderRadius: 6,
+                                        border: '1px solid #0284C7'
+                                      }}
+                                    />
+                                    <button
+                                      type="button"
+                                      onClick={async () => {
+                                        const newCommRupees = Math.round((inlineBilledInput * commPct) / 100);
+                                        if (onUpdateLead) {
+                                          await onUpdateLead(l.id, {
+                                            billedAmount: inlineBilledInput,
+                                            referralCommissionRupees: newCommRupees
+                                          });
+                                          showToast(`Saved billed amount ₹${inlineBilledInput} (Partner gets ₹${newCommRupees})`);
+                                        }
+                                        setEditingBilledLeadId(null);
+                                      }}
+                                      className="btn btn-sm btn-primary"
+                                      style={{ padding: '0.3rem 0.55rem', fontSize: '0.74rem' }}
+                                    >
+                                      Save
+                                    </button>
+                                    <button
+                                      type="button"
+                                      onClick={() => setEditingBilledLeadId(null)}
+                                      className="btn btn-sm btn-outline"
+                                      style={{ padding: '0.3rem 0.55rem', fontSize: '0.74rem' }}
+                                    >
+                                      ✕
+                                    </button>
+                                  </div>
+                                ) : (
+                                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.45rem' }}>
+                                    <strong style={{ fontSize: '0.92rem', color: '#0F172A' }}>
+                                      ₹{billed.toLocaleString('en-IN')}
+                                    </strong>
+                                    <button
+                                      type="button"
+                                      onClick={() => {
+                                        setEditingBilledLeadId(l.id);
+                                        setInlineBilledInput(billed);
+                                      }}
+                                      title="Click to edit charged amount"
+                                      style={{ background: 'none', border: 'none', color: '#0284C7', cursor: 'pointer', padding: 2 }}
+                                    >
+                                      <Edit2 size={13} />
+                                    </button>
+                                  </div>
+                                )}
+                              </td>
+
+                              <td>
+                                <div>
+                                  <div style={{ color: '#059669', fontWeight: 800, fontSize: '0.94rem' }}>
+                                    ₹{commRupees.toLocaleString('en-IN')}
+                                  </div>
+                                  <div style={{ fontSize: '0.72rem', color: '#64748B' }}>
+                                    {commPct}% of ₹{billed.toLocaleString('en-IN')}
+                                  </div>
+                                </div>
+                              </td>
+
+                              <td>
+                                <span className={`status-pill ${isAccepted ? 'success' : isPending ? 'warning' : 'danger'}`}>
+                                  {isAccepted ? '✓ Accepted' : isPending ? '⏳ Pending Review' : '✕ Rejected'}
+                                </span>
+                                {isRejected && (l.rejectionReason || l.adminNotes) && (
+                                  <div style={{
+                                    fontSize: '0.72rem',
+                                    color: '#B91C1C',
+                                    background: '#FEF2F2',
+                                    border: '1px solid #FECACA',
+                                    padding: '2px 6px',
+                                    borderRadius: 4,
+                                    marginTop: '0.3rem',
+                                    maxWidth: 180
+                                  }}>
+                                    {l.rejectionReason || l.adminNotes}
+                                  </div>
+                                )}
+                              </td>
+
+                              <td style={{ textAlign: 'right' }}>
+                                <div style={{ display: 'inline-flex', alignItems: 'center', gap: '0.35rem' }}>
+                                  {isPending && (
+                                    <>
+                                      <button
+                                        type="button"
+                                        onClick={async () => {
+                                          if (onUpdateLead) {
+                                            const calcComm = Math.round((billed * commPct) / 100);
+                                            await onUpdateLead(l.id, {
+                                              status: 'Approved',
+                                              referralCommissionRupees: calcComm
+                                            });
+                                            showToast(`✓ Referral for ${l.patientName} accepted!`);
+                                          }
+                                        }}
+                                        className="btn btn-sm"
+                                        style={{
+                                          background: '#059669',
+                                          color: '#ffffff',
+                                          border: 'none',
+                                          fontWeight: 700,
+                                          fontSize: '0.75rem',
+                                          borderRadius: 6,
+                                          padding: '0.3rem 0.65rem',
+                                          display: 'inline-flex',
+                                          alignItems: 'center',
+                                          gap: '0.25rem'
+                                        }}
+                                        title="Accept Referral"
+                                      >
+                                        <CheckCircle size={13} />
+                                        <span>Accept</span>
+                                      </button>
+
+                                      <button
+                                        type="button"
+                                        onClick={async () => {
+                                          const reason = window.prompt('Enter rejection reason for this referral (will be shown to the partner):', 'Service unavailable in patient area');
+                                          if (reason !== null && onRejectLead) {
+                                            await onRejectLead(l.id, reason);
+                                            showToast(`Referral for ${l.patientName} rejected.`);
+                                          }
+                                        }}
+                                        className="btn btn-sm"
+                                        style={{
+                                          background: '#FEF2F2',
+                                          color: '#DC2626',
+                                          border: '1px solid #FECACA',
+                                          fontWeight: 700,
+                                          fontSize: '0.75rem',
+                                          borderRadius: 6,
+                                          padding: '0.3rem 0.55rem'
+                                        }}
+                                        title="Reject Referral"
+                                      >
+                                        Reject
+                                      </button>
+                                    </>
                                   )}
-                                </button>
-                              ) : (
-                                <span className="status-pill warning" style={{ fontSize: '0.75rem' }}>Pending Rx</span>
-                              )}
-                            </td>
-                            <td>
-                              <span style={{ fontSize: '0.82rem', fontWeight: 600 }}>{c.recommendedService || 'saline-infusion'}</span>
-                            </td>
-                            <td>
-                              <select
-                                value={c.doctorName || ''}
-                                onChange={async (e) => {
-                                  const newDoc = e.target.value;
-                                  if (onUpdateConsultation) {
-                                    await onUpdateConsultation(c.id, { doctorName: newDoc || undefined });
-                                    showToast(newDoc ? `Assigned to ${newDoc}!` : 'Consultation set to Unassigned');
-                                  }
-                                }}
-                                title="Click to assign or reassign attending doctor"
-                                style={{
-                                  fontSize: '0.78rem',
-                                  fontWeight: c.doctorName ? 700 : 500,
-                                  color: c.doctorName ? '#0369A1' : '#64748B',
-                                  padding: '0.25rem 0.5rem',
-                                  borderRadius: 6,
-                                  border: c.doctorName ? '1px solid #BAE6FD' : '1px dashed #CBD5E1',
-                                  background: c.doctorName ? '#F0F9FF' : '#F8FAFC',
-                                  cursor: 'pointer',
-                                  maxWidth: 170
-                                }}
-                              >
-                                <option value="">— Unassigned —</option>
-                                {doctorsList.map((doc) => (
-                                  <option key={doc.id} value={doc.name}>
-                                    {doc.name} ({doc.specialization || 'Doctor'})
-                                  </option>
-                                ))}
-                              </select>
-                            </td>
-                            <td>
-                              <span className={`status-pill ${c.status === 'Completed' ? 'success' :
-                                c.status === 'Awaiting Call' ? 'danger' : 'neutral'
-                                }`}>
-                                {c.status}
-                              </span>
-                            </td>
-                            <td style={{ textAlign: 'right' }}>
-                              <div style={{ display: 'inline-flex', alignItems: 'center', gap: '0.35rem' }}>
-                                {c.prescriptionIssued && (
+
+                                  <button
+                                    type="button"
+                                    onClick={() => handleOpenEditLeadModal(l)}
+                                    title="Edit Lead"
+                                    style={{
+                                      background: '#EFF6FF',
+                                      border: '1px solid #BFDBFE',
+                                      color: '#1D4ED8',
+                                      padding: '0.3rem 0.45rem',
+                                      borderRadius: 6,
+                                      cursor: 'pointer',
+                                      display: 'flex',
+                                      alignItems: 'center'
+                                    }}
+                                  >
+                                    <Edit2 size={13} />
+                                  </button>
+
+                                  <button
+                                    type="button"
+                                    onClick={() => handleDeleteLeadClick(l)}
+                                    title="Delete Lead"
+                                    style={{
+                                      background: '#FEF2F2',
+                                      border: '1px solid #FECDD3',
+                                      color: '#E11D48',
+                                      padding: '0.3rem 0.45rem',
+                                      borderRadius: 6,
+                                      cursor: 'pointer',
+                                      display: 'flex',
+                                      alignItems: 'center'
+                                    }}
+                                  >
+                                    <Trash2 size={13} />
+                                  </button>
+                                </div>
+                              </td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
+
+          {/* SUB-TAB 3: LEGACY DOCTOR TELECONSULTATIONS */}
+          {partnerSubTab === 'consultations' && (
+            <div className="card">
+              <div className="card-header" style={{ flexWrap: 'wrap', gap: '0.75rem' }}>
+                <div>
+                  <h3 className="card-title">Doctor Teleconsultation Triage & Rx Queue</h3>
+                  <p style={{ fontSize: '0.82rem', color: 'var(--neutral-500)', margin: 0 }}>
+                    Manage patient tele-triage requests and clinical prescriptions synced with Supabase <code>consultations</code> table.
+                  </p>
+                </div>
+
+                <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center', flexWrap: 'wrap' }}>
+                  <button
+                    onClick={exportConsultationsToCSV}
+                    className="btn btn-outline btn-sm"
+                    style={{ borderRadius: 9999, fontWeight: 700, gap: '0.4rem', borderColor: '#10B981', color: '#059669', background: '#ECFDF5' }}
+                  >
+                    <Download size={16} />
+                    <span>Export Consults</span>
+                  </button>
+                  <button
+                    onClick={handleOpenCreateConsultModal}
+                    className="btn btn-danger btn-sm"
+                    style={{ borderRadius: 9999, fontWeight: 700, gap: '0.4rem' }}
+                  >
+                    <Plus size={16} />
+                    <span>New Consultation</span>
+                  </button>
+                </div>
+              </div>
+
+              {/* Filter & Search Toolbar */}
+              <div style={{ padding: '0.85rem 1.25rem', borderBottom: '1px solid var(--neutral-200)', background: '#FAFAFA', display: 'flex', gap: '0.75rem', flexWrap: 'wrap', alignItems: 'center', justifyContent: 'space-between' }}>
+                <div style={{ position: 'relative', minWidth: 260, flex: 1 }}>
+                  <input
+                    type="text"
+                    value={consultSearch}
+                    onChange={(e) => setConsultSearch(e.target.value)}
+                    style={{
+                      width: '100%',
+                      padding: '0.45rem 0.75rem 0.45rem 2rem',
+                      fontSize: '0.85rem',
+                      borderRadius: 8,
+                      border: '1px solid #CBD5E1'
+                    }}
+                  />
+                  <Search size={14} style={{ position: 'absolute', left: 8, top: '50%', transform: 'translateY(-50%)', color: 'var(--neutral-400)' }} />
+                </div>
+
+                <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
+                  <span style={{ fontSize: '0.8rem', color: 'var(--neutral-600)', fontWeight: 600 }}>Status:</span>
+                  <select
+                    value={consultStatusFilter}
+                    onChange={(e) => setConsultStatusFilter(e.target.value)}
+                    style={{
+                      padding: '0.4rem 0.75rem',
+                      fontSize: '0.82rem',
+                      borderRadius: 8,
+                      border: '1px solid #CBD5E1',
+                      background: '#FFFFFF',
+                      fontWeight: 600
+                    }}
+                  >
+                    <option value="all">All Consultation Statuses ({consultations.length})</option>
+                    <option value="Awaiting Call">Awaiting Call</option>
+                    <option value="In Progress">In Progress</option>
+                    <option value="Completed">Completed</option>
+                    <option value="Cancelled">Cancelled</option>
+                  </select>
+                </div>
+              </div>
+
+              {filteredConsults.length === 0 ? (
+                <EmptyState
+                  title="No Consultations Found"
+                  description={consultSearch ? 'No consultation records matched your search.' : 'No patient teleconsultation requests logged.'}
+                />
+              ) : (
+                <>
+                  {renderBulkActionBar({
+                    entityName: 'Consultations',
+                    filteredIds: filteredConsults.map((c) => c.id),
+                    selectedSet: selectedConsultIds,
+                    setSelectedSet: setSelectedConsultIds,
+                    onDeleteMultiple: onDeleteMultipleConsultations
+                  })}
+                  <div className="table-responsive">
+                    <table className="data-table">
+                      <thead>
+                        <tr>
+                          <th style={{ width: 40, textAlign: 'center' }}>
+                            <input
+                              type="checkbox"
+                              checked={filteredConsults.length > 0 && filteredConsults.every((c) => selectedConsultIds.has(c.id))}
+                              onChange={() => toggleSelectAll(filteredConsults.map((c) => c.id), selectedConsultIds, setSelectedConsultIds)}
+                              style={{ cursor: 'pointer', accentColor: '#E11D48', width: 16, height: 16 }}
+                              title="Select / Deselect All Consultations"
+                            />
+                          </th>
+                          <th>Request ID</th>
+                          <th>Patient Name & Age</th>
+                          <th>Phone</th>
+                          <th>Symptoms / Chief Complaint</th>
+                          <th>Area</th>
+                          <th>Prescription</th>
+                          <th>Recommended Service</th>
+                          <th>Attending Doctor</th>
+                          <th>Status</th>
+                          <th style={{ textAlign: 'right' }}>Actions</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {filteredConsults.map((c) => {
+                          const isSelected = selectedConsultIds.has(c.id);
+                          return (
+                            <tr key={c.id} style={{ background: isSelected ? '#FFF1F2' : undefined }}>
+                              <td style={{ textAlign: 'center', width: 40 }}>
+                                <input
+                                  type="checkbox"
+                                  checked={isSelected}
+                                  onChange={() => toggleItemSelection(c.id, setSelectedConsultIds)}
+                                  style={{ cursor: 'pointer', accentColor: '#E11D48', width: 16, height: 16 }}
+                                />
+                              </td>
+                              <td><strong style={{ fontFamily: 'monospace' }}>{c.id}</strong></td>
+                              <td>
+                                <div><strong>{c.patientName}</strong></div>
+                                <div style={{ fontSize: '0.75rem', color: 'var(--neutral-500)' }}>Age: {c.patientAge || '—'}</div>
+                              </td>
+                              <td>{c.patientPhone}</td>
+                              <td style={{ maxWidth: 220 }}>
+                                <div style={{ fontSize: '0.82rem', color: 'var(--neutral-700)', lineHeight: 1.4 }}>
+                                  {c.symptoms}
+                                </div>
+                              </td>
+                              <td>
+                                <div style={{ display: 'flex', alignItems: 'center', gap: '0.3rem' }}>
+                                  <MapPin size={13} style={{ color: 'var(--neutral-500)' }} />
+                                  <span>{c.area}</span>
+                                </div>
+                              </td>
+                              <td>
+                                {c.prescriptionIssued ? (
                                   <button
                                     type="button"
                                     onClick={() => handleViewConsultPrescription(c)}
-                                    title="Inspect Prescribed Clinical Orders & Dosage"
+                                    title="Click to inspect doctor prescription"
                                     style={{
                                       background: '#ECFDF5',
                                       border: '1px solid #A7F3D0',
-                                      color: '#065F46',
-                                      padding: '0.3rem 0.55rem',
-                                      borderRadius: 6,
+                                      padding: '0.35rem 0.65rem',
+                                      borderRadius: 8,
+                                      textAlign: 'left',
                                       cursor: 'pointer',
-                                      display: 'inline-flex',
-                                      alignItems: 'center',
-                                      gap: '0.25rem',
-                                      fontWeight: 700,
-                                      fontSize: '0.74rem'
+                                      display: 'block',
+                                      width: '100%',
+                                      transition: 'all 0.15s ease'
                                     }}
                                   >
-                                    <FileText size={13} />
-                                    <span>View Rx</span>
+                                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.35rem' }}>
+                                      <span className="status-pill success" style={{ fontSize: '0.74rem', padding: '1px 6px' }}>✓ Rx Issued</span>
+                                      <Eye size={12} style={{ color: '#059669' }} />
+                                    </div>
+                                    {c.prescriptionText && (
+                                      <div style={{ fontSize: '0.72rem', color: '#065F46', marginTop: '0.25rem', maxWidth: 170, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', fontWeight: 600 }}>
+                                        {c.prescriptionText}
+                                      </div>
+                                    )}
                                   </button>
+                                ) : (
+                                  <span className="status-pill warning" style={{ fontSize: '0.75rem' }}>Pending Rx</span>
                                 )}
-                                <button
-                                  type="button"
-                                  onClick={() => handleOpenEditConsultModal(c)}
-                                  title="Edit Consultation in Supabase"
+                              </td>
+                              <td>
+                                <span style={{ fontSize: '0.82rem', fontWeight: 600 }}>{c.recommendedService || 'saline-infusion'}</span>
+                              </td>
+                              <td>
+                                <select
+                                  value={c.doctorName || ''}
+                                  onChange={async (e) => {
+                                    const newDoc = e.target.value;
+                                    if (onUpdateConsultation) {
+                                      await onUpdateConsultation(c.id, { doctorName: newDoc || undefined });
+                                      showToast(newDoc ? `Assigned to ${newDoc}!` : 'Consultation set to Unassigned');
+                                    }
+                                  }}
+                                  title="Click to assign or reassign attending doctor"
                                   style={{
-                                    background: '#EFF6FF',
-                                    border: '1px solid #BFDBFE',
-                                    color: '#1D4ED8',
-                                    padding: '0.3rem 0.45rem',
+                                    fontSize: '0.78rem',
+                                    fontWeight: c.doctorName ? 700 : 500,
+                                    color: c.doctorName ? '#0369A1' : '#64748B',
+                                    padding: '0.25rem 0.5rem',
                                     borderRadius: 6,
+                                    border: c.doctorName ? '1px solid #BAE6FD' : '1px dashed #CBD5E1',
+                                    background: c.doctorName ? '#F0F9FF' : '#F8FAFC',
                                     cursor: 'pointer',
-                                    display: 'flex',
-                                    alignItems: 'center'
+                                    maxWidth: 170
                                   }}
                                 >
-                                  <Edit2 size={13} />
-                                </button>
-                                <button
-                                  type="button"
-                                  onClick={() => handleDeleteConsultClick(c)}
-                                  title="Delete Consultation from Supabase"
-                                  style={{
-                                    background: '#FEF2F2',
-                                    border: '1px solid #FECDD3',
-                                    color: '#E11D48',
-                                    padding: '0.3rem 0.45rem',
-                                    borderRadius: 6,
-                                    cursor: 'pointer',
-                                    display: 'flex',
-                                    alignItems: 'center'
-                                  }}
-                                >
-                                  <Trash2 size={13} />
-                                </button>
-                              </div>
-                            </td>
-                          </tr>
-                        );
-                      })}
-                    </tbody>
-                  </table>
-                </div>
-              </>
-            )}
-          </div>
+                                  <option value="">— Unassigned —</option>
+                                  {doctorsList.map((doc) => (
+                                    <option key={doc.id} value={doc.name}>
+                                      {doc.name} ({doc.specialization || 'Doctor'})
+                                    </option>
+                                  ))}
+                                </select>
+                              </td>
+                              <td>
+                                <span className={`status-pill ${c.status === 'Completed' ? 'success' :
+                                  c.status === 'Awaiting Call' ? 'danger' : 'neutral'
+                                  }`}>
+                                  {c.status}
+                                </span>
+                              </td>
+                              <td style={{ textAlign: 'right' }}>
+                                <div style={{ display: 'inline-flex', alignItems: 'center', gap: '0.35rem' }}>
+                                  {c.prescriptionIssued && (
+                                    <button
+                                      type="button"
+                                      onClick={() => handleViewConsultPrescription(c)}
+                                      title="Inspect Prescribed Clinical Orders & Dosage"
+                                      style={{
+                                        background: '#ECFDF5',
+                                        border: '1px solid #A7F3D0',
+                                        color: '#065F46',
+                                        padding: '0.3rem 0.55rem',
+                                        borderRadius: 6,
+                                        cursor: 'pointer',
+                                        display: 'inline-flex',
+                                        alignItems: 'center',
+                                        gap: '0.25rem',
+                                        fontWeight: 700,
+                                        fontSize: '0.74rem'
+                                      }}
+                                    >
+                                      <FileText size={13} />
+                                      <span>View Rx</span>
+                                    </button>
+                                  )}
+                                  <button
+                                    type="button"
+                                    onClick={() => handleOpenEditConsultModal(c)}
+                                    title="Edit Consultation in Supabase"
+                                    style={{
+                                      background: '#EFF6FF',
+                                      border: '1px solid #BFDBFE',
+                                      color: '#1D4ED8',
+                                      padding: '0.3rem 0.45rem',
+                                      borderRadius: 6,
+                                      cursor: 'pointer',
+                                      display: 'flex',
+                                      alignItems: 'center'
+                                    }}
+                                  >
+                                    <Edit2 size={13} />
+                                  </button>
+                                  <button
+                                    type="button"
+                                    onClick={() => handleDeleteConsultClick(c)}
+                                    title="Delete Consultation from Supabase"
+                                    style={{
+                                      background: '#FEF2F2',
+                                      border: '1px solid #FECDD3',
+                                      color: '#E11D48',
+                                      padding: '0.3rem 0.45rem',
+                                      borderRadius: 6,
+                                      cursor: 'pointer',
+                                      display: 'flex',
+                                      alignItems: 'center'
+                                    }}
+                                  >
+                                    <Trash2 size={13} />
+                                  </button>
+                                </div>
+                              </td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
+                </>
+              )}
+            </div>
+          )}
+
         </div>
       )}
 
@@ -6977,7 +8138,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                   className={`btn btn-sm ${credentialRoleFilter === 'doctor' ? 'btn-primary' : 'btn-outline'}`}
                   style={{ fontSize: '0.78rem', padding: '0.3rem 0.65rem' }}
                 >
-                  🩺 Doctors ({doctorsList.length})
+                  👥 Others / Partners ({doctorsList.length})
                 </button>
                 <button
                   type="button"
@@ -6993,7 +8154,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                     boxShadow: pendingDoctorsCount > 0 && credentialRoleFilter !== 'pending_doctors' ? '0 0 0 1px #F59E0B' : undefined
                   }}
                 >
-                  ⏳ Pending Doctors ({pendingDoctorsCount})
+                  ⏳ Pending Others / Partners ({pendingDoctorsCount})
                 </button>
                 <button
                   type="button"
@@ -7140,7 +8301,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                             {/* Role Badge */}
                             <td>
                               <span className={`role-badge ${roleBadgeClass}`}>
-                                {u.role}
+                                {u.role === 'doctor' ? (u.profession?.toLowerCase().includes('doctor') ? 'Doctor / Partner' : 'Others / Partner') : u.role}
                               </span>
                             </td>
 
@@ -9960,3468 +11121,3553 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                       border: '1.5px solid',
                       borderColor: serviceForm.zeroPriceMode === 'custom' ? '#B45309' : '#CBD5E1',
                       fontSize: '0.78rem',
-                      fontWeight: 700,
-                      cursor: 'pointer',
-                      boxShadow: serviceForm.zeroPriceMode === 'custom' ? '0 2px 6px rgba(217, 119, 6, 0.25)' : 'none',
-                      transition: 'all 0.15s ease'
+                    fontWeight: 700,
+                    cursor: 'pointer',
+                    boxShadow: serviceForm.zeroPriceMode === 'custom' ? '0 2px 6px rgba(217, 119, 6, 0.25)' : 'none',
+                    transition: 'all 0.15s ease'
                     }}>
-                      <input
-                        type="radio"
-                        name="zeroPriceOption"
-                        checked={serviceForm.zeroPriceMode === 'custom'}
-                        onChange={() => setServiceForm({ ...serviceForm, zeroPriceMode: 'custom' })}
-                        style={{ accentColor: '#D97706' }}
-                      />
-                      <span>✏️ Customize...</span>
-                    </label>
-                  </div>
+                    <input
+                      type="radio"
+                      name="zeroPriceOption"
+                      checked={serviceForm.zeroPriceMode === 'custom'}
+                      onChange={() => setServiceForm({ ...serviceForm, zeroPriceMode: 'custom' })}
+                      style={{ accentColor: '#D97706' }}
+                    />
+                    <span>✏️ Customize...</span>
+                  </label>
+                </div>
 
                   {serviceForm.zeroPriceMode === 'custom' && (
-                    <div style={{ marginTop: '0.65rem', animation: 'fadeIn 0.2s ease-in-out' }}>
-                      <label style={{ fontSize: '0.74rem', fontWeight: 750, color: '#92400E', display: 'block', marginBottom: '4px' }}>
-                        CUSTOM PRICING TEXT DISPLAYED TO PATIENTS:
-                      </label>
-                      <input
-                        type="text"
-                        placeholder="e.g. Free Consultation, Included in Package, Decided after assessment..."
-                        value={serviceForm.customZeroPriceLabel}
-                        onChange={(e) => setServiceForm({ ...serviceForm, customZeroPriceLabel: e.target.value })}
-                        className="form-control"
-                        style={{ background: '#FFFFFF', borderColor: '#F59E0B', fontSize: '0.84rem', fontWeight: 600 }}
-                      />
-                    </div>
-                  )}
-                </div>
-              )}
-
-              <div style={{ display: 'grid', gridTemplateColumns: '1.2fr 1fr', gap: '0.75rem', marginBottom: '0.85rem' }}>
-                <div>
-                  <label className="form-label" style={{ fontSize: '0.78rem', fontWeight: 700 }}>TYPICAL DURATION</label>
-                  <input
-                    type="text"
-                    placeholder="45 - 60 mins"
-                    value={serviceForm.duration}
-                    onChange={(e) => setServiceForm({ ...serviceForm, duration: e.target.value })}
-                    className="form-control"
-                  />
-                </div>
-                <div>
-                  <label className="form-label" style={{ fontSize: '0.78rem', fontWeight: 700 }}>FEATURED BADGE</label>
-                  <input
-                    type="text"
-                    placeholder="Popular / 24/7 Available"
-                    value={serviceForm.badge}
-                    onChange={(e) => setServiceForm({ ...serviceForm, badge: e.target.value })}
-                    className="form-control"
-                  />
-                </div>
-              </div>
-
-              <div style={{ marginBottom: '0.85rem' }}>
-                <label className="form-label" style={{ fontSize: '0.78rem', fontWeight: 700 }}>CLINICAL DESCRIPTION</label>
-                <textarea
-                  rows={2}
-                  placeholder="Detailed description of the nursing procedure for patients..."
-                  value={serviceForm.description}
-                  onChange={(e) => setServiceForm({ ...serviceForm, description: e.target.value })}
-                  className="form-control"
-                />
-              </div>
-
-              <div style={{ marginBottom: '1.25rem' }}>
-                <label className="form-label" style={{ fontSize: '0.78rem', fontWeight: 700, display: 'block', marginBottom: '0.4rem' }}>
-                  SERVICE MAIN IMAGE (Photo)
-                </label>
-                <div style={{ display: 'flex', gap: '0.5rem', marginBottom: '0.5rem' }}>
-                  <input
-                    type="text"
-                    placeholder="Enter image URL e.g. /images/doctor_xpressnurse.jpg or https://..."
-                    value={serviceForm.imageUrl}
-                    onChange={(e) => setServiceForm({ ...serviceForm, imageUrl: e.target.value })}
-                    className="form-control"
-                    style={{ fontSize: '0.85rem' }}
-                  />
-                  {serviceForm.imageUrl && (
-                    <button
-                      type="button"
-                      onClick={() => setServiceForm({ ...serviceForm, imageUrl: '' })}
-                      className="btn btn-outline btn-sm"
-                      style={{ color: '#EF4444', borderColor: '#FECDD3', padding: '0 0.75rem', fontWeight: 600 }}
-                    >
-                      Clear
-                    </button>
-                  )}
-                </div>
-
-                {serviceForm.imageUrl && (
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', marginBottom: '0.5rem' }}>
-                    <img
-                      src={serviceForm.imageUrl}
-                      alt="Main image preview"
-                      style={{ width: 64, height: 64, objectFit: 'cover', borderRadius: 8, border: '1px solid #CBD5E1' }}
-                      onError={(e) => { (e.target as HTMLImageElement).src = '/images/doctor_xpressnurse.jpg'; }}
-                    />
-                    <span style={{ fontSize: '0.75rem', color: '#059669', fontWeight: 600 }}>✓ Image URL preview active</span>
-                  </div>
-                )}
-
-                <div style={{ display: 'flex', gap: '1rem', alignItems: 'center' }}>
-                  <div style={{ flex: 1 }}>
-                    <input
-                      type="file"
-                      accept="image/jpeg, image/png, image/webp"
-                      onChange={handleServiceImageUpload}
-                      disabled={isUploadingServiceImage}
-                      style={{
-                        width: '100%',
-                        padding: '0.45rem',
-                        border: '1px dashed #CBD5E1',
-                        borderRadius: 8,
-                        fontSize: '0.85rem',
-                        background: '#F8FAFC'
-                      }}
-                    />
-                    <div style={{ fontSize: '0.72rem', color: '#64748B', marginTop: '0.2rem' }}>
-                      Or upload photo file directly from your computer (auto-hosted to Cloudflare)
-                    </div>
-                    {isUploadingServiceImage && (
-                      <div style={{ fontSize: '0.75rem', color: '#0284C7', marginTop: '0.25rem', fontWeight: 600 }}>
-                        Uploading main image...
-                      </div>
-                    )}
-                  </div>
-                </div>
-              </div>
-
-              <div style={{ marginBottom: '1.25rem' }}>
-                <label className="form-label" style={{ fontSize: '0.78rem', fontWeight: 700, display: 'block', marginBottom: '0.4rem' }}>
-                  SERVICE THUMBNAIL IMAGE (Optional)
-                </label>
-                <div style={{ display: 'flex', gap: '0.5rem', marginBottom: '0.5rem' }}>
-                  <input
-                    type="text"
-                    placeholder="Enter thumbnail URL or upload below..."
-                    value={serviceForm.thumbnailUrl}
-                    onChange={(e) => setServiceForm({ ...serviceForm, thumbnailUrl: e.target.value })}
-                    className="form-control"
-                    style={{ fontSize: '0.85rem' }}
-                  />
-                  {serviceForm.thumbnailUrl && (
-                    <button
-                      type="button"
-                      onClick={() => setServiceForm({ ...serviceForm, thumbnailUrl: '' })}
-                      className="btn btn-outline btn-sm"
-                      style={{ color: '#EF4444', borderColor: '#FECDD3', padding: '0 0.75rem', fontWeight: 600 }}
-                    >
-                      Clear
-                    </button>
-                  )}
-                </div>
-
-                {serviceForm.thumbnailUrl && (
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', marginBottom: '0.5rem' }}>
-                    <img
-                      src={serviceForm.thumbnailUrl}
-                      alt="Thumbnail preview"
-                      style={{ width: 64, height: 64, objectFit: 'cover', borderRadius: 8, border: '1px solid #CBD5E1' }}
-                      onError={(e) => { (e.target as HTMLImageElement).src = '/images/doctor_xpressnurse.jpg'; }}
-                    />
-                    <span style={{ fontSize: '0.75rem', color: '#059669', fontWeight: 600 }}>✓ Thumbnail preview active</span>
-                  </div>
-                )}
-
-                <div style={{ display: 'flex', gap: '1rem', alignItems: 'center' }}>
-                  <div style={{ flex: 1 }}>
-                    <input
-                      type="file"
-                      accept="image/jpeg, image/png, image/webp"
-                      onChange={handleServiceThumbnailUpload}
-                      disabled={isUploadingServiceThumbnail}
-                      style={{
-                        width: '100%',
-                        padding: '0.45rem',
-                        border: '1px dashed #CBD5E1',
-                        borderRadius: 8,
-                        fontSize: '0.85rem',
-                        background: '#F8FAFC'
-                      }}
-                    />
-                    {isUploadingServiceThumbnail && (
-                      <div style={{ fontSize: '0.75rem', color: '#0284C7', marginTop: '0.25rem', fontWeight: 600 }}>
-                        Uploading thumbnail...
-                      </div>
-                    )}
-                  </div>
-                </div>
-              </div>
-
-              <div style={{ marginBottom: '1.25rem', display: 'flex', alignItems: 'center', gap: '0.6rem' }}>
-                <input
-                  type="checkbox"
-                  id="sRxReq"
-                  checked={serviceForm.prescriptionRequired}
-                  onChange={(e) => setServiceForm({ ...serviceForm, prescriptionRequired: e.target.checked })}
-                  style={{ width: 16, height: 16, cursor: 'pointer' }}
-                />
-                <label htmlFor="sRxReq" style={{ fontSize: '0.85rem', fontWeight: 600, cursor: 'pointer', margin: 0 }}>
-                  Prescription Mandatory (Doctor tele-consult triage prompted if patient has none)
-                </label>
-              </div>
-
-              <div style={{ display: 'flex', gap: '0.65rem', justifyContent: 'flex-end', alignItems: 'center' }}>
-                {editingService && (
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setIsServiceModalOpen(false);
-                      handleDeleteServiceClick(editingService);
-                    }}
-                    className="btn btn-outline"
-                    style={{
-                      borderColor: '#FECDD3',
-                      color: '#E11D48',
-                      background: '#FFF1F2',
-                      marginRight: 'auto',
-                      borderRadius: 9999,
-                      display: 'inline-flex',
-                      alignItems: 'center',
-                      gap: '0.4rem',
-                      fontWeight: 700
-                    }}
-                  >
-                    <Trash2 size={15} />
-                    <span>Delete Service</span>
-                  </button>
-                )}
-                <button type="button" onClick={() => setIsServiceModalOpen(false)} className="btn btn-outline" style={{ borderRadius: 9999 }}>
-                  Cancel
-                </button>
-                <button type="submit" className="btn btn-danger" style={{ borderRadius: 9999, fontWeight: 700, minWidth: 140, justifyContent: 'center' }}>
-                  {editingService ? 'Update Procedure' : 'Publish Procedure'}
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
-
-      {/* ========================================================================= */}
-      {/* 4. CREATE / EDIT LEAD MODAL */}
-      {/* ========================================================================= */}
-      {isLeadModalOpen && (
-        <div
-          className="modal-overlay"
-          data-lenis-prevent="true"
-          onClick={() => setIsLeadModalOpen(false)}
-          style={{ zIndex: 99999, pointerEvents: 'auto' }}
-        >
-          <div
-            className="modal-box"
-            onClick={(e) => e.stopPropagation()}
-            style={{ maxWidth: 540, borderRadius: 20, pointerEvents: 'auto' }}
-          >
-            <div className="modal-header" style={{ padding: '1.25rem 1.5rem', background: '#FAFAFA', borderBottom: '1px solid var(--neutral-200)' }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '0.65rem' }}>
-                <div style={{ width: 36, height: 36, borderRadius: 10, background: 'var(--primary-navy-950)', color: '#FFFFFF', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                  <Activity size={18} />
-                </div>
-                <div>
-                  <h3 style={{ fontSize: '1.15rem', fontWeight: 800, color: 'var(--primary-navy-950)', margin: 0 }}>
-                    {editingLead ? `Edit Referral Lead: ${editingLead.id}` : 'Record Nurse Referral Lead'}
-                  </h3>
-                  <div style={{ fontSize: '0.76rem', color: 'var(--neutral-500)', fontWeight: 500 }}>
-                    Governed by Rule 1 (referrals stay with the nurse) in Supabase <code>leads</code> table
-                  </div>
-                </div>
-              </div>
-              <button
-                onClick={() => setIsLeadModalOpen(false)}
-                style={{ background: '#F1F5F9', border: 'none', borderRadius: '50%', width: 32, height: 32, display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer' }}
-              >
-                <X size={17} />
-              </button>
-            </div>
-
-            <form onSubmit={handleSaveLeadSubmit} className="modal-body" style={{ padding: '1.25rem 1.5rem' }}>
-              <div style={{ display: 'grid', gridTemplateColumns: '1.3fr 1fr', gap: '0.75rem', marginBottom: '0.85rem' }}>
-                <div>
-                  <label className="form-label" style={{ fontSize: '0.78rem', fontWeight: 700 }}>PATIENT FULL NAME *</label>
-                  <input
-                    type="text"
-                    required
-                    placeholder="e.g. Lakshmi Devi"
-                    value={leadForm.patientName}
-                    onChange={(e) => setLeadForm({ ...leadForm, patientName: e.target.value })}
-                    className="form-control"
-                  />
-                </div>
-                <div>
-                  <label className="form-label" style={{ fontSize: '0.78rem', fontWeight: 700 }}>CONTACT PHONE *</label>
-                  <input
-                    type="tel"
-                    required
-                    placeholder="+91 98765 22222"
-                    value={leadForm.patientPhone}
-                    onChange={(e) => setLeadForm({ ...leadForm, patientPhone: e.target.value })}
-                    className="form-control"
-                  />
-                </div>
-              </div>
-
-              <div style={{ display: 'grid', gridTemplateColumns: '1.2fr 1fr', gap: '0.75rem', marginBottom: '0.85rem' }}>
-                <div>
-                  <label className="form-label" style={{ fontSize: '0.78rem', fontWeight: 700 }}>REFERRING NURSE (RULE 1)</label>
-                  <select
-                    className="form-control"
-                    value={leadForm.nurseId}
-                    onChange={(e) => setLeadForm({ ...leadForm, nurseId: e.target.value })}
-                  >
-                    {nurses.map((n) => (
-                      <option key={n.id} value={n.id}>{n.name} ({n.serviceArea})</option>
-                    ))}
-                  </select>
-                </div>
-                <div>
-                  <label className="form-label" style={{ fontSize: '0.78rem', fontWeight: 700 }}>PATIENT AREA</label>
-                  <input list="hyderabad-areas" placeholder="Select or enter area"
-                    className="form-control"
-                    value={leadForm.area}
-                    onChange={(e) => setLeadForm({ ...leadForm, area: e.target.value as HyderabadArea })}
-                  />
-                </div>
-              </div>
-
-              <div style={{ display: 'grid', gridTemplateColumns: '1.2fr 1fr', gap: '0.75rem', marginBottom: '0.85rem' }}>
-                <div>
-                  <label className="form-label" style={{ fontSize: '0.78rem', fontWeight: 700 }}>PROCEDURE NEEDED</label>
-                  <select
-                    className="form-control"
-                    value={leadForm.serviceId}
-                    onChange={(e) => setLeadForm({ ...leadForm, serviceId: e.target.value as ServiceId })}
-                  >
-                    {services.filter(s => s.id !== 'other').map((s) => (
-                      <option key={s.id} value={s.id}>{s.title}</option>
-                    ))}
-                    <option value="other">Other Nursing Service / Custom Care</option>
-                  </select>
-                </div>
-                <div>
-                  <label className="form-label" style={{ fontSize: '0.78rem', fontWeight: 700 }}>LEAD STATUS</label>
-                  <select
-                    className="form-control"
-                    value={leadForm.status}
-                    onChange={(e) => setLeadForm({ ...leadForm, status: e.target.value as any })}
-                  >
-                    <option value="Converted">Converted (Award Payout)</option>
-                    <option value="Submitted">Submitted (Under Review)</option>
-                    <option value="Assigned">Assigned</option>
-                    <option value="Lost">Lost</option>
-                  </select>
-                </div>
-              </div>
-
-              {(leadForm.serviceId as string) === 'other' && (
-                <div style={{ marginBottom: '0.85rem', animation: 'fadeIn 0.2s ease-in-out' }}>
-                  <label className="form-label" style={{ fontSize: '0.78rem', fontWeight: 700, color: '#0369A1' }}>
-                    SPECIFY OTHER NURSING PROCEDURE *
+                <div style={{ marginTop: '0.65rem', animation: 'fadeIn 0.2s ease-in-out' }}>
+                  <label style={{ fontSize: '0.74rem', fontWeight: 750, color: '#92400E', display: 'block', marginBottom: '4px' }}>
+                    CUSTOM PRICING TEXT DISPLAYED TO PATIENTS:
                   </label>
                   <input
                     type="text"
-                    required
-                    placeholder="Enter custom procedure name (e.g. Nebulization, Bed bath, Tracheostomy care...)"
-                    value={leadForm.customProcedure}
-                    onChange={(e) => setLeadForm({ ...leadForm, customProcedure: e.target.value })}
+                    placeholder="e.g. Free Consultation, Included in Package, Decided after assessment..."
+                    value={serviceForm.customZeroPriceLabel}
+                    onChange={(e) => setServiceForm({ ...serviceForm, customZeroPriceLabel: e.target.value })}
                     className="form-control"
-                    style={{ borderColor: '#38BDF8', backgroundColor: '#F0F9FF' }}
+                    style={{ background: '#FFFFFF', borderColor: '#F59E0B', fontSize: '0.84rem', fontWeight: 600 }}
                   />
                 </div>
               )}
-
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem', marginBottom: '1.25rem' }}>
-                <div>
-                  <label className="form-label" style={{ fontSize: '0.78rem', fontWeight: 700 }}>LEAD VALUE (₹)</label>
-                  <input
-                    type="number"
-                    min={0}
-                    value={leadForm.leadValueRupees}
-                    onChange={(e) => setLeadForm({ ...leadForm, leadValueRupees: Number(e.target.value) })}
-                    className="form-control"
-                  />
-                </div>
-                <div>
-                  <label className="form-label" style={{ fontSize: '0.78rem', fontWeight: 700 }}>POINTS AWARDED</label>
-                  <input
-                    type="number"
-                    min={0}
-                    value={leadForm.pointsAwarded}
-                    onChange={(e) => setLeadForm({ ...leadForm, pointsAwarded: Number(e.target.value) })}
-                    className="form-control"
-                  />
-                </div>
-              </div>
-
-              <div style={{ display: 'flex', gap: '0.65rem', justifyContent: 'flex-end', alignItems: 'center' }}>
-                {editingLead && (
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setIsLeadModalOpen(false);
-                      handleDeleteLeadClick(editingLead);
-                    }}
-                    className="btn btn-outline"
-                    style={{
-                      borderColor: '#FECDD3',
-                      color: '#E11D48',
-                      background: '#FFF1F2',
-                      marginRight: 'auto',
-                      borderRadius: 9999,
-                      display: 'inline-flex',
-                      alignItems: 'center',
-                      gap: '0.4rem',
-                      fontWeight: 700
-                    }}
-                  >
-                    <Trash2 size={15} />
-                    <span>Delete Lead</span>
-                  </button>
-                )}
-                <button type="button" onClick={() => setIsLeadModalOpen(false)} className="btn btn-outline" style={{ borderRadius: 9999 }}>
-                  Cancel
-                </button>
-                <button type="submit" className="btn btn-danger" style={{ borderRadius: 9999, fontWeight: 700, minWidth: 140, justifyContent: 'center' }}>
-                  {editingLead ? 'Update Lead' : 'Submit Lead'}
-                </button>
-              </div>
-            </form>
           </div>
-        </div>
-      )}
+              )}
 
-      {/* ========================================================================= */}
-      {/* 4B. ADMIN LEAD REWARD & APPROVAL DECISION MODAL */}
-      {/* ========================================================================= */}
-      {approvalModalLead && (
-        <div
-          className="modal-overlay"
-          data-lenis-prevent="true"
-          onClick={() => setApprovalModalLead(null)}
-          style={{ zIndex: 99999, pointerEvents: 'auto' }}
-        >
-          <div
-            className="modal-box"
-            onClick={(e) => e.stopPropagation()}
-            style={{ maxWidth: 580, borderRadius: 20, pointerEvents: 'auto', maxHeight: '90vh', overflowY: 'auto' }}
-          >
-            {/* Modal Header */}
-            <div className="modal-header" style={{ padding: '1.25rem 1.5rem', background: '#FAFAFA', borderBottom: '1px solid var(--neutral-200)' }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '0.65rem' }}>
-                <div style={{ width: 40, height: 40, borderRadius: 12, background: 'linear-gradient(135deg, #059669 0%, #047857 100%)', color: '#FFFFFF', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                  <Award size={22} />
-                </div>
-                <div>
-                  <h3 style={{ fontSize: '1.15rem', fontWeight: 800, color: 'var(--primary-navy-950)', margin: 0 }}>
-                    Admin Decision: Points & Referral Earnings
-                  </h3>
-                  <div style={{ fontSize: '0.76rem', color: 'var(--neutral-500)', fontWeight: 500 }}>
-                    Decide rewards for Nurse Referral Lead <strong style={{ color: 'var(--primary-navy-900)' }}>{approvalModalLead.id}</strong>
-                  </div>
-                </div>
-              </div>
-              <button
-                onClick={() => setApprovalModalLead(null)}
-                style={{ background: '#F1F5F9', border: 'none', borderRadius: '50%', width: 32, height: 32, display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer' }}
-              >
-                <X size={17} />
-              </button>
+          <div style={{ display: 'grid', gridTemplateColumns: '1.2fr 1fr', gap: '0.75rem', marginBottom: '0.85rem' }}>
+            <div>
+              <label className="form-label" style={{ fontSize: '0.78rem', fontWeight: 700 }}>TYPICAL DURATION</label>
+              <input
+                type="text"
+                placeholder="45 - 60 mins"
+                value={serviceForm.duration}
+                onChange={(e) => setServiceForm({ ...serviceForm, duration: e.target.value })}
+                className="form-control"
+              />
             </div>
-
-            <div className="modal-body" style={{ padding: '1.25rem 1.5rem' }}>
-              {/* Lead & Nurse Summary Card */}
-              {(() => {
-                const referringNurse = nurses.find((n) => n.id === approvalModalLead.nurseId);
-                const serviceObj = services.find((s) => s.id === approvalModalLead.serviceId);
-                const procedureFee = approvalModalLead.leadValueRupees || serviceObj?.priceNumber || 800;
-
-                return (
-                  <>
-                    <div style={{
-                      background: '#F8FAFC',
-                      border: '1px solid #E2E8F0',
-                      borderRadius: 12,
-                      padding: '1rem',
-                      marginBottom: '1.25rem'
-                    }}>
-                      <div style={{ display: 'grid', gridTemplateColumns: '1.2fr 1fr', gap: '0.75rem', marginBottom: '0.75rem' }}>
-                        <div>
-                          <div style={{ fontSize: '0.72rem', textTransform: 'uppercase', color: 'var(--neutral-500)', fontWeight: 700 }}>
-                            Patient Information
-                          </div>
-                          <div style={{ fontWeight: 700, fontSize: '0.95rem', color: 'var(--primary-navy-950)' }}>
-                            {approvalModalLead.patientName}
-                          </div>
-                          <div style={{ fontSize: '0.8rem', color: 'var(--neutral-600)' }}>
-                            📞 {approvalModalLead.patientPhone}
-                          </div>
-                          {(() => {
-                            const refCandidate = (approvalModalLead.referralType === 'nurse' || approvalModalLead.referredNursePhone)
-                              ? nurses.find((n) =>
-                                (approvalModalLead.referredNursePhone && n.phone && n.phone.replace(/\D/g, '') === approvalModalLead.referredNursePhone.replace(/\D/g, '')) ||
-                                (approvalModalLead.referredNurseName && n.name.toLowerCase() === approvalModalLead.referredNurseName.toLowerCase()) ||
-                                (approvalModalLead.patientName && n.name.toLowerCase() === approvalModalLead.patientName.toLowerCase())
-                              )
-                              : null;
-                            const modalArea = (refCandidate?.serviceArea && refCandidate.serviceArea !== 'Hyderabad Central')
-                              ? refCandidate.serviceArea
-                              : (approvalModalLead.area && approvalModalLead.area !== 'Hyderabad Central' ? approvalModalLead.area : (refCandidate?.serviceArea || approvalModalLead.area || 'Gachibowli'));
-                            return (
-                              <div style={{ fontSize: '0.78rem', color: 'var(--neutral-600)', display: 'flex', alignItems: 'center', gap: '0.25rem', marginTop: '0.2rem' }}>
-                                <MapPin size={12} style={{ color: 'var(--neutral-400)' }} />
-                                <span>{modalArea}, Hyderabad</span>
-                              </div>
-                            );
-                          })()}
-                        </div>
-
-                        <div>
-                          <div style={{ fontSize: '0.72rem', textTransform: 'uppercase', color: 'var(--neutral-500)', fontWeight: 700 }}>
-                            Procedure & Value
-                          </div>
-                          <div style={{ fontWeight: 700, fontSize: '0.9rem', color: 'var(--primary-navy-900)' }}>
-                            {serviceObj?.title || approvalModalLead.serviceId}
-                          </div>
-                          <div style={{ fontSize: '0.82rem', fontWeight: 700, color: '#059669', marginTop: '0.2rem' }}>
-                            Fee: ₹{procedureFee}
-                          </div>
-                          <div style={{ fontSize: '0.72rem', color: 'var(--neutral-500)', marginTop: '0.15rem' }}>
-                            Submitted: {formatDateDDMMYY(approvalModalLead.submittedAt, 'Recent')}
-                          </div>
-                        </div>
-                      </div>
-
-                      <div style={{
-                        borderTop: '1px solid #E2E8F0',
-                        paddingTop: '0.65rem',
-                        display: 'flex',
-                        alignItems: 'center',
-                        justifyContent: 'space-between',
-                        flexWrap: 'wrap',
-                        gap: '0.5rem'
-                      }}>
-                        <div>
-                          <span style={{ fontSize: '0.75rem', color: 'var(--neutral-500)', fontWeight: 600 }}>Referring Nurse: </span>
-                          <strong style={{ fontSize: '0.85rem', color: 'var(--primary-navy-900)' }}>
-                            {referringNurse?.name || approvalModalLead.nurseId} ({referringNurse?.serviceArea || 'Stationed'})
-                          </strong>
-                        </div>
-                        {referringNurse && (() => {
-                          const refM = calculateNurseMetrics(referringNurse, bookings, leads, services);
-                          return (
-                            <div style={{ fontSize: '0.75rem', color: 'var(--neutral-600)' }}>
-                              Current Balance: <strong style={{ color: '#059669' }}>⭐ {refM.totalPoints} pts</strong> | <strong style={{ color: '#059669' }}>₹{refM.totalMoney}</strong>
-                            </div>
-                          );
-                        })()}
-                      </div>
-                    </div>
-
-                    {/* Referral Reward: Plain & Clear 50 Points */}
-                    <div style={{
-                      background: 'linear-gradient(135deg, #ECFDF5 0%, #D1FAE5 100%)',
-                      border: '1.5px solid #10B981',
-                      borderRadius: 12,
-                      padding: '1rem 1.25rem',
-                      marginBottom: '1.25rem'
-                    }}>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '0.65rem' }}>
-                        <div style={{
-                          width: 40,
-                          height: 40,
-                          borderRadius: '50%',
-                          background: '#059669',
-                          color: '#FFFFFF',
-                          display: 'flex',
-                          alignItems: 'center',
-                          justifyContent: 'center',
-                          flexShrink: 0
-                        }}>
-                          <Award size={22} />
-                        </div>
-                        <div>
-                          <div style={{ fontWeight: 800, color: '#065F46', fontSize: '1rem' }}>
-                            Referral Reward: +50 Points {approvalModalLead.referralType !== 'nurse' && !approvalModalLead.referredNursePhone ? `+ 10% Fee (₹${approvalReferralRupees})` : ''}
-                          </div>
-                          <div style={{ fontSize: '0.82rem', color: '#047857', marginTop: '0.15rem' }}>
-                            {approvalModalLead.referralType !== 'nurse' && !approvalModalLead.referredNursePhone
-                              ? `Credited to referring nurse (${referringNurse?.name || 'Nurse'}) after assigned nurse completes the doorstep visit.`
-                              : `Credited directly to ${referringNurse?.name || 'Nurse'} upon certificate verification.`}
-                          </div>
-                        </div>
-                      </div>
-                    </div>
-
-                    {/* Patient Referral Dispatch / Nurse Assignment Option */}
-                    {approvalModalLead.referralType !== 'nurse' && !approvalModalLead.referredNursePhone && (
-                      <div style={{
-                        marginBottom: '1.25rem',
-                        background: '#F0F9FF',
-                        border: '1.5px solid #0284C7',
-                        borderRadius: 12,
-                        padding: '0.9rem 1.1rem'
-                      }}>
-                        <label className="form-label" style={{ fontSize: '0.84rem', fontWeight: 800, color: '#0369A1', display: 'flex', alignItems: 'center', gap: '0.35rem', marginBottom: '0.35rem' }}>
-                          <Shuffle size={14} />
-                          <span>🚗 Assign to Local Nurse Now (Optional)</span>
-                        </label>
-                        <select
-                          value={approvalAssignNurseId}
-                          onChange={(e) => setApprovalAssignNurseId(e.target.value)}
-                          className="form-control"
-                          style={{ fontSize: '0.85rem', fontWeight: 600, background: '#FFFFFF', borderColor: '#BAE6FD' }}
-                        >
-                          <option value="">Leave Unassigned (Queue directly in "🚗 Assign Nurses" tab)</option>
-                          {nurses
-                            .filter((n) => n.certificateVerified)
-                            .sort((a, b) => (a.serviceArea === approvalModalLead.area ? -1 : 1))
-                            .map((n) => (
-                              <option key={n.id} value={n.id}>
-                                {n.name} — {n.serviceArea} {n.serviceArea === approvalModalLead.area ? '⭐ (Local Area Match)' : ''}
-                              </option>
-                            ))}
-                        </select>
-                        <p style={{ fontSize: '0.74rem', color: '#0369A1', margin: '0.35rem 0 0' }}>
-                          {approvalAssignNurseId
-                            ? `✓ Patient will be immediately assigned to ${nurses.find(n => n.id === approvalAssignNurseId)?.name}. Points (+50) will credit to referring nurse once visit is completed.`
-                            : 'Order will queue in "🚗 Assign Nurses" tab and switch there immediately so you can dispatch.'}
-                        </p>
-                      </div>
-                    )}
-
-                    {/* Admin Input: Optional Note */}
-                    <div style={{ marginBottom: '1.25rem' }}>
-                      <label className="form-label" style={{ fontSize: '0.82rem', fontWeight: 700, color: 'var(--primary-navy-900)' }}>
-                        Office Note (Optional)
-                      </label>
-                      <input
-                        type="text"
-                        placeholder="e.g. Patient visit verified. 50 points added to nurse account."
-                        value={approvalNotes}
-                        onChange={(e) => setApprovalNotes(e.target.value)}
-                        className="form-control"
-                      />
-                    </div>
-
-                    {/* Reject Confirmation Drawer if toggled */}
-                    {isRejectConfirmOpen && (
-                      <div style={{
-                        background: '#FEF2F2',
-                        border: '1px solid #FECACA',
-                        borderRadius: 12,
-                        padding: '0.85rem 1rem',
-                        marginBottom: '1.25rem'
-                      }}>
-                        <div style={{ fontWeight: 800, color: '#991B1B', fontSize: '0.85rem', marginBottom: '0.4rem' }}>
-                          Confirm Lead Rejection
-                        </div>
-                        <p style={{ fontSize: '0.78rem', color: '#B91C1C', margin: '0 0 0.5rem' }}>
-                          This will mark the lead as Rejected with 0 points and 0 commission. The nurse will not receive any payout.
-                        </p>
-                        <input
-                          type="text"
-                          placeholder="Reason for rejection (e.g. Invalid patient contact, duplicate entry)"
-                          value={rejectReason}
-                          onChange={(e) => setRejectReason(e.target.value)}
-                          className="form-control"
-                          style={{ marginBottom: '0.65rem' }}
-                        />
-                        <div style={{ display: 'flex', gap: '0.5rem', justifyContent: 'flex-end' }}>
-                          <button
-                            type="button"
-                            onClick={() => setIsRejectConfirmOpen(false)}
-                            className="btn btn-outline btn-sm"
-                            style={{ borderRadius: 6, fontSize: '0.78rem' }}
-                          >
-                            Cancel
-                          </button>
-                          <button
-                            type="button"
-                            onClick={handleConfirmReject}
-                            disabled={isProcessingApproval}
-                            className="btn btn-danger btn-sm"
-                            style={{ borderRadius: 6, fontWeight: 700, fontSize: '0.78rem' }}
-                          >
-                            {isProcessingApproval ? 'Rejecting...' : 'Confirm Reject'}
-                          </button>
-                        </div>
-                      </div>
-                    )}
-
-                    {/* Modal Action Buttons */}
-                    <div style={{ display: 'flex', gap: '0.65rem', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap' }}>
-                      <div>
-                        {!isRejectConfirmOpen && (
-                          <button
-                            type="button"
-                            onClick={() => setIsRejectConfirmOpen(true)}
-                            className="btn btn-outline btn-sm"
-                            style={{
-                              color: '#DC2626',
-                              borderColor: '#FECACA',
-                              background: '#FFF5F5',
-                              borderRadius: 9999,
-                              fontWeight: 700,
-                              fontSize: '0.78rem'
-                            }}
-                          >
-                            Reject Lead
-                          </button>
-                        )}
-                      </div>
-
-                      <div style={{ display: 'flex', gap: '0.65rem' }}>
-                        <button
-                          type="button"
-                          onClick={() => setApprovalModalLead(null)}
-                          className="btn btn-outline"
-                          style={{ borderRadius: 9999 }}
-                        >
-                          Cancel
-                        </button>
-                        <button
-                          type="button"
-                          onClick={handleConfirmApproval}
-                          disabled={isProcessingApproval}
-                          className="btn btn-sm"
-                          style={{
-                            background: 'linear-gradient(135deg, #059669 0%, #047857 100%)',
-                            color: '#FFFFFF',
-                            border: 'none',
-                            borderRadius: 9999,
-                            fontWeight: 800,
-                            padding: '0.55rem 1.35rem',
-                            display: 'inline-flex',
-                            alignItems: 'center',
-                            gap: '0.45rem',
-                            boxShadow: '0 4px 10px rgba(5,150,105,0.35)',
-                            cursor: 'pointer'
-                          }}
-                        >
-                          <CheckCircle size={16} />
-                          <span>
-                            {isProcessingApproval
-                              ? 'Approving...'
-                              : approvalAssignNurseId
-                                ? `✓ Approve & Assign to ${nurses.find(n => n.id === approvalAssignNurseId)?.name.split(' ')[0] || 'Nurse'}`
-                                : '✓ Approve & Go to Assign Nurse'}
-                          </span>
-                        </button>
-                      </div>
-                    </div>
-                  </>
-                );
-              })()}
+            <div>
+              <label className="form-label" style={{ fontSize: '0.78rem', fontWeight: 700 }}>FEATURED BADGE</label>
+              <input
+                type="text"
+                placeholder="Popular / 24/7 Available"
+                value={serviceForm.badge}
+                onChange={(e) => setServiceForm({ ...serviceForm, badge: e.target.value })}
+                className="form-control"
+              />
             </div>
           </div>
-        </div>
-      )}
-      {isConsultModalOpen && (
-        <div
-          className="modal-overlay"
-          data-lenis-prevent="true"
-          onClick={() => setIsConsultModalOpen(false)}
-          style={{ zIndex: 99999, pointerEvents: 'auto' }}
-        >
-          <div
-            className="modal-box"
-            onClick={(e) => e.stopPropagation()}
-            style={{ maxWidth: 580, borderRadius: 20, pointerEvents: 'auto', maxHeight: '90vh', overflowY: 'auto' }}
-          >
-            <div className="modal-header" style={{ padding: '1.25rem 1.5rem', background: '#FAFAFA', borderBottom: '1px solid var(--neutral-200)' }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '0.65rem' }}>
-                <div style={{ width: 36, height: 36, borderRadius: 10, background: 'var(--primary-navy-950)', color: '#FFFFFF', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                  <Stethoscope size={18} />
-                </div>
-                <div>
-                  <h3 style={{ fontSize: '1.15rem', fontWeight: 800, color: 'var(--primary-navy-950)', margin: 0 }}>
-                    {editingConsult ? `Edit Tele-Consult: ${editingConsult.id}` : 'Create Doctor Tele-Consult Request'}
-                  </h3>
-                  <div style={{ fontSize: '0.76rem', color: 'var(--neutral-500)', fontWeight: 500 }}>
-                    Updates prescription queue in Supabase <code>consultations</code> table
-                  </div>
-                </div>
-              </div>
-              <button
-                onClick={() => setIsConsultModalOpen(false)}
-                style={{ background: '#F1F5F9', border: 'none', borderRadius: '50%', width: 32, height: 32, display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer' }}
-              >
-                <X size={17} />
-              </button>
-            </div>
 
-            <form onSubmit={handleSaveConsultSubmit} className="modal-body" style={{ padding: '1.25rem 1.5rem' }}>
-              <div style={{ display: 'grid', gridTemplateColumns: '1.3fr 1fr', gap: '0.75rem', marginBottom: '0.85rem' }}>
-                <div>
-                  <label className="form-label" style={{ fontSize: '0.78rem', fontWeight: 700 }}>PATIENT FULL NAME *</label>
-                  <input
-                    type="text"
-                    required
-                    placeholder="e.g. S. Venkat Rao"
-                    value={consultForm.patientName}
-                    onChange={(e) => setConsultForm({ ...consultForm, patientName: e.target.value })}
-                    className="form-control"
-                  />
-                </div>
-                <div>
-                  <label className="form-label" style={{ fontSize: '0.78rem', fontWeight: 700 }}>CONTACT PHONE *</label>
-                  <input
-                    type="tel"
-                    required
-                    placeholder="+91 98765 33333"
-                    value={consultForm.patientPhone}
-                    onChange={(e) => setConsultForm({ ...consultForm, patientPhone: e.target.value })}
-                    className="form-control"
-                  />
-                </div>
-              </div>
-
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1.2fr 1.2fr', gap: '0.75rem', marginBottom: '0.85rem' }}>
-                <div>
-                  <label className="form-label" style={{ fontSize: '0.78rem', fontWeight: 700 }}>AGE</label>
-                  <input
-                    type="number"
-                    min={1}
-                    max={120}
-                    value={consultForm.patientAge}
-                    onChange={(e) => setConsultForm({ ...consultForm, patientAge: Number(e.target.value) })}
-                    className="form-control"
-                  />
-                </div>
-                <div>
-                  <label className="form-label" style={{ fontSize: '0.78rem', fontWeight: 700 }}>AREA</label>
-                  <input list="hyderabad-areas" placeholder="Select or enter area"
-                    className="form-control"
-                    value={consultForm.area}
-                    onChange={(e) => setConsultForm({ ...consultForm, area: e.target.value as HyderabadArea })}
-                  />
-                </div>
-                <div>
-                  <label className="form-label" style={{ fontSize: '0.78rem', fontWeight: 700 }}>STATUS</label>
-                  <select
-                    className="form-control"
-                    value={consultForm.status}
-                    onChange={(e) => setConsultForm({ ...consultForm, status: e.target.value as any })}
-                  >
-                    <option value="Awaiting Call">Awaiting Call</option>
-                    <option value="In Call">In Call</option>
-                    <option value="Prescription Issued">Prescription Issued</option>
-                    <option value="Completed">Completed</option>
-                  </select>
-                </div>
-              </div>
-
-              <div style={{ marginBottom: '0.85rem' }}>
-                <label className="form-label" style={{ fontSize: '0.78rem', fontWeight: 700 }}>REPORTED SYMPTOMS / CHIEF COMPLAINT *</label>
-                <textarea
-                  rows={2}
-                  required
-                  placeholder="e.g. Mild dehydration, post-viral fatigue. Needs doctor consult for IV saline approval."
-                  value={consultForm.symptoms}
-                  onChange={(e) => setConsultForm({ ...consultForm, symptoms: e.target.value })}
-                  className="form-control"
-                />
-              </div>
-
-              <div style={{ marginBottom: '0.85rem', display: 'flex', alignItems: 'center', gap: '0.6rem' }}>
-                <input
-                  type="checkbox"
-                  id="cRxIss"
-                  checked={consultForm.prescriptionIssued}
-                  onChange={(e) => setConsultForm({ ...consultForm, prescriptionIssued: e.target.checked })}
-                  style={{ width: 16, height: 16, cursor: 'pointer' }}
-                />
-                <label htmlFor="cRxIss" style={{ fontSize: '0.85rem', fontWeight: 600, cursor: 'pointer', margin: 0 }}>
-                  Doctor Digital Prescription Issued
-                </label>
-              </div>
-
-              <div style={{ marginBottom: '0.85rem' }}>
-                <label className="form-label" style={{ fontSize: '0.78rem', fontWeight: 700 }}>ISSUED RX INSTRUCTIONS / MEDICATION</label>
-                <input
-                  type="text"
-                  placeholder="e.g. Normal Saline 500ml IV over 45 min under nurse supervision"
-                  value={consultForm.prescriptionText}
-                  onChange={(e) => setConsultForm({ ...consultForm, prescriptionText: e.target.value })}
-                  className="form-control"
-                />
-              </div>
-
-              <div style={{ marginBottom: '1rem' }}>
-                <label className="form-label" style={{ fontSize: '0.78rem', fontWeight: 700 }}>RECOMMENDED SERVICE FOR NURSING VISIT</label>
-                <select
-                  className="form-control"
-                  value={consultForm.recommendedService}
-                  onChange={(e) => setConsultForm({ ...consultForm, recommendedService: e.target.value as ServiceId })}
-                >
-                  {services.map((s) => (
-                    <option key={s.id} value={s.id}>{s.title}</option>
-                  ))}
-                </select>
-              </div>
-
-              <div style={{ marginBottom: '1.25rem' }}>
-                <label className="form-label" style={{ fontSize: '0.78rem', fontWeight: 700 }}>
-                  ATTENDING DOCTOR (MANUAL ASSIGNMENT)
-                </label>
-                <select
-                  className="form-control"
-                  value={consultForm.doctorName}
-                  onChange={(e) => setConsultForm({ ...consultForm, doctorName: e.target.value })}
-                >
-                  <option value="">Unassigned (No Doctor Auto-Assigned)</option>
-                  {doctorsList.map((doc) => (
-                    <option key={doc.id} value={doc.name}>
-                      {doc.name} ({doc.specialization || 'Physician'})
-                    </option>
-                  ))}
-                </select>
-                <div style={{ fontSize: '0.72rem', color: '#64748B', marginTop: 3 }}>
-                  Leave as "Unassigned" to keep in triage queue for on-duty doctors. No doctor is auto-assigned.
-                </div>
-              </div>
-
-              <div style={{ display: 'flex', gap: '0.65rem', justifyContent: 'flex-end', alignItems: 'center' }}>
-                {editingConsult && (
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setIsConsultModalOpen(false);
-                      handleDeleteConsultClick(editingConsult);
-                    }}
-                    className="btn btn-outline"
-                    style={{
-                      borderColor: '#FECDD3',
-                      color: '#E11D48',
-                      background: '#FFF1F2',
-                      marginRight: 'auto',
-                      borderRadius: 9999,
-                      display: 'inline-flex',
-                      alignItems: 'center',
-                      gap: '0.4rem',
-                      fontWeight: 700
-                    }}
-                  >
-                    <Trash2 size={15} />
-                    <span>Delete Consult</span>
-                  </button>
-                )}
-                <button type="button" onClick={() => setIsConsultModalOpen(false)} className="btn btn-outline" style={{ borderRadius: 9999 }}>
-                  Cancel
-                </button>
-                <button type="submit" className="btn btn-danger" style={{ borderRadius: 9999, fontWeight: 700, minWidth: 140, justifyContent: 'center' }}>
-                  {editingConsult ? 'Update Consult' : 'Create Consult'}
-                </button>
-              </div>
-            </form>
+          <div style={{ marginBottom: '0.85rem' }}>
+            <label className="form-label" style={{ fontSize: '0.78rem', fontWeight: 700 }}>CLINICAL DESCRIPTION</label>
+            <textarea
+              rows={2}
+              value={serviceForm.description}
+              onChange={(e) => setServiceForm({ ...serviceForm, description: e.target.value })}
+              className="form-control"
+            />
           </div>
-        </div>
-      )}
 
-      {/* ========================================================================= */}
-      {/* 6. CREATE / EDIT APP USER & CREDENTIALS MODAL */}
-      {/* ========================================================================= */}
-      {isUserModalOpen && (
-        <div
-          className="modal-overlay"
-          data-lenis-prevent="true"
-          onClick={() => setIsUserModalOpen(false)}
-          style={{ zIndex: 99999, pointerEvents: 'auto' }}
-        >
-          <div
-            className="modal-box"
-            onClick={(e) => e.stopPropagation()}
-            style={{ maxWidth: 540, borderRadius: 20, pointerEvents: 'auto' }}
-          >
-            <div className="modal-header" style={{ padding: '1.25rem 1.5rem', background: '#FAFAFA', borderBottom: '1px solid var(--neutral-200)' }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '0.65rem' }}>
-                <div style={{ width: 36, height: 36, borderRadius: 10, background: 'var(--primary-navy-950)', color: '#FFFFFF', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                  <KeyRound size={18} />
-                </div>
-                <div>
-                  <h3 style={{ fontSize: '1.15rem', fontWeight: 800, color: 'var(--primary-navy-950)', margin: 0 }}>
-                    {editingUser ? `Edit Account: ${editingUser.name}` : 'Add New User & Security PIN'}
-                  </h3>
-                  <div style={{ fontSize: '0.76rem', color: 'var(--neutral-500)', fontWeight: 500 }}>
-                    Directly updates portal login credentials in Supabase <code>app_users</code> table
-                  </div>
-                </div>
-              </div>
-              <button
-                onClick={() => setIsUserModalOpen(false)}
-                style={{ background: '#F1F5F9', border: 'none', borderRadius: '50%', width: 32, height: 32, display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer' }}
-              >
-                <X size={17} />
-              </button>
-            </div>
-
-            <form onSubmit={handleSaveUserSubmit} className="modal-body" style={{ padding: '1.25rem 1.5rem' }}>
-              <div style={{ display: 'grid', gridTemplateColumns: '1.3fr 1fr', gap: '0.75rem', marginBottom: '0.85rem' }}>
-                <div>
-                  <label className="form-label" style={{ fontSize: '0.78rem', fontWeight: 700 }}>ACCOUNT FULL NAME *</label>
-                  <input
-                    type="text"
-                    required
-                    placeholder="e.g. Dr. Priya Rao"
-                    value={userForm.name}
-                    onChange={(e) => setUserForm({ ...userForm, name: e.target.value })}
-                    className="form-control"
-                  />
-                </div>
-                <div>
-                  <label className="form-label" style={{ fontSize: '0.78rem', fontWeight: 700 }}>SYSTEM ROLE *</label>
-                  <select
-                    className="form-control"
-                    value={userForm.role}
-                    onChange={(e) => setUserForm({ ...userForm, role: e.target.value as any })}
-                  >
-                    <option value="nurse">Nurse</option>
-                    <option value="doctor">Doctor</option>
-                    <option value="admin">Administrator</option>
-                    <option value="patient">Patient</option>
-                  </select>
-                </div>
-              </div>
-
-              <div style={{ display: 'grid', gridTemplateColumns: '1.3fr 1fr', gap: '0.75rem', marginBottom: '0.85rem' }}>
-                <div>
-                  <label className="form-label" style={{ fontSize: '0.78rem', fontWeight: 700 }}>LOGIN IDENTIFIER (EMAIL / PHONE) *</label>
-                  <input
-                    type="text"
-                    placeholder="e.g. priya.rao@xpressnurse.in or mobile"
-                    value={userForm.identifier}
-                    onChange={(e) => setUserForm({ ...userForm, identifier: e.target.value })}
-                    className="form-control"
-                  />
-                </div>
-                <div>
-                  <label className="form-label" style={{ fontSize: '0.78rem', fontWeight: 700 }}>4-DIGIT PIN *</label>
-                  <input
-                    type="text"
-                    maxLength={4}
-                    required
-                    placeholder="e.g. 2002"
-                    value={userForm.pin}
-                    onChange={(e) => setUserForm({ ...userForm, pin: e.target.value.replace(/\D/g, '') })}
-                    className="form-control"
-                    style={{ fontFamily: 'monospace', fontWeight: 800, letterSpacing: '0.1em' }}
-                  />
-                </div>
-              </div>
-
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem', marginBottom: '0.85rem' }}>
-                <div>
-                  <label className="form-label" style={{ fontSize: '0.78rem', fontWeight: 700 }}>MOBILE NUMBER</label>
-                  <input
-                    type="tel"
-                    placeholder="+91 98765 00000"
-                    value={userForm.phone}
-                    onChange={(e) => setUserForm({ ...userForm, phone: e.target.value })}
-                    className="form-control"
-                  />
-                </div>
-                <div>
-                  <label className="form-label" style={{ fontSize: '0.78rem', fontWeight: 700 }}>EMAIL ADDRESS</label>
-                  <input
-                    type="email"
-                    placeholder="name@xpressnurse.in"
-                    value={userForm.email}
-                    onChange={(e) => setUserForm({ ...userForm, email: e.target.value })}
-                    className="form-control"
-                  />
-                </div>
-              </div>
-
-              <div style={{ display: 'grid', gridTemplateColumns: '1.2fr 1fr', gap: '0.75rem', marginBottom: '0.85rem' }}>
-                <div>
-                  <label className="form-label" style={{ fontSize: '0.78rem', fontWeight: 700 }}>DESIGNATION / CLINICAL TITLE</label>
-                  <input
-                    type="text"
-                    placeholder="Teleconsultation Physician (MBBS)"
-                    value={userForm.designation}
-                    onChange={(e) => setUserForm({ ...userForm, designation: e.target.value })}
-                    className="form-control"
-                  />
-                </div>
-                <div>
-                  <label className="form-label" style={{ fontSize: '0.78rem', fontWeight: 700 }}>STATION / STAY AREA</label>
-                  <input
-                    type="text"
-                    placeholder="e.g. LB Nagar, Gachibowli, or Hyderabad Central"
-                    value={userForm.serviceArea}
-                    onChange={(e) => setUserForm({ ...userForm, serviceArea: e.target.value })}
-                    className="form-control"
-                  />
-                </div>
-              </div>
-
-              <div style={{ marginBottom: '1.25rem' }}>
-                <label className="form-label" style={{ fontSize: '0.78rem', fontWeight: 700 }}>ACCOUNT APPROVAL STATUS *</label>
-                <select
-                  className="form-control"
-                  value={userForm.status}
-                  onChange={(e) => setUserForm({ ...userForm, status: e.target.value as any })}
-                  style={{
-                    fontWeight: 700,
-                    background: userForm.status === 'Active' ? '#ECFDF5' : userForm.status === 'Pending Verification' ? '#FFFBEB' : '#FEF2F2',
-                    borderColor: userForm.status === 'Active' ? '#10B981' : userForm.status === 'Pending Verification' ? '#F59E0B' : '#EF4444',
-                    color: userForm.status === 'Active' ? '#047857' : userForm.status === 'Pending Verification' ? '#B45309' : '#DC2626'
-                  }}
-                >
-                  <option value="Active">✓ Active (Approved to Log In)</option>
-                  <option value="Pending Verification">⏳ Pending Verification (Doctor Login Blocked until Approved)</option>
-                  <option value="Rejected">✕ Rejected (Login Blocked)</option>
-                </select>
-                <div style={{ fontSize: '0.74rem', color: 'var(--neutral-500)', marginTop: '0.25rem' }}>
-                  Doctors can only log in to the medical portal when set to <strong>Active</strong>.
-                </div>
-              </div>
-
-              <div style={{ display: 'flex', gap: '0.65rem', justifyContent: 'flex-end', alignItems: 'center' }}>
-                {editingUser && (
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setIsUserModalOpen(false);
-                      handleDeleteUserClick(editingUser);
-                    }}
-                    className="btn btn-outline"
-                    style={{
-                      borderColor: '#FECDD3',
-                      color: '#E11D48',
-                      background: '#FFF1F2',
-                      marginRight: 'auto',
-                      borderRadius: 9999,
-                      display: 'inline-flex',
-                      alignItems: 'center',
-                      gap: '0.4rem',
-                      fontWeight: 700
-                    }}
-                  >
-                    <Trash2 size={15} />
-                    <span>Delete User</span>
-                  </button>
-                )}
-                <button type="button" onClick={() => setIsUserModalOpen(false)} className="btn btn-outline" style={{ borderRadius: 9999 }}>
-                  Cancel
-                </button>
-                <button type="submit" className="btn btn-danger" style={{ borderRadius: 9999, fontWeight: 700, minWidth: 140, justifyContent: 'center' }}>
-                  {editingUser ? 'Update Account' : 'Save Account'}
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
-
-      {/* 1. CLOUDFLARE R2 PRESCRIPTION VIEWER MODAL */}
-      {isPrescriptionModalOpen && (
-        <div
-          className="modal-overlay"
-          onClick={() => setIsPrescriptionModalOpen(false)}
-          style={{ zIndex: 999999, pointerEvents: 'auto' }}
-        >
-          <div
-            className="modal-box"
-            onClick={(e) => e.stopPropagation()}
-            style={{ maxWidth: 680, borderRadius: 20, pointerEvents: 'auto', maxHeight: '92vh', overflowY: 'auto' }}
-          >
-            {/* Header */}
-            <div className="modal-header" style={{ padding: '1.25rem 1.5rem', background: '#FAFAFA', borderBottom: '1px solid var(--neutral-200)' }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '0.65rem' }}>
-                <div style={{ width: 38, height: 38, borderRadius: 10, background: '#ECFDF5', color: '#059669', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                  <FileCheck size={20} />
-                </div>
-                <div>
-                  <h3 style={{ fontSize: '1.15rem', fontWeight: 800, color: 'var(--primary-navy-950)', margin: 0 }}>
-                    {previewPrescriptionConsultation ? 'Doctor Teleconsultation Clinical Prescription' : 'Cloudflare R2 Verified Prescription'}
-                  </h3>
-                  <div style={{ fontSize: '0.76rem', color: '#0284C7', fontWeight: 600, display: 'inline-flex', alignItems: 'center', gap: '0.3rem' }}>
-                    <Cloud size={12} />
-                    <span>
-                      {previewPrescriptionConsultation
-                        ? `Consultation: ${previewPrescriptionConsultation.id} • Issued by ${previewPrescriptionConsultation.doctorName || 'Attending Physician'}`
-                        : `Bucket: ${r2Config.bucketName} • Category: prescriptions`}
-                    </span>
-                  </div>
-                </div>
-              </div>
-              <button
-                type="button"
-                onClick={() => {
-                  setIsPrescriptionModalOpen(false);
-                  setPreviewPrescriptionConsultation(null);
-                }}
-                className="modal-close-btn"
-                style={{ background: '#F1F5F9', border: 'none', borderRadius: '50%', width: 32, height: 32, display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer' }}
-              >
-                <X size={16} />
-              </button>
-            </div>
-
-            {/* Content Body */}
-            <div style={{ padding: '1.4rem' }}>
-              {/* Patient & Booking Metadata Bar */}
-              <div style={{
-                background: '#F8FAFC',
-                border: '1px solid #E2E8F0',
-                borderRadius: 12,
-                padding: '0.9rem 1.1rem',
-                marginBottom: '1.25rem',
-                display: 'grid',
-                gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))',
-                gap: '0.75rem'
-              }}>
-                <div>
-                  <div style={{ fontSize: '0.7rem', color: 'var(--neutral-500)', fontWeight: 700, textTransform: 'uppercase' }}>PATIENT</div>
-                  <div style={{ fontSize: '0.86rem', fontWeight: 800, color: 'var(--primary-navy-950)' }}>
-                    {previewPrescriptionConsultation
-                      ? `${previewPrescriptionConsultation.patientName} (${previewPrescriptionConsultation.patientAge || '—'} yrs)`
-                      : previewPrescriptionBooking?.patientName || previewPrescriptionObject?.metadata?.patientName || 'Home Care Patient'}
-                  </div>
-                </div>
-                <div>
-                  <div style={{ fontSize: '0.7rem', color: 'var(--neutral-500)', fontWeight: 700, textTransform: 'uppercase' }}>PROCEDURE</div>
-                  <div style={{ fontSize: '0.86rem', fontWeight: 700, color: 'var(--primary-navy-900)' }}>
-                    {previewPrescriptionConsultation
-                      ? previewPrescriptionConsultation.recommendedService || 'Saline Infusion'
-                      : previewPrescriptionBooking?.serviceTitle || previewPrescriptionObject?.metadata?.serviceTitle || 'Clinical Home Care'}
-                  </div>
-                </div>
-                <div>
-                  <div style={{ fontSize: '0.7rem', color: 'var(--neutral-500)', fontWeight: 700, textTransform: 'uppercase' }}>
-                    {previewPrescriptionConsultation ? 'CONTACT PHONE' : 'BOOKING REF'}
-                  </div>
-                  <div style={{ fontSize: '0.86rem', fontWeight: 800, fontFamily: 'monospace', color: '#0284C7' }}>
-                    {previewPrescriptionConsultation
-                      ? previewPrescriptionConsultation.patientPhone
-                      : previewPrescriptionBooking?.id || previewPrescriptionObject?.metadata?.bookingId || 'DIRECT-RX'}
-                  </div>
-                </div>
-                <div>
-                  <div style={{ fontSize: '0.7rem', color: 'var(--neutral-500)', fontWeight: 700, textTransform: 'uppercase' }}>
-                    {previewPrescriptionConsultation ? 'AREA / ZONE' : 'R2 FILE NAME'}
-                  </div>
-                  <div style={{ fontSize: '0.8rem', fontWeight: 600, color: 'var(--neutral-700)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                    {previewPrescriptionConsultation
-                      ? previewPrescriptionConsultation.area
-                      : previewPrescriptionBooking?.prescriptionFileName || previewPrescriptionObject?.fileName || 'Doctor_Rx.pdf'}
-                  </div>
-                </div>
-              </div>
-
-              {/* Document Display / Preview */}
-              <div style={{
-                border: '1.5px solid #E2E8F0',
-                borderRadius: 14,
-                overflow: 'hidden',
-                background: '#FFFFFF',
-                boxShadow: '0 4px 15px rgba(0,0,0,0.04)',
-                marginBottom: '1.25rem'
-              }}>
-                {(() => {
-                  const srcUrl = previewPrescriptionObject?.dataUrl || previewPrescriptionObject?.publicUrl || previewPrescriptionBooking?.prescriptionUrl;
-                  const isImage = previewPrescriptionObject?.contentType?.startsWith('image/') ||
-                    (previewPrescriptionObject?.fileName && previewPrescriptionObject.fileName.toLowerCase().match(/\.(jpg|jpeg|png|gif|webp)$/)) ||
-                    (srcUrl && typeof srcUrl === 'string' && srcUrl.toLowerCase().match(/\.(jpg|jpeg|png|gif|webp)(\?.*)?$/));
-
-                  const safeSrcUrl = typeof srcUrl === 'string' ? encodeURI(srcUrl) : srcUrl;
-
-                  if (srcUrl && safeSrcUrl) {
-                    return isImage ? (
-                      <div style={{ padding: '1rem', textAlign: 'center', background: '#F8FAFC' }}>
-                        <img
-                          src={safeSrcUrl}
-                          alt="Prescription Document"
-                          style={{ maxWidth: '100%', maxHeight: 420, borderRadius: 8, objectFit: 'contain', boxShadow: '0 2px 10px rgba(0,0,0,0.1)' }}
-                        />
-                      </div>
-                    ) : (
-                      <div style={{ height: 420 }}>
-                        <iframe
-                          src={safeSrcUrl}
-                          title="Prescription PDF"
-                          style={{ width: '100%', height: '100%', border: 'none' }}
-                        />
-                      </div>
-                    );
-                  }
-
-                  return (
-                    /* Formal Rx Document Layout (High Medical Fidelity) */
-                    <div style={{ padding: '2rem 1.75rem', background: '#FFFFFF', position: 'relative' }}>
-                      {/* Watermark */}
-                      <div style={{
-                        position: 'absolute',
-                        top: '50%',
-                        left: '50%',
-                        transform: 'translate(-50%, -50%) rotate(-25deg)',
-                        fontSize: '3.5rem',
-                        fontWeight: 900,
-                        color: 'rgba(2, 132, 199, 0.05)',
-                        pointerEvents: 'none',
-                        whiteSpace: 'nowrap'
-                      }}>
-                        {previewPrescriptionConsultation ? 'DOCTOR TELECONSULTATION RX' : 'CLOUDFLARE R2 VERIFIED'}
-                      </div>
-
-                      {/* Prescription Document Header */}
-                      <div style={{ display: 'flex', justifyContent: 'space-between', borderBottom: '2px solid #0A192F', paddingBottom: '1rem', marginBottom: '1.25rem' }}>
-                        <div>
-                          <div style={{ fontSize: '1.25rem', fontWeight: 900, color: 'var(--primary-navy-950)' }}>
-                            MEDICAL PRESCRIPTION & CLINICAL ORDERS
-                          </div>
-                          <div style={{ fontSize: '0.8rem', color: '#0284C7', fontWeight: 700 }}>
-                            TELANGANA STATE HEALTH SERVICES COMPLIANT
-                          </div>
-                          <div style={{ fontSize: '0.74rem', color: '#64748B', marginTop: '0.2rem' }}>
-                            Verified Doorstep Nursing Execution Protocol • {previewPrescriptionConsultation?.doctorName || previewPrescriptionBooking?.referredByDoctorName || 'Verified Attending Physician'}
-                          </div>
-                        </div>
-                        <div style={{ textAlign: 'right' }}>
-                          <span style={{
-                            background: '#ECFDF5',
-                            border: '1px solid #A7F3D0',
-                            color: '#059669',
-                            fontWeight: 800,
-                            fontSize: '0.74rem',
-                            padding: '3px 9px',
-                            borderRadius: 9999,
-                            textTransform: 'uppercase'
-                          }}>
-                            ✓ Valid Clinical Rx
-                          </span>
-                          <div style={{ fontSize: '0.72rem', color: '#64748B', marginTop: '0.35rem' }}>
-                            Issued: {formatDateDDMMYY(previewPrescriptionConsultation?.requestedAt || previewPrescriptionObject?.uploadedAt || Date.now())}
-                          </div>
-                        </div>
-                      </div>
-
-                      {/* Actual Uploaded File or Mock Text */}
-                      {(() => {
-                        const srcUrl = previewPrescriptionObject?.dataUrl || previewPrescriptionObject?.publicUrl || previewPrescriptionBooking?.prescriptionUrl;
-                        const isImage = previewPrescriptionObject?.contentType?.startsWith('image/') ||
-                          (previewPrescriptionObject?.fileName && previewPrescriptionObject.fileName.toLowerCase().match(/\.(jpg|jpeg|png|gif|webp)$/)) ||
-                          (srcUrl && typeof srcUrl === 'string' && srcUrl.toLowerCase().match(/\.(jpg|jpeg|png|gif|webp)(\?.*)?$/));
-                        const safeSrcUrl = typeof srcUrl === 'string' ? encodeURI(srcUrl) : srcUrl;
-
-                        if (srcUrl && safeSrcUrl) {
-                          return (
-                            <div style={{ marginBottom: '1.5rem', textAlign: 'center' }}>
-                              {isImage ? (
-                                <img src={safeSrcUrl} alt="Prescription" style={{ maxWidth: '100%', maxHeight: '50vh', borderRadius: 8, border: '1px solid #CBD5E1', objectFit: 'contain' }} />
-                              ) : (
-                                <iframe src={safeSrcUrl} style={{ width: '100%', height: '50vh', borderRadius: 8, border: '1px solid #CBD5E1' }} title="Prescription Document" />
-                              )}
-                            </div>
-                          );
-                        }
-                        return (
-                          <div style={{ marginBottom: '1.5rem' }}>
-                            <div style={{ fontSize: '2rem', fontWeight: 900, color: '#E11D48', fontFamily: 'serif', lineHeight: 1, marginBottom: '0.5rem' }}>
-                              ℞
-                            </div>
-                            <div style={{ background: '#F8FAFC', padding: '1.15rem', borderRadius: 10, border: '1px solid #E2E8F0' }}>
-                              <div style={{ fontSize: '0.84rem', fontWeight: 700, color: 'var(--primary-navy-900)', marginBottom: '0.35rem' }}>
-                                Approved Clinical Procedure: {previewPrescriptionConsultation ? previewPrescriptionConsultation.recommendedService : (previewPrescriptionBooking?.serviceTitle || previewPrescriptionObject?.metadata?.serviceTitle || 'Home Clinical Nursing Visit')}
-                              </div>
-                              {previewPrescriptionConsultation?.symptoms && (
-                                <div style={{ fontSize: '0.82rem', color: '#64748B', marginBottom: '0.65rem' }}>
-                                  <strong>Reported Symptoms / Triage:</strong> "{previewPrescriptionConsultation.symptoms}"
-                                </div>
-                              )}
-                              <div style={{ fontSize: '0.74rem', color: '#475569', textTransform: 'uppercase', fontWeight: 700, letterSpacing: '0.04em', marginBottom: '0.35rem' }}>
-                                Doctor Clinical Orders & Instructions:
-                              </div>
-                              <p style={{ fontSize: '0.92rem', color: '#0F172A', lineHeight: 1.6, margin: 0, fontWeight: 600, whiteSpace: 'pre-wrap', background: '#FFFFFF', padding: '0.85rem 1rem', borderRadius: 8, border: '1px solid #CBD5E1' }}>
-                                {previewPrescriptionConsultation?.prescriptionText || 'Administer sterile doorstep nursing care in strict compliance with attending physician orders. Ensure vitals evaluation (BP, Pulse, SpO2, Temperature) prior to procedure initiation and secure cannula/aseptic dressing upon conclusion.'}
-                              </p>
-                            </div>
-                          </div>
-                        );
-                      })()}
-
-                      {/* Attending RN & R2 Cloud Verification Tag */}
-                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end', paddingTop: '1rem', borderTop: '1px dashed #CBD5E1' }}>
-                        <div>
-                          <div style={{ fontSize: '0.72rem', color: '#64748B' }}>
-                            {previewPrescriptionConsultation ? 'Attending Physician:' : 'Cloudflare R2 Object Location:'}
-                          </div>
-                          <code style={{ fontSize: '0.74rem', background: '#F1F5F9', color: '#0284C7', padding: '2px 6px', borderRadius: 4 }}>
-                            {previewPrescriptionConsultation
-                              ? `${previewPrescriptionConsultation.doctorName || 'Attending Physician'} • Verified Tele-Consultant`
-                              : (previewPrescriptionObject?.key || `prescriptions/${previewPrescriptionBooking?.prescriptionFileName || 'Rx_Verified.pdf'}`)}
-                          </code>
-                        </div>
-                        <div style={{ textAlign: 'right' }}>
-                          <div style={{ fontSize: '0.82rem', fontWeight: 800, color: 'var(--primary-navy-900)' }}>
-                            Xpress Nurse Medical Command Center
-                          </div>
-                          <div style={{ fontSize: '0.72rem', color: '#059669', fontWeight: 700 }}>
-                            ✓ Digital Signature Verified
-                          </div>
-                        </div>
-                      </div>
-                    </div>
-                  );
-                })()}
-              </div>
-
-              {/* Cloudflare Public URL Bar */}
-              <div style={{
-                background: '#F0F9FF',
-                border: '1px solid #BAE6FD',
-                borderRadius: 10,
-                padding: '0.65rem 0.85rem',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'space-between',
-                flexWrap: 'wrap',
-                gap: '0.5rem',
-                fontSize: '0.76rem'
-              }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', minWidth: 0 }}>
-                  <Cloud size={14} style={{ color: '#0284C7', flexShrink: 0 }} />
-                  <span style={{ color: '#0369A1', fontWeight: 700, flexShrink: 0 }}>Public CDN Link:</span>
-                  <span style={{ color: '#0284C7', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                    {encodeURI(previewPrescriptionObject?.publicUrl || previewPrescriptionBooking?.prescriptionUrl || `${r2Config.publicDomain}/prescriptions/${previewPrescriptionBooking?.prescriptionFileName || 'Rx_Verified.pdf'}`)}
-                  </span>
-                </div>
+          <div style={{ marginBottom: '1.25rem' }}>
+            <label className="form-label" style={{ fontSize: '0.78rem', fontWeight: 700, display: 'block', marginBottom: '0.4rem' }}>
+              SERVICE MAIN IMAGE (Photo)
+            </label>
+            <div style={{ display: 'flex', gap: '0.5rem', marginBottom: '0.5rem' }}>
+              <input
+                type="text"
+                value={serviceForm.imageUrl}
+                onChange={(e) => setServiceForm({ ...serviceForm, imageUrl: e.target.value })}
+                className="form-control"
+                style={{ fontSize: '0.85rem' }}
+              />
+              {serviceForm.imageUrl && (
                 <button
                   type="button"
-                  onClick={() => {
-                    const rawUrl = previewPrescriptionObject?.publicUrl || previewPrescriptionBooking?.prescriptionUrl || `${r2Config.publicDomain}/prescriptions/${previewPrescriptionBooking?.prescriptionFileName || 'Rx_Verified.pdf'}`;
-                    const url = encodeURI(rawUrl);
-                    navigator.clipboard.writeText(url);
-                    showToast('Cloudflare public URL copied to clipboard!');
-                  }}
-                  className="btn btn-sm"
-                  style={{
-                    background: '#FFFFFF',
-                    border: '1px solid #BAE6FD',
-                    color: '#0284C7',
-                    padding: '0.2rem 0.6rem',
-                    borderRadius: 9999,
-                    fontSize: '0.72rem',
-                    fontWeight: 700
-                  }}
-                >
-                  <Copy size={11} />
-                  <span>Copy Link</span>
-                </button>
-              </div>
-            </div>
-
-            {/* Footer */}
-            <div style={{ position: 'sticky', bottom: 0, zIndex: 20, padding: '1rem 1.4rem', background: '#FAFAFA', borderTop: '1px solid var(--neutral-200)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-              <div style={{ fontSize: '0.74rem', color: '#64748B' }}>
-                Xpress Nurse Cloudflare Storage Protection • HIPAA & DISHA Compliant
-              </div>
-              <div style={{ display: 'flex', gap: '0.5rem' }}>
-                {previewPrescriptionConsultation ? (
-                  <button
-                    type="button"
-                    onClick={() => window.print()}
-                    className="btn btn-primary btn-sm"
-                    style={{ borderRadius: 9999, gap: '0.35rem' }}
-                  >
-                    <Printer size={13} />
-                    <span>Print / Save Prescription</span>
-                  </button>
-                ) : (
-                  <a
-                    href={previewPrescriptionObject?.dataUrl || previewPrescriptionObject?.publicUrl || previewPrescriptionBooking?.prescriptionUrl || '#'}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="btn btn-primary btn-sm"
-                    style={{ borderRadius: 9999, gap: '0.35rem' }}
-                  >
-                    <ExternalLink size={13} />
-                    <span>Open in Full Tab</span>
-                  </a>
-                )}
-                <button
-                  type="button"
-                  onClick={() => {
-                    setIsPrescriptionModalOpen(false);
-                    setPreviewPrescriptionConsultation(null);
-                  }}
+                  onClick={() => setServiceForm({ ...serviceForm, imageUrl: '' })}
                   className="btn btn-outline btn-sm"
-                  style={{ borderRadius: 9999 }}
+                  style={{ color: '#EF4444', borderColor: '#FECDD3', padding: '0 0.75rem', fontWeight: 600 }}
                 >
-                  Close
+                  Clear
                 </button>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* 2. CUSTOM INVOICE GENERATOR & PREVIEW MODAL */}
-      {isInvoicePreviewModalOpen && previewInvoice && (
-        <div
-          className="modal-overlay"
-          data-lenis-prevent="true"
-          onClick={() => setIsInvoicePreviewModalOpen(false)}
-          style={{
-            position: 'fixed',
-            inset: 0,
-            zIndex: 999999,
-            backgroundColor: 'rgba(15, 23, 42, 0.78)',
-            backdropFilter: 'blur(8px)',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            padding: '1rem',
-            overflowY: 'auto'
-          }}
-        >
-          <div
-            className="modal-box"
-            data-lenis-prevent="true"
-            onClick={(e) => e.stopPropagation()}
-            onWheel={(e) => e.stopPropagation()}
-            style={{
-              maxWidth: 1080,
-              width: '100%',
-              borderRadius: 20,
-              pointerEvents: 'auto',
-              maxHeight: '94vh',
-              height: '94vh',
-              display: 'flex',
-              flexDirection: 'column',
-              boxShadow: '0 30px 80px -15px rgba(2, 12, 27, 0.55)',
-              overflow: 'hidden',
-              background: '#FFFFFF',
-              border: '1px solid #CBD5E1'
-            }}
-          >
-            {/* 1. Fixed Header */}
-            <div className="modal-header" style={{ padding: '0.9rem 1.4rem', background: '#FAFAFA', borderBottom: '1px solid var(--neutral-200)', flexShrink: 0 }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
-                <div style={{ width: 40, height: 40, borderRadius: 12, background: '#EFF6FF', color: '#0284C7', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                  <Receipt size={22} />
-                </div>
-                <div>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', flexWrap: 'wrap' }}>
-                    <h3 style={{ fontSize: '1.18rem', fontWeight: 800, color: 'var(--primary-navy-950)', margin: 0 }}>
-                      Flexible Custom Invoice Generator
-                    </h3>
-                    <span style={{ fontSize: '0.75rem', fontWeight: 800, padding: '2px 9px', borderRadius: 9999, background: '#ECFDF5', color: '#059669', border: '1px solid #A7F3D0' }}>
-                      Payable: ₹{previewInvoice.totalAmount}
-                    </span>
-                    <span style={{ fontSize: '0.75rem', fontWeight: 700, padding: '2px 9px', borderRadius: 9999, background: '#EFF6FF', color: '#0284C7', border: '1px solid #BFDBFE' }}>
-                      {previewInvoice.items?.length || 1} Service Slot{(previewInvoice.items?.length || 1) > 1 ? 's' : ''}
-                    </span>
-                  </div>
-                  <div style={{ fontSize: '0.74rem', color: 'var(--neutral-500)', marginTop: '2px' }}>
-                    Invoice #{previewInvoice.invoiceNumber} • Add multiple dates, slots, custom line items & discounts
-                  </div>
-                </div>
-              </div>
-              <button
-                type="button"
-                onClick={() => setIsInvoicePreviewModalOpen(false)}
-                className="modal-close-btn"
-                style={{ background: '#F1F5F9', border: 'none', borderRadius: '50%', width: 34, height: 34, display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer' }}
-                title="Close"
-              >
-                <X size={18} />
-              </button>
-            </div>
-
-            {/* 2. Source Selector & Tab Switcher Bar */}
-            <div style={{ padding: '0.75rem 1.4rem', background: '#F8FAFC', borderBottom: '1px solid #E2E8F0', display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '0.75rem', flexWrap: 'wrap', flexShrink: 0 }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', flex: 1, minWidth: 280, position: 'relative' }}>
-                <span style={{ fontSize: '0.78rem', fontWeight: 800, color: 'var(--primary-navy-950)', whiteSpace: 'nowrap' }}>Order Source:</span>
-                <select
-                  className="form-control"
-                  style={{ height: 34, fontSize: '0.8rem', fontWeight: 600, background: '#FFFFFF', flex: 1 }}
-                  value={previewInvoice.bookingId}
-                  onChange={(e) => {
-                    const selectedId = e.target.value;
-                    if (selectedId === 'custom') {
-                      handleResetToBlankInvoice();
-                    } else {
-                      const found = bookings.find((b) => b.id === selectedId);
-                      if (found) {
-                        handleSelectExistingPatientBooking(found);
-                      }
-                    }
-                  }}
-                >
-                  <option value="custom">✏️ Custom / Manual Invoice (Blank Template)</option>
-                  <optgroup label={`Active Patient Bookings (${bookings.length})`}>
-                    {bookings.map((b) => (
-                      <option key={b.id} value={b.id}>
-                        #{b.id} — {cleanPatientNameOnly(b.patientName)} ({b.serviceTitle}) • ₹{b.finalFee !== undefined ? b.finalFee : (b.estimatedFee || 800)} • {b.area}
-                      </option>
-                    ))}
-                  </optgroup>
-                </select>
-                <button
-                  type="button"
-                  onClick={handleResetToBlankInvoice}
-                  style={{
-                    height: 34,
-                    padding: '0 0.75rem',
-                    fontSize: '0.75rem',
-                    fontWeight: 700,
-                    borderRadius: 8,
-                    border: '1px solid #CBD5E1',
-                    background: (previewInvoice.bookingId && previewInvoice.bookingId.startsWith('CUSTOM-')) ? '#EFF6FF' : '#FFFFFF',
-                    color: (previewInvoice.bookingId && previewInvoice.bookingId.startsWith('CUSTOM-')) ? '#0284C7' : '#475569',
-                    cursor: 'pointer',
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: '0.3rem',
-                    whiteSpace: 'nowrap'
-                  }}
-                  title="Create new blank invoice"
-                >
-                  <Plus size={13} />
-                  <span>Blank</span>
-                </button>
-              </div>
-
-              {/* View Switcher Pills */}
-              <div style={{ display: 'inline-flex', background: '#E2E8F0', padding: '3px', borderRadius: 10, gap: '2px' }}>
-                <button
-                  type="button"
-                  onClick={() => setInvoiceModalTab('edit')}
-                  style={{
-                    padding: '0.4rem 0.95rem',
-                    fontSize: '0.78rem',
-                    fontWeight: 700,
-                    borderRadius: 8,
-                    border: 'none',
-                    cursor: 'pointer',
-                    background: invoiceModalTab === 'edit' ? '#FFFFFF' : 'transparent',
-                    color: invoiceModalTab === 'edit' ? '#0F172A' : '#64748B',
-                    boxShadow: invoiceModalTab === 'edit' ? '0 1px 3px rgba(0,0,0,0.1)' : 'none',
-                    display: 'inline-flex',
-                    alignItems: 'center',
-                    gap: '0.35rem'
-                  }}
-                >
-                  <Edit2 size={13} />
-                  <span>Customize & Schedules ({previewInvoice.items?.length || 1})</span>
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setInvoiceModalTab('preview')}
-                  style={{
-                    padding: '0.4rem 0.95rem',
-                    fontSize: '0.78rem',
-                    fontWeight: 700,
-                    borderRadius: 8,
-                    border: 'none',
-                    cursor: 'pointer',
-                    background: invoiceModalTab === 'preview' ? '#FFFFFF' : 'transparent',
-                    color: invoiceModalTab === 'preview' ? '#0F172A' : '#64748B',
-                    boxShadow: invoiceModalTab === 'preview' ? '0 1px 3px rgba(0,0,0,0.1)' : 'none',
-                    display: 'inline-flex',
-                    alignItems: 'center',
-                    gap: '0.35rem'
-                  }}
-                >
-                  <Eye size={13} />
-                  <span>Bill Preview (₹{previewInvoice.totalAmount})</span>
-                </button>
-              </div>
-            </div>
-
-            {/* 3. Fully Scrollable Content Body */}
-            <div
-              data-lenis-prevent="true"
-              onWheel={(e) => e.stopPropagation()}
-              style={{
-                flex: '1 1 0%',
-                minHeight: 0,
-                overflowY: 'auto',
-                padding: '1.25rem 1.4rem',
-                WebkitOverflowScrolling: 'touch',
-                overscrollBehavior: 'contain',
-                background: '#F8FAFC'
-              }}
-            >
-              {invoiceModalTab === 'edit' ? (
-                /* EDIT PARAMETERS & MULTI-ROW BUILDER VIEW */
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '1.1rem' }}>
-                  {/* Card 1: Patient & Location & Staff Overview */}
-                  <div style={{ background: '#FFFFFF', border: '1px solid #E2E8F0', borderRadius: 14, padding: '1.1rem 1.25rem', boxShadow: '0 1px 3px rgba(0,0,0,0.03)' }}>
-                    <div style={{ fontSize: '0.8rem', fontWeight: 800, color: '#334155', textTransform: 'uppercase', marginBottom: '0.75rem', display: 'flex', alignItems: 'center', gap: '0.35rem' }}>
-                      <User size={15} style={{ color: '#0284C7' }} />
-                      <span>Patient & Attending Staff Details</span>
-                    </div>
-
-                    {/* Dedicated Search Field for Existing Patients */}
-                    <div style={{ marginBottom: '1rem', background: '#F0F9FF', border: '1px solid #BAE6FD', borderRadius: 12, padding: '0.85rem 1rem', position: 'relative' }}>
-                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.45rem', flexWrap: 'wrap', gap: '0.35rem' }}>
-                        <label style={{ fontSize: '0.78rem', fontWeight: 800, color: '#0369A1', display: 'flex', alignItems: 'center', gap: '0.35rem', margin: 0 }}>
-                          <Search size={14} style={{ color: '#0284C7' }} />
-                          <span>Search Existing Patients</span>
-                          <span style={{ fontSize: '0.7rem', fontWeight: 600, color: '#0284C7', background: '#E0F2FE', padding: '1px 6px', borderRadius: 4 }}>
-                            Autofill Name, Phone, Area & History
-                          </span>
-                        </label>
-                        {previewInvoice.bookingId && !previewInvoice.bookingId.startsWith('CUSTOM-') && (
-                          <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
-                            <span style={{ fontSize: '0.72rem', color: '#059669', fontWeight: 700, background: '#DCFCE7', padding: '2px 8px', borderRadius: 6, border: '1px solid #86EFAC' }}>
-                              ✓ Linked to Booking #{previewInvoice.bookingId}
-                            </span>
-                            <button
-                              type="button"
-                              onClick={handleResetToBlankInvoice}
-                              style={{ fontSize: '0.7rem', color: '#64748B', background: '#FFFFFF', border: '1px solid #CBD5E1', padding: '2px 7px', borderRadius: 6, cursor: 'pointer', fontWeight: 600 }}
-                            >
-                              Clear
-                            </button>
-                          </div>
-                        )}
-                      </div>
-
-                      <div style={{ position: 'relative' }}>
-                        <input
-                          type="text"
-                          value={customInvoicePatientSearch}
-                          onChange={(e) => {
-                            setCustomInvoicePatientSearch(e.target.value);
-                            setIsPatientSearchDropdownOpen(true);
-                          }}
-                          onFocus={() => setIsPatientSearchDropdownOpen(true)}
-                          onBlur={() => setTimeout(() => setIsPatientSearchDropdownOpen(false), 250)}
-                          placeholder="Search patient by full name, phone number, booking ref (#BK-...), or area..."
-                          className="form-control"
-                          style={{
-                            minHeight: 40,
-                            height: 40,
-                            fontSize: '0.86rem',
-                            fontWeight: 500,
-                            paddingLeft: '2.3rem',
-                            paddingRight: '2rem',
-                            background: '#FFFFFF',
-                            borderColor: isPatientSearchDropdownOpen ? '#0284C7' : '#BAE6FD',
-                            boxShadow: isPatientSearchDropdownOpen ? '0 0 0 3px rgba(2, 132, 199, 0.15)' : 'none'
-                          }}
-                        />
-                        <Search size={15} style={{ position: 'absolute', left: 11, top: 12, color: '#0284C7', pointerEvents: 'none' }} />
-                        {customInvoicePatientSearch && (
-                          <button
-                            type="button"
-                            onClick={() => {
-                              setCustomInvoicePatientSearch('');
-                              setIsPatientSearchDropdownOpen(false);
-                            }}
-                            style={{ position: 'absolute', right: 9, top: 11, background: 'none', border: 'none', cursor: 'pointer', color: '#94A3B8' }}
-                            title="Clear search"
-                          >
-                            <X size={15} />
-                          </button>
-                        )}
-
-                        {/* Search Results Dropdown */}
-                        {isPatientSearchDropdownOpen && (
-                          <div style={{
-                            position: 'absolute',
-                            top: '100%',
-                            left: 0,
-                            right: 0,
-                            marginTop: 5,
-                            background: '#FFFFFF',
-                            borderRadius: 12,
-                            boxShadow: '0 12px 30px -4px rgba(0,0,0,0.18), 0 4px 8px -2px rgba(0,0,0,0.08)',
-                            border: '1px solid #CBD5E1',
-                            maxHeight: 280,
-                            overflowY: 'auto',
-                            zIndex: 150
-                          }}>
-                            {searchedExistingPatients.length === 0 ? (
-                              <div style={{ padding: '1rem', fontSize: '0.82rem', color: '#64748B', textAlign: 'center' }}>
-                                No existing patient matching "{customInvoicePatientSearch}". You can enter custom details below.
-                              </div>
-                            ) : (
-                              <div>
-                                <div style={{ padding: '0.5rem 0.95rem', background: '#F8FAFC', borderBottom: '1px solid #E2E8F0', fontSize: '0.7rem', fontWeight: 800, color: '#64748B', textTransform: 'uppercase', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                                  <span>{customInvoicePatientSearch.trim() ? `Found ${searchedExistingPatients.length} Matching Patient${searchedExistingPatients.length > 1 ? 's' : ''}` : `Recent Patients (${searchedExistingPatients.length})`}</span>
-                                  <span style={{ fontSize: '0.67rem', color: '#0284C7', fontWeight: 700 }}>Click to autofill invoice</span>
-                                </div>
-                                {searchedExistingPatients.map((b) => (
-                                  <div
-                                    key={b.id}
-                                    onMouseDown={(e) => {
-                                      e.preventDefault();
-                                      handleSelectExistingPatientBooking(b);
-                                    }}
-                                    style={{
-                                      padding: '0.7rem 0.95rem',
-                                      borderBottom: '1px solid #F1F5F9',
-                                      cursor: 'pointer',
-                                      display: 'flex',
-                                      justifyContent: 'space-between',
-                                      alignItems: 'center',
-                                      transition: 'background 0.15s ease'
-                                    }}
-                                    onMouseEnter={(e) => (e.currentTarget.style.background = '#F0F9FF')}
-                                    onMouseLeave={(e) => (e.currentTarget.style.background = '#FFFFFF')}
-                                  >
-                                    <div>
-                                      <div style={{ fontWeight: 800, fontSize: '0.88rem', color: '#0F172A', display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
-                                        <span>{cleanPatientNameOnly(b.patientName)}</span>
-                                        {b.patientAge && (
-                                          <span style={{ fontSize: '0.72rem', fontWeight: 600, color: '#64748B', background: '#F1F5F9', padding: '1px 6px', borderRadius: 4 }}>
-                                            {b.patientAge} yrs{b.patientGender ? `, ${b.patientGender}` : ''}
-                                          </span>
-                                        )}
-                                      </div>
-                                      <div style={{ fontSize: '0.76rem', color: '#475569', marginTop: 3, display: 'flex', gap: '0.6rem', flexWrap: 'wrap', alignItems: 'center' }}>
-                                        <span>📞 <strong>{b.patientPhone}</strong></span>
-                                        <span>📍 {b.area}</span>
-                                        <span style={{ color: '#0284C7', fontWeight: 600, fontFamily: 'monospace' }}>#{b.id}</span>
-                                      </div>
-                                    </div>
-                                    <div style={{ textAlign: 'right', flexShrink: 0, marginLeft: '0.75rem' }}>
-                                      <div style={{ fontSize: '0.86rem', fontWeight: 800, color: '#059669' }}>
-                                        ₹{b.finalFee !== undefined ? b.finalFee : (b.estimatedFee || 800)}
-                                      </div>
-                                      <div style={{ fontSize: '0.7rem', color: '#64748B', maxWidth: 140, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                                        {b.serviceTitle}
-                                      </div>
-                                    </div>
-                                  </div>
-                                ))}
-                              </div>
-                            )}
-                          </div>
-                        )}
-                      </div>
-                    </div>
-
-                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '0.75rem', marginBottom: '0.75rem' }}>
-                      <div>
-                        <label style={{ fontSize: '0.74rem', fontWeight: 700, color: '#64748B', display: 'block', marginBottom: '3px' }}>Patient Full Name</label>
-                        <input
-                          type="text"
-                          value={previewInvoice.patientName || ''}
-                          onChange={(e) => updateInvoiceCalculation({ patientName: e.target.value })}
-                          placeholder="Patient name"
-                          className="form-control"
-                          style={{ minHeight: 42, height: 42, fontSize: '0.86rem', padding: '0.45rem 0.85rem' }}
-                        />
-                      </div>
-                      <div>
-                        <label style={{ fontSize: '0.74rem', fontWeight: 700, color: '#64748B', display: 'block', marginBottom: '3px' }}>Contact Phone</label>
-                        <input
-                          type="tel"
-                          value={previewInvoice.patientPhone || ''}
-                          onChange={(e) => updateInvoiceCalculation({ patientPhone: e.target.value })}
-                          placeholder="+91 Phone"
-                          className="form-control"
-                          style={{ minHeight: 42, height: 42, fontSize: '0.86rem', padding: '0.45rem 0.85rem' }}
-                        />
-                      </div>
-                      <div>
-                        <label style={{ fontSize: '0.74rem', fontWeight: 700, color: '#64748B', display: 'block', marginBottom: '3px' }}>Attending Staff Override</label>
-                        <select
-                          value={previewInvoice.assignedNurseName || ''}
-                          onChange={(e) => updateInvoiceCalculation({ assignedNurseName: e.target.value })}
-                          className="form-control"
-                          style={{ minHeight: 42, height: 42, fontSize: '0.86rem', padding: '0.45rem 2.2rem 0.45rem 0.85rem', lineHeight: 'normal' }}
-                        >
-                          <option value="Assigned Fleet RN">Assigned Fleet RN (Default)</option>
-                          {nurses.map((n) => (
-                            <option key={n.id} value={n.name}>{n.name} ({n.serviceArea}) {n.certificateVerified ? '✓ Verified' : ''}</option>
-                          ))}
-                        </select>
-                      </div>
-                    </div>
-
-                    <div style={{ display: 'grid', gridTemplateColumns: '1.2fr 2fr 1fr 1fr', gap: '0.75rem' }}>
-                      <div>
-                        <label style={{ fontSize: '0.74rem', fontWeight: 700, color: '#64748B', display: 'block', marginBottom: '3px' }}>Hyderabad Zone / Area</label>
-                        <select
-                          value={previewInvoice.area || 'Banjara Hills'}
-                          onChange={(e) => updateInvoiceCalculation({ area: e.target.value })}
-                          className="form-control"
-                          style={{ minHeight: 42, height: 42, fontSize: '0.86rem', padding: '0.45rem 2.2rem 0.45rem 0.85rem', lineHeight: 'normal' }}
-                        >
-                          {HYDERABAD_AREAS.map((a) => (
-                            <option key={a} value={a}>{a}</option>
-                          ))}
-                        </select>
-                      </div>
-                      <div>
-                        <label style={{ fontSize: '0.74rem', fontWeight: 700, color: '#64748B', display: 'block', marginBottom: '3px' }}>Full Street Address</label>
-                        <input
-                          type="text"
-                          value={previewInvoice.fullAddress || ''}
-                          onChange={(e) => updateInvoiceCalculation({ fullAddress: e.target.value })}
-                          placeholder="House/flat, apartment, landmark"
-                          className="form-control"
-                          style={{ minHeight: 42, height: 42, fontSize: '0.86rem', padding: '0.45rem 0.85rem' }}
-                        />
-                      </div>
-                      <div>
-                        <label style={{ fontSize: '0.74rem', fontWeight: 700, color: '#64748B', display: 'block', marginBottom: '3px' }}>Payment Status</label>
-                        <select
-                          value={previewInvoice.paymentStatus}
-                          onChange={(e) => updateInvoiceCalculation({ paymentStatus: e.target.value as any })}
-                          className="form-control"
-                          style={{ minHeight: 42, height: 42, fontSize: '0.86rem', padding: '0.45rem 2.2rem 0.45rem 0.85rem', lineHeight: 'normal' }}
-                        >
-                          <option value="Paid">Paid</option>
-                          <option value="Pending">Pending</option>
-                          <option value="Refunded">Refunded</option>
-                        </select>
-                      </div>
-                      <div>
-                        <label style={{ fontSize: '0.74rem', fontWeight: 700, color: '#64748B', display: 'block', marginBottom: '3px' }}>Payment Mode</label>
-                        <select
-                          value={previewInvoice.paymentMode}
-                          onChange={(e) => updateInvoiceCalculation({ paymentMode: e.target.value as any })}
-                          className="form-control"
-                          style={{ minHeight: 42, height: 42, fontSize: '0.86rem', padding: '0.45rem 2.2rem 0.45rem 0.85rem', lineHeight: 'normal' }}
-                        >
-                          <option value="UPI / Online">UPI / Online</option>
-                          <option value="Cash on Visit">Cash on Visit</option>
-                          <option value="Corporate Direct">Corporate Direct</option>
-                        </select>
-                      </div>
-                    </div>
-                  </div>
-
-                  {/* Card 2: FLEXIBLE SERVICE SCHEDULE & LINE ITEMS (THE CORE MULTI-DATE & MULTI-SLOT GENERATOR) */}
-                  <div style={{ background: '#FFFFFF', border: '1px solid #E2E8F0', borderRadius: 14, padding: '1.2rem 1.25rem', boxShadow: '0 1px 4px rgba(0,0,0,0.04)' }}>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '0.75rem', marginBottom: '1rem', borderBottom: '1px solid #F1F5F9', paddingBottom: '0.75rem' }}>
-                      <div>
-                        <div style={{ fontSize: '0.86rem', fontWeight: 800, color: '#1E293B', display: 'flex', alignItems: 'center', gap: '0.45rem' }}>
-                          <Calendar size={17} style={{ color: '#0284C7' }} />
-                          <span>Clinical Service Schedule & Invoice Rows</span>
-                          <span style={{ fontSize: '0.72rem', background: '#EFF6FF', color: '#0284C7', padding: '2px 8px', borderRadius: 9999, fontWeight: 800 }}>
-                            {previewInvoice.items?.length || 1} Entries
-                          </span>
-                        </div>
-                        <div style={{ fontSize: '0.74rem', color: '#64748B', marginTop: '2px' }}>
-                          Add more dates or extra slots per day. Each entry dynamically generates a distinct line item on the invoice.
-                        </div>
-                      </div>
-
-                      {/* Top Action Buttons */}
-                      <div style={{ display: 'flex', gap: '0.45rem', flexWrap: 'wrap' }}>
-                        <button
-                          type="button"
-                          onClick={() => handleAddItemRow()}
-                          className="btn btn-primary btn-sm"
-                          style={{ fontSize: '0.76rem', padding: '0.35rem 0.8rem', borderRadius: 8, gap: '0.35rem', fontWeight: 700 }}
-                        >
-                          <Plus size={14} />
-                          <span>Add Date & Slot Row</span>
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => {
-                            if (previewInvoice.items && previewInvoice.items.length > 0) {
-                              handleDuplicateItemWithNextSlot(previewInvoice.items.length - 1);
-                            } else {
-                              handleAddItemRow();
-                            }
-                          }}
-                          className="btn btn-outline btn-sm"
-                          style={{ fontSize: '0.76rem', padding: '0.35rem 0.75rem', borderRadius: 8, gap: '0.3rem', background: '#F8FAFC' }}
-                          title="Schedule an additional slot on the same date (e.g. Morning + Evening)"
-                        >
-                          <Clock size={13} />
-                          <span>+ Same Date (Next Slot)</span>
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => {
-                            if (previewInvoice.items && previewInvoice.items.length > 0) {
-                              handleDuplicateItemWithNextDay(previewInvoice.items.length - 1);
-                            } else {
-                              handleAddItemRow();
-                            }
-                          }}
-                          className="btn btn-outline btn-sm"
-                          style={{ fontSize: '0.76rem', padding: '0.35rem 0.75rem', borderRadius: 8, gap: '0.3rem', background: '#F8FAFC' }}
-                          title="Schedule a visit for the next calendar day"
-                        >
-                          <Calendar size={13} />
-                          <span>+ Next Day (+1 Day)</span>
-                        </button>
-                      </div>
-                    </div>
-
-                    {/* Table of Rows */}
-                    <div style={{ border: '1px solid #E2E8F0', borderRadius: 10, overflow: 'hidden', marginBottom: '0.85rem' }}>
-                      <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.8rem' }}>
-                        <thead>
-                          <tr style={{ background: '#F8FAFC', borderBottom: '1px solid #E2E8F0', color: '#475569', fontWeight: 800, textAlign: 'left' }}>
-                            <th style={{ padding: '0.55rem 0.65rem', width: 34, textAlign: 'center' }}>#</th>
-                            <th style={{ padding: '0.55rem 0.65rem', minWidth: 200 }}>Procedure / Clinical Service</th>
-                            <th style={{ padding: '0.55rem 0.65rem', width: 145 }}>Service Date</th>
-                            <th style={{ padding: '0.55rem 0.65rem', width: 230 }}>Time Slot (M / A / E)</th>
-                            <th style={{ padding: '0.55rem 0.65rem', width: 70, textAlign: 'center' }}>Visits</th>
-                            <th style={{ padding: '0.55rem 0.65rem', width: 100, textAlign: 'right' }}>Rate (₹)</th>
-                            <th style={{ padding: '0.55rem 0.65rem', width: 100, textAlign: 'right' }}>Total (₹)</th>
-                            <th style={{ padding: '0.55rem 0.65rem', width: 85, textAlign: 'center' }}>Actions</th>
-                          </tr>
-                        </thead>
-                        <tbody>
-                          {(previewInvoice.items && previewInvoice.items.length > 0 ? previewInvoice.items : [
-                            {
-                              id: 'item-1',
-                              description: previewInvoice.serviceTitle || services[0]?.title || 'Clinical Nursing Care',
-                              date: previewInvoice.serviceDate || new Date().toISOString().split('T')[0],
-                              slot: previewInvoice.timeSlot || '8:00 AM',
-                              rate: Number(previewInvoice.baseAmount) || 800,
-                              quantity: Number(previewInvoice.numberOfVisits) || 1,
-                              amount: (Number(previewInvoice.baseAmount) || 800) * (Number(previewInvoice.numberOfVisits) || 1)
-                            }
-                          ]).map((item, index) => {
-                            const standardSlots = [
-                              '8:00 AM',
-                              '2:00 PM',
-                              '8:00 PM'
-                            ];
-                            const isCustomSlot = !standardSlots.includes(item.slot);
-
-                            return (
-                              <tr key={item.id || index} style={{ borderBottom: '1px solid #F1F5F9', background: index % 2 === 1 ? '#FAFAFA' : '#FFFFFF' }}>
-                                {/* Row Index */}
-                                <td style={{ padding: '0.55rem 0.4rem', textAlign: 'center', fontWeight: 800, color: '#64748B' }}>
-                                  <span style={{ width: 22, height: 22, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', background: '#F1F5F9', borderRadius: '50%', fontSize: '0.72rem' }}>
-                                    {index + 1}
-                                  </span>
-                                </td>
-
-                                {/* Procedure / Clinical Service Description */}
-                                <td style={{ padding: '0.55rem 0.65rem' }}>
-                                  <div style={{ display: 'flex', flexDirection: 'column', gap: '5px' }}>
-                                    {/* Catalog Dropdown with Auto Price Match */}
-                                    <select
-                                      value={services.some(s => s.title.toLowerCase().trim() === (item.description || '').toLowerCase().trim()) ? services.find(s => s.title.toLowerCase().trim() === (item.description || '').toLowerCase().trim())?.title : 'custom'}
-                                      onChange={(e) => {
-                                        const chosenTitle = e.target.value;
-                                        if (chosenTitle !== 'custom') {
-                                          const found = services.find(s => s.title === chosenTitle);
-                                          if (found) {
-                                            const price = Number(found.priceNumber || found.singleVisitPrice) || 800;
-                                            handleUpdateItemRow(index, {
-                                              description: found.title,
-                                              rate: price
-                                            });
-                                          }
-                                        }
-                                      }}
-                                      className="form-control"
-                                      style={{ minHeight: 36, height: 36, fontSize: '0.78rem', fontWeight: 700, borderColor: '#BAE6FD', background: '#F0F9FF', color: '#0369A1', padding: '0.35rem 2rem 0.35rem 0.65rem', lineHeight: 'normal' }}
-                                    >
-                                      <option value="" disabled>-- Select Clinical Service / Procedure --</option>
-                                      {services.map((s) => (
-                                        <option key={s.id} value={s.title}>
-                                          {s.title} (₹{s.priceNumber || s.singleVisitPrice})
-                                        </option>
-                                      ))}
-                                      <option value="custom">✏️ Custom / Manual Procedure Entry</option>
-                                    </select>
-
-                                    {/* Editable Description Text Input */}
-                                    <input
-                                      type="text"
-                                      value={item.description}
-                                      onChange={(e) => {
-                                        const val = e.target.value;
-                                        const matchingSrv = services.find(s => s.title.toLowerCase().trim() === val.toLowerCase().trim());
-                                        if (matchingSrv) {
-                                          handleUpdateItemRow(index, {
-                                            description: val,
-                                            rate: Number(matchingSrv.priceNumber || matchingSrv.singleVisitPrice) || item.rate
-                                          });
-                                        } else {
-                                          handleUpdateItemRow(index, { description: val });
-                                        }
-                                      }}
-                                      className="form-control"
-                                      style={{ height: 30, fontSize: '0.78rem', fontWeight: 600 }}
-                                      placeholder="Type or customize procedure title..."
-                                    />
-                                  </div>
-                                </td>
-
-                                {/* Service Date */}
-                                <td style={{ padding: '0.55rem 0.65rem' }}>
-                                  <input
-                                    type="date"
-                                    value={item.date}
-                                    onChange={(e) => handleUpdateItemRow(index, { date: e.target.value })}
-                                    className="form-control"
-                                    style={{ height: 32, fontSize: '0.76rem', background: '#FFFFFF' }}
-                                  />
-                                </td>
-
-                                {/* Time Slot Buttons: M (Morning), A (Afternoon), E (Evening) */}
-                                <td style={{ padding: '0.55rem 0.65rem' }}>
-                                  {(() => {
-                                    const activeSlots = parseActiveItemSlots(item.slot);
-                                    const isM = activeSlots.includes('M');
-                                    const isA = activeSlots.includes('A');
-                                    const isE = activeSlots.includes('E');
-
-                                    return (
-                                      <div style={{ display: 'flex', flexDirection: 'column', gap: '3px' }}>
-                                        <div style={{ display: 'flex', gap: '4px' }}>
-                                          <button
-                                            type="button"
-                                            onClick={() => handleToggleItemSlot(index, 'M')}
-                                            style={{
-                                              flex: 1,
-                                              padding: '4px 3px',
-                                              borderRadius: 6,
-                                              background: isM ? '#0284C7' : '#F8FAFC',
-                                              color: isM ? '#FFFFFF' : '#475569',
-                                              border: `1.5px solid ${isM ? '#0284C7' : '#CBD5E1'}`,
-                                              cursor: 'pointer',
-                                              display: 'flex',
-                                              flexDirection: 'column',
-                                              alignItems: 'center',
-                                              lineHeight: 1.15,
-                                              boxShadow: isM ? '0 2px 4px rgba(2,132,199,0.25)' : 'none',
-                                              transition: 'all 0.15s ease'
-                                            }}
-                                            title="Morning Slot (8:00 AM)"
-                                          >
-                                            <span style={{ fontSize: '0.82rem', fontWeight: 900 }}>M</span>
-                                            <span style={{ fontSize: '0.62rem', fontWeight: 700, opacity: isM ? 1 : 0.85 }}>Morning</span>
-                                          </button>
-
-                                          <button
-                                            type="button"
-                                            onClick={() => handleToggleItemSlot(index, 'A')}
-                                            style={{
-                                              flex: 1,
-                                              padding: '4px 3px',
-                                              borderRadius: 6,
-                                              background: isA ? '#D97706' : '#F8FAFC',
-                                              color: isA ? '#FFFFFF' : '#475569',
-                                              border: `1.5px solid ${isA ? '#D97706' : '#CBD5E1'}`,
-                                              cursor: 'pointer',
-                                              display: 'flex',
-                                              flexDirection: 'column',
-                                              alignItems: 'center',
-                                              lineHeight: 1.15,
-                                              boxShadow: isA ? '0 2px 4px rgba(217,119,6,0.25)' : 'none',
-                                              transition: 'all 0.15s ease'
-                                            }}
-                                            title="Afternoon Slot (2:00 PM)"
-                                          >
-                                            <span style={{ fontSize: '0.82rem', fontWeight: 900 }}>A</span>
-                                            <span style={{ fontSize: '0.62rem', fontWeight: 700, opacity: isA ? 1 : 0.85 }}>Afternoon</span>
-                                          </button>
-
-                                          <button
-                                            type="button"
-                                            onClick={() => handleToggleItemSlot(index, 'E')}
-                                            style={{
-                                              flex: 1,
-                                              padding: '4px 3px',
-                                              borderRadius: 6,
-                                              background: isE ? '#4F46E5' : '#F8FAFC',
-                                              color: isE ? '#FFFFFF' : '#475569',
-                                              border: `1.5px solid ${isE ? '#4F46E5' : '#CBD5E1'}`,
-                                              cursor: 'pointer',
-                                              display: 'flex',
-                                              flexDirection: 'column',
-                                              alignItems: 'center',
-                                              lineHeight: 1.15,
-                                              boxShadow: isE ? '0 2px 4px rgba(79,70,229,0.25)' : 'none',
-                                              transition: 'all 0.15s ease'
-                                            }}
-                                            title="Evening Slot (8:00 PM)"
-                                          >
-                                            <span style={{ fontSize: '0.82rem', fontWeight: 900 }}>E</span>
-                                            <span style={{ fontSize: '0.62rem', fontWeight: 700, opacity: isE ? 1 : 0.85 }}>Evening</span>
-                                          </button>
-                                        </div>
-
-                                        <div style={{ fontSize: '0.72rem', color: '#0F172A', fontWeight: 800, textAlign: 'center', letterSpacing: '2px' }}>
-                                          {activeSlots.join(' ')}
-                                        </div>
-                                      </div>
-                                    );
-                                  })()}
-                                </td>
-
-                                {/* Visits / Quantity */}
-                                <td style={{ padding: '0.55rem 0.65rem', textAlign: 'center' }}>
-                                  <input
-                                    type="number"
-                                    min="1"
-                                    max="30"
-                                    value={item.quantity || 1}
-                                    onChange={(e) => handleUpdateItemRow(index, { quantity: Math.max(1, parseInt(e.target.value) || 1) })}
-                                    className="form-control"
-                                    style={{ height: 32, fontSize: '0.78rem', textAlign: 'center', padding: '0 4px' }}
-                                  />
-                                </td>
-
-                                {/* Rate per Visit (₹) */}
-                                <td style={{ padding: '0.55rem 0.65rem', textAlign: 'right' }}>
-                                  <div style={{ display: 'flex', alignItems: 'center', gap: '2px', justifyContent: 'flex-end' }}>
-                                    <span style={{ fontSize: '0.78rem', color: '#64748B', fontWeight: 700 }}>₹</span>
-                                    <input
-                                      type="number"
-                                      min="0"
-                                      step="50"
-                                      value={item.rate === 0 ? '' : item.rate}
-                                      placeholder="0"
-                                      onChange={(e) => {
-                                        const val = e.target.value === '' ? 0 : Number(e.target.value);
-                                        handleUpdateItemRow(index, { rate: isNaN(val) ? 0 : val });
-                                      }}
-                                      className="form-control"
-                                      style={{ height: 32, width: 85, fontSize: '0.8rem', textAlign: 'right', padding: '0 6px', fontWeight: 800, background: '#FFFFFF' }}
-                                    />
-                                  </div>
-                                </td>
-
-                                {/* Row Total (₹) */}
-                                <td style={{ padding: '0.55rem 0.65rem', textAlign: 'right', fontWeight: 800, color: '#0F172A', whiteSpace: 'nowrap' }}>
-                                  ₹{item.amount || (item.rate * (item.quantity || 1))}
-                                </td>
-
-                                {/* Actions */}
-                                <td style={{ padding: '0.55rem 0.65rem', textAlign: 'center' }}>
-                                  <div style={{ display: 'inline-flex', alignItems: 'center', gap: '3px' }}>
-                                    <button
-                                      type="button"
-                                      onClick={() => handleDuplicateItemWithNextSlot(index)}
-                                      title="Duplicate on same date (next slot)"
-                                      style={{ width: 26, height: 26, borderRadius: 6, border: '1px solid #CBD5E1', background: '#FFFFFF', color: '#0284C7', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer' }}
-                                    >
-                                      <Clock size={12} />
-                                    </button>
-                                    <button
-                                      type="button"
-                                      onClick={() => handleDuplicateItemWithNextDay(index)}
-                                      title="Duplicate to next day (+1 day)"
-                                      style={{ width: 26, height: 26, borderRadius: 6, border: '1px solid #CBD5E1', background: '#FFFFFF', color: '#059669', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer' }}
-                                    >
-                                      <Calendar size={12} />
-                                    </button>
-                                    <button
-                                      type="button"
-                                      onClick={() => handleRemoveItemRow(index)}
-                                      disabled={!previewInvoice.items || previewInvoice.items.length <= 1}
-                                      title={(!previewInvoice.items || previewInvoice.items.length <= 1) ? 'Cannot delete only row' : 'Delete this row'}
-                                      style={{
-                                        width: 26,
-                                        height: 26,
-                                        borderRadius: 6,
-                                        border: '1px solid #FECACA',
-                                        background: (!previewInvoice.items || previewInvoice.items.length <= 1) ? '#F1F5F9' : '#FEF2F2',
-                                        color: (!previewInvoice.items || previewInvoice.items.length <= 1) ? '#94A3B8' : '#EF4444',
-                                        display: 'flex',
-                                        alignItems: 'center',
-                                        justifyContent: 'center',
-                                        cursor: (!previewInvoice.items || previewInvoice.items.length <= 1) ? 'not-allowed' : 'pointer'
-                                      }}
-                                    >
-                                      <Trash2 size={12} />
-                                    </button>
-                                  </div>
-                                </td>
-                              </tr>
-                            );
-                          })}
-                        </tbody>
-                      </table>
-                    </div>
-
-                    {/* Quick Package Helpers */}
-                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '0.5rem', background: '#F8FAFC', padding: '0.65rem 0.85rem', borderRadius: 8, border: '1px dashed #CBD5E1' }}>
-                      <div style={{ fontSize: '0.74rem', color: '#475569', fontWeight: 600 }}>
-                        ⚡ Quick Add Presets:
-                      </div>
-                      <div style={{ display: 'flex', gap: '0.4rem', flexWrap: 'wrap' }}>
-                        <button
-                          type="button"
-                          onClick={() => {
-                            const today = new Date().toISOString().split('T')[0];
-                            handleAddItemRow(today, '8:00 AM');
-                            handleAddItemRow(today, '8:00 PM');
-                          }}
-                          style={{ border: '1px solid #BFDBFE', background: '#EFF6FF', color: '#0284C7', padding: '3px 8px', borderRadius: 6, fontSize: '0.72rem', fontWeight: 700, cursor: 'pointer' }}
-                        >
-                          + 8:00 AM & 8:00 PM (2 visits)
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => {
-                            const today = new Date().toISOString().split('T')[0];
-                            handleAddItemRow(today, '8:00 AM');
-                            handleAddItemRow(today, '2:00 PM');
-                            handleAddItemRow(today, '8:00 PM');
-                          }}
-                          style={{ border: '1px solid #FED7AA', background: '#FFF7ED', color: '#C2410C', padding: '3px 8px', borderRadius: 6, fontSize: '0.72rem', fontWeight: 700, cursor: 'pointer' }}
-                        >
-                          + All 3 Slots (8am, 2pm, 8pm)
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => {
-                            const baseD = new Date();
-                            for (let i = 1; i <= 3; i++) {
-                              const d = new Date(baseD);
-                              d.setDate(d.getDate() + i);
-                              handleAddItemRow(d.toISOString().split('T')[0], '8:00 AM', 'Wound Dressing & Vitals Check', 650);
-                            }
-                          }}
-                          style={{ border: '1px solid #A7F3D0', background: '#ECFDF5', color: '#059669', padding: '3px 8px', borderRadius: 6, fontSize: '0.72rem', fontWeight: 700, cursor: 'pointer' }}
-                        >
-                          + 3-Day Plan (8:00 AM)
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => {
-                            const baseD = new Date();
-                            for (let i = 1; i <= 7; i++) {
-                              const d = new Date(baseD);
-                              d.setDate(d.getDate() + i);
-                              handleAddItemRow(d.toISOString().split('T')[0], '8:00 AM', 'Post-Surgical Nursing Care', 800);
-                            }
-                          }}
-                          style={{ border: '1px solid #E2E8F0', background: '#FFFFFF', color: '#334155', padding: '3px 8px', borderRadius: 6, fontSize: '0.72rem', fontWeight: 700, cursor: 'pointer' }}
-                        >
-                          + 7-Day Care (8:00 AM)
-                        </button>
-                      </div>
-                    </div>
-                  </div>
-
-                  {/* Card 3: Fee Adjustments, Night Surcharge & Grand Total Summary */}
-                  <div style={{ background: '#FFFFFF', border: '1px solid #E2E8F0', borderRadius: 14, padding: '1.1rem 1.25rem', boxShadow: '0 1px 3px rgba(0,0,0,0.03)' }}>
-                    <div style={{ fontSize: '0.8rem', fontWeight: 800, color: '#334155', textTransform: 'uppercase', marginBottom: '0.75rem', display: 'flex', alignItems: 'center', gap: '0.35rem' }}>
-                      <DollarSign size={15} style={{ color: '#0284C7' }} />
-                      <span>Adjustments, Concessions & Final Total</span>
-                    </div>
-
-                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '0.85rem', marginBottom: '0.85rem' }}>
-                      <div>
-                        <label style={{ fontSize: '0.74rem', fontWeight: 700, color: '#64748B', display: 'block', marginBottom: '3px' }}>Night Emergency Surcharge (₹)</label>
-                        <input
-                          type="number"
-                          min="0"
-                          step="50"
-                          value={previewInvoice.nightSurcharge || 0}
-                          onChange={(e) => updateInvoiceCalculation({ nightSurcharge: Number(e.target.value) || 0 })}
-                          className="form-control"
-                          style={{ minHeight: 42, height: 42, fontSize: '0.86rem', padding: '0.45rem 0.85rem' }}
-                          placeholder="e.g. 200 for late night"
-                        />
-                      </div>
-                      <div>
-                        <label style={{ fontSize: '0.74rem', fontWeight: 700, color: '#64748B', display: 'block', marginBottom: '3px' }}>Discount / Coupon Concession (₹)</label>
-                        <input
-                          type="number"
-                          min="0"
-                          step="50"
-                          value={previewInvoice.discountRupees || 0}
-                          onChange={(e) => updateInvoiceCalculation({ discountRupees: Number(e.target.value) || 0 })}
-                          className="form-control"
-                          style={{ minHeight: 42, height: 42, fontSize: '0.86rem', padding: '0.45rem 0.85rem' }}
-                          placeholder="e.g. 150 discount"
-                        />
-                      </div>
-                      <div>
-                        <label style={{ fontSize: '0.74rem', fontWeight: 700, color: '#64748B', display: 'block', marginBottom: '3px' }}>Invoice Remarks / Clinical Notes</label>
-                        <input
-                          type="text"
-                          value={previewInvoice.notes || ''}
-                          onChange={(e) => updateInvoiceCalculation({ notes: e.target.value })}
-                          className="form-control"
-                          style={{ minHeight: 42, height: 42, fontSize: '0.86rem', padding: '0.45rem 0.85rem' }}
-                          placeholder="e.g. Includes aseptic sterile consumable kit"
-                        />
-                      </div>
-                    </div>
-
-                    {/* Live Financial Breakdown Card */}
-                    <div style={{ background: '#F8FAFC', border: '1px solid #E2E8F0', borderRadius: 10, padding: '0.85rem 1rem', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '0.75rem' }}>
-                      <div>
-                        <div style={{ fontSize: '0.82rem', color: '#475569' }}>
-                          <strong>{previewInvoice.items?.reduce((s, it) => s + (Number(it.quantity) || 1), 0) || previewInvoice.numberOfVisits || 1} Total Visits</strong> across{' '}
-                          <strong>{new Set((previewInvoice.items || []).map((i) => i.date)).size || 1} Distinct Date{(new Set((previewInvoice.items || []).map((i) => i.date)).size || 1) > 1 ? 's' : ''}</strong>
-                        </div>
-                        <div style={{ fontSize: '0.75rem', color: '#64748B', marginTop: '2px' }}>
-                          Rows Subtotal: ₹{previewInvoice.items?.reduce((s, it) => s + (Number(it.amount) || 0), 0) || previewInvoice.baseAmount}
-                          {Boolean(previewInvoice.nightSurcharge && previewInvoice.nightSurcharge > 0) && ` + ₹${previewInvoice.nightSurcharge} night`}
-                          {Boolean(previewInvoice.discountRupees && previewInvoice.discountRupees > 0) && ` - ₹${previewInvoice.discountRupees} discount`}
-                        </div>
-                      </div>
-
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
-                        <div style={{ textAlign: 'right' }}>
-                          <div style={{ fontSize: '0.7rem', fontWeight: 700, color: '#64748B', textTransform: 'uppercase' }}>Total Amount Payable</div>
-                          <div style={{ fontSize: '1.25rem', fontWeight: 900, color: '#059669', background: '#ECFDF5', padding: '2px 10px', borderRadius: 8, border: '1px solid #A7F3D0' }}>
-                            ₹{previewInvoice.totalAmount}
-                          </div>
-                        </div>
-                        <button
-                          type="button"
-                          onClick={() => setInvoiceModalTab('preview')}
-                          className="btn btn-outline btn-sm"
-                          style={{ fontSize: '0.78rem', padding: '0.4rem 0.85rem', borderRadius: 8, gap: '0.35rem', fontWeight: 700 }}
-                        >
-                          <Eye size={13} />
-                          <span>Preview Bill →</span>
-                        </button>
-                      </div>
-                    </div>
-                  </div>
-                </div>
-              ) : (
-                /* OFFICIAL BILL PREVIEW VIEW (TAX INVOICE PAPER) */
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '0.85rem' }}>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                    <button
-                      type="button"
-                      onClick={() => setInvoiceModalTab('edit')}
-                      className="btn btn-outline btn-sm"
-                      style={{ borderRadius: 8, fontSize: '0.78rem', gap: '0.35rem', fontWeight: 700 }}
-                    >
-                      <Edit2 size={13} />
-                      <span>← Back to Customize Fields & Dates</span>
-                    </button>
-                    <span style={{ fontSize: '0.74rem', color: '#64748B' }}>
-                      Official printable format with Xpress Nurse credentials • Ready to Print & Download
-                    </span>
-                  </div>
-
-                  {/* Clean Printable Invoice Card */}
-                  <div style={{ padding: '2rem', background: '#FFFFFF', border: '1px solid #E2E8F0', borderRadius: 16, boxShadow: '0 4px 15px rgba(0,0,0,0.05)' }}>
-                    {/* Header */}
-                    <div style={{ display: 'flex', justifyContent: 'space-between', borderBottom: '2px solid #0A192F', paddingBottom: '1.25rem', marginBottom: '1.5rem' }}>
-                      <div>
-                        <div style={{ fontSize: '1.5rem', fontWeight: 900, color: '#0A192F', letterSpacing: '-0.5px' }}>Xpress Nurse</div>
-                        <div style={{ fontSize: '0.82rem', color: '#0284C7', fontWeight: 700, letterSpacing: '0.04em', textTransform: 'uppercase', marginTop: '2px' }}>
-                          24/7 Clinical Home Care Hyderabad
-                        </div>
-                        <div style={{ fontSize: '0.74rem', color: '#64748B', marginTop: '4px' }}>
-                          NABH Standards Compliant • Registered Clinical Fleet
-                        </div>
-                      </div>
-                      <div style={{ textAlign: 'right' }}>
-                        <div style={{ fontSize: '1.25rem', fontWeight: 900, color: '#0A192F', letterSpacing: '0.02em' }}>INVOICE</div>
-                        <div style={{ fontSize: '0.88rem', color: '#0284C7', fontWeight: 800, margin: '2px 0' }}>{previewInvoice.invoiceNumber}</div>
-                        <div style={{ fontSize: '0.76rem', color: '#64748B' }}>Date: {previewInvoice.invoiceDate}</div>
-                        <div style={{ marginTop: '6px' }}>
-                          <span style={{
-                            display: 'inline-block',
-                            padding: '3px 10px',
-                            borderRadius: 9999,
-                            fontSize: '0.72rem',
-                            fontWeight: 800,
-                            textTransform: 'uppercase',
-                            background: previewInvoice.paymentStatus === 'Paid' ? '#ECFDF5' : '#FFFBEB',
-                            color: previewInvoice.paymentStatus === 'Paid' ? '#059669' : '#D97706',
-                            border: `1px solid ${previewInvoice.paymentStatus === 'Paid' ? '#A7F3D0' : '#FDE68A'}`
-                          }}>
-                            {previewInvoice.paymentStatus}
-                          </span>
-                        </div>
-                      </div>
-                    </div>
-
-                    {/* Info Grid */}
-                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1.25rem', marginBottom: '1.5rem', background: '#F8FAFC', padding: '1.2rem', borderRadius: 12, border: '1px solid #E2E8F0' }}>
-                      <div>
-                        <div style={{ fontSize: '0.72rem', fontWeight: 800, color: '#64748B', textTransform: 'uppercase', marginBottom: '6px' }}>BILLED TO (PATIENT)</div>
-                        <div style={{ fontSize: '0.98rem', fontWeight: 800, color: '#0F172A' }}>
-                          {cleanPatientNameOnly(previewInvoice.patientName) || previewInvoice.patientName}
-                          {(() => {
-                            const details: string[] = [];
-                            if (previewInvoice.patientGender && previewInvoice.patientGender !== 'Patient') details.push(previewInvoice.patientGender);
-                            if (previewInvoice.patientAge) details.push(`${previewInvoice.patientAge} Yrs`);
-                            return details.length > 0 ? ` (${details.join(', ')})` : '';
-                          })()}
-                        </div>
-                        <div style={{ fontSize: '0.8rem', color: '#475569', marginTop: '2px' }}>Phone: {previewInvoice.patientPhone}</div>
-                        <div style={{ fontSize: '0.8rem', color: '#475569', marginTop: '2px' }}>Address: {previewInvoice.fullAddress}</div>
-                        <div style={{ fontSize: '0.8rem', color: '#0284C7', fontWeight: 700, marginTop: '2px' }}>Zone: {previewInvoice.area}, Hyderabad</div>
-                      </div>
-                      <div>
-                        <div style={{ fontSize: '0.72rem', fontWeight: 800, color: '#64748B', textTransform: 'uppercase', marginBottom: '6px' }}>SERVICE & DISPATCH DETAILS</div>
-                        <div style={{ fontSize: '0.98rem', fontWeight: 800, color: '#0F172A' }}>{previewInvoice.assignedNurseName}</div>
-                        <div style={{ fontSize: '0.8rem', color: '#475569', marginTop: '2px' }}>Booking Ref: <span style={{ fontFamily: 'monospace', fontWeight: 700 }}>{previewInvoice.bookingId}</span></div>
-                        <div style={{ fontSize: '0.8rem', color: '#475569', marginTop: '2px' }}>Payment Mode: {previewInvoice.paymentMode}</div>
-                        <div style={{ fontSize: '0.76rem', color: '#64748B', marginTop: '2px' }}>Supervision: Xpress Nurse Medical Command Center</div>
-                      </div>
-                    </div>
-
-                    {/* Multi-Row Invoice Table */}
-                    <div className="table-responsive" style={{ marginBottom: '1.25rem', border: '1px solid #E2E8F0', borderRadius: 10, overflow: 'hidden' }}>
-                      <table className="data-table" style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.82rem' }}>
-                        <thead>
-                          <tr style={{ background: '#F1F5F9', borderBottom: '2px solid #CBD5E1', color: '#334155', fontWeight: 800 }}>
-                            <th style={{ width: 45, textAlign: 'center', padding: '0.65rem 0.6rem' }}>#</th>
-                            <th style={{ padding: '0.65rem 0.8rem' }}>Procedure / Clinical Service</th>
-                            <th style={{ padding: '0.65rem 0.8rem', width: 120 }}>Date</th>
-                            <th style={{ padding: '0.65rem 0.8rem', width: 90, textAlign: 'center' }}>Slot</th>
-                            <th style={{ padding: '0.65rem 0.8rem', width: 90, textAlign: 'right' }}>Rate (₹)</th>
-                            <th style={{ padding: '0.65rem 0.6rem', width: 65, textAlign: 'center' }}>Visits</th>
-                            <th style={{ padding: '0.65rem 0.8rem', width: 110, textAlign: 'right' }}>Amount (₹)</th>
-                          </tr>
-                        </thead>
-                        <tbody>
-                          {(previewInvoice.items && previewInvoice.items.length > 0 ? previewInvoice.items : [
-                            {
-                              id: '1',
-                              description: previewInvoice.serviceTitle || 'Clinical Nursing Care',
-                              date: previewInvoice.serviceDate || '-',
-                              slot: previewInvoice.timeSlot || 'M',
-                              rate: previewInvoice.baseAmount,
-                              quantity: previewInvoice.numberOfVisits || 1,
-                              amount: previewInvoice.baseAmount * (previewInvoice.numberOfVisits || 1)
-                            }
-                          ]).map((it, idx) => (
-                            <tr key={it.id || idx} style={{ borderBottom: '1px solid #E2E8F0', background: idx % 2 === 1 ? '#FAFAFA' : '#FFFFFF' }}>
-                              <td style={{ textAlign: 'center', fontWeight: 700, color: '#64748B', padding: '0.65rem 0.6rem' }}>{idx + 1}</td>
-                              <td style={{ padding: '0.65rem 0.8rem' }}>
-                                <strong style={{ color: '#0F172A' }}>{it.description}</strong>
-                              </td>
-                              <td style={{ padding: '0.65rem 0.8rem', whiteSpace: 'nowrap' }}>{it.date || '-'}</td>
-                              <td style={{ padding: '0.65rem 0.8rem', textAlign: 'center', fontWeight: 800, color: '#0F172A', letterSpacing: '2px' }}>{formatSlotForBill(it.slot)}</td>
-                              <td style={{ textAlign: 'right', padding: '0.65rem 0.8rem', color: '#475569' }}>₹{it.rate}</td>
-                              <td style={{ textAlign: 'center', fontWeight: 700, padding: '0.65rem 0.6rem' }}>{it.quantity || 1}</td>
-                              <td style={{ textAlign: 'right', fontWeight: 800, padding: '0.65rem 0.8rem', color: '#0F172A' }}>₹{it.amount}</td>
-                            </tr>
-                          ))}
-
-                          {Boolean(previewInvoice.nightSurcharge && previewInvoice.nightSurcharge > 0) && (
-                            <tr style={{ borderBottom: '1px solid #E2E8F0', background: '#FFFDF5' }}>
-                              <td style={{ textAlign: 'center', fontWeight: 700, color: '#D97706' }}>•</td>
-                              <td colSpan={5} style={{ padding: '0.6rem 0.8rem' }}>
-                                <strong>Night Visit Emergency Surcharge</strong>
-                                <span style={{ fontSize: '0.74rem', color: '#64748B', display: 'block' }}>Rapid response & late-night clinical dispatch support fee</span>
-                              </td>
-                              <td style={{ textAlign: 'right', fontWeight: 800, padding: '0.6rem 0.8rem', color: '#D97706' }}>+₹{previewInvoice.nightSurcharge}</td>
-                            </tr>
-                          )}
-
-                          {Boolean(previewInvoice.discountRupees && previewInvoice.discountRupees > 0) && (
-                            <tr style={{ borderBottom: '1px solid #E2E8F0', background: '#F0FDF4' }}>
-                              <td style={{ textAlign: 'center', fontWeight: 700, color: '#059669' }}>•</td>
-                              <td colSpan={5} style={{ padding: '0.6rem 0.8rem' }}>
-                                <strong style={{ color: '#059669' }}>Promotional Coupon / Fee Concession Discount</strong>
-                              </td>
-                              <td style={{ textAlign: 'right', fontWeight: 800, padding: '0.6rem 0.8rem', color: '#059669' }}>-₹{previewInvoice.discountRupees}</td>
-                            </tr>
-                          )}
-                        </tbody>
-                      </table>
-                    </div>
-
-                    {/* Bottom Totals */}
-                    <div style={{ width: 340, marginLeft: 'auto', marginBottom: '1.25rem' }}>
-                      <div style={{ display: 'flex', justifyContent: 'space-between', padding: '0.35rem 0', fontSize: '0.84rem' }}>
-                        <span style={{ color: '#64748B' }}>Total Scheduled Visits:</span>
-                        <strong>{previewInvoice.items?.reduce((s, it) => s + (Number(it.quantity) || 1), 0) || previewInvoice.numberOfVisits || 1} slots</strong>
-                      </div>
-                      <div style={{ display: 'flex', justifyContent: 'space-between', padding: '0.35rem 0', fontSize: '0.84rem' }}>
-                        <span style={{ color: '#64748B' }}>Service Subtotal:</span>
-                        <strong>₹{previewInvoice.items?.reduce((s, it) => s + (Number(it.amount) || 0), 0) || previewInvoice.baseAmount}</strong>
-                      </div>
-
-                      {Boolean(previewInvoice.nightSurcharge && previewInvoice.nightSurcharge > 0) && (
-                        <div style={{ display: 'flex', justifyContent: 'space-between', padding: '0.35rem 0', fontSize: '0.84rem' }}>
-                          <span style={{ color: '#64748B' }}>Night Surcharge:</span>
-                          <strong style={{ color: '#D97706' }}>+₹{previewInvoice.nightSurcharge}</strong>
-                        </div>
-                      )}
-
-                      {Boolean(previewInvoice.discountRupees && previewInvoice.discountRupees > 0) && (
-                        <div style={{ display: 'flex', justifyContent: 'space-between', padding: '0.35rem 0', fontSize: '0.84rem', color: '#059669' }}>
-                          <span>Applied Discount:</span>
-                          <strong>-₹{previewInvoice.discountRupees}</strong>
-                        </div>
-                      )}
-
-                      <div style={{ display: 'flex', justifyContent: 'space-between', padding: '0.6rem 0', borderTop: '2px solid #0A192F', fontSize: '1.25rem', fontWeight: 900, marginTop: '6px' }}>
-                        <span>Total Payable:</span>
-                        <span style={{ color: '#059669' }}>₹{previewInvoice.totalAmount}</span>
-                      </div>
-                    </div>
-
-                    {/* Clinical Remarks / Special Notes Box */}
-                    {Boolean(cleanPatientFacingNotes(previewInvoice.notes)) && (
-                      <div style={{
-                        margin: '1.25rem 0',
-                        padding: '0.85rem 1.1rem',
-                        background: '#F0F9FF',
-                        border: '1.5px solid #BAE6FD',
-                        borderRadius: 10
-                      }}>
-                        <div style={{ fontSize: '0.72rem', fontWeight: 800, color: '#0369A1', textTransform: 'uppercase', marginBottom: '4px', letterSpacing: '0.04em', display: 'flex', alignItems: 'center', gap: '0.35rem' }}>
-                          <FileText size={13} />
-                          <span>Clinical Remarks / Special Notes:</span>
-                        </div>
-                        <div style={{ fontSize: '0.86rem', color: '#0C4A6E', lineHeight: 1.5, fontWeight: 500 }}>
-                          {cleanPatientFacingNotes(previewInvoice.notes)}
-                        </div>
-                      </div>
-                    )}
-
-                    {/* Footer sign */}
-                    <div style={{ borderTop: '1px dashed #CBD5E1', paddingTop: '1rem', display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '0.74rem', color: '#64748B' }}>
-                      <div>
-                        This is an authentic computer-generated digital tax invoice issued by Xpress Nurse Hyderabad.
-                      </div>
-                      <div style={{ textAlign: 'right', fontWeight: 700, color: '#0F172A' }}>
-                        Authorized Clinical Signatory
-                      </div>
-                    </div>
-                  </div>
-                </div>
               )}
             </div>
 
-            {/* 4. Fixed Sticky Footer */}
-            <div style={{ padding: '0.85rem 1.4rem', background: '#FAFAFA', borderTop: '1px solid var(--neutral-200)', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '0.65rem', flexShrink: 0 }}>
-              <div style={{ display: 'flex', gap: '0.65rem', flexWrap: 'wrap' }}>
-                <button
-                  type="button"
-                  onClick={handleSaveAndSyncInvoice}
-                  className="btn btn-primary btn-sm"
-                  style={{ borderRadius: 9999, gap: '0.35rem', fontWeight: 700 }}
-                  title="Save invoice and sync updated details with Supabase bookings"
-                >
-                  <RefreshCw size={14} />
-                  <span>Save & Sync to Supabase</span>
-                </button>
-                <button
-                  type="button"
-                  onClick={handlePrintCurrentInvoice}
-                  className="btn btn-danger btn-sm"
-                  style={{ borderRadius: 9999, gap: '0.35rem', fontWeight: 700 }}
-                  title="Print or save as official PDF"
-                >
-                  <Printer size={14} />
-                  <span>Print / Save PDF</span>
-                </button>
-                <button
-                  type="button"
-                  onClick={() => {
-                    if (previewInvoice) {
-                      const html = generatePrintableInvoiceHtml(previewInvoice);
-                      const blob = new Blob([html], { type: 'text/html' });
-                      const url = URL.createObjectURL(blob);
-                      const a = document.createElement('a');
-                      a.href = url;
-                      a.download = `${previewInvoice.invoiceNumber}.html`;
-                      document.body.appendChild(a);
-                      a.click();
-                      document.body.removeChild(a);
-                      URL.revokeObjectURL(url);
-                      showToast(`Downloaded ${previewInvoice.invoiceNumber}.html`);
-                    }
-                  }}
-                  className="btn btn-outline btn-sm"
-                  style={{ borderRadius: 9999, gap: '0.35rem', fontWeight: 600 }}
-                  title="Download standalone HTML invoice"
-                >
-                  <Download size={14} />
-                  <span>Download HTML</span>
-                </button>
-              </div>
-
-              <button
-                type="button"
-                onClick={() => setIsInvoicePreviewModalOpen(false)}
-                className="btn btn-outline btn-sm"
-                style={{ borderRadius: 9999 }}
-              >
-                Close
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* 3. CLOUDFLARE R2 BUCKET CONFIGURATION MODAL */}
-      {isR2ConfigModalOpen && (
-        <div
-          className="modal-overlay"
-          onClick={() => setIsR2ConfigModalOpen(false)}
-          style={{ zIndex: 999999, pointerEvents: 'auto' }}
-        >
-          <div
-            className="modal-box"
-            onClick={(e) => e.stopPropagation()}
-            style={{ maxWidth: 540, borderRadius: 20, pointerEvents: 'auto' }}
-          >
-            <div className="modal-header" style={{ padding: '1.25rem 1.5rem', background: '#FAFAFA', borderBottom: '1px solid var(--neutral-200)' }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '0.65rem' }}>
-                <div style={{ width: 38, height: 38, borderRadius: 10, background: '#EFF6FF', color: '#1D4ED8', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                  <Cloud size={20} />
-                </div>
-                <div>
-                  <h3 style={{ fontSize: '1.15rem', fontWeight: 800, color: 'var(--primary-navy-950)', margin: 0 }}>
-                    Cloudflare R2 Bucket Settings
-                  </h3>
-                  <div style={{ fontSize: '0.76rem', color: 'var(--neutral-500)' }}>
-                    Prescriptions & Invoice Storage Configuration
-                  </div>
-                </div>
-              </div>
-              <button
-                type="button"
-                onClick={() => setIsR2ConfigModalOpen(false)}
-                className="modal-close-btn"
-                style={{ background: '#F1F5F9', border: 'none', borderRadius: '50%', width: 32, height: 32, display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer' }}
-              >
-                <X size={16} />
-              </button>
-            </div>
-
-            <form onSubmit={handleSaveR2ConfigSubmit} style={{ padding: '1.4rem' }}>
-              <div style={{ marginBottom: '1rem' }}>
-                <label className="form-label" style={{ fontSize: '0.78rem', fontWeight: 700 }}>BUCKET NAME *</label>
-                <input
-                  type="text"
-                  required
-                  value={r2ConfigForm.bucketName}
-                  onChange={(e) => setR2ConfigForm({ ...r2ConfigForm, bucketName: e.target.value })}
-                  className="form-control"
+            {serviceForm.imageUrl && (
+              <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', marginBottom: '0.5rem' }}>
+                <img
+                  src={serviceForm.imageUrl}
+                  alt="Main image preview"
+                  style={{ width: 64, height: 64, objectFit: 'cover', borderRadius: 8, border: '1px solid #CBD5E1' }}
+                  onError={(e) => { (e.target as HTMLImageElement).src = '/images/doctor_xpressnurse.jpg'; }}
                 />
-              </div>
-
-              <div style={{ marginBottom: '1rem' }}>
-                <label className="form-label" style={{ fontSize: '0.78rem', fontWeight: 700 }}>CLOUDFLARE ACCOUNT ID *</label>
-                <input
-                  type="text"
-                  required
-                  value={r2ConfigForm.accountId}
-                  onChange={(e) => setR2ConfigForm({ ...r2ConfigForm, accountId: e.target.value })}
-                  className="form-control"
-                />
-              </div>
-
-              <div style={{ marginBottom: '1rem' }}>
-                <label className="form-label" style={{ fontSize: '0.78rem', fontWeight: 700 }}>PUBLIC CDN DOMAIN (FOR PRESCRIPTION / INVOICE URLS) *</label>
-                <input
-                  type="url"
-                  required
-                  value={r2ConfigForm.publicDomain}
-                  onChange={(e) => setR2ConfigForm({ ...r2ConfigForm, publicDomain: e.target.value })}
-                  className="form-control"
-                />
-              </div>
-
-              <div style={{ marginBottom: '1.25rem' }}>
-                <label className="form-label" style={{ fontSize: '0.78rem', fontWeight: 700 }}>S3 COMPATIBLE ENDPOINT</label>
-                <input
-                  type="url"
-                  value={r2ConfigForm.endpoint}
-                  onChange={(e) => setR2ConfigForm({ ...r2ConfigForm, endpoint: e.target.value })}
-                  className="form-control"
-                />
-              </div>
-
-              <div style={{ marginBottom: '1.25rem' }}>
-                <label className="form-label" style={{ fontSize: '0.78rem', fontWeight: 700 }}>ACCESS KEY ID (API TOKEN KEY)</label>
-                <input
-                  type="text"
-                  value={r2ConfigForm.accessKeyId || ''}
-                  onChange={(e) => setR2ConfigForm({ ...r2ConfigForm, accessKeyId: e.target.value })}
-                  className="form-control"
-                />
-              </div>
-
-              <div style={{ marginBottom: '1.25rem' }}>
-                <label className="form-label" style={{ fontSize: '0.78rem', fontWeight: 700 }}>SECRET ACCESS KEY (API TOKEN SECRET)</label>
-                <input
-                  type="password"
-                  value={r2ConfigForm.secretAccessKey || ''}
-                  onChange={(e) => setR2ConfigForm({ ...r2ConfigForm, secretAccessKey: e.target.value })}
-                  className="form-control"
-                />
-              </div>
-
-              <div style={{ display: 'flex', gap: '0.65rem', justifyContent: 'flex-end' }}>
-                <button type="button" onClick={() => setIsR2ConfigModalOpen(false)} className="btn btn-outline" style={{ borderRadius: 9999 }}>
-                  Cancel
-                </button>
-                <button type="submit" className="btn btn-primary" style={{ borderRadius: 9999, fontWeight: 700 }}>
-                  Save R2 Configuration
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
-
-      {/* 4. CLOUDFLARE DOCUMENT UPLOAD MODAL */}
-      {isUploadModalOpen && (
-        <div
-          className="modal-overlay"
-          onClick={() => setIsUploadModalOpen(false)}
-          style={{ zIndex: 999999, pointerEvents: 'auto' }}
-        >
-          <div
-            className="modal-box"
-            onClick={(e) => e.stopPropagation()}
-            style={{ maxWidth: 500, borderRadius: 20, pointerEvents: 'auto' }}
-          >
-            <div className="modal-header" style={{ padding: '1.25rem 1.5rem', background: '#FAFAFA', borderBottom: '1px solid var(--neutral-200)' }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '0.65rem' }}>
-                <div style={{ width: 38, height: 38, borderRadius: 10, background: '#F0FDF4', color: '#16A34A', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                  <UploadCloud size={20} />
-                </div>
-                <div>
-                  <h3 style={{ fontSize: '1.15rem', fontWeight: 800, color: 'var(--primary-navy-950)', margin: 0 }}>
-                    Upload to Cloudflare R2
-                  </h3>
-                  <div style={{ fontSize: '0.76rem', color: 'var(--neutral-500)' }}>
-                    Add object to xpressnurse-storage bucket
-                  </div>
-                </div>
-              </div>
-              <button
-                type="button"
-                onClick={() => setIsUploadModalOpen(false)}
-                className="modal-close-btn"
-                style={{ background: '#F1F5F9', border: 'none', borderRadius: '50%', width: 32, height: 32, display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer' }}
-              >
-                <X size={16} />
-              </button>
-            </div>
-
-            <form onSubmit={handleUploadDocumentSubmit} style={{ padding: '1.4rem' }}>
-              <div style={{ marginBottom: '1rem' }}>
-                <label className="form-label" style={{ fontSize: '0.78rem', fontWeight: 700 }}>STORAGE CATEGORY *</label>
-                <select
-                  value={uploadForm.category}
-                  onChange={(e) => setUploadForm({ ...uploadForm, category: e.target.value as StorageCategory })}
-                  className="form-control"
-                >
-                  <option value="prescriptions">Prescriptions (Patient Rx)</option>
-                  <option value="invoices">Invoices & Receipts</option>
-                  <option value="certificates">Nurse Registration Certificates</option>
-                  <option value="teleconsult-rx">Doctor Teleconsult Orders</option>
-                  <option value="lab-reports">Diagnostic & Lab Reports</option>
-                </select>
-              </div>
-
-              <div style={{ marginBottom: '1rem' }}>
-                <label className="form-label" style={{ fontSize: '0.78rem', fontWeight: 700 }}>SELECT DOCUMENT *</label>
-                <input
-                  type="file"
-                  accept=".pdf,image/png,image/jpeg,image/webp"
-                  required
-                  onChange={(e) => {
-                    const file = e.target.files?.[0];
-                    if (file) {
-                      const reader = new FileReader();
-                      reader.onload = () => {
-                        setUploadForm(prev => ({
-                          ...prev,
-                          fileDataUrl: reader.result as string,
-                          fileSize: file.size,
-                          fileType: file.type || 'application/pdf',
-                          fileName: prev.fileName || file.name
-                        }));
-                      };
-                      reader.readAsDataURL(file);
-                    }
-                  }}
-                  className="form-control"
-                  style={{ padding: '0.4rem' }}
-                />
-              </div>
-
-              <div style={{ marginBottom: '1rem' }}>
-                <label className="form-label" style={{ fontSize: '0.78rem', fontWeight: 700 }}>FILE NAME *</label>
-                <input
-                  type="text"
-                  required
-                  placeholder="e.g. Rx_PatientName_Procedure.pdf"
-                  value={uploadForm.fileName}
-                  onChange={(e) => setUploadForm({ ...uploadForm, fileName: e.target.value })}
-                  className="form-control"
-                />
-              </div>
-
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem', marginBottom: '1rem' }}>
-                <div>
-                  <label className="form-label" style={{ fontSize: '0.78rem', fontWeight: 700 }}>PATIENT NAME</label>
-                  <input
-                    type="text"
-                    placeholder="Patient Name"
-                    value={uploadForm.patientName}
-                    onChange={(e) => setUploadForm({ ...uploadForm, patientName: e.target.value })}
-                    className="form-control"
-                  />
-                </div>
-                <div>
-                  <label className="form-label" style={{ fontSize: '0.78rem', fontWeight: 700 }}>BOOKING REF ID</label>
-                  <input
-                    type="text"
-                    placeholder="e.g. BK-1042"
-                    value={uploadForm.bookingId}
-                    onChange={(e) => setUploadForm({ ...uploadForm, bookingId: e.target.value })}
-                    className="form-control"
-                  />
-                </div>
-              </div>
-
-              <div style={{ marginBottom: '1.25rem' }}>
-                <label className="form-label" style={{ fontSize: '0.78rem', fontWeight: 700 }}>DESCRIPTION / NOTES</label>
-                <textarea
-                  rows={2}
-                  placeholder="Clinical notes or description"
-                  value={uploadForm.description}
-                  onChange={(e) => setUploadForm({ ...uploadForm, description: e.target.value })}
-                  className="form-control"
-                />
-              </div>
-
-              <div style={{ display: 'flex', gap: '0.65rem', justifyContent: 'flex-end' }}>
-                <button type="button" onClick={() => setIsUploadModalOpen(false)} className="btn btn-outline" style={{ borderRadius: 9999 }}>
-                  Cancel
-                </button>
-                <button type="submit" className="btn btn-danger" style={{ borderRadius: 9999, fontWeight: 700 }}>
-                  Upload to R2 Bucket
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
-
-      {/* ADMIN IN-APP CERTIFICATE VIEWER MODAL */}
-      {adminCertModalOpen && adminCertModalNurse && (
-        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.7)', zIndex: 99999, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '1rem' }}>
-          <div style={{ background: '#FFFFFF', borderRadius: 16, width: '100%', maxWidth: 780, maxHeight: '92vh', overflowY: 'auto', display: 'flex', flexDirection: 'column', boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.25)' }}>
-            <div style={{ padding: '1.25rem 1.5rem', borderBottom: '1px solid #E2E8F0', display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '0.75rem' }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '0.65rem' }}>
-                <div style={{ width: 36, height: 36, borderRadius: 10, background: '#EFF6FF', color: '#0284C7', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                  <Shield size={18} />
-                </div>
-                <div>
-                  <h3 style={{ fontSize: '1.15rem', fontWeight: 800, color: '#0F172A', margin: 0 }}>
-                    Clinical Registration Certificate — {adminCertModalNurse.name}
-                  </h3>
-                  <div style={{ fontSize: '0.78rem', color: '#64748B' }}>
-                    {adminCertModalNurse.qualification} • Station: {adminCertModalNurse.serviceArea} • Phone: {adminCertModalNurse.phone}
-                    {adminCertModalNurse.currentlyWorkingAt ? ` • 🏥 ${adminCertModalNurse.currentlyWorkingAt}` : ''}
-                  </div>
-                </div>
-              </div>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                <button
-                  type="button"
-                  onClick={() => setIsEditingNurseCert(!isEditingNurseCert)}
-                  className="btn btn-sm"
-                  style={{
-                    background: isEditingNurseCert ? '#0284C7' : '#EFF6FF',
-                    color: isEditingNurseCert ? '#FFFFFF' : '#0284C7',
-                    border: '1px solid #BAE6FD',
-                    fontWeight: 750,
-                    borderRadius: 8,
-                    display: 'inline-flex',
-                    alignItems: 'center',
-                    gap: '0.35rem'
-                  }}
-                >
-                  <Edit2 size={13} />
-                  <span>{isEditingNurseCert ? 'Hide Edit Panel' : 'Edit Certificate'}</span>
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setAdminCertModalOpen(false)}
-                  style={{ background: '#F1F5F9', border: 'none', borderRadius: '50%', width: 32, height: 32, display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer' }}
-                >
-                  <X size={16} />
-                </button>
-              </div>
-            </div>
-
-            {/* CERTIFICATE EDIT / REPLACE PANEL */}
-            {isEditingNurseCert && (
-              <div style={{ padding: '1.25rem 1.5rem', background: '#F0F9FF', borderBottom: '1.5px solid #BAE6FD' }}>
-                <div style={{ fontSize: '0.86rem', fontWeight: 800, color: '#0369A1', marginBottom: '0.5rem', display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
-                  <Edit2 size={15} />
-                  <span>Edit / Replace Nurse Certificate Document</span>
-                </div>
-
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr auto', gap: '0.75rem', alignItems: 'center', marginBottom: '0.75rem' }}>
-                  <div>
-                    <label style={{ fontSize: '0.75rem', fontWeight: 700, color: '#1E293B', display: 'block', marginBottom: '0.25rem' }}>
-                      Certificate URL (or upload a file on the right):
-                    </label>
-                    <input
-                      type="text"
-                      placeholder="https://... or data:image/... or data:application/pdf;..."
-                      value={certUrlInput}
-                      onChange={(e) => setCertUrlInput(e.target.value)}
-                      className="form-control"
-                      style={{ fontSize: '0.84rem' }}
-                    />
-                  </div>
-
-                  <div>
-                    <label style={{ fontSize: '0.75rem', fontWeight: 700, color: '#1E293B', display: 'block', marginBottom: '0.25rem' }}>
-                      Upload New File:
-                    </label>
-                    <label style={{ cursor: isUploadingNurseCert ? 'not-allowed' : 'pointer', margin: 0 }}>
-                      <input
-                        type="file"
-                        accept="image/*,.pdf"
-                        disabled={isUploadingNurseCert}
-                        style={{ display: 'none' }}
-                        onChange={async (e) => {
-                          if (e.target.files && e.target.files[0]) {
-                            const file = e.target.files[0];
-                            setIsUploadingNurseCert(true);
-                            try {
-                              const dataUrl = await new Promise<string>((resolve) => {
-                                const reader = new FileReader();
-                                reader.onload = () => resolve(reader.result as string);
-                                reader.onerror = () => resolve('');
-                                reader.readAsDataURL(file);
-                              });
-                              if (dataUrl) {
-                                const uploadRes = await uploadToCloudflareStorage({
-                                  fileName: file.name,
-                                  category: 'certificates',
-                                  contentType: file.type,
-                                  sizeBytes: file.size,
-                                  dataUrl
-                                });
-                                const savedUrl = uploadRes.publicUrl || dataUrl;
-                                setCertUrlInput(savedUrl);
-                                showToast('File uploaded! Click "Save Certificate" to persist.');
-                              }
-                            } catch {
-                              showToast('Failed to upload file.', 'error');
-                            } finally {
-                              setIsUploadingNurseCert(false);
-                            }
-                          }
-                        }}
-                      />
-                      <span className="btn btn-sm btn-primary" style={{ display: 'inline-flex', alignItems: 'center', gap: '0.35rem', fontWeight: 700, padding: '0.55rem 0.9rem' }}>
-                        <UploadCloud size={14} />
-                        <span>{isUploadingNurseCert ? 'Uploading...' : 'Choose File'}</span>
-                      </span>
-                    </label>
-                  </div>
-                </div>
-
-                <div style={{ display: 'flex', gap: '0.5rem', justifyContent: 'flex-end', alignItems: 'center', flexWrap: 'wrap' }}>
-                  {adminCertModalNurse.certificateUrl && (
-                    <button
-                      type="button"
-                      onClick={async () => {
-                        if (!confirm(`Are you sure you want to remove the certificate document for ${adminCertModalNurse.name}?`)) return;
-                        await onUpdateNurseRecord?.(adminCertModalNurse.id, { certificateUrl: '', certificateVerified: false });
-                        try {
-                          await dbUpdateNurseById(adminCertModalNurse.id, { certificateUrl: '', certificateVerified: false });
-                        } catch { }
-                        setAdminCertModalNurse({ ...adminCertModalNurse, certificateUrl: undefined, certificateVerified: false });
-                        setCertUrlInput('');
-                        showToast(`Certificate removed for ${adminCertModalNurse.name}.`);
-                      }}
-                      className="btn btn-sm btn-outline"
-                      style={{ color: '#E11D48', borderColor: '#FECDD3', background: '#FFF1F2', fontWeight: 700 }}
-                    >
-                      Remove Document
-                    </button>
-                  )}
-
-                  <button
-                    type="button"
-                    onClick={async () => {
-                      const trimmed = certUrlInput.trim();
-                      if (!trimmed) {
-                        showToast('Please enter a valid certificate URL or choose a file first.', 'error');
-                        return;
-                      }
-                      await onUpdateNurseRecord?.(adminCertModalNurse.id, { certificateUrl: trimmed, certificateVerified: true, status: 'Active' });
-                      try {
-                        await dbUpdateNurseById(adminCertModalNurse.id, { certificateUrl: trimmed, certificateVerified: true, status: 'Active' });
-                      } catch { }
-                      setAdminCertModalNurse({ ...adminCertModalNurse, certificateUrl: trimmed, certificateVerified: true, status: 'Active' });
-                      setIsEditingNurseCert(false);
-                      showToast(`Certificate for ${adminCertModalNurse.name} saved and verified! Nurse account is now active.`);
-                    }}
-                    className="btn btn-sm btn-primary"
-                    style={{ background: '#16A34A', borderColor: '#16A34A', fontWeight: 750 }}
-                  >
-                    ✓ Save & Apply Certificate
-                  </button>
-
-                  <button
-                    type="button"
-                    onClick={() => setIsEditingNurseCert(false)}
-                    className="btn btn-sm btn-outline"
-                    style={{ fontWeight: 700 }}
-                  >
-                    Cancel
-                  </button>
-                </div>
+                <span style={{ fontSize: '0.75rem', color: '#059669', fontWeight: 600 }}>✓ Image URL preview active</span>
               </div>
             )}
 
-            <div style={{ padding: '1.5rem', background: '#0F172A', display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: 400 }}>
-              {adminCertModalNurse.certificateUrl ? (
-                adminCertModalNurse.certificateUrl.startsWith('data:application/pdf') || adminCertModalNurse.certificateUrl.toLowerCase().split('?')[0].endsWith('.pdf') ? (
-                  <iframe
-                    src={getSafeBlobUrl(adminCertModalNurse.certificateUrl)}
-                    style={{ width: '100%', height: '65vh', border: 'none', borderRadius: 8, background: '#FFFFFF' }}
-                    title="Nurse PDF Certificate"
-                  />
-                ) : (
-                  <img
-                    src={adminCertModalNurse.certificateUrl}
-                    alt="Nurse Certificate"
-                    style={{ maxWidth: '100%', maxHeight: '68vh', objectFit: 'contain', borderRadius: 8, boxShadow: '0 10px 25px rgba(0,0,0,0.5)' }}
-                    onError={(e) => {
-                      (e.target as HTMLImageElement).style.display = 'none';
-                      const parent = (e.target as HTMLImageElement).parentElement;
-                      if (parent) {
-                        const iframe = document.createElement('iframe');
-                        iframe.src = adminCertModalNurse.certificateUrl || '';
-                        iframe.style.width = '100%';
-                        iframe.style.height = '65vh';
-                        iframe.style.border = 'none';
-                        iframe.style.borderRadius = '8px';
-                        iframe.style.background = '#FFFFFF';
-                        parent.appendChild(iframe);
-                      }
-                    }}
-                  />
-                )
-              ) : (
-                <div style={{ color: '#FFFFFF', textAlign: 'center', padding: '3rem 1.5rem' }}>
-                  <div style={{ width: 50, height: 50, borderRadius: '50%', background: 'rgba(255,255,255,0.1)', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 1rem auto', color: '#94A3B8' }}>
-                    <FileText size={24} />
-                  </div>
-                  <h4 style={{ margin: '0 0 0.5rem 0', color: '#F8FAFC', fontSize: '1.05rem' }}>No Certificate Document Available</h4>
-                  <p style={{ color: '#94A3B8', fontSize: '0.84rem', maxWidth: 420, margin: '0 auto 1.25rem auto' }}>
-                    This nurse profile currently has no verification certificate attached. You can upload or link one right now.
-                  </p>
-                  <button
-                    type="button"
-                    onClick={() => setIsEditingNurseCert(true)}
-                    className="btn btn-sm btn-primary"
-                    style={{ fontWeight: 750 }}
-                  >
-                    + Add / Upload Certificate Now
-                  </button>
+            <div style={{ display: 'flex', gap: '1rem', alignItems: 'center' }}>
+              <div style={{ flex: 1 }}>
+                <input
+                  type="file"
+                  accept="image/jpeg, image/png, image/webp"
+                  onChange={handleServiceImageUpload}
+                  disabled={isUploadingServiceImage}
+                  style={{
+                    width: '100%',
+                    padding: '0.45rem',
+                    border: '1px dashed #CBD5E1',
+                    borderRadius: 8,
+                    fontSize: '0.85rem',
+                    background: '#F8FAFC'
+                  }}
+                />
+                <div style={{ fontSize: '0.72rem', color: '#64748B', marginTop: '0.2rem' }}>
+                  Or upload photo file directly from your computer (auto-hosted to Cloudflare)
                 </div>
-              )}
-            </div>
-
-            <div style={{ padding: '1rem 1.5rem', borderTop: '1px solid #E2E8F0', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '0.75rem', background: '#F8FAFC' }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                {adminCertModalNurse.certificateVerified ? (
-                  <span className="status-pill success" style={{ fontSize: '0.75rem', padding: '3px 9px' }}>✓ Verified Registered RN</span>
-                ) : (
-                  <span className="status-pill warning" style={{ fontSize: '0.75rem', padding: '3px 9px' }}>Pending Admin Review</span>
+                {isUploadingServiceImage && (
+                  <div style={{ fontSize: '0.75rem', color: '#0284C7', marginTop: '0.25rem', fontWeight: 600 }}>
+                    Uploading main image...
+                  </div>
                 )}
-              </div>
-
-              <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center', flexWrap: 'wrap' }}>
-                <button
-                  type="button"
-                  onClick={() => setIsEditingNurseCert(!isEditingNurseCert)}
-                  className="btn btn-sm btn-outline"
-                  style={{ display: 'inline-flex', alignItems: 'center', gap: '0.35rem', fontWeight: 700 }}
-                >
-                  <Edit2 size={14} />
-                  <span>{isEditingNurseCert ? 'Close Editor' : 'Edit Certificate'}</span>
-                </button>
-
-                {adminCertModalNurse.certificateUrl && (
-                  <button
-                    type="button"
-                    onClick={() => {
-                      const safeUrl = getSafeBlobUrl(adminCertModalNurse.certificateUrl!);
-                      window.open(safeUrl, '_blank');
-                    }}
-                    className="btn btn-outline btn-sm"
-                    style={{ display: 'inline-flex', alignItems: 'center', gap: '0.35rem', fontWeight: 700 }}
-                  >
-                    <ExternalLink size={14} />
-                    <span>Open in New Tab</span>
-                  </button>
-                )}
-
-                {!adminCertModalNurse.certificateVerified && (
-                  <button
-                    type="button"
-                    onClick={async () => {
-                      await onUpdateNurseRecord?.(adminCertModalNurse.id, { certificateVerified: true, status: 'Active' });
-                      try {
-                        await dbUpdateNurseById(adminCertModalNurse.id, { certificateVerified: true, status: 'Active' });
-                      } catch { }
-                      setAdminCertModalNurse({ ...adminCertModalNurse, certificateVerified: true, status: 'Active' });
-                      showToast(`Nurse ${adminCertModalNurse.name} certificate verified and approved!`);
-                      setAdminCertModalOpen(false);
-                    }}
-                    className="btn btn-primary btn-sm"
-                    style={{ background: '#16A34A', borderColor: '#16A34A', fontWeight: 700 }}
-                  >
-                    ✓ Verify & Approve Nurse
-                  </button>
-                )}
-
-                <button
-                  type="button"
-                  onClick={() => setAdminCertModalOpen(false)}
-                  className="btn btn-outline btn-sm"
-                  style={{ fontWeight: 700 }}
-                >
-                  Close
-                </button>
               </div>
             </div>
           </div>
-        </div>
+
+          <div style={{ marginBottom: '1.25rem' }}>
+            <label className="form-label" style={{ fontSize: '0.78rem', fontWeight: 700, display: 'block', marginBottom: '0.4rem' }}>
+              SERVICE THUMBNAIL IMAGE (Optional)
+            </label>
+            <div style={{ display: 'flex', gap: '0.5rem', marginBottom: '0.5rem' }}>
+              <input
+                type="text"
+                placeholder="Enter thumbnail URL or upload below..."
+                value={serviceForm.thumbnailUrl}
+                onChange={(e) => setServiceForm({ ...serviceForm, thumbnailUrl: e.target.value })}
+                className="form-control"
+                style={{ fontSize: '0.85rem' }}
+              />
+              {serviceForm.thumbnailUrl && (
+                <button
+                  type="button"
+                  onClick={() => setServiceForm({ ...serviceForm, thumbnailUrl: '' })}
+                  className="btn btn-outline btn-sm"
+                  style={{ color: '#EF4444', borderColor: '#FECDD3', padding: '0 0.75rem', fontWeight: 600 }}
+                >
+                  Clear
+                </button>
+              )}
+            </div>
+
+            {serviceForm.thumbnailUrl && (
+              <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', marginBottom: '0.5rem' }}>
+                <img
+                  src={serviceForm.thumbnailUrl}
+                  alt="Thumbnail preview"
+                  style={{ width: 64, height: 64, objectFit: 'cover', borderRadius: 8, border: '1px solid #CBD5E1' }}
+                  onError={(e) => { (e.target as HTMLImageElement).src = '/images/doctor_xpressnurse.jpg'; }}
+                />
+                <span style={{ fontSize: '0.75rem', color: '#059669', fontWeight: 600 }}>✓ Thumbnail preview active</span>
+              </div>
+            )}
+
+            <div style={{ display: 'flex', gap: '1rem', alignItems: 'center' }}>
+              <div style={{ flex: 1 }}>
+                <input
+                  type="file"
+                  accept="image/jpeg, image/png, image/webp"
+                  onChange={handleServiceThumbnailUpload}
+                  disabled={isUploadingServiceThumbnail}
+                  style={{
+                    width: '100%',
+                    padding: '0.45rem',
+                    border: '1px dashed #CBD5E1',
+                    borderRadius: 8,
+                    fontSize: '0.85rem',
+                    background: '#F8FAFC'
+                  }}
+                />
+                {isUploadingServiceThumbnail && (
+                  <div style={{ fontSize: '0.75rem', color: '#0284C7', marginTop: '0.25rem', fontWeight: 600 }}>
+                    Uploading thumbnail...
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+
+          <div style={{ marginBottom: '1.25rem', display: 'flex', alignItems: 'center', gap: '0.6rem' }}>
+            <input
+              type="checkbox"
+              id="sRxReq"
+              checked={serviceForm.prescriptionRequired}
+              onChange={(e) => setServiceForm({ ...serviceForm, prescriptionRequired: e.target.checked })}
+              style={{ width: 16, height: 16, cursor: 'pointer' }}
+            />
+            <label htmlFor="sRxReq" style={{ fontSize: '0.85rem', fontWeight: 600, cursor: 'pointer', margin: 0 }}>
+              Prescription Mandatory (Doctor tele-consult triage prompted if patient has none)
+            </label>
+          </div>
+
+          <div style={{ display: 'flex', gap: '0.65rem', justifyContent: 'flex-end', alignItems: 'center' }}>
+            {editingService && (
+              <button
+                type="button"
+                onClick={() => {
+                  setIsServiceModalOpen(false);
+                  handleDeleteServiceClick(editingService);
+                }}
+                className="btn btn-outline"
+                style={{
+                  borderColor: '#FECDD3',
+                  color: '#E11D48',
+                  background: '#FFF1F2',
+                  marginRight: 'auto',
+                  borderRadius: 9999,
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: '0.4rem',
+                  fontWeight: 700
+                }}
+              >
+                <Trash2 size={15} />
+                <span>Delete Service</span>
+              </button>
+            )}
+            <button type="button" onClick={() => setIsServiceModalOpen(false)} className="btn btn-outline" style={{ borderRadius: 9999 }}>
+              Cancel
+            </button>
+            <button type="submit" className="btn btn-danger" style={{ borderRadius: 9999, fontWeight: 700, minWidth: 140, justifyContent: 'center' }}>
+              {editingService ? 'Update Procedure' : 'Publish Procedure'}
+            </button>
+          </div>
+        </form>
+          </div>
+        </div >
       )}
 
-      {/* ========================================================================= */}
-      {/* IN-APP PERMANENT DELETION CONFIRMATION MODAL                              */}
-      {/* 100% Reliable in all browsers; never blocked by popup/dialog blockers     */}
-      {/* ========================================================================= */}
-      {deleteConfirmTarget && (
-        <div
-          role="dialog"
-          aria-modal="true"
-          aria-labelledby="delete-confirm-title"
-          style={{
-            position: 'fixed',
-            inset: 0,
-            zIndex: 99999999,
-            backgroundColor: 'rgba(15, 23, 42, 0.72)',
-            backdropFilter: 'blur(6px)',
+{/* ========================================================================= */ }
+{/* 4. CREATE / EDIT LEAD MODAL */ }
+{/* ========================================================================= */ }
+{
+  isLeadModalOpen && (
+    <div
+      className="modal-overlay"
+      data-lenis-prevent="true"
+      onClick={() => setIsLeadModalOpen(false)}
+      style={{ zIndex: 99999, pointerEvents: 'auto' }}
+    >
+      <div
+        className="modal-box"
+        onClick={(e) => e.stopPropagation()}
+        style={{ maxWidth: 540, borderRadius: 20, pointerEvents: 'auto' }}
+      >
+        <div className="modal-header" style={{ padding: '1.25rem 1.5rem', background: '#FAFAFA', borderBottom: '1px solid var(--neutral-200)' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.65rem' }}>
+            <div style={{ width: 36, height: 36, borderRadius: 10, background: 'var(--primary-navy-950)', color: '#FFFFFF', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+              <Activity size={18} />
+            </div>
+            <div>
+              <h3 style={{ fontSize: '1.15rem', fontWeight: 800, color: 'var(--primary-navy-950)', margin: 0 }}>
+                {editingLead ? `Edit Referral Lead: ${editingLead.id}` : 'Record Nurse Referral Lead'}
+              </h3>
+              <div style={{ fontSize: '0.76rem', color: 'var(--neutral-500)', fontWeight: 500 }}>
+                Governed by Rule 1 (referrals stay with the nurse) in Supabase <code>leads</code> table
+              </div>
+            </div>
+          </div>
+          <button
+            onClick={() => setIsLeadModalOpen(false)}
+            style={{ background: '#F1F5F9', border: 'none', borderRadius: '50%', width: 32, height: 32, display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer' }}
+          >
+            <X size={17} />
+          </button>
+        </div>
+
+        <form onSubmit={handleSaveLeadSubmit} className="modal-body" style={{ padding: '1.25rem 1.5rem' }}>
+          <div style={{ display: 'grid', gridTemplateColumns: '1.3fr 1fr', gap: '0.75rem', marginBottom: '0.85rem' }}>
+            <div>
+              <label className="form-label" style={{ fontSize: '0.78rem', fontWeight: 700 }}>PATIENT FULL NAME *</label>
+              <input
+                type="text"
+                required
+                value={leadForm.patientName}
+                onChange={(e) => setLeadForm({ ...leadForm, patientName: e.target.value })}
+                className="form-control"
+              />
+            </div>
+            <div>
+              <label className="form-label" style={{ fontSize: '0.78rem', fontWeight: 700 }}>CONTACT PHONE *</label>
+              <input
+                type="tel"
+                required
+                value={leadForm.patientPhone}
+                onChange={(e) => setLeadForm({ ...leadForm, patientPhone: e.target.value })}
+                className="form-control"
+              />
+            </div>
+          </div>
+
+          <div style={{ display: 'grid', gridTemplateColumns: '1.2fr 1fr', gap: '0.75rem', marginBottom: '0.85rem' }}>
+            <div>
+              <label className="form-label" style={{ fontSize: '0.78rem', fontWeight: 700 }}>REFERRING NURSE / PARTNER</label>
+              <select
+                className="form-control"
+                value={leadForm.nurseId}
+                onChange={(e) => setLeadForm({ ...leadForm, nurseId: e.target.value })}
+              >
+                {nurses.map((n) => (
+                  <option key={n.id} value={n.id}>{n.name} ({n.serviceArea})</option>
+                ))}
+                {appUsers.filter(u => u.role === 'doctor').map((u) => (
+                  <option key={u.id} value={u.id}>{u.name} (Partner • {u.commissionPercent || 10}%)</option>
+                ))}
+              </select>
+            </div>
+            <div>
+              <label className="form-label" style={{ fontSize: '0.78rem', fontWeight: 700 }}>PATIENT AREA</label>
+              <input list="hyderabad-areas"
+                className="form-control"
+                value={leadForm.area}
+                onChange={(e) => setLeadForm({ ...leadForm, area: e.target.value as HyderabadArea })}
+              />
+            </div>
+          </div>
+
+          <div style={{ display: 'grid', gridTemplateColumns: '1.2fr 1fr', gap: '0.75rem', marginBottom: '0.85rem' }}>
+            <div>
+              <label className="form-label" style={{ fontSize: '0.78rem', fontWeight: 700 }}>PROCEDURE NEEDED</label>
+              <select
+                className="form-control"
+                value={leadForm.serviceId}
+                onChange={(e) => setLeadForm({ ...leadForm, serviceId: e.target.value as ServiceId })}
+              >
+                {services.filter(s => s.id !== 'other').map((s) => (
+                  <option key={s.id} value={s.id}>{s.title}</option>
+                ))}
+                <option value="other">Other Nursing Service / Custom Care</option>
+              </select>
+            </div>
+            <div>
+              <label className="form-label" style={{ fontSize: '0.78rem', fontWeight: 700 }}>LEAD STATUS</label>
+              <select
+                className="form-control"
+                value={leadForm.status}
+                onChange={(e) => setLeadForm({ ...leadForm, status: e.target.value as any })}
+              >
+                <option value="Approved">Approved / Accepted</option>
+                <option value="Converted">Converted (Award Payout)</option>
+                <option value="Pending Approval">Pending Approval / Review</option>
+                <option value="Submitted">Submitted (Under Review)</option>
+                <option value="Rejected">Rejected</option>
+                <option value="Assigned">Assigned</option>
+                <option value="Lost">Lost</option>
+              </select>
+            </div>
+          </div>
+
+          {(leadForm.serviceId as string) === 'other' && (
+            <div style={{ marginBottom: '0.85rem', animation: 'fadeIn 0.2s ease-in-out' }}>
+              <label className="form-label" style={{ fontSize: '0.78rem', fontWeight: 700, color: '#0369A1' }}>
+                SPECIFY OTHER NURSING PROCEDURE *
+              </label>
+              <input
+                type="text"
+                required
+                value={leadForm.customProcedure}
+                onChange={(e) => setLeadForm({ ...leadForm, customProcedure: e.target.value })}
+                className="form-control"
+                style={{ borderColor: '#38BDF8', backgroundColor: '#F0F9FF' }}
+              />
+            </div>
+          )}
+
+          {/* Billed Amount & Commission */}
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem', marginBottom: '0.85rem' }}>
+            <div>
+              <label className="form-label" style={{ fontSize: '0.78rem', fontWeight: 700 }}>BILLED / CHARGED AMOUNT (₹)</label>
+              <input
+                type="number"
+                min={0}
+                value={leadForm.billedAmount}
+                onChange={(e) => setLeadForm({ ...leadForm, billedAmount: Number(e.target.value) })}
+                className="form-control"
+                style={{ fontWeight: 750 }}
+              />
+              <div style={{ fontSize: '0.72rem', color: '#64748B', marginTop: '0.2rem' }}>
+                Entered by Admin; partner commission calculates automatically from this.
+              </div>
+            </div>
+            <div>
+              <label className="form-label" style={{ fontSize: '0.78rem', fontWeight: 700 }}>LEAD VALUE / REWARD (₹)</label>
+              <input
+                type="number"
+                min={0}
+                value={leadForm.leadValueRupees}
+                onChange={(e) => setLeadForm({ ...leadForm, leadValueRupees: Number(e.target.value) })}
+                className="form-control"
+              />
+            </div>
+          </div>
+
+          {/* Notes */}
+          <div style={{ marginBottom: '0.85rem' }}>
+            <label className="form-label" style={{ fontSize: '0.78rem', fontWeight: 700 }}>NOTES</label>
+            <textarea
+              rows={2}
+              value={leadForm.notes}
+              onChange={(e) => setLeadForm({ ...leadForm, notes: e.target.value })}
+              className="form-control"
+            />
+          </div>
+
+          {/* Rejection Reason (shown if status is Rejected) */}
+          {leadForm.status === 'Rejected' && (
+            <div style={{ marginBottom: '1rem', background: '#FEF2F2', padding: '0.75rem', borderRadius: 8, border: '1px solid #FECACA' }}>
+              <label className="form-label" style={{ fontSize: '0.78rem', fontWeight: 700, color: '#991B1B' }}>REJECTION REASON (VISIBLE TO PARTNER / NURSE) *</label>
+              <input
+                type="text"
+                value={leadForm.rejectionReason}
+                onChange={(e) => setLeadForm({ ...leadForm, rejectionReason: e.target.value })}
+                className="form-control"
+                style={{ borderColor: '#F87171' }}
+              />
+            </div>
+          )}
+
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem', marginBottom: '1.25rem' }}>
+            <div>
+              <label className="form-label" style={{ fontSize: '0.78rem', fontWeight: 700 }}>LEAD VALUE (₹)</label>
+              <input
+                type="number"
+                min={0}
+                value={leadForm.leadValueRupees}
+                onChange={(e) => setLeadForm({ ...leadForm, leadValueRupees: Number(e.target.value) })}
+                className="form-control"
+              />
+            </div>
+            <div>
+              <label className="form-label" style={{ fontSize: '0.78rem', fontWeight: 700 }}>POINTS AWARDED</label>
+              <input
+                type="number"
+                min={0}
+                value={leadForm.pointsAwarded}
+                onChange={(e) => setLeadForm({ ...leadForm, pointsAwarded: Number(e.target.value) })}
+                className="form-control"
+              />
+            </div>
+          </div>
+
+          <div style={{ display: 'flex', gap: '0.65rem', justifyContent: 'flex-end', alignItems: 'center' }}>
+            {editingLead && (
+              <button
+                type="button"
+                onClick={() => {
+                  setIsLeadModalOpen(false);
+                  handleDeleteLeadClick(editingLead);
+                }}
+                className="btn btn-outline"
+                style={{
+                  borderColor: '#FECDD3',
+                  color: '#E11D48',
+                  background: '#FFF1F2',
+                  marginRight: 'auto',
+                  borderRadius: 9999,
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: '0.4rem',
+                  fontWeight: 700
+                }}
+              >
+                <Trash2 size={15} />
+                <span>Delete Lead</span>
+              </button>
+            )}
+            <button type="button" onClick={() => setIsLeadModalOpen(false)} className="btn btn-outline" style={{ borderRadius: 9999 }}>
+              Cancel
+            </button>
+            <button type="submit" className="btn btn-danger" style={{ borderRadius: 9999, fontWeight: 700, minWidth: 140, justifyContent: 'center' }}>
+              {editingLead ? 'Update Lead' : 'Submit Lead'}
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+  )
+}
+
+{/* ========================================================================= */ }
+{/* 4B. ADMIN LEAD REWARD & APPROVAL DECISION MODAL */ }
+{/* ========================================================================= */ }
+{
+  approvalModalLead && (
+    <div
+      className="modal-overlay"
+      data-lenis-prevent="true"
+      onClick={() => setApprovalModalLead(null)}
+      style={{ zIndex: 99999, pointerEvents: 'auto' }}
+    >
+      <div
+        className="modal-box"
+        onClick={(e) => e.stopPropagation()}
+        style={{ maxWidth: 580, borderRadius: 20, pointerEvents: 'auto', maxHeight: '90vh', overflowY: 'auto' }}
+      >
+        {/* Modal Header */}
+        <div className="modal-header" style={{ padding: '1.25rem 1.5rem', background: '#FAFAFA', borderBottom: '1px solid var(--neutral-200)' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.65rem' }}>
+            <div style={{ width: 40, height: 40, borderRadius: 12, background: 'linear-gradient(135deg, #059669 0%, #047857 100%)', color: '#FFFFFF', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+              <Award size={22} />
+            </div>
+            <div>
+              <h3 style={{ fontSize: '1.15rem', fontWeight: 800, color: 'var(--primary-navy-950)', margin: 0 }}>
+                Admin Decision: Points & Referral Earnings
+              </h3>
+              <div style={{ fontSize: '0.76rem', color: 'var(--neutral-500)', fontWeight: 500 }}>
+                Decide rewards for Nurse Referral Lead <strong style={{ color: 'var(--primary-navy-900)' }}>{approvalModalLead.id}</strong>
+              </div>
+            </div>
+          </div>
+          <button
+            onClick={() => setApprovalModalLead(null)}
+            style={{ background: '#F1F5F9', border: 'none', borderRadius: '50%', width: 32, height: 32, display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer' }}
+          >
+            <X size={17} />
+          </button>
+        </div>
+
+        <div className="modal-body" style={{ padding: '1.25rem 1.5rem' }}>
+          {/* Lead & Nurse Summary Card */}
+          {(() => {
+            const referringNurse = nurses.find((n) => n.id === approvalModalLead.nurseId);
+            const serviceObj = services.find((s) => s.id === approvalModalLead.serviceId);
+            const procedureFee = approvalModalLead.leadValueRupees || serviceObj?.priceNumber || 800;
+
+            return (
+              <>
+                <div style={{
+                  background: '#F8FAFC',
+                  border: '1px solid #E2E8F0',
+                  borderRadius: 12,
+                  padding: '1rem',
+                  marginBottom: '1.25rem'
+                }}>
+                  <div style={{ display: 'grid', gridTemplateColumns: '1.2fr 1fr', gap: '0.75rem', marginBottom: '0.75rem' }}>
+                    <div>
+                      <div style={{ fontSize: '0.72rem', textTransform: 'uppercase', color: 'var(--neutral-500)', fontWeight: 700 }}>
+                        Patient Information
+                      </div>
+                      <div style={{ fontWeight: 700, fontSize: '0.95rem', color: 'var(--primary-navy-950)' }}>
+                        {approvalModalLead.patientName}
+                      </div>
+                      <div style={{ fontSize: '0.8rem', color: 'var(--neutral-600)' }}>
+                        📞 {approvalModalLead.patientPhone}
+                      </div>
+                      {(() => {
+                        const refCandidate = (approvalModalLead.referralType === 'nurse' || approvalModalLead.referredNursePhone)
+                          ? nurses.find((n) =>
+                            (approvalModalLead.referredNursePhone && n.phone && n.phone.replace(/\D/g, '') === approvalModalLead.referredNursePhone.replace(/\D/g, '')) ||
+                            (approvalModalLead.referredNurseName && n.name.toLowerCase() === approvalModalLead.referredNurseName.toLowerCase()) ||
+                            (approvalModalLead.patientName && n.name.toLowerCase() === approvalModalLead.patientName.toLowerCase())
+                          )
+                          : null;
+                        const modalArea = (refCandidate?.serviceArea && refCandidate.serviceArea !== 'Hyderabad Central')
+                          ? refCandidate.serviceArea
+                          : (approvalModalLead.area && approvalModalLead.area !== 'Hyderabad Central' ? approvalModalLead.area : (refCandidate?.serviceArea || approvalModalLead.area || 'Gachibowli'));
+                        return (
+                          <div style={{ fontSize: '0.78rem', color: 'var(--neutral-600)', display: 'flex', alignItems: 'center', gap: '0.25rem', marginTop: '0.2rem' }}>
+                            <MapPin size={12} style={{ color: 'var(--neutral-400)' }} />
+                            <span>{modalArea}, Hyderabad</span>
+                          </div>
+                        );
+                      })()}
+                    </div>
+
+                    <div>
+                      <div style={{ fontSize: '0.72rem', textTransform: 'uppercase', color: 'var(--neutral-500)', fontWeight: 700 }}>
+                        Procedure & Value
+                      </div>
+                      <div style={{ fontWeight: 700, fontSize: '0.9rem', color: 'var(--primary-navy-900)' }}>
+                        {serviceObj?.title || approvalModalLead.serviceId}
+                      </div>
+                      <div style={{ fontSize: '0.82rem', fontWeight: 700, color: '#059669', marginTop: '0.2rem' }}>
+                        Fee: ₹{procedureFee}
+                      </div>
+                      <div style={{ fontSize: '0.72rem', color: 'var(--neutral-500)', marginTop: '0.15rem' }}>
+                        Submitted: {formatDateDDMMYY(approvalModalLead.submittedAt, 'Recent')}
+                      </div>
+                    </div>
+                  </div>
+
+                  <div style={{
+                    borderTop: '1px solid #E2E8F0',
+                    paddingTop: '0.65rem',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'space-between',
+                    flexWrap: 'wrap',
+                    gap: '0.5rem'
+                  }}>
+                    <div>
+                      <span style={{ fontSize: '0.75rem', color: 'var(--neutral-500)', fontWeight: 600 }}>Referring Nurse: </span>
+                      <strong style={{ fontSize: '0.85rem', color: 'var(--primary-navy-900)' }}>
+                        {referringNurse?.name || approvalModalLead.nurseId} ({referringNurse?.serviceArea || 'Stationed'})
+                      </strong>
+                    </div>
+                    {referringNurse && (() => {
+                      const refM = calculateNurseMetrics(referringNurse, bookings, leads, services);
+                      return (
+                        <div style={{ fontSize: '0.75rem', color: 'var(--neutral-600)' }}>
+                          Current Balance: <strong style={{ color: '#059669' }}>⭐ {refM.totalPoints} pts</strong> | <strong style={{ color: '#059669' }}>₹{refM.totalMoney}</strong>
+                        </div>
+                      );
+                    })()}
+                  </div>
+                </div>
+
+                {/* Referral Reward: Plain & Clear 50 Points */}
+                <div style={{
+                  background: 'linear-gradient(135deg, #ECFDF5 0%, #D1FAE5 100%)',
+                  border: '1.5px solid #10B981',
+                  borderRadius: 12,
+                  padding: '1rem 1.25rem',
+                  marginBottom: '1.25rem'
+                }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.65rem' }}>
+                    <div style={{
+                      width: 40,
+                      height: 40,
+                      borderRadius: '50%',
+                      background: '#059669',
+                      color: '#FFFFFF',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      flexShrink: 0
+                    }}>
+                      <Award size={22} />
+                    </div>
+                    <div>
+                      <div style={{ fontWeight: 800, color: '#065F46', fontSize: '1rem' }}>
+                        Referral Reward: +50 Points {approvalModalLead.referralType !== 'nurse' && !approvalModalLead.referredNursePhone ? `+ 10% Fee (₹${approvalReferralRupees})` : ''}
+                      </div>
+                      <div style={{ fontSize: '0.82rem', color: '#047857', marginTop: '0.15rem' }}>
+                        {approvalModalLead.referralType !== 'nurse' && !approvalModalLead.referredNursePhone
+                          ? `Credited to referring nurse (${referringNurse?.name || 'Nurse'}) after assigned nurse completes the doorstep visit.`
+                          : `Credited directly to ${referringNurse?.name || 'Nurse'} upon certificate verification.`}
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Patient Referral Dispatch / Nurse Assignment Option */}
+                {approvalModalLead.referralType !== 'nurse' && !approvalModalLead.referredNursePhone && (
+                  <div style={{
+                    marginBottom: '1.25rem',
+                    background: '#F0F9FF',
+                    border: '1.5px solid #0284C7',
+                    borderRadius: 12,
+                    padding: '0.9rem 1.1rem'
+                  }}>
+                    <label className="form-label" style={{ fontSize: '0.84rem', fontWeight: 800, color: '#0369A1', display: 'flex', alignItems: 'center', gap: '0.35rem', marginBottom: '0.35rem' }}>
+                      <Shuffle size={14} />
+                      <span>🚗 Assign to Local Nurse Now (Optional)</span>
+                    </label>
+                    <select
+                      value={approvalAssignNurseId}
+                      onChange={(e) => setApprovalAssignNurseId(e.target.value)}
+                      className="form-control"
+                      style={{ fontSize: '0.85rem', fontWeight: 600, background: '#FFFFFF', borderColor: '#BAE6FD' }}
+                    >
+                      <option value="">Leave Unassigned (Queue directly in "🚗 Assign Nurses" tab)</option>
+                      {nurses
+                        .filter((n) => n.certificateVerified)
+                        .sort((a, b) => (a.serviceArea === approvalModalLead.area ? -1 : 1))
+                        .map((n) => (
+                          <option key={n.id} value={n.id}>
+                            {n.name} — {n.serviceArea} {n.serviceArea === approvalModalLead.area ? '⭐ (Local Area Match)' : ''}
+                          </option>
+                        ))}
+                    </select>
+                    <p style={{ fontSize: '0.74rem', color: '#0369A1', margin: '0.35rem 0 0' }}>
+                      {approvalAssignNurseId
+                        ? `✓ Patient will be immediately assigned to ${nurses.find(n => n.id === approvalAssignNurseId)?.name}. Points (+50) will credit to referring nurse once visit is completed.`
+                        : 'Order will queue in "🚗 Assign Nurses" tab and switch there immediately so you can dispatch.'}
+                    </p>
+                  </div>
+                )}
+
+                {/* Admin Input: Optional Note */}
+                <div style={{ marginBottom: '1.25rem' }}>
+                  <label className="form-label" style={{ fontSize: '0.82rem', fontWeight: 700, color: 'var(--primary-navy-900)' }}>
+                    Office Note (Optional)
+                  </label>
+                  <input
+                    type="text"
+                    placeholder="e.g. Patient visit verified. 50 points added to nurse account."
+                    value={approvalNotes}
+                    onChange={(e) => setApprovalNotes(e.target.value)}
+                    className="form-control"
+                  />
+                </div>
+
+                {/* Reject Confirmation Drawer if toggled */}
+                {isRejectConfirmOpen && (
+                  <div style={{
+                    background: '#FEF2F2',
+                    border: '1px solid #FECACA',
+                    borderRadius: 12,
+                    padding: '0.85rem 1rem',
+                    marginBottom: '1.25rem'
+                  }}>
+                    <div style={{ fontWeight: 800, color: '#991B1B', fontSize: '0.85rem', marginBottom: '0.4rem' }}>
+                      Confirm Lead Rejection
+                    </div>
+                    <p style={{ fontSize: '0.78rem', color: '#B91C1C', margin: '0 0 0.5rem' }}>
+                      This will mark the lead as Rejected with 0 points and 0 commission. The nurse will not receive any payout.
+                    </p>
+                    <input
+                      type="text"
+                      placeholder="Reason for rejection (e.g. Invalid patient contact, duplicate entry)"
+                      value={rejectReason}
+                      onChange={(e) => setRejectReason(e.target.value)}
+                      className="form-control"
+                      style={{ marginBottom: '0.65rem' }}
+                    />
+                    <div style={{ display: 'flex', gap: '0.5rem', justifyContent: 'flex-end' }}>
+                      <button
+                        type="button"
+                        onClick={() => setIsRejectConfirmOpen(false)}
+                        className="btn btn-outline btn-sm"
+                        style={{ borderRadius: 6, fontSize: '0.78rem' }}
+                      >
+                        Cancel
+                      </button>
+                      <button
+                        type="button"
+                        onClick={handleConfirmReject}
+                        disabled={isProcessingApproval}
+                        className="btn btn-danger btn-sm"
+                        style={{ borderRadius: 6, fontWeight: 700, fontSize: '0.78rem' }}
+                      >
+                        {isProcessingApproval ? 'Rejecting...' : 'Confirm Reject'}
+                      </button>
+                    </div>
+                  </div>
+                )}
+
+                {/* Modal Action Buttons */}
+                <div style={{ display: 'flex', gap: '0.65rem', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap' }}>
+                  <div>
+                    {!isRejectConfirmOpen && (
+                      <button
+                        type="button"
+                        onClick={() => setIsRejectConfirmOpen(true)}
+                        className="btn btn-outline btn-sm"
+                        style={{
+                          color: '#DC2626',
+                          borderColor: '#FECACA',
+                          background: '#FFF5F5',
+                          borderRadius: 9999,
+                          fontWeight: 700,
+                          fontSize: '0.78rem'
+                        }}
+                      >
+                        Reject Lead
+                      </button>
+                    )}
+                  </div>
+
+                  <div style={{ display: 'flex', gap: '0.65rem' }}>
+                    <button
+                      type="button"
+                      onClick={() => setApprovalModalLead(null)}
+                      className="btn btn-outline"
+                      style={{ borderRadius: 9999 }}
+                    >
+                      Cancel
+                    </button>
+                    <button
+                      type="button"
+                      onClick={handleConfirmApproval}
+                      disabled={isProcessingApproval}
+                      className="btn btn-sm"
+                      style={{
+                        background: 'linear-gradient(135deg, #059669 0%, #047857 100%)',
+                        color: '#FFFFFF',
+                        border: 'none',
+                        borderRadius: 9999,
+                        fontWeight: 800,
+                        padding: '0.55rem 1.35rem',
+                        display: 'inline-flex',
+                        alignItems: 'center',
+                        gap: '0.45rem',
+                        boxShadow: '0 4px 10px rgba(5,150,105,0.35)',
+                        cursor: 'pointer'
+                      }}
+                    >
+                      <CheckCircle size={16} />
+                      <span>
+                        {isProcessingApproval
+                          ? 'Approving...'
+                          : approvalAssignNurseId
+                            ? `✓ Approve & Assign to ${nurses.find(n => n.id === approvalAssignNurseId)?.name.split(' ')[0] || 'Nurse'}`
+                            : '✓ Approve & Go to Assign Nurse'}
+                      </span>
+                    </button>
+                  </div>
+                </div>
+              </>
+            );
+          })()}
+        </div>
+      </div>
+    </div>
+  )
+}
+{
+  isConsultModalOpen && (
+    <div
+      className="modal-overlay"
+      data-lenis-prevent="true"
+      onClick={() => setIsConsultModalOpen(false)}
+      style={{ zIndex: 99999, pointerEvents: 'auto' }}
+    >
+      <div
+        className="modal-box"
+        onClick={(e) => e.stopPropagation()}
+        style={{ maxWidth: 580, borderRadius: 20, pointerEvents: 'auto', maxHeight: '90vh', overflowY: 'auto' }}
+      >
+        <div className="modal-header" style={{ padding: '1.25rem 1.5rem', background: '#FAFAFA', borderBottom: '1px solid var(--neutral-200)' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.65rem' }}>
+            <div style={{ width: 36, height: 36, borderRadius: 10, background: 'var(--primary-navy-950)', color: '#FFFFFF', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+              <Stethoscope size={18} />
+            </div>
+            <div>
+              <h3 style={{ fontSize: '1.15rem', fontWeight: 800, color: 'var(--primary-navy-950)', margin: 0 }}>
+                {editingConsult ? `Edit Tele-Consult: ${editingConsult.id}` : 'Create Doctor Tele-Consult Request'}
+              </h3>
+              <div style={{ fontSize: '0.76rem', color: 'var(--neutral-500)', fontWeight: 500 }}>
+                Updates prescription queue in Supabase <code>consultations</code> table
+              </div>
+            </div>
+          </div>
+          <button
+            onClick={() => setIsConsultModalOpen(false)}
+            style={{ background: '#F1F5F9', border: 'none', borderRadius: '50%', width: 32, height: 32, display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer' }}
+          >
+            <X size={17} />
+          </button>
+        </div>
+
+        <form onSubmit={handleSaveConsultSubmit} className="modal-body" style={{ padding: '1.25rem 1.5rem' }}>
+          <div style={{ display: 'grid', gridTemplateColumns: '1.3fr 1fr', gap: '0.75rem', marginBottom: '0.85rem' }}>
+            <div>
+              <label className="form-label" style={{ fontSize: '0.78rem', fontWeight: 700 }}>PATIENT FULL NAME *</label>
+              <input
+                type="text"
+                required
+                placeholder="e.g. S. Venkat Rao"
+                value={consultForm.patientName}
+                onChange={(e) => setConsultForm({ ...consultForm, patientName: e.target.value })}
+                className="form-control"
+              />
+            </div>
+            <div>
+              <label className="form-label" style={{ fontSize: '0.78rem', fontWeight: 700 }}>CONTACT PHONE *</label>
+              <input
+                type="tel"
+                required
+                placeholder="+91 98765 33333"
+                value={consultForm.patientPhone}
+                onChange={(e) => setConsultForm({ ...consultForm, patientPhone: e.target.value })}
+                className="form-control"
+              />
+            </div>
+          </div>
+
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1.2fr 1.2fr', gap: '0.75rem', marginBottom: '0.85rem' }}>
+            <div>
+              <label className="form-label" style={{ fontSize: '0.78rem', fontWeight: 700 }}>AGE</label>
+              <input
+                type="number"
+                min={1}
+                max={120}
+                value={consultForm.patientAge}
+                onChange={(e) => setConsultForm({ ...consultForm, patientAge: Number(e.target.value) })}
+                className="form-control"
+              />
+            </div>
+            <div>
+              <label className="form-label" style={{ fontSize: '0.78rem', fontWeight: 700 }}>AREA</label>
+              <input list="hyderabad-areas" placeholder="Select or enter area"
+                className="form-control"
+                value={consultForm.area}
+                onChange={(e) => setConsultForm({ ...consultForm, area: e.target.value as HyderabadArea })}
+              />
+            </div>
+            <div>
+              <label className="form-label" style={{ fontSize: '0.78rem', fontWeight: 700 }}>STATUS</label>
+              <select
+                className="form-control"
+                value={consultForm.status}
+                onChange={(e) => setConsultForm({ ...consultForm, status: e.target.value as any })}
+              >
+                <option value="Awaiting Call">Awaiting Call</option>
+                <option value="In Call">In Call</option>
+                <option value="Prescription Issued">Prescription Issued</option>
+                <option value="Completed">Completed</option>
+              </select>
+            </div>
+          </div>
+
+          <div style={{ marginBottom: '0.85rem' }}>
+            <label className="form-label" style={{ fontSize: '0.78rem', fontWeight: 700 }}>REPORTED SYMPTOMS / CHIEF COMPLAINT *</label>
+            <textarea
+              rows={2}
+              required
+              placeholder="e.g. Mild dehydration, post-viral fatigue. Needs doctor consult for IV saline approval."
+              value={consultForm.symptoms}
+              onChange={(e) => setConsultForm({ ...consultForm, symptoms: e.target.value })}
+              className="form-control"
+            />
+          </div>
+
+          <div style={{ marginBottom: '0.85rem', display: 'flex', alignItems: 'center', gap: '0.6rem' }}>
+            <input
+              type="checkbox"
+              id="cRxIss"
+              checked={consultForm.prescriptionIssued}
+              onChange={(e) => setConsultForm({ ...consultForm, prescriptionIssued: e.target.checked })}
+              style={{ width: 16, height: 16, cursor: 'pointer' }}
+            />
+            <label htmlFor="cRxIss" style={{ fontSize: '0.85rem', fontWeight: 600, cursor: 'pointer', margin: 0 }}>
+              Doctor Digital Prescription Issued
+            </label>
+          </div>
+
+          <div style={{ marginBottom: '0.85rem' }}>
+            <label className="form-label" style={{ fontSize: '0.78rem', fontWeight: 700 }}>ISSUED RX INSTRUCTIONS / MEDICATION</label>
+            <input
+              type="text"
+              placeholder="e.g. Normal Saline 500ml IV over 45 min under nurse supervision"
+              value={consultForm.prescriptionText}
+              onChange={(e) => setConsultForm({ ...consultForm, prescriptionText: e.target.value })}
+              className="form-control"
+            />
+          </div>
+
+          <div style={{ marginBottom: '1rem' }}>
+            <label className="form-label" style={{ fontSize: '0.78rem', fontWeight: 700 }}>RECOMMENDED SERVICE FOR NURSING VISIT</label>
+            <select
+              className="form-control"
+              value={consultForm.recommendedService}
+              onChange={(e) => setConsultForm({ ...consultForm, recommendedService: e.target.value as ServiceId })}
+            >
+              {services.map((s) => (
+                <option key={s.id} value={s.id}>{s.title}</option>
+              ))}
+            </select>
+          </div>
+
+          <div style={{ marginBottom: '1.25rem' }}>
+            <label className="form-label" style={{ fontSize: '0.78rem', fontWeight: 700 }}>
+              ATTENDING DOCTOR (MANUAL ASSIGNMENT)
+            </label>
+            <select
+              className="form-control"
+              value={consultForm.doctorName}
+              onChange={(e) => setConsultForm({ ...consultForm, doctorName: e.target.value })}
+            >
+              <option value="">Unassigned (No Doctor Auto-Assigned)</option>
+              {doctorsList.map((doc) => (
+                <option key={doc.id} value={doc.name}>
+                  {doc.name} ({doc.specialization || 'Physician'})
+                </option>
+              ))}
+            </select>
+            <div style={{ fontSize: '0.72rem', color: '#64748B', marginTop: 3 }}>
+              Leave as "Unassigned" to keep in triage queue for on-duty doctors. No doctor is auto-assigned.
+            </div>
+          </div>
+
+          <div style={{ display: 'flex', gap: '0.65rem', justifyContent: 'flex-end', alignItems: 'center' }}>
+            {editingConsult && (
+              <button
+                type="button"
+                onClick={() => {
+                  setIsConsultModalOpen(false);
+                  handleDeleteConsultClick(editingConsult);
+                }}
+                className="btn btn-outline"
+                style={{
+                  borderColor: '#FECDD3',
+                  color: '#E11D48',
+                  background: '#FFF1F2',
+                  marginRight: 'auto',
+                  borderRadius: 9999,
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: '0.4rem',
+                  fontWeight: 700
+                }}
+              >
+                <Trash2 size={15} />
+                <span>Delete Consult</span>
+              </button>
+            )}
+            <button type="button" onClick={() => setIsConsultModalOpen(false)} className="btn btn-outline" style={{ borderRadius: 9999 }}>
+              Cancel
+            </button>
+            <button type="submit" className="btn btn-danger" style={{ borderRadius: 9999, fontWeight: 700, minWidth: 140, justifyContent: 'center' }}>
+              {editingConsult ? 'Update Consult' : 'Create Consult'}
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+  )
+}
+
+{/* ========================================================================= */ }
+{/* 6. CREATE / EDIT APP USER & CREDENTIALS MODAL */ }
+{/* ========================================================================= */ }
+{
+  isUserModalOpen && (
+    <div
+      className="modal-overlay"
+      data-lenis-prevent="true"
+      onClick={() => setIsUserModalOpen(false)}
+      style={{ zIndex: 99999, pointerEvents: 'auto' }}
+    >
+      <div
+        className="modal-box"
+        onClick={(e) => e.stopPropagation()}
+        style={{ maxWidth: 540, borderRadius: 20, pointerEvents: 'auto' }}
+      >
+        <div className="modal-header" style={{ padding: '1.25rem 1.5rem', background: '#FAFAFA', borderBottom: '1px solid var(--neutral-200)' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.65rem' }}>
+            <div style={{ width: 36, height: 36, borderRadius: 10, background: 'var(--primary-navy-950)', color: '#FFFFFF', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+              <KeyRound size={18} />
+            </div>
+            <div>
+              <h3 style={{ fontSize: '1.15rem', fontWeight: 800, color: 'var(--primary-navy-950)', margin: 0 }}>
+                {editingUser ? `Edit Account: ${editingUser.name}` : 'Add New User & Security PIN'}
+              </h3>
+              <div style={{ fontSize: '0.76rem', color: 'var(--neutral-500)', fontWeight: 500 }}>
+                Directly updates portal login credentials in Supabase <code>app_users</code> table
+              </div>
+            </div>
+          </div>
+          <button
+            onClick={() => setIsUserModalOpen(false)}
+            style={{ background: '#F1F5F9', border: 'none', borderRadius: '50%', width: 32, height: 32, display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer' }}
+          >
+            <X size={17} />
+          </button>
+        </div>
+
+        <form onSubmit={handleSaveUserSubmit} className="modal-body" style={{ padding: '1.25rem 1.5rem' }}>
+          <div style={{ display: 'grid', gridTemplateColumns: '1.3fr 1fr', gap: '0.75rem', marginBottom: '0.85rem' }}>
+            <div>
+              <label className="form-label" style={{ fontSize: '0.78rem', fontWeight: 700 }}>ACCOUNT FULL NAME *</label>
+              <input
+                type="text"
+                required
+                value={userForm.name}
+                onChange={(e) => setUserForm({ ...userForm, name: e.target.value })}
+                className="form-control"
+              />
+            </div>
+            <div>
+              <label className="form-label" style={{ fontSize: '0.78rem', fontWeight: 700 }}>SYSTEM ROLE *</label>
+              <select
+                className="form-control"
+                value={userForm.role}
+                onChange={(e) => setUserForm({ ...userForm, role: e.target.value as any })}
+              >
+                <option value="nurse">Nurse</option>
+                <option value="doctor">Others (Referral Partner)</option>
+                <option value="admin">Administrator</option>
+                <option value="patient">Patient</option>
+              </select>
+            </div>
+          </div>
+
+          <div style={{ display: 'grid', gridTemplateColumns: '1.3fr 1fr', gap: '0.75rem', marginBottom: '0.85rem' }}>
+            <div>
+              <label className="form-label" style={{ fontSize: '0.78rem', fontWeight: 700 }}>LOGIN IDENTIFIER (EMAIL / PHONE) *</label>
+              <input
+                type="text"
+                value={userForm.identifier}
+                onChange={(e) => setUserForm({ ...userForm, identifier: e.target.value })}
+                className="form-control"
+              />
+            </div>
+            <div>
+              <label className="form-label" style={{ fontSize: '0.78rem', fontWeight: 700 }}>4-DIGIT PIN *</label>
+              <input
+                type="text"
+                maxLength={4}
+                required
+                value={userForm.pin}
+                onChange={(e) => setUserForm({ ...userForm, pin: e.target.value.replace(/\D/g, '') })}
+                className="form-control"
+                style={{ fontFamily: 'monospace', fontWeight: 800, letterSpacing: '0.1em' }}
+              />
+            </div>
+          </div>
+
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem', marginBottom: '0.85rem' }}>
+            <div>
+              <label className="form-label" style={{ fontSize: '0.78rem', fontWeight: 700 }}>MOBILE NUMBER</label>
+              <input
+                type="tel"
+                value={userForm.phone}
+                onChange={(e) => setUserForm({ ...userForm, phone: e.target.value })}
+                className="form-control"
+              />
+            </div>
+            <div>
+              <label className="form-label" style={{ fontSize: '0.78rem', fontWeight: 700 }}>EMAIL ADDRESS</label>
+              <input
+                type="email"
+                value={userForm.email}
+                onChange={(e) => setUserForm({ ...userForm, email: e.target.value })}
+                className="form-control"
+              />
+            </div>
+          </div>
+
+          <div style={{ display: 'grid', gridTemplateColumns: '1.2fr 1fr', gap: '0.75rem', marginBottom: '0.85rem' }}>
+            <div>
+              <label className="form-label" style={{ fontSize: '0.78rem', fontWeight: 700 }}>DESIGNATION / CLINICAL TITLE</label>
+              <input
+                type="text"
+                value={userForm.designation}
+                onChange={(e) => setUserForm({ ...userForm, designation: e.target.value })}
+                className="form-control"
+              />
+            </div>
+            <div>
+              <label className="form-label" style={{ fontSize: '0.78rem', fontWeight: 700 }}>STATION / STAY AREA</label>
+              <input
+                type="text"
+                value={userForm.serviceArea}
+                onChange={(e) => setUserForm({ ...userForm, serviceArea: e.target.value })}
+                className="form-control"
+              />
+            </div>
+          </div>
+
+          {userForm.role === 'doctor' && (
+            <div style={{ marginBottom: '0.85rem' }}>
+              <label className="form-label" style={{ fontSize: '0.78rem', fontWeight: 700 }}>PARTNER COMMISSION % (E.G. 10 OR 20)</label>
+              <input
+                type="number"
+                min={0}
+                max={100}
+                value={userForm.commissionPercent}
+                onChange={(e) => setUserForm({ ...userForm, commissionPercent: Number(e.target.value) })}
+                className="form-control"
+                style={{ fontWeight: 750 }}
+              />
+              <div style={{ fontSize: '0.74rem', color: 'var(--neutral-500)', marginTop: '0.25rem' }}>
+                Configured commission % paid to this referral partner on accepted patient visits.
+              </div>
+            </div>
+          )}
+
+          <div style={{ marginBottom: '1.25rem' }}>
+            <label className="form-label" style={{ fontSize: '0.78rem', fontWeight: 700 }}>ACCOUNT APPROVAL STATUS *</label>
+            <select
+              className="form-control"
+              value={userForm.status}
+              onChange={(e) => setUserForm({ ...userForm, status: e.target.value as any })}
+              style={{
+                fontWeight: 700,
+                background: userForm.status === 'Active' ? '#ECFDF5' : userForm.status === 'Pending Verification' ? '#FFFBEB' : '#FEF2F2',
+                borderColor: userForm.status === 'Active' ? '#10B981' : userForm.status === 'Pending Verification' ? '#F59E0B' : '#EF4444',
+                color: userForm.status === 'Active' ? '#047857' : userForm.status === 'Pending Verification' ? '#B45309' : '#DC2626'
+              }}
+            >
+              <option value="Active">✓ Active (Approved to Log In)</option>
+              <option value="Pending Verification">⏳ Pending Verification (Doctor Login Blocked until Approved)</option>
+              <option value="Rejected">✕ Rejected (Login Blocked)</option>
+            </select>
+            <div style={{ fontSize: '0.74rem', color: 'var(--neutral-500)', marginTop: '0.25rem' }}>
+              Doctors can only log in to the medical portal when set to <strong>Active</strong>.
+            </div>
+          </div>
+
+          <div style={{ display: 'flex', gap: '0.65rem', justifyContent: 'flex-end', alignItems: 'center' }}>
+            {editingUser && (
+              <button
+                type="button"
+                onClick={() => {
+                  setIsUserModalOpen(false);
+                  handleDeleteUserClick(editingUser);
+                }}
+                className="btn btn-outline"
+                style={{
+                  borderColor: '#FECDD3',
+                  color: '#E11D48',
+                  background: '#FFF1F2',
+                  marginRight: 'auto',
+                  borderRadius: 9999,
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: '0.4rem',
+                  fontWeight: 700
+                }}
+              >
+                <Trash2 size={15} />
+                <span>Delete User</span>
+              </button>
+            )}
+            <button type="button" onClick={() => setIsUserModalOpen(false)} className="btn btn-outline" style={{ borderRadius: 9999 }}>
+              Cancel
+            </button>
+            <button type="submit" className="btn btn-danger" style={{ borderRadius: 9999, fontWeight: 700, minWidth: 140, justifyContent: 'center' }}>
+              {editingUser ? 'Update Account' : 'Save Account'}
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+  )
+}
+
+{/* 1. CLOUDFLARE R2 PRESCRIPTION VIEWER MODAL */ }
+{
+  isPrescriptionModalOpen && (
+    <div
+      className="modal-overlay"
+      onClick={() => setIsPrescriptionModalOpen(false)}
+      style={{ zIndex: 999999, pointerEvents: 'auto' }}
+    >
+      <div
+        className="modal-box"
+        onClick={(e) => e.stopPropagation()}
+        style={{ maxWidth: 680, borderRadius: 20, pointerEvents: 'auto', maxHeight: '92vh', overflowY: 'auto' }}
+      >
+        {/* Header */}
+        <div className="modal-header" style={{ padding: '1.25rem 1.5rem', background: '#FAFAFA', borderBottom: '1px solid var(--neutral-200)' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.65rem' }}>
+            <div style={{ width: 38, height: 38, borderRadius: 10, background: '#ECFDF5', color: '#059669', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+              <FileCheck size={20} />
+            </div>
+            <div>
+              <h3 style={{ fontSize: '1.15rem', fontWeight: 800, color: 'var(--primary-navy-950)', margin: 0 }}>
+                {previewPrescriptionConsultation ? 'Doctor Teleconsultation Clinical Prescription' : 'Cloudflare R2 Verified Prescription'}
+              </h3>
+              <div style={{ fontSize: '0.76rem', color: '#0284C7', fontWeight: 600, display: 'inline-flex', alignItems: 'center', gap: '0.3rem' }}>
+                <Cloud size={12} />
+                <span>
+                  {previewPrescriptionConsultation
+                    ? `Consultation: ${previewPrescriptionConsultation.id} • Issued by ${previewPrescriptionConsultation.doctorName || 'Attending Physician'}`
+                    : `Bucket: ${r2Config.bucketName} • Category: prescriptions`}
+                </span>
+              </div>
+            </div>
+          </div>
+          <button
+            type="button"
+            onClick={() => {
+              setIsPrescriptionModalOpen(false);
+              setPreviewPrescriptionConsultation(null);
+            }}
+            className="modal-close-btn"
+            style={{ background: '#F1F5F9', border: 'none', borderRadius: '50%', width: 32, height: 32, display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer' }}
+          >
+            <X size={16} />
+          </button>
+        </div>
+
+        {/* Content Body */}
+        <div style={{ padding: '1.4rem' }}>
+          {/* Patient & Booking Metadata Bar */}
+          <div style={{
+            background: '#F8FAFC',
+            border: '1px solid #E2E8F0',
+            borderRadius: 12,
+            padding: '0.9rem 1.1rem',
+            marginBottom: '1.25rem',
+            display: 'grid',
+            gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))',
+            gap: '0.75rem'
+          }}>
+            <div>
+              <div style={{ fontSize: '0.7rem', color: 'var(--neutral-500)', fontWeight: 700, textTransform: 'uppercase' }}>PATIENT</div>
+              <div style={{ fontSize: '0.86rem', fontWeight: 800, color: 'var(--primary-navy-950)' }}>
+                {previewPrescriptionConsultation
+                  ? `${previewPrescriptionConsultation.patientName} (${previewPrescriptionConsultation.patientAge || '—'} yrs)`
+                  : previewPrescriptionBooking?.patientName || previewPrescriptionObject?.metadata?.patientName || 'Home Care Patient'}
+              </div>
+            </div>
+            <div>
+              <div style={{ fontSize: '0.7rem', color: 'var(--neutral-500)', fontWeight: 700, textTransform: 'uppercase' }}>PROCEDURE</div>
+              <div style={{ fontSize: '0.86rem', fontWeight: 700, color: 'var(--primary-navy-900)' }}>
+                {previewPrescriptionConsultation
+                  ? previewPrescriptionConsultation.recommendedService || 'Saline Infusion'
+                  : previewPrescriptionBooking?.serviceTitle || previewPrescriptionObject?.metadata?.serviceTitle || 'Clinical Home Care'}
+              </div>
+            </div>
+            <div>
+              <div style={{ fontSize: '0.7rem', color: 'var(--neutral-500)', fontWeight: 700, textTransform: 'uppercase' }}>
+                {previewPrescriptionConsultation ? 'CONTACT PHONE' : 'BOOKING REF'}
+              </div>
+              <div style={{ fontSize: '0.86rem', fontWeight: 800, fontFamily: 'monospace', color: '#0284C7' }}>
+                {previewPrescriptionConsultation
+                  ? previewPrescriptionConsultation.patientPhone
+                  : previewPrescriptionBooking?.id || previewPrescriptionObject?.metadata?.bookingId || 'DIRECT-RX'}
+              </div>
+            </div>
+            <div>
+              <div style={{ fontSize: '0.7rem', color: 'var(--neutral-500)', fontWeight: 700, textTransform: 'uppercase' }}>
+                {previewPrescriptionConsultation ? 'AREA / ZONE' : 'R2 FILE NAME'}
+              </div>
+              <div style={{ fontSize: '0.8rem', fontWeight: 600, color: 'var(--neutral-700)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                {previewPrescriptionConsultation
+                  ? previewPrescriptionConsultation.area
+                  : previewPrescriptionBooking?.prescriptionFileName || previewPrescriptionObject?.fileName || 'Doctor_Rx.pdf'}
+              </div>
+            </div>
+          </div>
+
+          {/* Document Display / Preview */}
+          <div style={{
+            border: '1.5px solid #E2E8F0',
+            borderRadius: 14,
+            overflow: 'hidden',
+            background: '#FFFFFF',
+            boxShadow: '0 4px 15px rgba(0,0,0,0.04)',
+            marginBottom: '1.25rem'
+          }}>
+            {(() => {
+              const srcUrl = previewPrescriptionObject?.dataUrl || previewPrescriptionObject?.publicUrl || previewPrescriptionBooking?.prescriptionUrl;
+              const isImage = previewPrescriptionObject?.contentType?.startsWith('image/') ||
+                (previewPrescriptionObject?.fileName && previewPrescriptionObject.fileName.toLowerCase().match(/\.(jpg|jpeg|png|gif|webp)$/)) ||
+                (srcUrl && typeof srcUrl === 'string' && srcUrl.toLowerCase().match(/\.(jpg|jpeg|png|gif|webp)(\?.*)?$/));
+
+              const safeSrcUrl = typeof srcUrl === 'string' ? encodeURI(srcUrl) : srcUrl;
+
+              if (srcUrl && safeSrcUrl) {
+                return isImage ? (
+                  <div style={{ padding: '1rem', textAlign: 'center', background: '#F8FAFC' }}>
+                    <img
+                      src={safeSrcUrl}
+                      alt="Prescription Document"
+                      style={{ maxWidth: '100%', maxHeight: 420, borderRadius: 8, objectFit: 'contain', boxShadow: '0 2px 10px rgba(0,0,0,0.1)' }}
+                    />
+                  </div>
+                ) : (
+                  <div style={{ height: 420 }}>
+                    <iframe
+                      src={safeSrcUrl}
+                      title="Prescription PDF"
+                      style={{ width: '100%', height: '100%', border: 'none' }}
+                    />
+                  </div>
+                );
+              }
+
+              return (
+                /* Formal Rx Document Layout (High Medical Fidelity) */
+                <div style={{ padding: '2rem 1.75rem', background: '#FFFFFF', position: 'relative' }}>
+                  {/* Watermark */}
+                  <div style={{
+                    position: 'absolute',
+                    top: '50%',
+                    left: '50%',
+                    transform: 'translate(-50%, -50%) rotate(-25deg)',
+                    fontSize: '3.5rem',
+                    fontWeight: 900,
+                    color: 'rgba(2, 132, 199, 0.05)',
+                    pointerEvents: 'none',
+                    whiteSpace: 'nowrap'
+                  }}>
+                    {previewPrescriptionConsultation ? 'DOCTOR TELECONSULTATION RX' : 'CLOUDFLARE R2 VERIFIED'}
+                  </div>
+
+                  {/* Prescription Document Header */}
+                  <div style={{ display: 'flex', justifyContent: 'space-between', borderBottom: '2px solid #0A192F', paddingBottom: '1rem', marginBottom: '1.25rem' }}>
+                    <div>
+                      <div style={{ fontSize: '1.25rem', fontWeight: 900, color: 'var(--primary-navy-950)' }}>
+                        MEDICAL PRESCRIPTION & CLINICAL ORDERS
+                      </div>
+                      <div style={{ fontSize: '0.8rem', color: '#0284C7', fontWeight: 700 }}>
+                        TELANGANA STATE HEALTH SERVICES COMPLIANT
+                      </div>
+                      <div style={{ fontSize: '0.74rem', color: '#64748B', marginTop: '0.2rem' }}>
+                        Verified Doorstep Nursing Execution Protocol • {previewPrescriptionConsultation?.doctorName || previewPrescriptionBooking?.referredByDoctorName || 'Verified Attending Physician'}
+                      </div>
+                    </div>
+                    <div style={{ textAlign: 'right' }}>
+                      <span style={{
+                        background: '#ECFDF5',
+                        border: '1px solid #A7F3D0',
+                        color: '#059669',
+                        fontWeight: 800,
+                        fontSize: '0.74rem',
+                        padding: '3px 9px',
+                        borderRadius: 9999,
+                        textTransform: 'uppercase'
+                      }}>
+                        ✓ Valid Clinical Rx
+                      </span>
+                      <div style={{ fontSize: '0.72rem', color: '#64748B', marginTop: '0.35rem' }}>
+                        Issued: {formatDateDDMMYY(previewPrescriptionConsultation?.requestedAt || previewPrescriptionObject?.uploadedAt || Date.now())}
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Actual Uploaded File or Mock Text */}
+                  {(() => {
+                    const srcUrl = previewPrescriptionObject?.dataUrl || previewPrescriptionObject?.publicUrl || previewPrescriptionBooking?.prescriptionUrl;
+                    const isImage = previewPrescriptionObject?.contentType?.startsWith('image/') ||
+                      (previewPrescriptionObject?.fileName && previewPrescriptionObject.fileName.toLowerCase().match(/\.(jpg|jpeg|png|gif|webp)$/)) ||
+                      (srcUrl && typeof srcUrl === 'string' && srcUrl.toLowerCase().match(/\.(jpg|jpeg|png|gif|webp)(\?.*)?$/));
+                    const safeSrcUrl = typeof srcUrl === 'string' ? encodeURI(srcUrl) : srcUrl;
+
+                    if (srcUrl && safeSrcUrl) {
+                      return (
+                        <div style={{ marginBottom: '1.5rem', textAlign: 'center' }}>
+                          {isImage ? (
+                            <img src={safeSrcUrl} alt="Prescription" style={{ maxWidth: '100%', maxHeight: '50vh', borderRadius: 8, border: '1px solid #CBD5E1', objectFit: 'contain' }} />
+                          ) : (
+                            <iframe src={safeSrcUrl} style={{ width: '100%', height: '50vh', borderRadius: 8, border: '1px solid #CBD5E1' }} title="Prescription Document" />
+                          )}
+                        </div>
+                      );
+                    }
+                    return (
+                      <div style={{ marginBottom: '1.5rem' }}>
+                        <div style={{ fontSize: '2rem', fontWeight: 900, color: '#E11D48', fontFamily: 'serif', lineHeight: 1, marginBottom: '0.5rem' }}>
+                          ℞
+                        </div>
+                        <div style={{ background: '#F8FAFC', padding: '1.15rem', borderRadius: 10, border: '1px solid #E2E8F0' }}>
+                          <div style={{ fontSize: '0.84rem', fontWeight: 700, color: 'var(--primary-navy-900)', marginBottom: '0.35rem' }}>
+                            Approved Clinical Procedure: {previewPrescriptionConsultation ? previewPrescriptionConsultation.recommendedService : (previewPrescriptionBooking?.serviceTitle || previewPrescriptionObject?.metadata?.serviceTitle || 'Home Clinical Nursing Visit')}
+                          </div>
+                          {previewPrescriptionConsultation?.symptoms && (
+                            <div style={{ fontSize: '0.82rem', color: '#64748B', marginBottom: '0.65rem' }}>
+                              <strong>Reported Symptoms / Triage:</strong> "{previewPrescriptionConsultation.symptoms}"
+                            </div>
+                          )}
+                          <div style={{ fontSize: '0.74rem', color: '#475569', textTransform: 'uppercase', fontWeight: 700, letterSpacing: '0.04em', marginBottom: '0.35rem' }}>
+                            Doctor Clinical Orders & Instructions:
+                          </div>
+                          <p style={{ fontSize: '0.92rem', color: '#0F172A', lineHeight: 1.6, margin: 0, fontWeight: 600, whiteSpace: 'pre-wrap', background: '#FFFFFF', padding: '0.85rem 1rem', borderRadius: 8, border: '1px solid #CBD5E1' }}>
+                            {previewPrescriptionConsultation?.prescriptionText || 'Administer sterile doorstep nursing care in strict compliance with attending physician orders. Ensure vitals evaluation (BP, Pulse, SpO2, Temperature) prior to procedure initiation and secure cannula/aseptic dressing upon conclusion.'}
+                          </p>
+                        </div>
+                      </div>
+                    );
+                  })()}
+
+                  {/* Attending RN & R2 Cloud Verification Tag */}
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end', paddingTop: '1rem', borderTop: '1px dashed #CBD5E1' }}>
+                    <div>
+                      <div style={{ fontSize: '0.72rem', color: '#64748B' }}>
+                        {previewPrescriptionConsultation ? 'Attending Physician:' : 'Cloudflare R2 Object Location:'}
+                      </div>
+                      <code style={{ fontSize: '0.74rem', background: '#F1F5F9', color: '#0284C7', padding: '2px 6px', borderRadius: 4 }}>
+                        {previewPrescriptionConsultation
+                          ? `${previewPrescriptionConsultation.doctorName || 'Attending Physician'} • Verified Tele-Consultant`
+                          : (previewPrescriptionObject?.key || `prescriptions/${previewPrescriptionBooking?.prescriptionFileName || 'Rx_Verified.pdf'}`)}
+                      </code>
+                    </div>
+                    <div style={{ textAlign: 'right' }}>
+                      <div style={{ fontSize: '0.82rem', fontWeight: 800, color: 'var(--primary-navy-900)' }}>
+                        Xpress Nurse Medical Command Center
+                      </div>
+                      <div style={{ fontSize: '0.72rem', color: '#059669', fontWeight: 700 }}>
+                        ✓ Digital Signature Verified
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              );
+            })()}
+          </div>
+
+          {/* Cloudflare Public URL Bar */}
+          <div style={{
+            background: '#F0F9FF',
+            border: '1px solid #BAE6FD',
+            borderRadius: 10,
+            padding: '0.65rem 0.85rem',
             display: 'flex',
             alignItems: 'center',
-            justifyContent: 'center',
-            padding: '1.25rem'
+            justifyContent: 'space-between',
+            flexWrap: 'wrap',
+            gap: '0.5rem',
+            fontSize: '0.76rem'
+          }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', minWidth: 0 }}>
+              <Cloud size={14} style={{ color: '#0284C7', flexShrink: 0 }} />
+              <span style={{ color: '#0369A1', fontWeight: 700, flexShrink: 0 }}>Public CDN Link:</span>
+              <span style={{ color: '#0284C7', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                {encodeURI(previewPrescriptionObject?.publicUrl || previewPrescriptionBooking?.prescriptionUrl || `${r2Config.publicDomain}/prescriptions/${previewPrescriptionBooking?.prescriptionFileName || 'Rx_Verified.pdf'}`)}
+              </span>
+            </div>
+            <button
+              type="button"
+              onClick={() => {
+                const rawUrl = previewPrescriptionObject?.publicUrl || previewPrescriptionBooking?.prescriptionUrl || `${r2Config.publicDomain}/prescriptions/${previewPrescriptionBooking?.prescriptionFileName || 'Rx_Verified.pdf'}`;
+                const url = encodeURI(rawUrl);
+                navigator.clipboard.writeText(url);
+                showToast('Cloudflare public URL copied to clipboard!');
+              }}
+              className="btn btn-sm"
+              style={{
+                background: '#FFFFFF',
+                border: '1px solid #BAE6FD',
+                color: '#0284C7',
+                padding: '0.2rem 0.6rem',
+                borderRadius: 9999,
+                fontSize: '0.72rem',
+                fontWeight: 700
+              }}
+            >
+              <Copy size={11} />
+              <span>Copy Link</span>
+            </button>
+          </div>
+        </div>
+
+        {/* Footer */}
+        <div style={{ position: 'sticky', bottom: 0, zIndex: 20, padding: '1rem 1.4rem', background: '#FAFAFA', borderTop: '1px solid var(--neutral-200)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          <div style={{ fontSize: '0.74rem', color: '#64748B' }}>
+            Xpress Nurse Cloudflare Storage Protection • HIPAA & DISHA Compliant
+          </div>
+          <div style={{ display: 'flex', gap: '0.5rem' }}>
+            {previewPrescriptionConsultation ? (
+              <button
+                type="button"
+                onClick={() => window.print()}
+                className="btn btn-primary btn-sm"
+                style={{ borderRadius: 9999, gap: '0.35rem' }}
+              >
+                <Printer size={13} />
+                <span>Print / Save Prescription</span>
+              </button>
+            ) : (
+              <a
+                href={previewPrescriptionObject?.dataUrl || previewPrescriptionObject?.publicUrl || previewPrescriptionBooking?.prescriptionUrl || '#'}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="btn btn-primary btn-sm"
+                style={{ borderRadius: 9999, gap: '0.35rem' }}
+              >
+                <ExternalLink size={13} />
+                <span>Open in Full Tab</span>
+              </a>
+            )}
+            <button
+              type="button"
+              onClick={() => {
+                setIsPrescriptionModalOpen(false);
+                setPreviewPrescriptionConsultation(null);
+              }}
+              className="btn btn-outline btn-sm"
+              style={{ borderRadius: 9999 }}
+            >
+              Close
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+{/* 2. CUSTOM INVOICE GENERATOR & PREVIEW MODAL */ }
+{
+  isInvoicePreviewModalOpen && previewInvoice && (
+    <div
+      className="modal-overlay"
+      data-lenis-prevent="true"
+      onClick={() => setIsInvoicePreviewModalOpen(false)}
+      style={{
+        position: 'fixed',
+        inset: 0,
+        zIndex: 999999,
+        backgroundColor: 'rgba(15, 23, 42, 0.78)',
+        backdropFilter: 'blur(8px)',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        padding: '1rem',
+        overflowY: 'auto'
+      }}
+    >
+      <div
+        className="modal-box"
+        data-lenis-prevent="true"
+        onClick={(e) => e.stopPropagation()}
+        onWheel={(e) => e.stopPropagation()}
+        style={{
+          maxWidth: 1080,
+          width: '100%',
+          borderRadius: 20,
+          pointerEvents: 'auto',
+          maxHeight: '94vh',
+          height: '94vh',
+          display: 'flex',
+          flexDirection: 'column',
+          boxShadow: '0 30px 80px -15px rgba(2, 12, 27, 0.55)',
+          overflow: 'hidden',
+          background: '#FFFFFF',
+          border: '1px solid #CBD5E1'
+        }}
+      >
+        {/* 1. Fixed Header */}
+        <div className="modal-header" style={{ padding: '0.9rem 1.4rem', background: '#FAFAFA', borderBottom: '1px solid var(--neutral-200)', flexShrink: 0 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+            <div style={{ width: 40, height: 40, borderRadius: 12, background: '#EFF6FF', color: '#0284C7', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+              <Receipt size={22} />
+            </div>
+            <div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', flexWrap: 'wrap' }}>
+                <h3 style={{ fontSize: '1.18rem', fontWeight: 800, color: 'var(--primary-navy-950)', margin: 0 }}>
+                  Flexible Custom Invoice Generator
+                </h3>
+                <span style={{ fontSize: '0.75rem', fontWeight: 800, padding: '2px 9px', borderRadius: 9999, background: '#ECFDF5', color: '#059669', border: '1px solid #A7F3D0' }}>
+                  Payable: ₹{previewInvoice.totalAmount}
+                </span>
+                <span style={{ fontSize: '0.75rem', fontWeight: 700, padding: '2px 9px', borderRadius: 9999, background: '#EFF6FF', color: '#0284C7', border: '1px solid #BFDBFE' }}>
+                  {previewInvoice.items?.length || 1} Service Slot{(previewInvoice.items?.length || 1) > 1 ? 's' : ''}
+                </span>
+              </div>
+              <div style={{ fontSize: '0.74rem', color: 'var(--neutral-500)', marginTop: '2px' }}>
+                Invoice #{previewInvoice.invoiceNumber} • Add multiple dates, slots, custom line items & discounts
+              </div>
+            </div>
+          </div>
+          <button
+            type="button"
+            onClick={() => setIsInvoicePreviewModalOpen(false)}
+            className="modal-close-btn"
+            style={{ background: '#F1F5F9', border: 'none', borderRadius: '50%', width: 34, height: 34, display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer' }}
+            title="Close"
+          >
+            <X size={18} />
+          </button>
+        </div>
+
+        {/* 2. Source Selector & Tab Switcher Bar */}
+        <div style={{ padding: '0.75rem 1.4rem', background: '#F8FAFC', borderBottom: '1px solid #E2E8F0', display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '0.75rem', flexWrap: 'wrap', flexShrink: 0 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', flex: 1, minWidth: 280, position: 'relative' }}>
+            <span style={{ fontSize: '0.78rem', fontWeight: 800, color: 'var(--primary-navy-950)', whiteSpace: 'nowrap' }}>Order Source:</span>
+            <select
+              className="form-control"
+              style={{ height: 34, fontSize: '0.8rem', fontWeight: 600, background: '#FFFFFF', flex: 1 }}
+              value={previewInvoice.bookingId}
+              onChange={(e) => {
+                const selectedId = e.target.value;
+                if (selectedId === 'custom') {
+                  handleResetToBlankInvoice();
+                } else {
+                  const found = bookings.find((b) => b.id === selectedId);
+                  if (found) {
+                    handleSelectExistingPatientBooking(found);
+                  }
+                }
+              }}
+            >
+              <option value="custom">✏️ Custom / Manual Invoice (Blank Template)</option>
+              <optgroup label={`Active Patient Bookings (${bookings.length})`}>
+                {bookings.map((b) => (
+                  <option key={b.id} value={b.id}>
+                    #{b.id} — {cleanPatientNameOnly(b.patientName)} ({b.serviceTitle}) • ₹{b.finalFee !== undefined ? b.finalFee : (b.estimatedFee || 800)} • {b.area}
+                  </option>
+                ))}
+              </optgroup>
+            </select>
+            <button
+              type="button"
+              onClick={handleResetToBlankInvoice}
+              style={{
+                height: 34,
+                padding: '0 0.75rem',
+                fontSize: '0.75rem',
+                fontWeight: 700,
+                borderRadius: 8,
+                border: '1px solid #CBD5E1',
+                background: (previewInvoice.bookingId && previewInvoice.bookingId.startsWith('CUSTOM-')) ? '#EFF6FF' : '#FFFFFF',
+                color: (previewInvoice.bookingId && previewInvoice.bookingId.startsWith('CUSTOM-')) ? '#0284C7' : '#475569',
+                cursor: 'pointer',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '0.3rem',
+                whiteSpace: 'nowrap'
+              }}
+              title="Create new blank invoice"
+            >
+              <Plus size={13} />
+              <span>Blank</span>
+            </button>
+          </div>
+
+          {/* View Switcher Pills */}
+          <div style={{ display: 'inline-flex', background: '#E2E8F0', padding: '3px', borderRadius: 10, gap: '2px' }}>
+            <button
+              type="button"
+              onClick={() => setInvoiceModalTab('edit')}
+              style={{
+                padding: '0.4rem 0.95rem',
+                fontSize: '0.78rem',
+                fontWeight: 700,
+                borderRadius: 8,
+                border: 'none',
+                cursor: 'pointer',
+                background: invoiceModalTab === 'edit' ? '#FFFFFF' : 'transparent',
+                color: invoiceModalTab === 'edit' ? '#0F172A' : '#64748B',
+                boxShadow: invoiceModalTab === 'edit' ? '0 1px 3px rgba(0,0,0,0.1)' : 'none',
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: '0.35rem'
+              }}
+            >
+              <Edit2 size={13} />
+              <span>Customize & Schedules ({previewInvoice.items?.length || 1})</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => setInvoiceModalTab('preview')}
+              style={{
+                padding: '0.4rem 0.95rem',
+                fontSize: '0.78rem',
+                fontWeight: 700,
+                borderRadius: 8,
+                border: 'none',
+                cursor: 'pointer',
+                background: invoiceModalTab === 'preview' ? '#FFFFFF' : 'transparent',
+                color: invoiceModalTab === 'preview' ? '#0F172A' : '#64748B',
+                boxShadow: invoiceModalTab === 'preview' ? '0 1px 3px rgba(0,0,0,0.1)' : 'none',
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: '0.35rem'
+              }}
+            >
+              <Eye size={13} />
+              <span>Bill Preview (₹{previewInvoice.totalAmount})</span>
+            </button>
+          </div>
+        </div>
+
+        {/* 3. Fully Scrollable Content Body */}
+        <div
+          data-lenis-prevent="true"
+          onWheel={(e) => e.stopPropagation()}
+          style={{
+            flex: '1 1 0%',
+            minHeight: 0,
+            overflowY: 'auto',
+            padding: '1.25rem 1.4rem',
+            WebkitOverflowScrolling: 'touch',
+            overscrollBehavior: 'contain',
+            background: '#F8FAFC'
           }}
-          onClick={(e) => {
-            if (e.target === e.currentTarget && !isDeletingTarget) {
-              setDeleteConfirmTarget(null);
-            }
+        >
+          {invoiceModalTab === 'edit' ? (
+            /* EDIT PARAMETERS & MULTI-ROW BUILDER VIEW */
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '1.1rem' }}>
+              {/* Card 1: Patient & Location & Staff Overview */}
+              <div style={{ background: '#FFFFFF', border: '1px solid #E2E8F0', borderRadius: 14, padding: '1.1rem 1.25rem', boxShadow: '0 1px 3px rgba(0,0,0,0.03)' }}>
+                <div style={{ fontSize: '0.8rem', fontWeight: 800, color: '#334155', textTransform: 'uppercase', marginBottom: '0.75rem', display: 'flex', alignItems: 'center', gap: '0.35rem' }}>
+                  <User size={15} style={{ color: '#0284C7' }} />
+                  <span>Patient & Attending Staff Details</span>
+                </div>
+
+                {/* Dedicated Search Field for Existing Patients */}
+                <div style={{ marginBottom: '1rem', background: '#F0F9FF', border: '1px solid #BAE6FD', borderRadius: 12, padding: '0.85rem 1rem', position: 'relative' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.45rem', flexWrap: 'wrap', gap: '0.35rem' }}>
+                    <label style={{ fontSize: '0.78rem', fontWeight: 800, color: '#0369A1', display: 'flex', alignItems: 'center', gap: '0.35rem', margin: 0 }}>
+                      <Search size={14} style={{ color: '#0284C7' }} />
+                      <span>Search Existing Patients</span>
+                      <span style={{ fontSize: '0.7rem', fontWeight: 600, color: '#0284C7', background: '#E0F2FE', padding: '1px 6px', borderRadius: 4 }}>
+                        Autofill Name, Phone, Area & History
+                      </span>
+                    </label>
+                    {previewInvoice.bookingId && !previewInvoice.bookingId.startsWith('CUSTOM-') && (
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
+                        <span style={{ fontSize: '0.72rem', color: '#059669', fontWeight: 700, background: '#DCFCE7', padding: '2px 8px', borderRadius: 6, border: '1px solid #86EFAC' }}>
+                          ✓ Linked to Booking #{previewInvoice.bookingId}
+                        </span>
+                        <button
+                          type="button"
+                          onClick={handleResetToBlankInvoice}
+                          style={{ fontSize: '0.7rem', color: '#64748B', background: '#FFFFFF', border: '1px solid #CBD5E1', padding: '2px 7px', borderRadius: 6, cursor: 'pointer', fontWeight: 600 }}
+                        >
+                          Clear
+                        </button>
+                      </div>
+                    )}
+                  </div>
+
+                  <div style={{ position: 'relative' }}>
+                    <input
+                      type="text"
+                      value={customInvoicePatientSearch}
+                      onChange={(e) => {
+                        setCustomInvoicePatientSearch(e.target.value);
+                        setIsPatientSearchDropdownOpen(true);
+                      }}
+                      onFocus={() => setIsPatientSearchDropdownOpen(true)}
+                      onBlur={() => setTimeout(() => setIsPatientSearchDropdownOpen(false), 250)}
+                      placeholder="Search patient by full name, phone number, booking ref (#BK-...), or area..."
+                      className="form-control"
+                      style={{
+                        minHeight: 40,
+                        height: 40,
+                        fontSize: '0.86rem',
+                        fontWeight: 500,
+                        paddingLeft: '2.3rem',
+                        paddingRight: '2rem',
+                        background: '#FFFFFF',
+                        borderColor: isPatientSearchDropdownOpen ? '#0284C7' : '#BAE6FD',
+                        boxShadow: isPatientSearchDropdownOpen ? '0 0 0 3px rgba(2, 132, 199, 0.15)' : 'none'
+                      }}
+                    />
+                    <Search size={15} style={{ position: 'absolute', left: 11, top: 12, color: '#0284C7', pointerEvents: 'none' }} />
+                    {customInvoicePatientSearch && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setCustomInvoicePatientSearch('');
+                          setIsPatientSearchDropdownOpen(false);
+                        }}
+                        style={{ position: 'absolute', right: 9, top: 11, background: 'none', border: 'none', cursor: 'pointer', color: '#94A3B8' }}
+                        title="Clear search"
+                      >
+                        <X size={15} />
+                      </button>
+                    )}
+
+                    {/* Search Results Dropdown */}
+                    {isPatientSearchDropdownOpen && (
+                      <div style={{
+                        position: 'absolute',
+                        top: '100%',
+                        left: 0,
+                        right: 0,
+                        marginTop: 5,
+                        background: '#FFFFFF',
+                        borderRadius: 12,
+                        boxShadow: '0 12px 30px -4px rgba(0,0,0,0.18), 0 4px 8px -2px rgba(0,0,0,0.08)',
+                        border: '1px solid #CBD5E1',
+                        maxHeight: 280,
+                        overflowY: 'auto',
+                        zIndex: 150
+                      }}>
+                        {searchedExistingPatients.length === 0 ? (
+                          <div style={{ padding: '1rem', fontSize: '0.82rem', color: '#64748B', textAlign: 'center' }}>
+                            No existing patient matching "{customInvoicePatientSearch}". You can enter custom details below.
+                          </div>
+                        ) : (
+                          <div>
+                            <div style={{ padding: '0.5rem 0.95rem', background: '#F8FAFC', borderBottom: '1px solid #E2E8F0', fontSize: '0.7rem', fontWeight: 800, color: '#64748B', textTransform: 'uppercase', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                              <span>{customInvoicePatientSearch.trim() ? `Found ${searchedExistingPatients.length} Matching Patient${searchedExistingPatients.length > 1 ? 's' : ''}` : `Recent Patients (${searchedExistingPatients.length})`}</span>
+                              <span style={{ fontSize: '0.67rem', color: '#0284C7', fontWeight: 700 }}>Click to autofill invoice</span>
+                            </div>
+                            {searchedExistingPatients.map((b) => (
+                              <div
+                                key={b.id}
+                                onMouseDown={(e) => {
+                                  e.preventDefault();
+                                  handleSelectExistingPatientBooking(b);
+                                }}
+                                style={{
+                                  padding: '0.7rem 0.95rem',
+                                  borderBottom: '1px solid #F1F5F9',
+                                  cursor: 'pointer',
+                                  display: 'flex',
+                                  justifyContent: 'space-between',
+                                  alignItems: 'center',
+                                  transition: 'background 0.15s ease'
+                                }}
+                                onMouseEnter={(e) => (e.currentTarget.style.background = '#F0F9FF')}
+                                onMouseLeave={(e) => (e.currentTarget.style.background = '#FFFFFF')}
+                              >
+                                <div>
+                                  <div style={{ fontWeight: 800, fontSize: '0.88rem', color: '#0F172A', display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
+                                    <span>{cleanPatientNameOnly(b.patientName)}</span>
+                                    {b.patientAge && (
+                                      <span style={{ fontSize: '0.72rem', fontWeight: 600, color: '#64748B', background: '#F1F5F9', padding: '1px 6px', borderRadius: 4 }}>
+                                        {b.patientAge} yrs{b.patientGender ? `, ${b.patientGender}` : ''}
+                                      </span>
+                                    )}
+                                  </div>
+                                  <div style={{ fontSize: '0.76rem', color: '#475569', marginTop: 3, display: 'flex', gap: '0.6rem', flexWrap: 'wrap', alignItems: 'center' }}>
+                                    <span>📞 <strong>{b.patientPhone}</strong></span>
+                                    <span>📍 {b.area}</span>
+                                    <span style={{ color: '#0284C7', fontWeight: 600, fontFamily: 'monospace' }}>#{b.id}</span>
+                                  </div>
+                                </div>
+                                <div style={{ textAlign: 'right', flexShrink: 0, marginLeft: '0.75rem' }}>
+                                  <div style={{ fontSize: '0.86rem', fontWeight: 800, color: '#059669' }}>
+                                    ₹{b.finalFee !== undefined ? b.finalFee : (b.estimatedFee || 800)}
+                                  </div>
+                                  <div style={{ fontSize: '0.7rem', color: '#64748B', maxWidth: 140, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                                    {b.serviceTitle}
+                                  </div>
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                </div>
+
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '0.75rem', marginBottom: '0.75rem' }}>
+                  <div>
+                    <label style={{ fontSize: '0.74rem', fontWeight: 700, color: '#64748B', display: 'block', marginBottom: '3px' }}>Patient Full Name</label>
+                    <input
+                      type="text"
+                      value={previewInvoice.patientName || ''}
+                      onChange={(e) => updateInvoiceCalculation({ patientName: e.target.value })}
+                      placeholder="Patient name"
+                      className="form-control"
+                      style={{ minHeight: 42, height: 42, fontSize: '0.86rem', padding: '0.45rem 0.85rem' }}
+                    />
+                  </div>
+                  <div>
+                    <label style={{ fontSize: '0.74rem', fontWeight: 700, color: '#64748B', display: 'block', marginBottom: '3px' }}>Contact Phone</label>
+                    <input
+                      type="tel"
+                      value={previewInvoice.patientPhone || ''}
+                      onChange={(e) => updateInvoiceCalculation({ patientPhone: e.target.value })}
+                      placeholder="+91 Phone"
+                      className="form-control"
+                      style={{ minHeight: 42, height: 42, fontSize: '0.86rem', padding: '0.45rem 0.85rem' }}
+                    />
+                  </div>
+                  <div>
+                    <label style={{ fontSize: '0.74rem', fontWeight: 700, color: '#64748B', display: 'block', marginBottom: '3px' }}>Attending Staff Override</label>
+                    <select
+                      value={previewInvoice.assignedNurseName || ''}
+                      onChange={(e) => updateInvoiceCalculation({ assignedNurseName: e.target.value })}
+                      className="form-control"
+                      style={{ minHeight: 42, height: 42, fontSize: '0.86rem', padding: '0.45rem 2.2rem 0.45rem 0.85rem', lineHeight: 'normal' }}
+                    >
+                      <option value="Assigned Fleet RN">Assigned Fleet RN (Default)</option>
+                      {nurses.map((n) => (
+                        <option key={n.id} value={n.name}>{n.name} ({n.serviceArea}) {n.certificateVerified ? '✓ Verified' : ''}</option>
+                      ))}
+                    </select>
+                  </div>
+                </div>
+
+                <div style={{ display: 'grid', gridTemplateColumns: '1.2fr 2fr 1fr 1fr', gap: '0.75rem' }}>
+                  <div>
+                    <label style={{ fontSize: '0.74rem', fontWeight: 700, color: '#64748B', display: 'block', marginBottom: '3px' }}>Hyderabad Zone / Area</label>
+                    <select
+                      value={previewInvoice.area || 'Banjara Hills'}
+                      onChange={(e) => updateInvoiceCalculation({ area: e.target.value })}
+                      className="form-control"
+                      style={{ minHeight: 42, height: 42, fontSize: '0.86rem', padding: '0.45rem 2.2rem 0.45rem 0.85rem', lineHeight: 'normal' }}
+                    >
+                      {HYDERABAD_AREAS.map((a) => (
+                        <option key={a} value={a}>{a}</option>
+                      ))}
+                    </select>
+                  </div>
+                  <div>
+                    <label style={{ fontSize: '0.74rem', fontWeight: 700, color: '#64748B', display: 'block', marginBottom: '3px' }}>Full Street Address</label>
+                    <input
+                      type="text"
+                      value={previewInvoice.fullAddress || ''}
+                      onChange={(e) => updateInvoiceCalculation({ fullAddress: e.target.value })}
+                      placeholder="House/flat, apartment, landmark"
+                      className="form-control"
+                      style={{ minHeight: 42, height: 42, fontSize: '0.86rem', padding: '0.45rem 0.85rem' }}
+                    />
+                  </div>
+                  <div>
+                    <label style={{ fontSize: '0.74rem', fontWeight: 700, color: '#64748B', display: 'block', marginBottom: '3px' }}>Payment Status</label>
+                    <select
+                      value={previewInvoice.paymentStatus}
+                      onChange={(e) => updateInvoiceCalculation({ paymentStatus: e.target.value as any })}
+                      className="form-control"
+                      style={{ minHeight: 42, height: 42, fontSize: '0.86rem', padding: '0.45rem 2.2rem 0.45rem 0.85rem', lineHeight: 'normal' }}
+                    >
+                      <option value="Paid">Paid</option>
+                      <option value="Pending">Pending</option>
+                      <option value="Refunded">Refunded</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label style={{ fontSize: '0.74rem', fontWeight: 700, color: '#64748B', display: 'block', marginBottom: '3px' }}>Payment Mode</label>
+                    <select
+                      value={previewInvoice.paymentMode}
+                      onChange={(e) => updateInvoiceCalculation({ paymentMode: e.target.value as any })}
+                      className="form-control"
+                      style={{ minHeight: 42, height: 42, fontSize: '0.86rem', padding: '0.45rem 2.2rem 0.45rem 0.85rem', lineHeight: 'normal' }}
+                    >
+                      <option value="UPI / Online">UPI / Online</option>
+                      <option value="Cash on Visit">Cash on Visit</option>
+                      <option value="Corporate Direct">Corporate Direct</option>
+                    </select>
+                  </div>
+                </div>
+              </div>
+
+              {/* Card 2: FLEXIBLE SERVICE SCHEDULE & LINE ITEMS (THE CORE MULTI-DATE & MULTI-SLOT GENERATOR) */}
+              <div style={{ background: '#FFFFFF', border: '1px solid #E2E8F0', borderRadius: 14, padding: '1.2rem 1.25rem', boxShadow: '0 1px 4px rgba(0,0,0,0.04)' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '0.75rem', marginBottom: '1rem', borderBottom: '1px solid #F1F5F9', paddingBottom: '0.75rem' }}>
+                  <div>
+                    <div style={{ fontSize: '0.86rem', fontWeight: 800, color: '#1E293B', display: 'flex', alignItems: 'center', gap: '0.45rem' }}>
+                      <Calendar size={17} style={{ color: '#0284C7' }} />
+                      <span>Clinical Service Schedule & Invoice Rows</span>
+                      <span style={{ fontSize: '0.72rem', background: '#EFF6FF', color: '#0284C7', padding: '2px 8px', borderRadius: 9999, fontWeight: 800 }}>
+                        {previewInvoice.items?.length || 1} Entries
+                      </span>
+                    </div>
+                    <div style={{ fontSize: '0.74rem', color: '#64748B', marginTop: '2px' }}>
+                      Add more dates or extra slots per day. Each entry dynamically generates a distinct line item on the invoice.
+                    </div>
+                  </div>
+
+                  {/* Top Action Buttons */}
+                  <div style={{ display: 'flex', gap: '0.45rem', flexWrap: 'wrap' }}>
+                    <button
+                      type="button"
+                      onClick={() => handleAddItemRow()}
+                      className="btn btn-primary btn-sm"
+                      style={{ fontSize: '0.76rem', padding: '0.35rem 0.8rem', borderRadius: 8, gap: '0.35rem', fontWeight: 700 }}
+                    >
+                      <Plus size={14} />
+                      <span>Add Date & Slot Row</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        if (previewInvoice.items && previewInvoice.items.length > 0) {
+                          handleDuplicateItemWithNextSlot(previewInvoice.items.length - 1);
+                        } else {
+                          handleAddItemRow();
+                        }
+                      }}
+                      className="btn btn-outline btn-sm"
+                      style={{ fontSize: '0.76rem', padding: '0.35rem 0.75rem', borderRadius: 8, gap: '0.3rem', background: '#F8FAFC' }}
+                      title="Schedule an additional slot on the same date (e.g. Morning + Evening)"
+                    >
+                      <Clock size={13} />
+                      <span>+ Same Date (Next Slot)</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        if (previewInvoice.items && previewInvoice.items.length > 0) {
+                          handleDuplicateItemWithNextDay(previewInvoice.items.length - 1);
+                        } else {
+                          handleAddItemRow();
+                        }
+                      }}
+                      className="btn btn-outline btn-sm"
+                      style={{ fontSize: '0.76rem', padding: '0.35rem 0.75rem', borderRadius: 8, gap: '0.3rem', background: '#F8FAFC' }}
+                      title="Schedule a visit for the next calendar day"
+                    >
+                      <Calendar size={13} />
+                      <span>+ Next Day (+1 Day)</span>
+                    </button>
+                  </div>
+                </div>
+
+                {/* Table of Rows */}
+                <div style={{ border: '1px solid #E2E8F0', borderRadius: 10, overflow: 'hidden', marginBottom: '0.85rem' }}>
+                  <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.8rem' }}>
+                    <thead>
+                      <tr style={{ background: '#F8FAFC', borderBottom: '1px solid #E2E8F0', color: '#475569', fontWeight: 800, textAlign: 'left' }}>
+                        <th style={{ padding: '0.55rem 0.65rem', width: 34, textAlign: 'center' }}>#</th>
+                        <th style={{ padding: '0.55rem 0.65rem', minWidth: 200 }}>Procedure / Clinical Service</th>
+                        <th style={{ padding: '0.55rem 0.65rem', width: 145 }}>Service Date</th>
+                        <th style={{ padding: '0.55rem 0.65rem', width: 230 }}>Time Slot (M / A / E)</th>
+                        <th style={{ padding: '0.55rem 0.65rem', width: 70, textAlign: 'center' }}>Visits</th>
+                        <th style={{ padding: '0.55rem 0.65rem', width: 100, textAlign: 'right' }}>Rate (₹)</th>
+                        <th style={{ padding: '0.55rem 0.65rem', width: 100, textAlign: 'right' }}>Total (₹)</th>
+                        <th style={{ padding: '0.55rem 0.65rem', width: 85, textAlign: 'center' }}>Actions</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {(previewInvoice.items && previewInvoice.items.length > 0 ? previewInvoice.items : [
+                        {
+                          id: 'item-1',
+                          description: previewInvoice.serviceTitle || services[0]?.title || 'Clinical Nursing Care',
+                          date: previewInvoice.serviceDate || new Date().toISOString().split('T')[0],
+                          slot: previewInvoice.timeSlot || '8:00 AM',
+                          rate: Number(previewInvoice.baseAmount) || 800,
+                          quantity: Number(previewInvoice.numberOfVisits) || 1,
+                          amount: (Number(previewInvoice.baseAmount) || 800) * (Number(previewInvoice.numberOfVisits) || 1)
+                        }
+                      ]).map((item, index) => {
+                        const standardSlots = [
+                          '8:00 AM',
+                          '2:00 PM',
+                          '8:00 PM'
+                        ];
+                        const isCustomSlot = !standardSlots.includes(item.slot);
+
+                        return (
+                          <tr key={item.id || index} style={{ borderBottom: '1px solid #F1F5F9', background: index % 2 === 1 ? '#FAFAFA' : '#FFFFFF' }}>
+                            {/* Row Index */}
+                            <td style={{ padding: '0.55rem 0.4rem', textAlign: 'center', fontWeight: 800, color: '#64748B' }}>
+                              <span style={{ width: 22, height: 22, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', background: '#F1F5F9', borderRadius: '50%', fontSize: '0.72rem' }}>
+                                {index + 1}
+                              </span>
+                            </td>
+
+                            {/* Procedure / Clinical Service Description */}
+                            <td style={{ padding: '0.55rem 0.65rem' }}>
+                              <div style={{ display: 'flex', flexDirection: 'column', gap: '5px' }}>
+                                {/* Catalog Dropdown with Auto Price Match */}
+                                <select
+                                  value={services.some(s => s.title.toLowerCase().trim() === (item.description || '').toLowerCase().trim()) ? services.find(s => s.title.toLowerCase().trim() === (item.description || '').toLowerCase().trim())?.title : 'custom'}
+                                  onChange={(e) => {
+                                    const chosenTitle = e.target.value;
+                                    if (chosenTitle !== 'custom') {
+                                      const found = services.find(s => s.title === chosenTitle);
+                                      if (found) {
+                                        const price = Number(found.priceNumber || found.singleVisitPrice) || 800;
+                                        handleUpdateItemRow(index, {
+                                          description: found.title,
+                                          rate: price
+                                        });
+                                      }
+                                    }
+                                  }}
+                                  className="form-control"
+                                  style={{ minHeight: 36, height: 36, fontSize: '0.78rem', fontWeight: 700, borderColor: '#BAE6FD', background: '#F0F9FF', color: '#0369A1', padding: '0.35rem 2rem 0.35rem 0.65rem', lineHeight: 'normal' }}
+                                >
+                                  <option value="" disabled>-- Select Clinical Service / Procedure --</option>
+                                  {services.map((s) => (
+                                    <option key={s.id} value={s.title}>
+                                      {s.title} (₹{s.priceNumber || s.singleVisitPrice})
+                                    </option>
+                                  ))}
+                                  <option value="custom">✏️ Custom / Manual Procedure Entry</option>
+                                </select>
+
+                                {/* Editable Description Text Input */}
+                                <input
+                                  type="text"
+                                  value={item.description}
+                                  onChange={(e) => {
+                                    const val = e.target.value;
+                                    const matchingSrv = services.find(s => s.title.toLowerCase().trim() === val.toLowerCase().trim());
+                                    if (matchingSrv) {
+                                      handleUpdateItemRow(index, {
+                                        description: val,
+                                        rate: Number(matchingSrv.priceNumber || matchingSrv.singleVisitPrice) || item.rate
+                                      });
+                                    } else {
+                                      handleUpdateItemRow(index, { description: val });
+                                    }
+                                  }}
+                                  className="form-control"
+                                  style={{ height: 30, fontSize: '0.78rem', fontWeight: 600 }}
+                                  placeholder="Type or customize procedure title..."
+                                />
+                              </div>
+                            </td>
+
+                            {/* Service Date */}
+                            <td style={{ padding: '0.55rem 0.65rem' }}>
+                              <input
+                                type="date"
+                                value={item.date}
+                                onChange={(e) => handleUpdateItemRow(index, { date: e.target.value })}
+                                className="form-control"
+                                style={{ height: 32, fontSize: '0.76rem', background: '#FFFFFF' }}
+                              />
+                            </td>
+
+                            {/* Time Slot Buttons: M (Morning), A (Afternoon), E (Evening) */}
+                            <td style={{ padding: '0.55rem 0.65rem' }}>
+                              {(() => {
+                                const activeSlots = parseActiveItemSlots(item.slot);
+                                const isM = activeSlots.includes('M');
+                                const isA = activeSlots.includes('A');
+                                const isE = activeSlots.includes('E');
+
+                                return (
+                                  <div style={{ display: 'flex', flexDirection: 'column', gap: '3px' }}>
+                                    <div style={{ display: 'flex', gap: '4px' }}>
+                                      <button
+                                        type="button"
+                                        onClick={() => handleToggleItemSlot(index, 'M')}
+                                        style={{
+                                          flex: 1,
+                                          padding: '4px 3px',
+                                          borderRadius: 6,
+                                          background: isM ? '#0284C7' : '#F8FAFC',
+                                          color: isM ? '#FFFFFF' : '#475569',
+                                          border: `1.5px solid ${isM ? '#0284C7' : '#CBD5E1'}`,
+                                          cursor: 'pointer',
+                                          display: 'flex',
+                                          flexDirection: 'column',
+                                          alignItems: 'center',
+                                          lineHeight: 1.15,
+                                          boxShadow: isM ? '0 2px 4px rgba(2,132,199,0.25)' : 'none',
+                                          transition: 'all 0.15s ease'
+                                        }}
+                                        title="Morning Slot (8:00 AM)"
+                                      >
+                                        <span style={{ fontSize: '0.82rem', fontWeight: 900 }}>M</span>
+                                        <span style={{ fontSize: '0.62rem', fontWeight: 700, opacity: isM ? 1 : 0.85 }}>Morning</span>
+                                      </button>
+
+                                      <button
+                                        type="button"
+                                        onClick={() => handleToggleItemSlot(index, 'A')}
+                                        style={{
+                                          flex: 1,
+                                          padding: '4px 3px',
+                                          borderRadius: 6,
+                                          background: isA ? '#D97706' : '#F8FAFC',
+                                          color: isA ? '#FFFFFF' : '#475569',
+                                          border: `1.5px solid ${isA ? '#D97706' : '#CBD5E1'}`,
+                                          cursor: 'pointer',
+                                          display: 'flex',
+                                          flexDirection: 'column',
+                                          alignItems: 'center',
+                                          lineHeight: 1.15,
+                                          boxShadow: isA ? '0 2px 4px rgba(217,119,6,0.25)' : 'none',
+                                          transition: 'all 0.15s ease'
+                                        }}
+                                        title="Afternoon Slot (2:00 PM)"
+                                      >
+                                        <span style={{ fontSize: '0.82rem', fontWeight: 900 }}>A</span>
+                                        <span style={{ fontSize: '0.62rem', fontWeight: 700, opacity: isA ? 1 : 0.85 }}>Afternoon</span>
+                                      </button>
+
+                                      <button
+                                        type="button"
+                                        onClick={() => handleToggleItemSlot(index, 'E')}
+                                        style={{
+                                          flex: 1,
+                                          padding: '4px 3px',
+                                          borderRadius: 6,
+                                          background: isE ? '#4F46E5' : '#F8FAFC',
+                                          color: isE ? '#FFFFFF' : '#475569',
+                                          border: `1.5px solid ${isE ? '#4F46E5' : '#CBD5E1'}`,
+                                          cursor: 'pointer',
+                                          display: 'flex',
+                                          flexDirection: 'column',
+                                          alignItems: 'center',
+                                          lineHeight: 1.15,
+                                          boxShadow: isE ? '0 2px 4px rgba(79,70,229,0.25)' : 'none',
+                                          transition: 'all 0.15s ease'
+                                        }}
+                                        title="Evening Slot (8:00 PM)"
+                                      >
+                                        <span style={{ fontSize: '0.82rem', fontWeight: 900 }}>E</span>
+                                        <span style={{ fontSize: '0.62rem', fontWeight: 700, opacity: isE ? 1 : 0.85 }}>Evening</span>
+                                      </button>
+                                    </div>
+
+                                    <div style={{ fontSize: '0.72rem', color: '#0F172A', fontWeight: 800, textAlign: 'center', letterSpacing: '2px' }}>
+                                      {activeSlots.join(' ')}
+                                    </div>
+                                  </div>
+                                );
+                              })()}
+                            </td>
+
+                            {/* Visits / Quantity */}
+                            <td style={{ padding: '0.55rem 0.65rem', textAlign: 'center' }}>
+                              <input
+                                type="number"
+                                min="1"
+                                max="30"
+                                value={item.quantity || 1}
+                                onChange={(e) => handleUpdateItemRow(index, { quantity: Math.max(1, parseInt(e.target.value) || 1) })}
+                                className="form-control"
+                                style={{ height: 32, fontSize: '0.78rem', textAlign: 'center', padding: '0 4px' }}
+                              />
+                            </td>
+
+                            {/* Rate per Visit (₹) */}
+                            <td style={{ padding: '0.55rem 0.65rem', textAlign: 'right' }}>
+                              <div style={{ display: 'flex', alignItems: 'center', gap: '2px', justifyContent: 'flex-end' }}>
+                                <span style={{ fontSize: '0.78rem', color: '#64748B', fontWeight: 700 }}>₹</span>
+                                <input
+                                  type="number"
+                                  min="0"
+                                  step="50"
+                                  value={item.rate === 0 ? '' : item.rate}
+                                  placeholder="0"
+                                  onChange={(e) => {
+                                    const val = e.target.value === '' ? 0 : Number(e.target.value);
+                                    handleUpdateItemRow(index, { rate: isNaN(val) ? 0 : val });
+                                  }}
+                                  className="form-control"
+                                  style={{ height: 32, width: 85, fontSize: '0.8rem', textAlign: 'right', padding: '0 6px', fontWeight: 800, background: '#FFFFFF' }}
+                                />
+                              </div>
+                            </td>
+
+                            {/* Row Total (₹) */}
+                            <td style={{ padding: '0.55rem 0.65rem', textAlign: 'right', fontWeight: 800, color: '#0F172A', whiteSpace: 'nowrap' }}>
+                              ₹{item.amount || (item.rate * (item.quantity || 1))}
+                            </td>
+
+                            {/* Actions */}
+                            <td style={{ padding: '0.55rem 0.65rem', textAlign: 'center' }}>
+                              <div style={{ display: 'inline-flex', alignItems: 'center', gap: '3px' }}>
+                                <button
+                                  type="button"
+                                  onClick={() => handleDuplicateItemWithNextSlot(index)}
+                                  title="Duplicate on same date (next slot)"
+                                  style={{ width: 26, height: 26, borderRadius: 6, border: '1px solid #CBD5E1', background: '#FFFFFF', color: '#0284C7', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer' }}
+                                >
+                                  <Clock size={12} />
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => handleDuplicateItemWithNextDay(index)}
+                                  title="Duplicate to next day (+1 day)"
+                                  style={{ width: 26, height: 26, borderRadius: 6, border: '1px solid #CBD5E1', background: '#FFFFFF', color: '#059669', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer' }}
+                                >
+                                  <Calendar size={12} />
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => handleRemoveItemRow(index)}
+                                  disabled={!previewInvoice.items || previewInvoice.items.length <= 1}
+                                  title={(!previewInvoice.items || previewInvoice.items.length <= 1) ? 'Cannot delete only row' : 'Delete this row'}
+                                  style={{
+                                    width: 26,
+                                    height: 26,
+                                    borderRadius: 6,
+                                    border: '1px solid #FECACA',
+                                    background: (!previewInvoice.items || previewInvoice.items.length <= 1) ? '#F1F5F9' : '#FEF2F2',
+                                    color: (!previewInvoice.items || previewInvoice.items.length <= 1) ? '#94A3B8' : '#EF4444',
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    justifyContent: 'center',
+                                    cursor: (!previewInvoice.items || previewInvoice.items.length <= 1) ? 'not-allowed' : 'pointer'
+                                  }}
+                                >
+                                  <Trash2 size={12} />
+                                </button>
+                              </div>
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+
+                {/* Quick Package Helpers */}
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '0.5rem', background: '#F8FAFC', padding: '0.65rem 0.85rem', borderRadius: 8, border: '1px dashed #CBD5E1' }}>
+                  <div style={{ fontSize: '0.74rem', color: '#475569', fontWeight: 600 }}>
+                    ⚡ Quick Add Presets:
+                  </div>
+                  <div style={{ display: 'flex', gap: '0.4rem', flexWrap: 'wrap' }}>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const today = new Date().toISOString().split('T')[0];
+                        handleAddItemRow(today, '8:00 AM');
+                        handleAddItemRow(today, '8:00 PM');
+                      }}
+                      style={{ border: '1px solid #BFDBFE', background: '#EFF6FF', color: '#0284C7', padding: '3px 8px', borderRadius: 6, fontSize: '0.72rem', fontWeight: 700, cursor: 'pointer' }}
+                    >
+                      + 8:00 AM & 8:00 PM (2 visits)
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const today = new Date().toISOString().split('T')[0];
+                        handleAddItemRow(today, '8:00 AM');
+                        handleAddItemRow(today, '2:00 PM');
+                        handleAddItemRow(today, '8:00 PM');
+                      }}
+                      style={{ border: '1px solid #FED7AA', background: '#FFF7ED', color: '#C2410C', padding: '3px 8px', borderRadius: 6, fontSize: '0.72rem', fontWeight: 700, cursor: 'pointer' }}
+                    >
+                      + All 3 Slots (8am, 2pm, 8pm)
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const baseD = new Date();
+                        for (let i = 1; i <= 3; i++) {
+                          const d = new Date(baseD);
+                          d.setDate(d.getDate() + i);
+                          handleAddItemRow(d.toISOString().split('T')[0], '8:00 AM', 'Wound Dressing & Vitals Check', 650);
+                        }
+                      }}
+                      style={{ border: '1px solid #A7F3D0', background: '#ECFDF5', color: '#059669', padding: '3px 8px', borderRadius: 6, fontSize: '0.72rem', fontWeight: 700, cursor: 'pointer' }}
+                    >
+                      + 3-Day Plan (8:00 AM)
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const baseD = new Date();
+                        for (let i = 1; i <= 7; i++) {
+                          const d = new Date(baseD);
+                          d.setDate(d.getDate() + i);
+                          handleAddItemRow(d.toISOString().split('T')[0], '8:00 AM', 'Post-Surgical Nursing Care', 800);
+                        }
+                      }}
+                      style={{ border: '1px solid #E2E8F0', background: '#FFFFFF', color: '#334155', padding: '3px 8px', borderRadius: 6, fontSize: '0.72rem', fontWeight: 700, cursor: 'pointer' }}
+                    >
+                      + 7-Day Care (8:00 AM)
+                    </button>
+                  </div>
+                </div>
+              </div>
+
+              {/* Card 3: Fee Adjustments, Night Surcharge & Grand Total Summary */}
+              <div style={{ background: '#FFFFFF', border: '1px solid #E2E8F0', borderRadius: 14, padding: '1.1rem 1.25rem', boxShadow: '0 1px 3px rgba(0,0,0,0.03)' }}>
+                <div style={{ fontSize: '0.8rem', fontWeight: 800, color: '#334155', textTransform: 'uppercase', marginBottom: '0.75rem', display: 'flex', alignItems: 'center', gap: '0.35rem' }}>
+                  <DollarSign size={15} style={{ color: '#0284C7' }} />
+                  <span>Adjustments, Concessions & Final Total</span>
+                </div>
+
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '0.85rem', marginBottom: '0.85rem' }}>
+                  <div>
+                    <label style={{ fontSize: '0.74rem', fontWeight: 700, color: '#64748B', display: 'block', marginBottom: '3px' }}>Night Emergency Surcharge (₹)</label>
+                    <input
+                      type="number"
+                      min="0"
+                      step="50"
+                      value={previewInvoice.nightSurcharge || 0}
+                      onChange={(e) => updateInvoiceCalculation({ nightSurcharge: Number(e.target.value) || 0 })}
+                      className="form-control"
+                      style={{ minHeight: 42, height: 42, fontSize: '0.86rem', padding: '0.45rem 0.85rem' }}
+                      placeholder="e.g. 200 for late night"
+                    />
+                  </div>
+                  <div>
+                    <label style={{ fontSize: '0.74rem', fontWeight: 700, color: '#64748B', display: 'block', marginBottom: '3px' }}>Discount / Coupon Concession (₹)</label>
+                    <input
+                      type="number"
+                      min="0"
+                      step="50"
+                      value={previewInvoice.discountRupees || 0}
+                      onChange={(e) => updateInvoiceCalculation({ discountRupees: Number(e.target.value) || 0 })}
+                      className="form-control"
+                      style={{ minHeight: 42, height: 42, fontSize: '0.86rem', padding: '0.45rem 0.85rem' }}
+                      placeholder="e.g. 150 discount"
+                    />
+                  </div>
+                  <div>
+                    <label style={{ fontSize: '0.74rem', fontWeight: 700, color: '#64748B', display: 'block', marginBottom: '3px' }}>Invoice Remarks / Clinical Notes</label>
+                    <input
+                      type="text"
+                      value={previewInvoice.notes || ''}
+                      onChange={(e) => updateInvoiceCalculation({ notes: e.target.value })}
+                      className="form-control"
+                      style={{ minHeight: 42, height: 42, fontSize: '0.86rem', padding: '0.45rem 0.85rem' }}
+                      placeholder="e.g. Includes aseptic sterile consumable kit"
+                    />
+                  </div>
+                </div>
+
+                {/* Live Financial Breakdown Card */}
+                <div style={{ background: '#F8FAFC', border: '1px solid #E2E8F0', borderRadius: 10, padding: '0.85rem 1rem', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '0.75rem' }}>
+                  <div>
+                    <div style={{ fontSize: '0.82rem', color: '#475569' }}>
+                      <strong>{previewInvoice.items?.reduce((s, it) => s + (Number(it.quantity) || 1), 0) || previewInvoice.numberOfVisits || 1} Total Visits</strong> across{' '}
+                      <strong>{new Set((previewInvoice.items || []).map((i) => i.date)).size || 1} Distinct Date{(new Set((previewInvoice.items || []).map((i) => i.date)).size || 1) > 1 ? 's' : ''}</strong>
+                    </div>
+                    <div style={{ fontSize: '0.75rem', color: '#64748B', marginTop: '2px' }}>
+                      Rows Subtotal: ₹{previewInvoice.items?.reduce((s, it) => s + (Number(it.amount) || 0), 0) || previewInvoice.baseAmount}
+                      {Boolean(previewInvoice.nightSurcharge && previewInvoice.nightSurcharge > 0) && ` + ₹${previewInvoice.nightSurcharge} night`}
+                      {Boolean(previewInvoice.discountRupees && previewInvoice.discountRupees > 0) && ` - ₹${previewInvoice.discountRupees} discount`}
+                    </div>
+                  </div>
+
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+                    <div style={{ textAlign: 'right' }}>
+                      <div style={{ fontSize: '0.7rem', fontWeight: 700, color: '#64748B', textTransform: 'uppercase' }}>Total Amount Payable</div>
+                      <div style={{ fontSize: '1.25rem', fontWeight: 900, color: '#059669', background: '#ECFDF5', padding: '2px 10px', borderRadius: 8, border: '1px solid #A7F3D0' }}>
+                        ₹{previewInvoice.totalAmount}
+                      </div>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => setInvoiceModalTab('preview')}
+                      className="btn btn-outline btn-sm"
+                      style={{ fontSize: '0.78rem', padding: '0.4rem 0.85rem', borderRadius: 8, gap: '0.35rem', fontWeight: 700 }}
+                    >
+                      <Eye size={13} />
+                      <span>Preview Bill →</span>
+                    </button>
+                  </div>
+                </div>
+              </div>
+            </div>
+          ) : (
+            /* OFFICIAL BILL PREVIEW VIEW (TAX INVOICE PAPER) */
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.85rem' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <button
+                  type="button"
+                  onClick={() => setInvoiceModalTab('edit')}
+                  className="btn btn-outline btn-sm"
+                  style={{ borderRadius: 8, fontSize: '0.78rem', gap: '0.35rem', fontWeight: 700 }}
+                >
+                  <Edit2 size={13} />
+                  <span>← Back to Customize Fields & Dates</span>
+                </button>
+                <span style={{ fontSize: '0.74rem', color: '#64748B' }}>
+                  Official printable format with Xpress Nurse credentials • Ready to Print & Download
+                </span>
+              </div>
+
+              {/* Clean Printable Invoice Card */}
+              <div style={{ padding: '2rem', background: '#FFFFFF', border: '1px solid #E2E8F0', borderRadius: 16, boxShadow: '0 4px 15px rgba(0,0,0,0.05)' }}>
+                {/* Header */}
+                <div style={{ display: 'flex', justifyContent: 'space-between', borderBottom: '2px solid #0A192F', paddingBottom: '1.25rem', marginBottom: '1.5rem' }}>
+                  <div>
+                    <div style={{ fontSize: '1.5rem', fontWeight: 900, color: '#0A192F', letterSpacing: '-0.5px' }}>Xpress Nurse</div>
+                    <div style={{ fontSize: '0.82rem', color: '#0284C7', fontWeight: 700, letterSpacing: '0.04em', textTransform: 'uppercase', marginTop: '2px' }}>
+                      24/7 Clinical Home Care Hyderabad
+                    </div>
+                    <div style={{ fontSize: '0.74rem', color: '#64748B', marginTop: '4px' }}>
+                      NABH Standards Compliant • Registered Clinical Fleet
+                    </div>
+                  </div>
+                  <div style={{ textAlign: 'right' }}>
+                    <div style={{ fontSize: '1.25rem', fontWeight: 900, color: '#0A192F', letterSpacing: '0.02em' }}>INVOICE</div>
+                    <div style={{ fontSize: '0.88rem', color: '#0284C7', fontWeight: 800, margin: '2px 0' }}>{previewInvoice.invoiceNumber}</div>
+                    <div style={{ fontSize: '0.76rem', color: '#64748B' }}>Date: {previewInvoice.invoiceDate}</div>
+                    <div style={{ marginTop: '6px' }}>
+                      <span style={{
+                        display: 'inline-block',
+                        padding: '3px 10px',
+                        borderRadius: 9999,
+                        fontSize: '0.72rem',
+                        fontWeight: 800,
+                        textTransform: 'uppercase',
+                        background: previewInvoice.paymentStatus === 'Paid' ? '#ECFDF5' : '#FFFBEB',
+                        color: previewInvoice.paymentStatus === 'Paid' ? '#059669' : '#D97706',
+                        border: `1px solid ${previewInvoice.paymentStatus === 'Paid' ? '#A7F3D0' : '#FDE68A'}`
+                      }}>
+                        {previewInvoice.paymentStatus}
+                      </span>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Info Grid */}
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1.25rem', marginBottom: '1.5rem', background: '#F8FAFC', padding: '1.2rem', borderRadius: 12, border: '1px solid #E2E8F0' }}>
+                  <div>
+                    <div style={{ fontSize: '0.72rem', fontWeight: 800, color: '#64748B', textTransform: 'uppercase', marginBottom: '6px' }}>BILLED TO (PATIENT)</div>
+                    <div style={{ fontSize: '0.98rem', fontWeight: 800, color: '#0F172A' }}>
+                      {cleanPatientNameOnly(previewInvoice.patientName) || previewInvoice.patientName}
+                      {(() => {
+                        const details: string[] = [];
+                        if (previewInvoice.patientGender && previewInvoice.patientGender !== 'Patient') details.push(previewInvoice.patientGender);
+                        if (previewInvoice.patientAge) details.push(`${previewInvoice.patientAge} Yrs`);
+                        return details.length > 0 ? ` (${details.join(', ')})` : '';
+                      })()}
+                    </div>
+                    <div style={{ fontSize: '0.8rem', color: '#475569', marginTop: '2px' }}>Phone: {previewInvoice.patientPhone}</div>
+                    <div style={{ fontSize: '0.8rem', color: '#475569', marginTop: '2px' }}>Address: {previewInvoice.fullAddress}</div>
+                    <div style={{ fontSize: '0.8rem', color: '#0284C7', fontWeight: 700, marginTop: '2px' }}>Zone: {previewInvoice.area}, Hyderabad</div>
+                  </div>
+                  <div>
+                    <div style={{ fontSize: '0.72rem', fontWeight: 800, color: '#64748B', textTransform: 'uppercase', marginBottom: '6px' }}>SERVICE & DISPATCH DETAILS</div>
+                    <div style={{ fontSize: '0.98rem', fontWeight: 800, color: '#0F172A' }}>{previewInvoice.assignedNurseName}</div>
+                    <div style={{ fontSize: '0.8rem', color: '#475569', marginTop: '2px' }}>Booking Ref: <span style={{ fontFamily: 'monospace', fontWeight: 700 }}>{previewInvoice.bookingId}</span></div>
+                    <div style={{ fontSize: '0.8rem', color: '#475569', marginTop: '2px' }}>Payment Mode: {previewInvoice.paymentMode}</div>
+                    <div style={{ fontSize: '0.76rem', color: '#64748B', marginTop: '2px' }}>Supervision: Xpress Nurse Medical Command Center</div>
+                  </div>
+                </div>
+
+                {/* Multi-Row Invoice Table */}
+                <div className="table-responsive" style={{ marginBottom: '1.25rem', border: '1px solid #E2E8F0', borderRadius: 10, overflow: 'hidden' }}>
+                  <table className="data-table" style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.82rem' }}>
+                    <thead>
+                      <tr style={{ background: '#F1F5F9', borderBottom: '2px solid #CBD5E1', color: '#334155', fontWeight: 800 }}>
+                        <th style={{ width: 45, textAlign: 'center', padding: '0.65rem 0.6rem' }}>#</th>
+                        <th style={{ padding: '0.65rem 0.8rem' }}>Procedure / Clinical Service</th>
+                        <th style={{ padding: '0.65rem 0.8rem', width: 120 }}>Date</th>
+                        <th style={{ padding: '0.65rem 0.8rem', width: 90, textAlign: 'center' }}>Slot</th>
+                        <th style={{ padding: '0.65rem 0.8rem', width: 90, textAlign: 'right' }}>Rate (₹)</th>
+                        <th style={{ padding: '0.65rem 0.6rem', width: 65, textAlign: 'center' }}>Visits</th>
+                        <th style={{ padding: '0.65rem 0.8rem', width: 110, textAlign: 'right' }}>Amount (₹)</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {(previewInvoice.items && previewInvoice.items.length > 0 ? previewInvoice.items : [
+                        {
+                          id: '1',
+                          description: previewInvoice.serviceTitle || 'Clinical Nursing Care',
+                          date: previewInvoice.serviceDate || '-',
+                          slot: previewInvoice.timeSlot || 'M',
+                          rate: previewInvoice.baseAmount,
+                          quantity: previewInvoice.numberOfVisits || 1,
+                          amount: previewInvoice.baseAmount * (previewInvoice.numberOfVisits || 1)
+                        }
+                      ]).map((it, idx) => (
+                        <tr key={it.id || idx} style={{ borderBottom: '1px solid #E2E8F0', background: idx % 2 === 1 ? '#FAFAFA' : '#FFFFFF' }}>
+                          <td style={{ textAlign: 'center', fontWeight: 700, color: '#64748B', padding: '0.65rem 0.6rem' }}>{idx + 1}</td>
+                          <td style={{ padding: '0.65rem 0.8rem' }}>
+                            <strong style={{ color: '#0F172A' }}>{it.description}</strong>
+                          </td>
+                          <td style={{ padding: '0.65rem 0.8rem', whiteSpace: 'nowrap' }}>{it.date || '-'}</td>
+                          <td style={{ padding: '0.65rem 0.8rem', textAlign: 'center', fontWeight: 800, color: '#0F172A', letterSpacing: '2px' }}>{formatSlotForBill(it.slot)}</td>
+                          <td style={{ textAlign: 'right', padding: '0.65rem 0.8rem', color: '#475569' }}>₹{it.rate}</td>
+                          <td style={{ textAlign: 'center', fontWeight: 700, padding: '0.65rem 0.6rem' }}>{it.quantity || 1}</td>
+                          <td style={{ textAlign: 'right', fontWeight: 800, padding: '0.65rem 0.8rem', color: '#0F172A' }}>₹{it.amount}</td>
+                        </tr>
+                      ))}
+
+                      {Boolean(previewInvoice.nightSurcharge && previewInvoice.nightSurcharge > 0) && (
+                        <tr style={{ borderBottom: '1px solid #E2E8F0', background: '#FFFDF5' }}>
+                          <td style={{ textAlign: 'center', fontWeight: 700, color: '#D97706' }}>•</td>
+                          <td colSpan={5} style={{ padding: '0.6rem 0.8rem' }}>
+                            <strong>Night Visit Emergency Surcharge</strong>
+                            <span style={{ fontSize: '0.74rem', color: '#64748B', display: 'block' }}>Rapid response & late-night clinical dispatch support fee</span>
+                          </td>
+                          <td style={{ textAlign: 'right', fontWeight: 800, padding: '0.6rem 0.8rem', color: '#D97706' }}>+₹{previewInvoice.nightSurcharge}</td>
+                        </tr>
+                      )}
+
+                      {Boolean(previewInvoice.discountRupees && previewInvoice.discountRupees > 0) && (
+                        <tr style={{ borderBottom: '1px solid #E2E8F0', background: '#F0FDF4' }}>
+                          <td style={{ textAlign: 'center', fontWeight: 700, color: '#059669' }}>•</td>
+                          <td colSpan={5} style={{ padding: '0.6rem 0.8rem' }}>
+                            <strong style={{ color: '#059669' }}>Promotional Coupon / Fee Concession Discount</strong>
+                          </td>
+                          <td style={{ textAlign: 'right', fontWeight: 800, padding: '0.6rem 0.8rem', color: '#059669' }}>-₹{previewInvoice.discountRupees}</td>
+                        </tr>
+                      )}
+                    </tbody>
+                  </table>
+                </div>
+
+                {/* Bottom Totals */}
+                <div style={{ width: 340, marginLeft: 'auto', marginBottom: '1.25rem' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', padding: '0.35rem 0', fontSize: '0.84rem' }}>
+                    <span style={{ color: '#64748B' }}>Total Scheduled Visits:</span>
+                    <strong>{previewInvoice.items?.reduce((s, it) => s + (Number(it.quantity) || 1), 0) || previewInvoice.numberOfVisits || 1} slots</strong>
+                  </div>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', padding: '0.35rem 0', fontSize: '0.84rem' }}>
+                    <span style={{ color: '#64748B' }}>Service Subtotal:</span>
+                    <strong>₹{previewInvoice.items?.reduce((s, it) => s + (Number(it.amount) || 0), 0) || previewInvoice.baseAmount}</strong>
+                  </div>
+
+                  {Boolean(previewInvoice.nightSurcharge && previewInvoice.nightSurcharge > 0) && (
+                    <div style={{ display: 'flex', justifyContent: 'space-between', padding: '0.35rem 0', fontSize: '0.84rem' }}>
+                      <span style={{ color: '#64748B' }}>Night Surcharge:</span>
+                      <strong style={{ color: '#D97706' }}>+₹{previewInvoice.nightSurcharge}</strong>
+                    </div>
+                  )}
+
+                  {Boolean(previewInvoice.discountRupees && previewInvoice.discountRupees > 0) && (
+                    <div style={{ display: 'flex', justifyContent: 'space-between', padding: '0.35rem 0', fontSize: '0.84rem', color: '#059669' }}>
+                      <span>Applied Discount:</span>
+                      <strong>-₹{previewInvoice.discountRupees}</strong>
+                    </div>
+                  )}
+
+                  <div style={{ display: 'flex', justifyContent: 'space-between', padding: '0.6rem 0', borderTop: '2px solid #0A192F', fontSize: '1.25rem', fontWeight: 900, marginTop: '6px' }}>
+                    <span>Total Payable:</span>
+                    <span style={{ color: '#059669' }}>₹{previewInvoice.totalAmount}</span>
+                  </div>
+                </div>
+
+                {/* Clinical Remarks / Special Notes Box */}
+                {Boolean(cleanPatientFacingNotes(previewInvoice.notes)) && (
+                  <div style={{
+                    margin: '1.25rem 0',
+                    padding: '0.85rem 1.1rem',
+                    background: '#F0F9FF',
+                    border: '1.5px solid #BAE6FD',
+                    borderRadius: 10
+                  }}>
+                    <div style={{ fontSize: '0.72rem', fontWeight: 800, color: '#0369A1', textTransform: 'uppercase', marginBottom: '4px', letterSpacing: '0.04em', display: 'flex', alignItems: 'center', gap: '0.35rem' }}>
+                      <FileText size={13} />
+                      <span>Clinical Remarks / Special Notes:</span>
+                    </div>
+                    <div style={{ fontSize: '0.86rem', color: '#0C4A6E', lineHeight: 1.5, fontWeight: 500 }}>
+                      {cleanPatientFacingNotes(previewInvoice.notes)}
+                    </div>
+                  </div>
+                )}
+
+                {/* Footer sign */}
+                <div style={{ borderTop: '1px dashed #CBD5E1', paddingTop: '1rem', display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '0.74rem', color: '#64748B' }}>
+                  <div>
+                    This is an authentic computer-generated digital tax invoice issued by Xpress Nurse Hyderabad.
+                  </div>
+                  <div style={{ textAlign: 'right', fontWeight: 700, color: '#0F172A' }}>
+                    Authorized Clinical Signatory
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
+        </div>
+
+        {/* 4. Fixed Sticky Footer */}
+        <div style={{ padding: '0.85rem 1.4rem', background: '#FAFAFA', borderTop: '1px solid var(--neutral-200)', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '0.65rem', flexShrink: 0 }}>
+          <div style={{ display: 'flex', gap: '0.65rem', flexWrap: 'wrap' }}>
+            <button
+              type="button"
+              onClick={handleSaveAndSyncInvoice}
+              className="btn btn-primary btn-sm"
+              style={{ borderRadius: 9999, gap: '0.35rem', fontWeight: 700 }}
+              title="Save invoice and sync updated details with Supabase bookings"
+            >
+              <RefreshCw size={14} />
+              <span>Save & Sync to Supabase</span>
+            </button>
+            <button
+              type="button"
+              onClick={handlePrintCurrentInvoice}
+              className="btn btn-danger btn-sm"
+              style={{ borderRadius: 9999, gap: '0.35rem', fontWeight: 700 }}
+              title="Print or save as official PDF"
+            >
+              <Printer size={14} />
+              <span>Print / Save PDF</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                if (previewInvoice) {
+                  const html = generatePrintableInvoiceHtml(previewInvoice);
+                  const blob = new Blob([html], { type: 'text/html' });
+                  const url = URL.createObjectURL(blob);
+                  const a = document.createElement('a');
+                  a.href = url;
+                  a.download = `${previewInvoice.invoiceNumber}.html`;
+                  document.body.appendChild(a);
+                  a.click();
+                  document.body.removeChild(a);
+                  URL.revokeObjectURL(url);
+                  showToast(`Downloaded ${previewInvoice.invoiceNumber}.html`);
+                }
+              }}
+              className="btn btn-outline btn-sm"
+              style={{ borderRadius: 9999, gap: '0.35rem', fontWeight: 600 }}
+              title="Download standalone HTML invoice"
+            >
+              <Download size={14} />
+              <span>Download HTML</span>
+            </button>
+          </div>
+
+          <button
+            type="button"
+            onClick={() => setIsInvoicePreviewModalOpen(false)}
+            className="btn btn-outline btn-sm"
+            style={{ borderRadius: 9999 }}
+          >
+            Close
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+{/* 3. CLOUDFLARE R2 BUCKET CONFIGURATION MODAL */ }
+{
+  isR2ConfigModalOpen && (
+    <div
+      className="modal-overlay"
+      onClick={() => setIsR2ConfigModalOpen(false)}
+      style={{ zIndex: 999999, pointerEvents: 'auto' }}
+    >
+      <div
+        className="modal-box"
+        onClick={(e) => e.stopPropagation()}
+        style={{ maxWidth: 540, borderRadius: 20, pointerEvents: 'auto' }}
+      >
+        <div className="modal-header" style={{ padding: '1.25rem 1.5rem', background: '#FAFAFA', borderBottom: '1px solid var(--neutral-200)' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.65rem' }}>
+            <div style={{ width: 38, height: 38, borderRadius: 10, background: '#EFF6FF', color: '#1D4ED8', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+              <Cloud size={20} />
+            </div>
+            <div>
+              <h3 style={{ fontSize: '1.15rem', fontWeight: 800, color: 'var(--primary-navy-950)', margin: 0 }}>
+                Cloudflare R2 Bucket Settings
+              </h3>
+              <div style={{ fontSize: '0.76rem', color: 'var(--neutral-500)' }}>
+                Prescriptions & Invoice Storage Configuration
+              </div>
+            </div>
+          </div>
+          <button
+            type="button"
+            onClick={() => setIsR2ConfigModalOpen(false)}
+            className="modal-close-btn"
+            style={{ background: '#F1F5F9', border: 'none', borderRadius: '50%', width: 32, height: 32, display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer' }}
+          >
+            <X size={16} />
+          </button>
+        </div>
+
+        <form onSubmit={handleSaveR2ConfigSubmit} style={{ padding: '1.4rem' }}>
+          <div style={{ marginBottom: '1rem' }}>
+            <label className="form-label" style={{ fontSize: '0.78rem', fontWeight: 700 }}>BUCKET NAME *</label>
+            <input
+              type="text"
+              required
+              value={r2ConfigForm.bucketName}
+              onChange={(e) => setR2ConfigForm({ ...r2ConfigForm, bucketName: e.target.value })}
+              className="form-control"
+            />
+          </div>
+
+          <div style={{ marginBottom: '1rem' }}>
+            <label className="form-label" style={{ fontSize: '0.78rem', fontWeight: 700 }}>CLOUDFLARE ACCOUNT ID *</label>
+            <input
+              type="text"
+              required
+              value={r2ConfigForm.accountId}
+              onChange={(e) => setR2ConfigForm({ ...r2ConfigForm, accountId: e.target.value })}
+              className="form-control"
+            />
+          </div>
+
+          <div style={{ marginBottom: '1rem' }}>
+            <label className="form-label" style={{ fontSize: '0.78rem', fontWeight: 700 }}>PUBLIC CDN DOMAIN (FOR PRESCRIPTION / INVOICE URLS) *</label>
+            <input
+              type="url"
+              required
+              value={r2ConfigForm.publicDomain}
+              onChange={(e) => setR2ConfigForm({ ...r2ConfigForm, publicDomain: e.target.value })}
+              className="form-control"
+            />
+          </div>
+
+          <div style={{ marginBottom: '1.25rem' }}>
+            <label className="form-label" style={{ fontSize: '0.78rem', fontWeight: 700 }}>S3 COMPATIBLE ENDPOINT</label>
+            <input
+              type="url"
+              value={r2ConfigForm.endpoint}
+              onChange={(e) => setR2ConfigForm({ ...r2ConfigForm, endpoint: e.target.value })}
+              className="form-control"
+            />
+          </div>
+
+          <div style={{ marginBottom: '1.25rem' }}>
+            <label className="form-label" style={{ fontSize: '0.78rem', fontWeight: 700 }}>ACCESS KEY ID (API TOKEN KEY)</label>
+            <input
+              type="text"
+              value={r2ConfigForm.accessKeyId || ''}
+              onChange={(e) => setR2ConfigForm({ ...r2ConfigForm, accessKeyId: e.target.value })}
+              className="form-control"
+            />
+          </div>
+
+          <div style={{ marginBottom: '1.25rem' }}>
+            <label className="form-label" style={{ fontSize: '0.78rem', fontWeight: 700 }}>SECRET ACCESS KEY (API TOKEN SECRET)</label>
+            <input
+              type="password"
+              value={r2ConfigForm.secretAccessKey || ''}
+              onChange={(e) => setR2ConfigForm({ ...r2ConfigForm, secretAccessKey: e.target.value })}
+              className="form-control"
+            />
+          </div>
+
+          <div style={{ display: 'flex', gap: '0.65rem', justifyContent: 'flex-end' }}>
+            <button type="button" onClick={() => setIsR2ConfigModalOpen(false)} className="btn btn-outline" style={{ borderRadius: 9999 }}>
+              Cancel
+            </button>
+            <button type="submit" className="btn btn-primary" style={{ borderRadius: 9999, fontWeight: 700 }}>
+              Save R2 Configuration
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+  )
+}
+
+{/* 4. CLOUDFLARE DOCUMENT UPLOAD MODAL */ }
+{
+  isUploadModalOpen && (
+    <div
+      className="modal-overlay"
+      onClick={() => setIsUploadModalOpen(false)}
+      style={{ zIndex: 999999, pointerEvents: 'auto' }}
+    >
+      <div
+        className="modal-box"
+        onClick={(e) => e.stopPropagation()}
+        style={{ maxWidth: 500, borderRadius: 20, pointerEvents: 'auto' }}
+      >
+        <div className="modal-header" style={{ padding: '1.25rem 1.5rem', background: '#FAFAFA', borderBottom: '1px solid var(--neutral-200)' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.65rem' }}>
+            <div style={{ width: 38, height: 38, borderRadius: 10, background: '#F0FDF4', color: '#16A34A', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+              <UploadCloud size={20} />
+            </div>
+            <div>
+              <h3 style={{ fontSize: '1.15rem', fontWeight: 800, color: 'var(--primary-navy-950)', margin: 0 }}>
+                Upload to Cloudflare R2
+              </h3>
+              <div style={{ fontSize: '0.76rem', color: 'var(--neutral-500)' }}>
+                Add object to xpressnurse-storage bucket
+              </div>
+            </div>
+          </div>
+          <button
+            type="button"
+            onClick={() => setIsUploadModalOpen(false)}
+            className="modal-close-btn"
+            style={{ background: '#F1F5F9', border: 'none', borderRadius: '50%', width: 32, height: 32, display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer' }}
+          >
+            <X size={16} />
+          </button>
+        </div>
+
+        <form onSubmit={handleUploadDocumentSubmit} style={{ padding: '1.4rem' }}>
+          <div style={{ marginBottom: '1rem' }}>
+            <label className="form-label" style={{ fontSize: '0.78rem', fontWeight: 700 }}>STORAGE CATEGORY *</label>
+            <select
+              value={uploadForm.category}
+              onChange={(e) => setUploadForm({ ...uploadForm, category: e.target.value as StorageCategory })}
+              className="form-control"
+            >
+              <option value="prescriptions">Prescriptions (Patient Rx)</option>
+              <option value="invoices">Invoices & Receipts</option>
+              <option value="certificates">Nurse Registration Certificates</option>
+              <option value="teleconsult-rx">Doctor Teleconsult Orders</option>
+              <option value="lab-reports">Diagnostic & Lab Reports</option>
+            </select>
+          </div>
+
+          <div style={{ marginBottom: '1rem' }}>
+            <label className="form-label" style={{ fontSize: '0.78rem', fontWeight: 700 }}>SELECT DOCUMENT *</label>
+            <input
+              type="file"
+              accept=".pdf,image/png,image/jpeg,image/webp"
+              required
+              onChange={(e) => {
+                const file = e.target.files?.[0];
+                if (file) {
+                  const reader = new FileReader();
+                  reader.onload = () => {
+                    setUploadForm(prev => ({
+                      ...prev,
+                      fileDataUrl: reader.result as string,
+                      fileSize: file.size,
+                      fileType: file.type || 'application/pdf',
+                      fileName: prev.fileName || file.name
+                    }));
+                  };
+                  reader.readAsDataURL(file);
+                }
+              }}
+              className="form-control"
+              style={{ padding: '0.4rem' }}
+            />
+          </div>
+
+          <div style={{ marginBottom: '1rem' }}>
+            <label className="form-label" style={{ fontSize: '0.78rem', fontWeight: 700 }}>FILE NAME *</label>
+            <input
+              type="text"
+              required
+              placeholder="e.g. Rx_PatientName_Procedure.pdf"
+              value={uploadForm.fileName}
+              onChange={(e) => setUploadForm({ ...uploadForm, fileName: e.target.value })}
+              className="form-control"
+            />
+          </div>
+
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem', marginBottom: '1rem' }}>
+            <div>
+              <label className="form-label" style={{ fontSize: '0.78rem', fontWeight: 700 }}>PATIENT NAME</label>
+              <input
+                type="text"
+                placeholder="Patient Name"
+                value={uploadForm.patientName}
+                onChange={(e) => setUploadForm({ ...uploadForm, patientName: e.target.value })}
+                className="form-control"
+              />
+            </div>
+            <div>
+              <label className="form-label" style={{ fontSize: '0.78rem', fontWeight: 700 }}>BOOKING REF ID</label>
+              <input
+                type="text"
+                placeholder="e.g. BK-1042"
+                value={uploadForm.bookingId}
+                onChange={(e) => setUploadForm({ ...uploadForm, bookingId: e.target.value })}
+                className="form-control"
+              />
+            </div>
+          </div>
+
+          <div style={{ marginBottom: '1.25rem' }}>
+            <label className="form-label" style={{ fontSize: '0.78rem', fontWeight: 700 }}>DESCRIPTION / NOTES</label>
+            <textarea
+              rows={2}
+              placeholder="Clinical notes or description"
+              value={uploadForm.description}
+              onChange={(e) => setUploadForm({ ...uploadForm, description: e.target.value })}
+              className="form-control"
+            />
+          </div>
+
+          <div style={{ display: 'flex', gap: '0.65rem', justifyContent: 'flex-end' }}>
+            <button type="button" onClick={() => setIsUploadModalOpen(false)} className="btn btn-outline" style={{ borderRadius: 9999 }}>
+              Cancel
+            </button>
+            <button type="submit" className="btn btn-danger" style={{ borderRadius: 9999, fontWeight: 700 }}>
+              Upload to R2 Bucket
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+  )
+}
+
+{/* ADMIN IN-APP CERTIFICATE VIEWER MODAL */ }
+{
+  adminCertModalOpen && adminCertModalNurse && (
+    <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.7)', zIndex: 99999, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '1rem' }}>
+      <div style={{ background: '#FFFFFF', borderRadius: 16, width: '100%', maxWidth: 780, maxHeight: '92vh', overflowY: 'auto', display: 'flex', flexDirection: 'column', boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.25)' }}>
+        <div style={{ padding: '1.25rem 1.5rem', borderBottom: '1px solid #E2E8F0', display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '0.75rem' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.65rem' }}>
+            <div style={{ width: 36, height: 36, borderRadius: 10, background: '#EFF6FF', color: '#0284C7', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+              <Shield size={18} />
+            </div>
+            <div>
+              <h3 style={{ fontSize: '1.15rem', fontWeight: 800, color: '#0F172A', margin: 0 }}>
+                Clinical Registration Certificate — {adminCertModalNurse.name}
+              </h3>
+              <div style={{ fontSize: '0.78rem', color: '#64748B' }}>
+                {adminCertModalNurse.qualification} • Station: {adminCertModalNurse.serviceArea} • Phone: {adminCertModalNurse.phone}
+                {adminCertModalNurse.currentlyWorkingAt ? ` • 🏥 ${adminCertModalNurse.currentlyWorkingAt}` : ''}
+              </div>
+            </div>
+          </div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+            <button
+              type="button"
+              onClick={() => setIsEditingNurseCert(!isEditingNurseCert)}
+              className="btn btn-sm"
+              style={{
+                background: isEditingNurseCert ? '#0284C7' : '#EFF6FF',
+                color: isEditingNurseCert ? '#FFFFFF' : '#0284C7',
+                border: '1px solid #BAE6FD',
+                fontWeight: 750,
+                borderRadius: 8,
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: '0.35rem'
+              }}
+            >
+              <Edit2 size={13} />
+              <span>{isEditingNurseCert ? 'Hide Edit Panel' : 'Edit Certificate'}</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => setAdminCertModalOpen(false)}
+              style={{ background: '#F1F5F9', border: 'none', borderRadius: '50%', width: 32, height: 32, display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer' }}
+            >
+              <X size={16} />
+            </button>
+          </div>
+        </div>
+
+        {/* CERTIFICATE EDIT / REPLACE PANEL */}
+        {isEditingNurseCert && (
+          <div style={{ padding: '1.25rem 1.5rem', background: '#F0F9FF', borderBottom: '1.5px solid #BAE6FD' }}>
+            <div style={{ fontSize: '0.86rem', fontWeight: 800, color: '#0369A1', marginBottom: '0.5rem', display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
+              <Edit2 size={15} />
+              <span>Edit / Replace Nurse Certificate Document</span>
+            </div>
+
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr auto', gap: '0.75rem', alignItems: 'center', marginBottom: '0.75rem' }}>
+              <div>
+                <label style={{ fontSize: '0.75rem', fontWeight: 700, color: '#1E293B', display: 'block', marginBottom: '0.25rem' }}>
+                  Certificate URL (or upload a file on the right):
+                </label>
+                <input
+                  type="text"
+                  placeholder="https://... or data:image/... or data:application/pdf;..."
+                  value={certUrlInput}
+                  onChange={(e) => setCertUrlInput(e.target.value)}
+                  className="form-control"
+                  style={{ fontSize: '0.84rem' }}
+                />
+              </div>
+
+              <div>
+                <label style={{ fontSize: '0.75rem', fontWeight: 700, color: '#1E293B', display: 'block', marginBottom: '0.25rem' }}>
+                  Upload New File:
+                </label>
+                <label style={{ cursor: isUploadingNurseCert ? 'not-allowed' : 'pointer', margin: 0 }}>
+                  <input
+                    type="file"
+                    accept="image/*,.pdf"
+                    disabled={isUploadingNurseCert}
+                    style={{ display: 'none' }}
+                    onChange={async (e) => {
+                      if (e.target.files && e.target.files[0]) {
+                        const file = e.target.files[0];
+                        setIsUploadingNurseCert(true);
+                        try {
+                          const dataUrl = await new Promise<string>((resolve) => {
+                            const reader = new FileReader();
+                            reader.onload = () => resolve(reader.result as string);
+                            reader.onerror = () => resolve('');
+                            reader.readAsDataURL(file);
+                          });
+                          if (dataUrl) {
+                            const uploadRes = await uploadToCloudflareStorage({
+                              fileName: file.name,
+                              category: 'certificates',
+                              contentType: file.type,
+                              sizeBytes: file.size,
+                              dataUrl
+                            });
+                            const savedUrl = uploadRes.publicUrl || dataUrl;
+                            setCertUrlInput(savedUrl);
+                            showToast('File uploaded! Click "Save Certificate" to persist.');
+                          }
+                        } catch {
+                          showToast('Failed to upload file.', 'error');
+                        } finally {
+                          setIsUploadingNurseCert(false);
+                        }
+                      }
+                    }}
+                  />
+                  <span className="btn btn-sm btn-primary" style={{ display: 'inline-flex', alignItems: 'center', gap: '0.35rem', fontWeight: 700, padding: '0.55rem 0.9rem' }}>
+                    <UploadCloud size={14} />
+                    <span>{isUploadingNurseCert ? 'Uploading...' : 'Choose File'}</span>
+                  </span>
+                </label>
+              </div>
+            </div>
+
+            <div style={{ display: 'flex', gap: '0.5rem', justifyContent: 'flex-end', alignItems: 'center', flexWrap: 'wrap' }}>
+              {adminCertModalNurse.certificateUrl && (
+                <button
+                  type="button"
+                  onClick={async () => {
+                    if (!confirm(`Are you sure you want to remove the certificate document for ${adminCertModalNurse.name}?`)) return;
+                    await onUpdateNurseRecord?.(adminCertModalNurse.id, { certificateUrl: '', certificateVerified: false });
+                    try {
+                      await dbUpdateNurseById(adminCertModalNurse.id, { certificateUrl: '', certificateVerified: false });
+                    } catch { }
+                    setAdminCertModalNurse({ ...adminCertModalNurse, certificateUrl: undefined, certificateVerified: false });
+                    setCertUrlInput('');
+                    showToast(`Certificate removed for ${adminCertModalNurse.name}.`);
+                  }}
+                  className="btn btn-sm btn-outline"
+                  style={{ color: '#E11D48', borderColor: '#FECDD3', background: '#FFF1F2', fontWeight: 700 }}
+                >
+                  Remove Document
+                </button>
+              )}
+
+              <button
+                type="button"
+                onClick={async () => {
+                  const trimmed = certUrlInput.trim();
+                  if (!trimmed) {
+                    showToast('Please enter a valid certificate URL or choose a file first.', 'error');
+                    return;
+                  }
+                  await onUpdateNurseRecord?.(adminCertModalNurse.id, { certificateUrl: trimmed, certificateVerified: true, status: 'Active' });
+                  try {
+                    await dbUpdateNurseById(adminCertModalNurse.id, { certificateUrl: trimmed, certificateVerified: true, status: 'Active' });
+                  } catch { }
+                  setAdminCertModalNurse({ ...adminCertModalNurse, certificateUrl: trimmed, certificateVerified: true, status: 'Active' });
+                  setIsEditingNurseCert(false);
+                  showToast(`Certificate for ${adminCertModalNurse.name} saved and verified! Nurse account is now active.`);
+                }}
+                className="btn btn-sm btn-primary"
+                style={{ background: '#16A34A', borderColor: '#16A34A', fontWeight: 750 }}
+              >
+                ✓ Save & Apply Certificate
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setIsEditingNurseCert(false)}
+                className="btn btn-sm btn-outline"
+                style={{ fontWeight: 700 }}
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
+        )}
+
+        <div style={{ padding: '1.5rem', background: '#0F172A', display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: 400 }}>
+          {adminCertModalNurse.certificateUrl ? (
+            adminCertModalNurse.certificateUrl.startsWith('data:application/pdf') || adminCertModalNurse.certificateUrl.toLowerCase().split('?')[0].endsWith('.pdf') ? (
+              <iframe
+                src={getSafeBlobUrl(adminCertModalNurse.certificateUrl)}
+                style={{ width: '100%', height: '65vh', border: 'none', borderRadius: 8, background: '#FFFFFF' }}
+                title="Nurse PDF Certificate"
+              />
+            ) : (
+              <img
+                src={adminCertModalNurse.certificateUrl}
+                alt="Nurse Certificate"
+                style={{ maxWidth: '100%', maxHeight: '68vh', objectFit: 'contain', borderRadius: 8, boxShadow: '0 10px 25px rgba(0,0,0,0.5)' }}
+                onError={(e) => {
+                  (e.target as HTMLImageElement).style.display = 'none';
+                  const parent = (e.target as HTMLImageElement).parentElement;
+                  if (parent) {
+                    const iframe = document.createElement('iframe');
+                    iframe.src = adminCertModalNurse.certificateUrl || '';
+                    iframe.style.width = '100%';
+                    iframe.style.height = '65vh';
+                    iframe.style.border = 'none';
+                    iframe.style.borderRadius = '8px';
+                    iframe.style.background = '#FFFFFF';
+                    parent.appendChild(iframe);
+                  }
+                }}
+              />
+            )
+          ) : (
+            <div style={{ color: '#FFFFFF', textAlign: 'center', padding: '3rem 1.5rem' }}>
+              <div style={{ width: 50, height: 50, borderRadius: '50%', background: 'rgba(255,255,255,0.1)', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 1rem auto', color: '#94A3B8' }}>
+                <FileText size={24} />
+              </div>
+              <h4 style={{ margin: '0 0 0.5rem 0', color: '#F8FAFC', fontSize: '1.05rem' }}>No Certificate Document Available</h4>
+              <p style={{ color: '#94A3B8', fontSize: '0.84rem', maxWidth: 420, margin: '0 auto 1.25rem auto' }}>
+                This nurse profile currently has no verification certificate attached. You can upload or link one right now.
+              </p>
+              <button
+                type="button"
+                onClick={() => setIsEditingNurseCert(true)}
+                className="btn btn-sm btn-primary"
+                style={{ fontWeight: 750 }}
+              >
+                + Add / Upload Certificate Now
+              </button>
+            </div>
+          )}
+        </div>
+
+        <div style={{ padding: '1rem 1.5rem', borderTop: '1px solid #E2E8F0', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '0.75rem', background: '#F8FAFC' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+            {adminCertModalNurse.certificateVerified ? (
+              <span className="status-pill success" style={{ fontSize: '0.75rem', padding: '3px 9px' }}>✓ Verified Registered RN</span>
+            ) : (
+              <span className="status-pill warning" style={{ fontSize: '0.75rem', padding: '3px 9px' }}>Pending Admin Review</span>
+            )}
+          </div>
+
+          <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center', flexWrap: 'wrap' }}>
+            <button
+              type="button"
+              onClick={() => setIsEditingNurseCert(!isEditingNurseCert)}
+              className="btn btn-sm btn-outline"
+              style={{ display: 'inline-flex', alignItems: 'center', gap: '0.35rem', fontWeight: 700 }}
+            >
+              <Edit2 size={14} />
+              <span>{isEditingNurseCert ? 'Close Editor' : 'Edit Certificate'}</span>
+            </button>
+
+            {adminCertModalNurse.certificateUrl && (
+              <button
+                type="button"
+                onClick={() => {
+                  const safeUrl = getSafeBlobUrl(adminCertModalNurse.certificateUrl!);
+                  window.open(safeUrl, '_blank');
+                }}
+                className="btn btn-outline btn-sm"
+                style={{ display: 'inline-flex', alignItems: 'center', gap: '0.35rem', fontWeight: 700 }}
+              >
+                <ExternalLink size={14} />
+                <span>Open in New Tab</span>
+              </button>
+            )}
+
+            {!adminCertModalNurse.certificateVerified && (
+              <button
+                type="button"
+                onClick={async () => {
+                  await onUpdateNurseRecord?.(adminCertModalNurse.id, { certificateVerified: true, status: 'Active' });
+                  try {
+                    await dbUpdateNurseById(adminCertModalNurse.id, { certificateVerified: true, status: 'Active' });
+                  } catch { }
+                  setAdminCertModalNurse({ ...adminCertModalNurse, certificateVerified: true, status: 'Active' });
+                  showToast(`Nurse ${adminCertModalNurse.name} certificate verified and approved!`);
+                  setAdminCertModalOpen(false);
+                }}
+                className="btn btn-primary btn-sm"
+                style={{ background: '#16A34A', borderColor: '#16A34A', fontWeight: 700 }}
+              >
+                ✓ Verify & Approve Nurse
+              </button>
+            )}
+
+            <button
+              type="button"
+              onClick={() => setAdminCertModalOpen(false)}
+              className="btn btn-outline btn-sm"
+              style={{ fontWeight: 700 }}
+            >
+              Close
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+{/* ========================================================================= */ }
+{/* IN-APP PERMANENT DELETION CONFIRMATION MODAL                              */ }
+{/* 100% Reliable in all browsers; never blocked by popup/dialog blockers     */ }
+{/* ========================================================================= */ }
+{
+  deleteConfirmTarget && (
+    <div
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="delete-confirm-title"
+      style={{
+        position: 'fixed',
+        inset: 0,
+        zIndex: 99999999,
+        backgroundColor: 'rgba(15, 23, 42, 0.72)',
+        backdropFilter: 'blur(6px)',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        padding: '1.25rem'
+      }}
+      onClick={(e) => {
+        if (e.target === e.currentTarget && !isDeletingTarget) {
+          setDeleteConfirmTarget(null);
+        }
+      }}
+    >
+      <div
+        style={{
+          background: '#FFFFFF',
+          borderRadius: '16px',
+          maxWidth: '480px',
+          width: '100%',
+          boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.35)',
+          border: '1px solid #FECDD3',
+          overflow: 'hidden'
+        }}
+      >
+        {/* Header */}
+        <div
+          style={{
+            padding: '1.25rem 1.5rem',
+            borderBottom: '1px solid #FEE2E2',
+            background: '#FFF1F2',
+            display: 'flex',
+            alignItems: 'center',
+            gap: '0.75rem'
           }}
         >
           <div
             style={{
-              background: '#FFFFFF',
-              borderRadius: '16px',
-              maxWidth: '480px',
-              width: '100%',
-              boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.35)',
-              border: '1px solid #FECDD3',
-              overflow: 'hidden'
+              width: '40px',
+              height: '40px',
+              borderRadius: '10px',
+              background: '#FFE4E6',
+              color: '#E11D48',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              flexShrink: 0
             }}
           >
-            {/* Header */}
-            <div
-              style={{
-                padding: '1.25rem 1.5rem',
-                borderBottom: '1px solid #FEE2E2',
-                background: '#FFF1F2',
-                display: 'flex',
-                alignItems: 'center',
-                gap: '0.75rem'
-              }}
-            >
-              <div
-                style={{
-                  width: '40px',
-                  height: '40px',
-                  borderRadius: '10px',
-                  background: '#FFE4E6',
-                  color: '#E11D48',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  flexShrink: 0
-                }}
-              >
-                <Trash2 size={22} />
-              </div>
-              <div style={{ flex: 1 }}>
-                <h3 id="delete-confirm-title" style={{ margin: 0, fontSize: '1.1rem', fontWeight: 800, color: '#9F1239' }}>
-                  Confirm Permanent Delete
-                </h3>
-                <span style={{ fontSize: '0.75rem', color: '#BE123C', fontWeight: 600 }}>
-                  Supabase Live Database Record
-                </span>
-              </div>
-              <button
-                type="button"
-                disabled={isDeletingTarget}
-                onClick={() => setDeleteConfirmTarget(null)}
-                style={{
-                  background: 'transparent',
-                  border: 'none',
-                  color: '#9F1239',
-                  cursor: isDeletingTarget ? 'not-allowed' : 'pointer',
-                  padding: '4px',
-                  borderRadius: '6px',
-                  display: 'flex',
-                  alignItems: 'center'
-                }}
-              >
-                <X size={18} />
-              </button>
-            </div>
+            <Trash2 size={22} />
+          </div>
+          <div style={{ flex: 1 }}>
+            <h3 id="delete-confirm-title" style={{ margin: 0, fontSize: '1.1rem', fontWeight: 800, color: '#9F1239' }}>
+              Confirm Permanent Delete
+            </h3>
+            <span style={{ fontSize: '0.75rem', color: '#BE123C', fontWeight: 600 }}>
+              Supabase Live Database Record
+            </span>
+          </div>
+          <button
+            type="button"
+            disabled={isDeletingTarget}
+            onClick={() => setDeleteConfirmTarget(null)}
+            style={{
+              background: 'transparent',
+              border: 'none',
+              color: '#9F1239',
+              cursor: isDeletingTarget ? 'not-allowed' : 'pointer',
+              padding: '4px',
+              borderRadius: '6px',
+              display: 'flex',
+              alignItems: 'center'
+            }}
+          >
+            <X size={18} />
+          </button>
+        </div>
 
-            {/* Body */}
-            <div style={{ padding: '1.5rem' }}>
-              <p style={{ margin: '0 0 1rem', fontSize: '0.92rem', color: '#334155', lineHeight: 1.5 }}>
-                Are you sure you want to permanently delete this <strong>{deleteConfirmTarget.itemType}</strong> from Supabase?
-              </p>
+        {/* Body */}
+        <div style={{ padding: '1.5rem' }}>
+          <p style={{ margin: '0 0 1rem', fontSize: '0.92rem', color: '#334155', lineHeight: 1.5 }}>
+            Are you sure you want to permanently delete this <strong>{deleteConfirmTarget.itemType}</strong> from Supabase?
+          </p>
 
-              <div
+          <div
+            style={{
+              background: '#F8FAFC',
+              border: '1px solid #E2E8F0',
+              borderRadius: '10px',
+              padding: '0.9rem 1.1rem',
+              marginBottom: '1rem'
+            }}
+          >
+            <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.35rem' }}>
+              <span
                 style={{
-                  background: '#F8FAFC',
-                  border: '1px solid #E2E8F0',
-                  borderRadius: '10px',
-                  padding: '0.9rem 1.1rem',
-                  marginBottom: '1rem'
-                }}
-              >
-                <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.35rem' }}>
-                  <span
-                    style={{
-                      fontSize: '0.7rem',
-                      fontWeight: 700,
-                      textTransform: 'uppercase',
-                      letterSpacing: '0.04em',
-                      padding: '2px 8px',
-                      borderRadius: '4px',
-                      background: '#E2E8F0',
-                      color: '#475569'
-                    }}
-                  >
-                    {deleteConfirmTarget.itemType}
-                  </span>
-                  <strong style={{ fontSize: '0.95rem', color: '#0F172A' }}>
-                    {deleteConfirmTarget.itemTitle}
-                  </strong>
-                </div>
-                {deleteConfirmTarget.itemDetails && (
-                  <p style={{ margin: 0, fontSize: '0.8rem', color: '#64748B', lineHeight: 1.4 }}>
-                    {deleteConfirmTarget.itemDetails}
-                  </p>
-                )}
-              </div>
-
-              <div
-                style={{
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: '0.5rem',
-                  fontSize: '0.78rem',
-                  color: '#B91C1C',
-                  background: '#FEF2F2',
-                  padding: '0.6rem 0.85rem',
-                  borderRadius: '8px'
-                }}
-              >
-                <AlertCircle size={15} style={{ flexShrink: 0 }} />
-                <span>This deletion is immediate, syncs in real-time, and cannot be undone.</span>
-              </div>
-            </div>
-
-            {/* Footer */}
-            <div
-              style={{
-                padding: '1rem 1.5rem',
-                borderTop: '1px solid #E2E8F0',
-                background: '#FAFAFA',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'flex-end',
-                gap: '0.75rem'
-              }}
-            >
-              <button
-                type="button"
-                disabled={isDeletingTarget}
-                onClick={() => setDeleteConfirmTarget(null)}
-                className="btn btn-outline btn-sm"
-                style={{
-                  padding: '0.5rem 1.1rem',
-                  fontWeight: 600,
-                  fontSize: '0.85rem',
-                  cursor: isDeletingTarget ? 'not-allowed' : 'pointer'
-                }}
-              >
-                Cancel
-              </button>
-
-              <button
-                type="button"
-                disabled={isDeletingTarget}
-                onClick={async () => {
-                  if (!deleteConfirmTarget) return;
-                  setIsDeletingTarget(true);
-                  try {
-                    await deleteConfirmTarget.onConfirm();
-                  } catch (err: any) {
-                    console.error('[Delete Error]:', err);
-                    showToast(`Error deleting ${deleteConfirmTarget.itemType}: ${err?.message || 'Check database'}`, 'error');
-                  } finally {
-                    setIsDeletingTarget(false);
-                    setDeleteConfirmTarget(null);
-                  }
-                }}
-                className="btn btn-sm"
-                style={{
-                  padding: '0.5rem 1.3rem',
+                  fontSize: '0.7rem',
                   fontWeight: 700,
-                  fontSize: '0.85rem',
-                  color: '#FFFFFF',
-                  background: '#E11D48',
-                  borderColor: '#E11D48',
-                  cursor: isDeletingTarget ? 'not-allowed' : 'pointer',
-                  display: 'inline-flex',
-                  alignItems: 'center',
-                  gap: '0.4rem',
-                  boxShadow: '0 4px 12px rgba(225, 29, 72, 0.3)'
+                  textTransform: 'uppercase',
+                  letterSpacing: '0.04em',
+                  padding: '2px 8px',
+                  borderRadius: '4px',
+                  background: '#E2E8F0',
+                  color: '#475569'
                 }}
               >
-                {isDeletingTarget ? (
-                  <>
-                    <RefreshCw size={14} className="spin-slow" />
-                    <span>Deleting from Supabase...</span>
-                  </>
-                ) : (
-                  <>
-                    <Trash2 size={14} />
-                    <span>Yes, Permanently Delete</span>
-                  </>
-                )}
-              </button>
+                {deleteConfirmTarget.itemType}
+              </span>
+              <strong style={{ fontSize: '0.95rem', color: '#0F172A' }}>
+                {deleteConfirmTarget.itemTitle}
+              </strong>
             </div>
+            {deleteConfirmTarget.itemDetails && (
+              <p style={{ margin: 0, fontSize: '0.8rem', color: '#64748B', lineHeight: 1.4 }}>
+                {deleteConfirmTarget.itemDetails}
+              </p>
+            )}
+          </div>
+
+          <div
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: '0.5rem',
+              fontSize: '0.78rem',
+              color: '#B91C1C',
+              background: '#FEF2F2',
+              padding: '0.6rem 0.85rem',
+              borderRadius: '8px'
+            }}
+          >
+            <AlertCircle size={15} style={{ flexShrink: 0 }} />
+            <span>This deletion is immediate, syncs in real-time, and cannot be undone.</span>
           </div>
         </div>
-      )}
 
+        {/* Footer */}
+        <div
+          style={{
+            padding: '1rem 1.5rem',
+            borderTop: '1px solid #E2E8F0',
+            background: '#FAFAFA',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'flex-end',
+            gap: '0.75rem'
+          }}
+        >
+          <button
+            type="button"
+            disabled={isDeletingTarget}
+            onClick={() => setDeleteConfirmTarget(null)}
+            className="btn btn-outline btn-sm"
+            style={{
+              padding: '0.5rem 1.1rem',
+              fontWeight: 600,
+              fontSize: '0.85rem',
+              cursor: isDeletingTarget ? 'not-allowed' : 'pointer'
+            }}
+          >
+            Cancel
+          </button>
+
+          <button
+            type="button"
+            disabled={isDeletingTarget}
+            onClick={async () => {
+              if (!deleteConfirmTarget) return;
+              setIsDeletingTarget(true);
+              try {
+                await deleteConfirmTarget.onConfirm();
+              } catch (err: any) {
+                console.error('[Delete Error]:', err);
+                showToast(`Error deleting ${deleteConfirmTarget.itemType}: ${err?.message || 'Check database'}`, 'error');
+              } finally {
+                setIsDeletingTarget(false);
+                setDeleteConfirmTarget(null);
+              }
+            }}
+            className="btn btn-sm"
+            style={{
+              padding: '0.5rem 1.3rem',
+              fontWeight: 700,
+              fontSize: '0.85rem',
+              color: '#FFFFFF',
+              background: '#E11D48',
+              borderColor: '#E11D48',
+              cursor: isDeletingTarget ? 'not-allowed' : 'pointer',
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: '0.4rem',
+              boxShadow: '0 4px 12px rgba(225, 29, 72, 0.3)'
+            }}
+          >
+            {isDeletingTarget ? (
+              <>
+                <RefreshCw size={14} className="spin-slow" />
+                <span>Deleting from Supabase...</span>
+              </>
+            ) : (
+              <>
+                <Trash2 size={14} />
+                <span>Yes, Permanently Delete</span>
+              </>
+            )}
+          </button>
+        </div>
+      </div>
     </div>
+  )
+}
+
+    </div >
   );
 };

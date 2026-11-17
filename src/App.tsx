@@ -832,6 +832,21 @@ export const App: React.FC = () => {
     }
   };
 
+  const handleLogout = () => {
+    setAuthUser(null);
+    try {
+      sessionStorage.removeItem('xn_auth_user');
+      sessionStorage.removeItem('xn_auth_user_nurse');
+      sessionStorage.removeItem('xn_auth_user_doctor');
+      sessionStorage.removeItem('xn_auth_user_admin');
+      localStorage.removeItem('xn_auth_user');
+      localStorage.removeItem('xn_auth_user_doctor');
+      localStorage.removeItem('xn_auth_user_nurse');
+      localStorage.removeItem('xn_active_nurse_id');
+    } catch {}
+    navigate('/login');
+  };
+
   // =========================================================================
   // SECURE ROLE-AWARE DATA INITIALIZATION
   // Public visitors: only public services & coupons (ZERO patient data transmitted)
@@ -927,8 +942,32 @@ export const App: React.FC = () => {
           }
           if (remoteLeads !== null) setLeads(remoteLeads);
         } else if (role === 'doctor') {
-          const remoteConsults = await dbFetchConsultations();
+          const [remoteConsults, remoteLeads, remoteAppUsers] = await Promise.all([
+            dbFetchConsultations(),
+            dbFetchLeads(),
+            dbFetchAppUsers()
+          ]);
           if (remoteConsults !== null) setConsultations(remoteConsults);
+          if (remoteLeads !== null) setLeads(remoteLeads);
+          if (remoteAppUsers !== null) {
+            setAppUsers(remoteAppUsers);
+            const currentId = sessionUser?.id;
+            const currentPhone = sessionUser?.phone ? sessionUser.phone.replace(/\D/g, '') : '';
+            const currentEmail = (sessionUser?.email || sessionUser?.identifier || '').toLowerCase();
+            const freshPartner = remoteAppUsers.find(
+              (u) => (currentId && u.id === currentId) ||
+                     (currentPhone && u.phone && u.phone.replace(/\D/g, '') === currentPhone) ||
+                     (currentEmail && ((u.email && u.email.toLowerCase() === currentEmail) || (u.identifier && u.identifier.toLowerCase() === currentEmail)))
+            );
+            if (freshPartner) {
+              setAuthUser(freshPartner);
+              try {
+                sessionStorage.setItem('xn_auth_user', JSON.stringify(freshPartner));
+                sessionStorage.setItem('xn_auth_user_doctor', JSON.stringify(freshPartner));
+                localStorage.setItem('xn_auth_user_doctor', JSON.stringify(freshPartner));
+              } catch {}
+            }
+          }
         }
       } catch (err) {
         console.error('[DB] Secure data loading error:', err);
@@ -2846,6 +2885,18 @@ export const App: React.FC = () => {
   };
   const handleUpdateAppUser = async (id: string, updates: Partial<AppUser>) => {
     setAppUsers((prev) => prev.map((u) => (u.id === id ? { ...u, ...updates } : u)));
+    setAuthUser((prev) => {
+      if (prev && prev.id === id) {
+        const next = { ...prev, ...updates };
+        try {
+          sessionStorage.setItem('xn_auth_user', JSON.stringify(next));
+          sessionStorage.setItem('xn_auth_user_doctor', JSON.stringify(next));
+          localStorage.setItem('xn_auth_user_doctor', JSON.stringify(next));
+        } catch {}
+        return next;
+      }
+      return prev;
+    });
     broadcastRealtimeUpdate('APP_USER_UPDATE', { id, ...updates });
     await dbUpdateAppUserById(id, updates);
   };
@@ -3228,15 +3279,19 @@ export const App: React.FC = () => {
             </AuthGuard>
           )}
 
-          {/* Route: /doctor -> Doctor Consultation Panel */}
+          {/* Route: /doctor -> Referral Partner / Others Portal */}
           {currentPath === '/doctor' && (
             <AuthGuard user={authUser} requiredRole="doctor" onNavigate={navigate}>
               <DoctorDashboard
+                user={authUser}
+                appUsers={appUsers}
+                leads={leads}
+                onCreateLead={handleCreateLead}
                 consultations={consultations}
                 services={services}
                 onIssuePrescription={handleDoctorIssueRx}
                 onAddNewConsultation={handleCreateConsultation}
-                user={authUser}
+                onLogout={handleLogout}
               />
             </AuthGuard>
           )}

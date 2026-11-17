@@ -148,7 +148,9 @@ export interface NurseProfile {
 export interface NurseLead {
   id: string;
   nurseId?: string;
+  partnerId?: string;
   nurseName?: string;
+  nursePhone?: string;
   referredNurseName?: string;
   referredNursePhone?: string;
   patientName?: string;
@@ -161,13 +163,15 @@ export interface NurseLead {
   experienceYears?: number;
   serviceId?: ServiceId;
   serviceTitle?: string;
-  area: string;
+  area?: string;
   submittedAt: string;
   status: 'Pending Approval' | 'Approved' | 'Rejected' | 'Converted' | 'Submitted' | 'Contacted' | 'Lost';
   assignedNurseId?: string;
   leadValueRupees?: number;
+  billedAmount?: number;
   pointsAwarded?: number;
   referralCommissionRupees?: number;
+  partnerCommissionPercent?: number;
   referralType?: 'patient' | 'nurse';
   approvedAt?: string;
   approvedBy?: string;
@@ -224,6 +228,9 @@ export interface AppUser {
   village?: string;
   skills?: string[];
   readyForHomeVisit?: boolean;
+  commissionPercent?: number;
+  currentlyWorkingAt?: string;
+  profession?: string;
   createdAt?: string;
 }
 
@@ -272,6 +279,7 @@ export interface CloudflareStorageObject {
     serviceTitle?: string;
     nurseId?: string;
     nurseName?: string;
+  nursePhone?: string;
     qualification?: string;
     experienceYears?: number;
     certificateVerified?: boolean;

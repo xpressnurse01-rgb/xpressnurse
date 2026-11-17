@@ -91,6 +91,8 @@ export const LoginPage: React.FC<LoginPageProps> = ({
   const [regQualification, setRegQualification] = useState<string>('B.Sc Nursing (Registered RN)');
   const [regCustomQualification, setRegCustomQualification] = useState<string>('');
   const [regCurrentlyWorkingAt, setRegCurrentlyWorkingAt] = useState<string>('');
+  const [regDoctorProfession, setRegDoctorProfession] = useState<string>('');
+  const [regDoctorWorkplace, setRegDoctorWorkplace] = useState<string>('');
   const [regDoctorSpecialization, setRegDoctorSpecialization] = useState<string>('');
   const [regDoctorCustomSpecialization, setRegDoctorCustomSpecialization] = useState<string>('');
   const [regDoctorCouncilNo, setRegDoctorCouncilNo] = useState<string>('');
@@ -179,90 +181,61 @@ export const LoginPage: React.FC<LoginPageProps> = ({
     setSuccessMsg('');
 
     if (role === 'doctor') {
-      if (!regName.trim() || !regPhone.trim() || !regEmail.trim()) {
-        setErrorMsg('Please enter your full name, email, and phone number.');
-        return;
-      }
-      if (!regDoctorSpecialization.trim()) {
-        setErrorMsg('Please enter your medical specialization.');
+      if (!regName.trim() || !regPhone.trim()) {
+        setErrorMsg('Please enter your full name and phone number.');
         return;
       }
       if (!/^\d{4}$/.test(regPin)) {
         setErrorMsg('Security PIN must be exactly 4 numeric digits.');
         return;
       }
-      if (!regDisclaimer) {
-        setErrorMsg('You must agree to the medical practitioner disclaimer.');
-        return;
-      }
 
       setIsLoading(true);
       try {
-        let certUrl = '';
-        if (regCertificate) {
-          const dataUrl = await new Promise<string>((resolve) => {
-            const reader = new FileReader();
-            reader.onload = () => resolve(reader.result as string);
-            reader.onerror = () => resolve('');
-            reader.readAsDataURL(regCertificate);
-          });
-          
-          if (dataUrl) {
-            const uploadRes = await uploadToCloudflareStorage({
-              fileName: regCertificate.name,
-              category: 'certificates',
-              contentType: regCertificate.type,
-              sizeBytes: regCertificate.size,
-              dataUrl
-            });
-            certUrl = uploadRes.publicUrl;
-          }
-        }
-
         const cleanPhone = regPhone.replace(/\D/g, '');
-        const cleanEmail = regEmail.trim().toLowerCase();
-        const formattedDocName = regName.trim().startsWith('Dr.') ? regName.trim() : `Dr. ${regName.trim()}`;
-        const newId = `DOC-${Math.floor(1000 + Math.random() * 9000)}`;
+        const cleanEmail = regEmail.trim().toLowerCase() || `${cleanPhone || 'partner'}@xpressnurse.in`;
+        const newId = `PARTNER-${Math.floor(1000 + Math.random() * 9000)}`;
 
-        const effectiveDocSpec = regDoctorSpecialization.trim() || 'General Physician';
+        const profession = regDoctorProfession.trim() || 'Referral Partner';
+        const workplace = regDoctorWorkplace.trim() || 'Independent';
+
         const newAppUser: AppUser = {
           id: newId,
           role: 'doctor',
-          identifier: cleanEmail,
-          name: formattedDocName,
+          identifier: cleanEmail || cleanPhone,
+          name: regName.trim(),
           pin: regPin.trim(),
           phone: cleanPhone || regPhone.trim(),
           email: cleanEmail,
-          designation: `[PENDING_VERIFICATION] ${effectiveDocSpec}`,
-          serviceArea: regServiceArea.trim() || 'Hyderabad Multi-Zone',
-          avatarUrl: certUrl || undefined,
+          profession: profession,
+          currentlyWorkingAt: workplace,
+          designation: `[PENDING_VERIFICATION] ${profession} • ${workplace}`,
+          serviceArea: 'Hyderabad',
+          commissionPercent: 10,
           status: 'Pending Verification',
-          specialization: effectiveDocSpec,
-          certificateUrl: certUrl || undefined,
-          experienceYears: Number(regExperienceYears) || 3,
           createdAt: new Date().toISOString()
         };
 
         await dbInsertAppUser(newAppUser);
 
-        const submittedDocName = formattedDocName;
-        const submittedDocPhone = regPhone.trim();
+        const submittedPartnerName = regName.trim();
+        const submittedPartnerPhone = regPhone.trim();
         setIsLoading(false);
-        setSuccessMsg(`Application submitted for ${submittedDocName}! Pending Admin verification.`);
+        setSuccessMsg(`Registration submitted! Your profile is pending Admin approval.`);
         setSubmittedAppInfo({
-          name: submittedDocName,
-          phone: submittedDocPhone,
+          name: submittedPartnerName,
+          phone: submittedPartnerPhone,
           role: 'doctor'
         });
-        setIdentifier(submittedDocPhone || cleanPhone || cleanEmail);
+        setIdentifier(submittedPartnerPhone || cleanPhone || cleanEmail);
         setPin('');
-        setRegName(''); setRegPhone(''); setRegEmail(''); setRegPin(''); setRegCertificate(null); setRegDisclaimer(false); setRegDoctorSpecialization(''); setRegDoctorCustomSpecialization(''); setRegDoctorCouncilNo('');
+        setRegName(''); setRegPhone(''); setRegEmail(''); setRegPin(''); setRegDoctorProfession(''); setRegDoctorWorkplace('');
         setIsRegistering(false);
         window.scrollTo({ top: 0, behavior: 'smooth' });
         return;
       } catch (err: any) {
         setIsLoading(false);
-        setErrorMsg('Error submitting doctor registration. Please try again.');
+        setErrorMsg('Error submitting partner registration. Please try again.');
         return;
       }
     }
@@ -285,10 +258,6 @@ export const LoginPage: React.FC<LoginPageProps> = ({
     }
     if (!regCertificate) {
       setErrorMsg('Please upload your nursing certificate.');
-      return;
-    }
-    if (!regDisclaimer) {
-      setErrorMsg('You must agree to the clinical disclaimer.');
       return;
     }
     if (!regCity) {
@@ -685,15 +654,15 @@ export const LoginPage: React.FC<LoginPageProps> = ({
 
             <h1 style={{ fontSize: '1.25rem', color: 'var(--primary-navy-900)', fontWeight: 700, marginBottom: '0.35rem' }}>
               {isRegistering 
-                ? (role === 'doctor' ? 'Register (Others / Doctor)' : 'Register as Certified Nurse')
+                ? (role === 'doctor' ? 'Register (Others / Partners)' : 'Register as Certified Nurse')
                 : 'Sign In to Your Account'}
             </h1>
             <p style={{ fontSize: '0.86rem', color: 'var(--neutral-500)', margin: 0 }}>
               {isRegistering
                 ? (role === 'doctor'
-                    ? 'Join Xpress Nurse consulting physician & clinical partner network'
+                    ? 'Join Xpress Nurse referral network (Doctors, Clinics, Agents & Partners)'
                     : 'Join Hyderabad’s fastest growing certified home nursing network')
-                : 'Secure access for certified nurses, doctors, and medical administrators'}
+                : 'Secure access for certified nurses, doctors, referral partners, and administrators'}
             </p>
           </div>
 
@@ -714,7 +683,7 @@ export const LoginPage: React.FC<LoginPageProps> = ({
               onClick={() => handleRoleChange('doctor')}
             >
               <Users size={15} />
-              <span>Others</span>
+              <span>Others / Partners</span>
             </button>
 
             <button
@@ -778,7 +747,10 @@ export const LoginPage: React.FC<LoginPageProps> = ({
                   </div>
 
                   <p style={{ margin: '0.45rem 0 0.65rem 0', fontSize: '0.82rem', color: '#047857', lineHeight: 1.45 }}>
-                    Hello <strong>{submittedAppInfo.name}</strong>, your application has been received! Our admin team is reviewing your nursing certificate.
+                    {submittedAppInfo.role === 'doctor'
+                      ? <>Hello <strong>{submittedAppInfo.name}</strong>, your partner application has been received! Our admin team is reviewing your profile.</>
+                      : <>Hello <strong>{submittedAppInfo.name}</strong>, your application has been received! Our admin team is reviewing your nursing certificate.</>
+                    }
                   </p>
 
                   <div style={{
@@ -805,7 +777,7 @@ export const LoginPage: React.FC<LoginPageProps> = ({
                   </div>
 
                   <div style={{ fontSize: '0.75rem', color: '#475569', marginTop: '0.65rem', lineHeight: 1.45 }}>
-                    ℹ️ <strong>What next?</strong> Once Admin verifies your certificate, your profile will be active. You can then enter your 4-digit PIN below to sign in.
+                    ℹ️ <strong>What next?</strong> {submittedAppInfo.role === 'doctor' ? 'Once Admin approves your partner account, your profile will be active. You can then enter your 4-digit PIN below to sign in.' : 'Once Admin verifies your certificate, your profile will be active. You can then enter your 4-digit PIN below to sign in.'}
                   </div>
                 </div>
               )}
@@ -939,11 +911,12 @@ export const LoginPage: React.FC<LoginPageProps> = ({
               {role === 'doctor' ? (
                 <>
                   <div className="form-group" style={{ marginBottom: '0.75rem' }}>
-                    <label className="form-label">Doctor Full Name</label>
+                    <label className="form-label">Full Name *</label>
                     <input 
                       type="text" 
                       name="doctor_reg_fullname"
                       autoComplete="off"
+                      required
                       value={regName} 
                       onChange={e => setRegName(e.target.value)} 
                       className="form-control" 
@@ -952,7 +925,19 @@ export const LoginPage: React.FC<LoginPageProps> = ({
 
                   <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem', marginBottom: '0.75rem' }}>
                     <div className="form-group">
-                      <label className="form-label">Email</label>
+                      <label className="form-label">Phone *</label>
+                      <input 
+                        type="tel" 
+                        name="doctor_reg_phone"
+                        autoComplete="off"
+                        required
+                        value={regPhone} 
+                        onChange={e => setRegPhone(e.target.value)} 
+                        className="form-control" 
+                      />
+                    </div>
+                    <div className="form-group">
+                      <label className="form-label">Email (Optional)</label>
                       <input 
                         type="email" 
                         name="doctor_reg_email"
@@ -962,110 +947,49 @@ export const LoginPage: React.FC<LoginPageProps> = ({
                         className="form-control" 
                       />
                     </div>
-                    <div className="form-group">
-                      <label className="form-label">Phone</label>
-                      <input 
-                        type="tel" 
-                        name="doctor_reg_phone"
-                        autoComplete="off"
-                        value={regPhone} 
-                        onChange={e => setRegPhone(e.target.value)} 
-                        className="form-control" 
-                      />
-                    </div>
                   </div>
 
-                  {/* Specialization & Experience */}
-                  <div style={{ display: 'grid', gridTemplateColumns: '1.2fr 0.8fr', gap: '0.75rem', marginBottom: '0.75rem' }}>
-                    <div className="form-group">
-                      <label className="form-label">Specialization</label>
-                      <input
-                        type="text"
-                        placeholder="Enter Specialization"
-                        value={regDoctorSpecialization}
-                        onChange={(e) => setRegDoctorSpecialization(e.target.value)}
-                        className="form-control"
-                        style={{ fontWeight: 600 }}
-                      />
-                    </div>
-                    <div className="form-group">
-                      <label className="form-label">Experience</label>
-                      <select
-                        value={regExperienceYears}
-                        onChange={(e) => setRegExperienceYears(Number(e.target.value))}
-                        className="form-control"
-                        style={{ fontWeight: 600 }}
-                      >
-                        <option value="2">2+ Years</option>
-                        <option value="3">3+ Years</option>
-                        <option value="5">5+ Years</option>
-                        <option value="7">7+ Years</option>
-                        <option value="10">10+ Years</option>
-                        <option value="15">15+ Years</option>
-                        <option value="20">20+ Years</option>
-                      </select>
-                    </div>
-                  </div>
-
-                  {/* Practice / Consultation Zone */}
                   <div className="form-group" style={{ marginBottom: '0.75rem' }}>
-                    <label className="form-label">Practice / Teleconsult Zone</label>
-                    <input 
-                      list="hyderabad-areas" 
-                      placeholder="e.g. Hyderabad Multi-Zone, Gachibowli, Kukatpally"
-                      value={regServiceArea}
-                      onChange={(e) => setRegServiceArea(e.target.value)}
+                    <label className="form-label">Profession / Designation *</label>
+                    <input
+                      type="text"
+                      value={regDoctorProfession}
+                      onChange={(e) => setRegDoctorProfession(e.target.value)}
+                      className="form-control"
+                      style={{ fontWeight: 600 }}
+                      required
+                    />
+                  </div>
+
+                  <div className="form-group" style={{ marginBottom: '0.75rem' }}>
+                    <label className="form-label">Currently Working At / Organization Name</label>
+                    <input
+                      type="text"
+                      value={regDoctorWorkplace}
+                      onChange={(e) => setRegDoctorWorkplace(e.target.value)}
                       className="form-control"
                       style={{ fontWeight: 600 }}
                     />
                   </div>
 
-                  <div className="form-group" style={{ marginBottom: '0.75rem' }}>
-                    <label className="form-label">Set 4-Digit Security PIN (Used for Doctor Login)</label>
+                  <div className="form-group" style={{ marginBottom: '1rem' }}>
+                    <label className="form-label">Set 4-Digit Security PIN (Used for Login) *</label>
                     <input 
                       type="password" 
                       maxLength={4} 
+                      required
                       value={regPin} 
                       onChange={e => setRegPin(e.target.value.replace(/\D/g, ''))} 
                       className="form-control" 
                       style={{ letterSpacing: '0.2rem', fontWeight: 700, fontSize: '1.1rem' }} 
                     />
                     <div style={{ fontSize: '0.72rem', color: '#64748B', marginTop: '0.25rem' }}>
-                      Remember this 4-digit PIN along with your phone number/email for future logins.
+                      Remember this 4-digit PIN along with your phone number for future logins.
                     </div>
-                  </div>
-
-                  <div className="form-group" style={{ marginBottom: '0.75rem' }}>
-                    <label className="form-label">Medical Degree / Council Certificate (Optional)</label>
-                    <div style={{ background: '#F8FAFC', border: '1.5px dashed #CBD5E1', borderRadius: 8, padding: '0.9rem', textAlign: 'center' }}>
-                      <input type="file" id="cert-upload-doc" accept="image/*,.pdf" style={{ display: 'none' }} onChange={e => { if(e.target.files && e.target.files[0]) setRegCertificate(e.target.files[0]) }} />
-                      <label htmlFor="cert-upload-doc" style={{ cursor: 'pointer', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '0.4rem' }}>
-                        {regCertificate ? (
-                          <>
-                            <FileText size={22} style={{ color: '#0284C7' }} />
-                            <span style={{ fontSize: '0.8rem', fontWeight: 600, color: 'var(--primary-navy-900)' }}>{regCertificate.name}</span>
-                          </>
-                        ) : (
-                          <>
-                            <UploadCloud size={22} style={{ color: '#64748B' }} />
-                            <span style={{ fontSize: '0.8rem', color: '#64748B' }}>Click to upload Medical License / Degree Certificate (Optional)</span>
-                          </>
-                        )}
-                      </label>
-                    </div>
-                  </div>
-
-                  <div className="form-group" style={{ marginBottom: '1.25rem', background: '#FEF2F2', padding: '0.85rem', borderRadius: 8, border: '1px solid #FCA5A5' }}>
-                    <label style={{ display: 'flex', alignItems: 'flex-start', gap: '0.65rem', cursor: 'pointer' }}>
-                      <input type="checkbox" checked={regDisclaimer} onChange={e => setRegDisclaimer(e.target.checked)} style={{ marginTop: '0.25rem', transform: 'scale(1.2)' }} />
-                      <span style={{ fontSize: '0.84rem', color: '#991B1B', lineHeight: 1.45, fontWeight: 600 }}>
-                        I confirm that I am a registered medical practitioner with an active license under NMC / State Medical Council. I agree to conduct online teleconsultations, evaluations, and issue valid digital prescriptions strictly adhering to Telemedicine Practice Guidelines and Medical Ethics Regulations. My submitted credentials and registration number are authentic.
-                      </span>
-                    </label>
                   </div>
 
                   <button type="submit" disabled={isLoading} className="btn btn-primary btn-lg" style={{ width: '100%', justifyContent: 'center' }}>
-                    {isLoading ? 'Submitting Registration...' : 'Register as Consulting Doctor'}
+                    {isLoading ? 'Submitting Registration...' : 'Register as Referral Partner'}
                   </button>
                 </>
               ) : (
@@ -1258,62 +1182,21 @@ export const LoginPage: React.FC<LoginPageProps> = ({
                     </div>
                   </div>
 
-                  {/* Refer and Earn Code Input (Formerly Colleague Referral Code) */}
-                  <div className="form-group" style={{ marginBottom: '0.85rem' }}>
-                    <label className="form-label" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', margin: '0 0 0.35rem 0' }}>
-                      <span style={{ display: 'inline-flex', alignItems: 'center', gap: '0.35rem', fontWeight: 700, fontSize: '0.82rem' }}>
-                        <Sparkles size={14} style={{ color: '#9333EA' }} />
-                        <span>Refer and Earn Code (Optional)</span>
+                  {/* Auto-detected Referral Notice (Applied only when registering via referral link) */}
+                  {matchedReferringNurse && (
+                    <div style={{ fontSize: '0.78rem', color: '#047857', background: '#ECFDF5', border: '1px solid #A7F3D0', padding: '0.55rem 0.75rem', borderRadius: 8, marginBottom: '0.75rem', display: 'flex', alignItems: 'center', gap: '0.45rem' }}>
+                      <CheckCircle2 size={15} style={{ color: '#10B981', flexShrink: 0 }} />
+                      <span>
+                        Referred by <strong>{matchedReferringNurse.name}</strong>. Referral bonus linked!
                       </span>
-                      {matchedReferringNurse && (
-                        <span style={{ fontSize: '0.72rem', color: '#059669', fontWeight: 750 }}>
-                          ✓ Verified Referral
-                        </span>
-                      )}
-                    </label>
-                    <input
-                      type="text"
-                      value={regReferralCode}
-                      onChange={(e) => setRegReferralCode(e.target.value.toUpperCase())}
-                      className="form-control"
-                      placeholder="e.g. XN-PRIYA101"
-                      style={{
-                        textTransform: 'uppercase',
-                        letterSpacing: '0.08em',
-                        fontWeight: 700,
-                        borderColor: matchedReferringNurse ? '#10B981' : undefined,
-                        background: matchedReferringNurse ? '#F0FDF4' : undefined
-                      }}
-                    />
-                    {isCheckingRefCode ? (
-                      <div style={{ fontSize: '0.74rem', color: '#0284C7', background: '#F0F9FF', border: '1px solid #BAE6FD', padding: '0.35rem 0.65rem', borderRadius: 6, marginTop: '0.35rem', display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
-                        <span className="spinner-border spinner-border-sm" style={{ width: 12, height: 12, borderTopColor: '#0284C7' }} />
-                        <span>Verifying referral code in fleet...</span>
-                      </div>
-                    ) : matchedReferringNurse ? (
-                      <div style={{ fontSize: '0.76rem', color: '#047857', background: '#ECFDF5', border: '1px solid #A7F3D0', padding: '0.45rem 0.65rem', borderRadius: 8, marginTop: '0.4rem', display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
-                        <CheckCircle2 size={14} style={{ color: '#10B981', flexShrink: 0 }} />
-                        <span>
-                          Referred by <strong>{matchedReferringNurse.name}</strong> ({matchedReferringNurse.serviceArea}). Joining benefits will be activated!
-                        </span>
-                      </div>
-                    ) : regReferralCode.trim().length >= 4 ? (
-                      <div style={{ fontSize: '0.74rem', color: '#B45309', background: '#FFFBEB', border: '1px solid #FDE68A', padding: '0.35rem 0.65rem', borderRadius: 6, marginTop: '0.35rem' }}>
-                        ℹ️ Code not recognized in fleet, but you can continue registration.
-                      </div>
-                    ) : (
-                      <div style={{ fontSize: '0.72rem', color: '#64748B', marginTop: '0.25rem' }}>
-                        Have a Refer &amp; Earn code from a nurse or friend? Enter it here to link your bonus.
-                      </div>
-                    )}
-                  </div>
+                    </div>
+                  )}
 
                   {/* Residence & Years of Experience */}
                   <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem', marginBottom: '0.75rem' }}>
                     <div className="form-group">
                       <label className="form-label">Residence *</label>
-                      <input list="hyderabad-areas"
-                        placeholder="e.g. LB Nagar, Madhapur, Kukatpally, Gachibowli"
+                      <input
                         value={regServiceArea}
                         onChange={(e) => setRegServiceArea(e.target.value)}
                         className="form-control"
@@ -1356,7 +1239,7 @@ export const LoginPage: React.FC<LoginPageProps> = ({
                     <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '0.35rem', flexWrap: 'wrap', gap: '0.4rem' }}>
                       <div>
                         <label className="form-label" style={{ fontWeight: 800, color: 'var(--primary-navy-950)', margin: 0, fontSize: '0.84rem' }}>
-                          🩺 Clinical Services & Procedures You Can Perform *
+                          🩺 Clinical Services &amp; Procedures You Can Perform (Optional)
                         </label>
                         <div style={{ fontSize: '0.72rem', color: '#64748B', marginTop: '0.15rem' }}>
                           Select all procedures you know. This ensures admin assigns the exact matching patient requests to you!
@@ -1582,15 +1465,6 @@ export const LoginPage: React.FC<LoginPageProps> = ({
                         )}
                       </label>
                     </div>
-                  </div>
-
-                  <div className="form-group" style={{ marginBottom: '1.25rem', background: '#FEF2F2', padding: '0.85rem', borderRadius: 8, border: '1px solid #FCA5A5' }}>
-                    <label style={{ display: 'flex', alignItems: 'flex-start', gap: '0.65rem', cursor: 'pointer' }}>
-                      <input type="checkbox" checked={regDisclaimer} onChange={e => setRegDisclaimer(e.target.checked)} style={{ marginTop: '0.25rem', transform: 'scale(1.2)' }} />
-                      <span style={{ fontSize: '0.88rem', color: '#991B1B', lineHeight: 1.45, fontWeight: 600 }}>
-                        I confirm that I am a registered nurse and hold a valid nursing license. I understand that I am solely responsible for the clinical care provided to patients. Xpress Nurse is a technology platform connecting patients with nurses, and I agree to indemnify the platform against any clinical liabilities or malpractices. My submitted credentials are authentic.
-                      </span>
-                    </label>
                   </div>
 
                   <button type="submit" disabled={isLoading} className="btn btn-primary btn-lg" style={{ width: '100%', justifyContent: 'center' }}>

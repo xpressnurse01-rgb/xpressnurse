@@ -1216,7 +1216,10 @@ export async function dbFetchLeads(): Promise<NurseLead[] | null> {
     referredNursePhone: l.referred_nurse_phone || undefined,
     qualification: l.qualification || undefined,
     experienceYears: Number(l.experience_years) || 3,
-    rejectionReason: l.rejection_reason || undefined
+    rejectionReason: l.rejection_reason || undefined,
+    notes: l.notes || undefined,
+    partnerId: l.partner_id || undefined,
+    billedAmount: l.billed_amount !== undefined && l.billed_amount !== null && !isNaN(Number(l.billed_amount)) ? Number(l.billed_amount) : 0
   }));
 }
 
@@ -1227,23 +1230,29 @@ export async function dbSaveLead(lead: NurseLead): Promise<boolean> {
       isoSubmittedAt = lead.submittedAt;
     }
 
-    const cleanNurseId = (lead.nurseId && lead.nurseId.trim() !== '' && lead.nurseId !== 'none') ? lead.nurseId.trim() : null;
+    const cleanPartnerId = (lead.partnerId && lead.partnerId.trim() !== '') ? lead.partnerId.trim() : null;
+    // If partner_id is set, nurse_id must be null because partners are stored in app_users, NOT public.nurses!
+    // Storing a partner's id in nurse_id violates CONSTRAINT leads_nurse_id_fkey FOREIGN KEY (nurse_id) REFERENCES public.nurses(id)
+    const cleanNurseId = cleanPartnerId ? null : ((lead.nurseId && lead.nurseId.trim() !== '' && lead.nurseId !== 'none') ? lead.nurseId.trim() : null);
     const cleanAssignedNurseId = (lead.assignedNurseId && lead.assignedNurseId.trim() !== '' && lead.assignedNurseId !== 'none') ? lead.assignedNurseId.trim() : null;
 
     const payload: any = {
       id: lead.id,
       nurse_id: cleanNurseId,
+      partner_id: cleanPartnerId,
       patient_name: lead.patientName || null,
       patient_phone: lead.patientPhone || null,
+      notes: lead.notes || null,
       service_id: lead.serviceId || null,
       area: lead.area || (lead as any).serviceArea || 'Gachibowli',
       submitted_at: isoSubmittedAt,
-      referral_type: lead.referralType || null,
+      referral_type: lead.referralType || 'patient',
       status: lead.status || 'Pending Approval',
       assigned_nurse_id: cleanAssignedNurseId,
       lead_value_rupees: Number(lead.leadValueRupees) || 1000.00,
+      billed_amount: Number(lead.billedAmount ?? 0) || 0,
       points_awarded: lead.pointsAwarded != null && !isNaN(Number(lead.pointsAwarded)) ? Math.round(Number(lead.pointsAwarded)) : 50,
-      referral_commission_rupees: Number(lead.referralCommissionRupees) || 100.00,
+      referral_commission_rupees: Number(lead.referralCommissionRupees) || 0,
       referred_nurse_name: lead.referredNurseName || null,
       referred_nurse_phone: lead.referredNursePhone || null,
       qualification: lead.qualification || null,
@@ -1275,10 +1284,14 @@ export async function dbSaveLead(lead: NurseLead): Promise<boolean> {
           submitted_at: payload.submitted_at,
           referral_type: payload.referral_type,
           status: payload.status,
+          notes: payload.notes,
+          partner_id: payload.partner_id,
+          billed_amount: payload.billed_amount,
           assigned_nurse_id: null,
           lead_value_rupees: payload.lead_value_rupees,
           points_awarded: payload.points_awarded,
-          referral_commission_rupees: payload.referral_commission_rupees
+          referral_commission_rupees: payload.referral_commission_rupees,
+          rejection_reason: payload.rejection_reason
         };
         const retry = await supabase.from('leads').upsert(fallback);
         if (!retry.error) return true;
@@ -1301,6 +1314,9 @@ export async function dbUpdateLeadById(id: string, updates: Partial<NurseLead>):
   const payload: any = {};
   if (updates.patientName !== undefined) payload.patient_name = updates.patientName;
   if (updates.patientPhone !== undefined) payload.patient_phone = updates.patientPhone;
+  if (updates.notes !== undefined) payload.notes = updates.notes;
+  if (updates.partnerId !== undefined) payload.partner_id = updates.partnerId;
+  if (updates.billedAmount !== undefined) payload.billed_amount = Number(updates.billedAmount);
   if (updates.serviceId !== undefined) payload.service_id = updates.serviceId;
   if (updates.area !== undefined) payload.area = updates.area;
   if (updates.referralType !== undefined) payload.referral_type = updates.referralType;
@@ -1328,7 +1344,11 @@ export async function dbUpdateLeadById(id: string, updates: Partial<NurseLead>):
       console.warn('[DB] Supabase leads update warning:', error.message);
       if (error.message && error.message.includes('column')) {
         const fallback: any = {};
-        const safeLeadKeys = ['patient_name', 'patient_phone', 'service_id', 'area', 'status', 'nurse_id', 'assigned_nurse_id', 'points_awarded', 'lead_value_rupees', 'referral_commission_rupees'];
+        const safeLeadKeys = [
+          'patient_name', 'patient_phone', 'service_id', 'area', 'status', 'nurse_id',
+          'assigned_nurse_id', 'points_awarded', 'lead_value_rupees', 'referral_commission_rupees',
+          'partner_id', 'billed_amount', 'notes', 'rejection_reason', 'referral_type'
+        ];
         safeLeadKeys.forEach((k) => {
           if (payload[k] !== undefined) fallback[k] = payload[k];
         });
@@ -1724,6 +1744,9 @@ export async function dbFetchAppUsers(): Promise<AppUser[]> {
           mandal: u.mandal || undefined,
           village: u.village || undefined,
           skills: Array.isArray(u.skills) ? u.skills : (typeof u.skills === 'string' && u.skills.trim() ? (u.skills.startsWith('[') ? (() => { try { return JSON.parse(u.skills); } catch { return []; } })() : u.skills.split(',').map((s: string) => s.trim())) : []),
+          commissionPercent: u.commission_percent !== undefined && u.commission_percent !== null && !isNaN(Number(u.commission_percent)) ? Number(u.commission_percent) : 10,
+          currentlyWorkingAt: u.currently_working_at || undefined,
+          profession: u.profession || undefined,
           createdAt: u.created_at
         };
       });
@@ -1891,7 +1914,10 @@ export async function dbInsertAppUser(u: AppUser): Promise<boolean> {
       mandal: u.mandal || null,
       village: u.village || null,
       skills: Array.isArray(u.skills) ? u.skills : null,
-      ready_for_home_visit: u.readyForHomeVisit !== undefined ? Boolean(u.readyForHomeVisit) : true
+      ready_for_home_visit: u.readyForHomeVisit !== undefined ? Boolean(u.readyForHomeVisit) : true,
+      commission_percent: u.commissionPercent !== undefined ? Number(u.commissionPercent) : 10,
+      currently_working_at: u.currentlyWorkingAt || null,
+      profession: u.profession || null
     };
     let { error } = await supabase.from('app_users').upsert(payload, { onConflict: 'identifier' });
     if (error && (error.code === '42703' || error.message?.includes('ready_for_home_visit') || error.message?.includes('marital_status') || error.message?.includes('city') || error.message?.includes('district') || error.message?.includes('mandal') || error.message?.includes('village') || error.message?.includes('skills'))) {
@@ -1949,6 +1975,9 @@ export async function dbUpdateAppUserById(id: string, updates: Partial<AppUser>)
   if (updates.village !== undefined) payload.village = updates.village;
   if (updates.skills !== undefined) payload.skills = updates.skills;
   if (updates.readyForHomeVisit !== undefined) payload.ready_for_home_visit = Boolean(updates.readyForHomeVisit);
+  if (updates.commissionPercent !== undefined) payload.commission_percent = Number(updates.commissionPercent);
+  if (updates.currentlyWorkingAt !== undefined) payload.currently_working_at = updates.currentlyWorkingAt;
+  if (updates.profession !== undefined) payload.profession = updates.profession;
 
   try {
     let { error } = await supabase.from('app_users').update(payload).eq('id', id);

@@ -463,11 +463,11 @@ export const NurseDashboard: React.FC<NurseDashboardProps> = ({
       return;
     }
 
-    const procedure = serviceList.find(s => s.id === serviceId);
-    const procFee = serviceId === 'other' ? 0 : (procedure?.priceNumber ?? (procedure?.singleVisitPrice ?? 800));
+    const procedure = serviceId ? serviceList.find(s => s.id === serviceId) : undefined;
+    const procFee = serviceId === 'other' || !serviceId ? 0 : (procedure?.priceNumber ?? (procedure?.singleVisitPrice ?? 800));
     const finalServiceTitle = serviceId === 'other'
       ? (otherServiceName.trim() || 'Other Nursing Service')
-      : (procedure?.title || 'Nursing Service');
+      : (procedure?.title || 'General Home Nursing');
 
     const formattedNotes = [
       serviceId === 'other' ? `Service Needed: ${otherServiceName.trim()}` : '',
@@ -480,12 +480,12 @@ export const NurseDashboard: React.FC<NurseDashboardProps> = ({
       patientName: patientName.trim(),
       patientPhone: cleanPhone,
       patientAge: patientAge ? parseInt(patientAge, 10) : undefined,
-      patientGender,
-      serviceId,
+      patientGender: patientGender || undefined,
+      serviceId: serviceId || 'saline-infusion',
       serviceTitle: finalServiceTitle,
       leadValueRupees: procFee,
-      area,
-      fullAddress: fullAddress.trim(),
+      area: area || nurse.serviceArea || 'Hyderabad',
+      fullAddress: fullAddress ? fullAddress.trim() : undefined,
       notes: formattedNotes,
       status: 'Pending Approval',
       submittedAt: new Date().toISOString()
@@ -645,22 +645,6 @@ export const NurseDashboard: React.FC<NurseDashboardProps> = ({
               <div style={{ fontSize: '0.7rem', color: '#92400E', fontWeight: 600 }}>Earnings</div>
               <div style={{ fontSize: '1.1rem', fontWeight: 900, color: '#B45309' }}>₹{totalMoney.toLocaleString('en-IN')}</div>
             </div>
-            <div
-              className="nurse-top-stat-box"
-              onClick={() => setActiveTab('visits')}
-              style={{
-                background: '#EFF6FF',
-                border: '1px solid #BFDBFE',
-                padding: '0.45rem 0.9rem',
-                borderRadius: 12,
-                textAlign: 'center',
-                cursor: 'pointer'
-              }}
-              title="Click to view Active Visits"
-            >
-              <div style={{ fontSize: '0.7rem', color: '#1E40AF', fontWeight: 600 }}>Active Visits</div>
-              <div style={{ fontSize: '1.1rem', fontWeight: 900, color: '#1D4ED8' }}>{activeVisits.length}</div>
-            </div>
             <a
               href="https://wa.me/917569657371"
               className="btn btn-outline nurse-top-stat-box"
@@ -695,7 +679,7 @@ export const NurseDashboard: React.FC<NurseDashboardProps> = ({
           {[
             { id: 'home', icon: <Home size={18} />, label: 'Home', description: 'Today at a glance', badge: null },
             { id: 'visits', icon: <Calendar size={18} />, label: 'My visits', description: 'Patient visits and status', badge: activeVisits.length > 0 ? activeVisits.length : null },
-            { id: 'add-patient', icon: <Plus size={18} />, label: 'Add a patient', description: 'Share a patient referral', badge: '+50' },
+            { id: 'add-patient', icon: <Plus size={18} />, label: 'Add a patient', description: 'Share a patient referral', badge: null },
             { id: 'my-money', icon: <Coins size={18} />, label: 'My earnings', description: 'Points and payments', badge: null },
             { id: 'profile', icon: <User size={18} />, label: 'My profile', description: 'Your details and documents', badge: null }
           ].map((tab) => {
@@ -787,7 +771,7 @@ export const NurseDashboard: React.FC<NurseDashboardProps> = ({
                   }}
                 >
                   <Plus size={16} />
-                  <span>Add a patient · +50 points</span>
+                  <span>Add a patient</span>
                 </button>
                 <button
                   type="button"
@@ -1971,7 +1955,6 @@ export const NurseDashboard: React.FC<NurseDashboardProps> = ({
                 </label>
                 <input
                   type="text"
-                  placeholder="e.g. Smt. Lakshmi Devi"
                   value={patientName}
                   onChange={(e) => setPatientName(e.target.value)}
                   className="form-control"
@@ -1986,7 +1969,6 @@ export const NurseDashboard: React.FC<NurseDashboardProps> = ({
                 </label>
                 <input
                   type="tel"
-                  placeholder="10-digit mobile number e.g. 9848012345"
                   value={patientPhone}
                   onChange={(e) => setPatientPhone(e.target.value)}
                   className="form-control"
@@ -1995,41 +1977,9 @@ export const NurseDashboard: React.FC<NurseDashboardProps> = ({
                 />
               </div>
 
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem' }}>
-                <div>
-                  <label style={{ display: 'block', fontSize: '0.84rem', fontWeight: 700, color: '#334155', marginBottom: '0.3rem' }}>
-                    Age (Years)
-                  </label>
-                  <input
-                    type="number"
-                    placeholder="e.g. 55"
-                    value={patientAge}
-                    onChange={(e) => setPatientAge(e.target.value)}
-                    className="form-control"
-                    style={{ width: '100%', height: 42, borderRadius: 8, fontSize: '0.9rem' }}
-                  />
-                </div>
-
-                <div>
-                  <label style={{ display: 'block', fontSize: '0.84rem', fontWeight: 700, color: '#334155', marginBottom: '0.3rem' }}>
-                    Gender
-                  </label>
-                  <select
-                    value={patientGender}
-                    onChange={(e) => setPatientGender(e.target.value as any)}
-                    className="form-control"
-                    style={{ width: '100%', height: 42, borderRadius: 8, fontSize: '0.9rem' }}
-                  >
-                    <option value="Female">Female</option>
-                    <option value="Male">Male</option>
-                    <option value="Other">Other</option>
-                  </select>
-                </div>
-              </div>
-
               <div>
                 <label style={{ display: 'block', fontSize: '0.84rem', fontWeight: 700, color: '#334155', marginBottom: '0.3rem' }}>
-                  Which Nursing Service Needed? *
+                  Which Nursing Service Needed? (Optional)
                 </label>
                 <select
                   value={serviceId}
@@ -2037,6 +1987,7 @@ export const NurseDashboard: React.FC<NurseDashboardProps> = ({
                   className="form-control"
                   style={{ width: '100%', height: 42, borderRadius: 8, fontSize: '0.9rem', fontWeight: 600 }}
                 >
+                  <option value="">(Optional) Select service if known</option>
                   {serviceList.filter(s => s.id !== 'other').map((srv) => {
                     const pNum = srv.priceNumber !== undefined && srv.priceNumber !== null ? srv.priceNumber : srv.singleVisitPrice;
                     const priceLabel = pNum === 0 ? (srv.indicativePrice || '') : (srv.indicativePrice || (pNum ? `₹${pNum}` : ''));
@@ -2053,16 +2004,14 @@ export const NurseDashboard: React.FC<NurseDashboardProps> = ({
               {serviceId === 'other' && (
                 <div style={{ animation: 'fadeIn 0.2s ease-in-out' }}>
                   <label style={{ display: 'block', fontSize: '0.84rem', fontWeight: 700, color: '#0369A1', marginBottom: '0.3rem' }}>
-                    Specify Nursing Service Needed *
+                    Specify Nursing Service Needed
                   </label>
                   <input
                     type="text"
-                    placeholder="e.g. Nebulization, Bed bath, Tracheostomy dressing, Chemo port flush..."
                     value={otherServiceName}
                     onChange={(e) => setOtherServiceName(e.target.value)}
                     className="form-control"
                     style={{ width: '100%', height: 42, borderRadius: 8, fontSize: '0.9rem', borderColor: '#38BDF8', backgroundColor: '#F0F9FF' }}
-                    required={serviceId === 'other'}
                   />
                   <span style={{ fontSize: '0.78rem', color: '#64748B', marginTop: '0.25rem', display: 'block' }}>
                     Please enter the specific nursing procedure needed so Admin can evaluate and assign the right nurse.
@@ -2072,37 +2021,10 @@ export const NurseDashboard: React.FC<NurseDashboardProps> = ({
 
               <div>
                 <label style={{ display: 'block', fontSize: '0.84rem', fontWeight: 700, color: '#334155', marginBottom: '0.3rem' }}>
-                  Patient Locality / Area in Hyderabad *
-                </label>
-                <input list="hyderabad-areas" placeholder="Select or enter area"
-                  value={area}
-                  onChange={(e) => setArea(e.target.value as HyderabadArea)}
-                  className="form-control"
-                  style={{ width: '100%', height: 42, borderRadius: 8, fontSize: '0.9rem' }}
-                />
-              </div>
-
-              <div>
-                <label style={{ display: 'block', fontSize: '0.84rem', fontWeight: 700, color: '#334155', marginBottom: '0.3rem' }}>
-                  Full House Address / Landmark (Optional)
-                </label>
-                <textarea
-                  placeholder="e.g. Flat 302, Sai Residency, Near Metro Pillar 110"
-                  value={fullAddress}
-                  onChange={(e) => setFullAddress(e.target.value)}
-                  className="form-control"
-                  rows={2}
-                  style={{ width: '100%', borderRadius: 8, fontSize: '0.85rem' }}
-                />
-              </div>
-
-              <div>
-                <label style={{ display: 'block', fontSize: '0.84rem', fontWeight: 700, color: '#334155', marginBottom: '0.3rem' }}>
                   Nurse Notes (What is patient's problem?)
                 </label>
                 <input
                   type="text"
-                  placeholder="e.g. Post surgery, fever, catheter blocked"
                   value={notes}
                   onChange={(e) => setNotes(e.target.value)}
                   className="form-control"
