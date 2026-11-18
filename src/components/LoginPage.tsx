@@ -282,6 +282,10 @@ export const LoginPage: React.FC<LoginPageProps> = ({
       setErrorMsg('Please choose whether you are ready to do home visits.');
       return;
     }
+    if (!regDisclaimer) {
+      setErrorMsg('Please read and accept the nursing clinical disclaimer to proceed.');
+      return;
+    }
 
     setIsLoading(true);
     try {
@@ -1465,6 +1469,15 @@ export const LoginPage: React.FC<LoginPageProps> = ({
                         )}
                       </label>
                     </div>
+                  </div>
+
+                  <div className="form-group" style={{ marginBottom: '1.25rem', background: '#FEF2F2', padding: '0.85rem', borderRadius: 8, border: '1px solid #FCA5A5' }}>
+                    <label style={{ display: 'flex', alignItems: 'flex-start', gap: '0.65rem', cursor: 'pointer' }}>
+                      <input type="checkbox" checked={regDisclaimer} onChange={e => setRegDisclaimer(e.target.checked)} style={{ marginTop: '0.25rem', transform: 'scale(1.2)' }} />
+                      <span style={{ fontSize: '0.88rem', color: '#991B1B', lineHeight: 1.45, fontWeight: 600 }}>
+                        I confirm that I am a registered nurse and hold a valid nursing license. I understand that I am solely responsible for the clinical care provided to patients. Xpress Nurse is a technology platform connecting patients with nurses, and I agree to indemnify the platform against any clinical liabilities or malpractices. My submitted credentials are authentic.
+                      </span>
+                    </label>
                   </div>
 
                   <button type="submit" disabled={isLoading} className="btn btn-primary btn-lg" style={{ width: '100%', justifyContent: 'center' }}>
