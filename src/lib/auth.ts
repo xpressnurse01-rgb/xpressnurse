@@ -157,7 +157,7 @@ export async function authenticateUserSecure(
       // SECURITY: Target ONLY the user being authenticated instead of downloading the entire database table
       let userQuery = supabase
         .from('app_users')
-        .select('id, role, identifier, name, pin, phone, email, designation, service_area, avatar_url, status, certificate_url, experience_years');
+        .select('id, role, identifier, name, pin, phone, email, designation, service_area, avatar_url, status, certificate_url, experience_years, commission_percent, currently_working_at, profession, city, district');
 
       if (expectedRole && expectedRole !== 'any') {
         userQuery = userQuery.eq('role', expectedRole);
@@ -339,7 +339,10 @@ export async function authenticateUserSecure(
               designation: matchedUser.designation,
               serviceArea: (matchedUser as any).service_area || (matchedUser as any).serviceArea,
               certificateUrl: nurseCertUrl,
-              certificateVerified: isApprovedNurse
+              certificateVerified: isApprovedNurse,
+              commissionPercent: (matchedUser as any).commission_percent !== undefined && (matchedUser as any).commission_percent !== null && !isNaN(Number((matchedUser as any).commission_percent)) ? Number((matchedUser as any).commission_percent) : 10,
+              currentlyWorkingAt: (matchedUser as any).currently_working_at || undefined,
+              profession: (matchedUser as any).profession || undefined
             },
             message: `Authenticated successfully as ${matchedUser.role.toUpperCase()}.`
           };

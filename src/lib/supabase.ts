@@ -1980,22 +1980,57 @@ export async function dbUpdateAppUserById(id: string, updates: Partial<AppUser>)
   if (updates.profession !== undefined) payload.profession = updates.profession;
 
   try {
-    let { error } = await supabase.from('app_users').update(payload).eq('id', id);
+    let { error, data } = await supabase.from('app_users').update(payload).eq('id', id).select('id');
     if (error && (error.code === '42703' || error.message?.includes('ready_for_home_visit'))) {
       delete payload.ready_for_home_visit;
-      const retry = await supabase.from('app_users').update(payload).eq('id', id);
+      const retry = await supabase.from('app_users').update(payload).eq('id', id).select('id');
       error = retry.error;
+      data = retry.data;
     }
+
+    // Fallback: if 0 rows matched by id, try matching by phone or identifier
+    if (!error && (!data || data.length === 0)) {
+      const orConditions: string[] = [];
+      if (updates.phone) orConditions.push(`phone.eq.${updates.phone}`);
+      if (updates.identifier) orConditions.push(`identifier.eq.${updates.identifier}`);
+      if (id.includes('@')) orConditions.push(`email.eq.${id}`);
+      if (orConditions.length > 0) {
+        await supabase.from('app_users').update(payload).or(orConditions.join(','));
+      }
+    }
+
     if (!error) {
       try {
-        if (typeof window !== 'undefined' && typeof window.localStorage !== 'undefined') {
-          const raw = localStorage.getItem('xn_registered_users');
-          if (raw) {
-            const list: AppUser[] = JSON.parse(raw);
-            const idx = list.findIndex(u => u.id === id);
-            if (idx !== -1) {
-              list[idx] = { ...list[idx], ...updates };
-              localStorage.setItem('xn_registered_users', JSON.stringify(list));
+        if (typeof window !== 'undefined') {
+          // Update registered users cache if present
+          if (window.localStorage) {
+            const raw = localStorage.getItem('xn_registered_users');
+            if (raw) {
+              const list: AppUser[] = JSON.parse(raw);
+              const idx = list.findIndex(u => u.id === id || (updates.phone && u.phone === updates.phone));
+              if (idx !== -1) {
+                list[idx] = { ...list[idx], ...updates };
+                localStorage.setItem('xn_registered_users', JSON.stringify(list));
+              }
+            }
+          }
+          // Update active doctor storage if it matches this user
+          const docKey = 'xn_auth_user_doctor';
+          const storedDoc = localStorage.getItem(docKey) || sessionStorage.getItem(docKey);
+          if (storedDoc) {
+            const parsed = JSON.parse(storedDoc);
+            if (parsed.id === id || (parsed.phone && updates.phone && parsed.phone.replace(/\D/g, '') === updates.phone.replace(/\D/g, ''))) {
+              const updatedDoc = { ...parsed, ...updates };
+              localStorage.setItem(docKey, JSON.stringify(updatedDoc));
+              sessionStorage.setItem(docKey, JSON.stringify(updatedDoc));
+              const currentAuth = localStorage.getItem('xn_auth_user') || sessionStorage.getItem('xn_auth_user');
+              if (currentAuth) {
+                const parsedAuth = JSON.parse(currentAuth);
+                if (parsedAuth.id === id || (parsedAuth.phone && updates.phone && parsedAuth.phone.replace(/\D/g, '') === updates.phone.replace(/\D/g, ''))) {
+                  localStorage.setItem('xn_auth_user', JSON.stringify(updatedDoc));
+                  sessionStorage.setItem('xn_auth_user', JSON.stringify(updatedDoc));
+                }
+              }
             }
           }
         }

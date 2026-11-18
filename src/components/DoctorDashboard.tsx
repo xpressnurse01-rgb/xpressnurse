@@ -1,5 +1,6 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { AppUser, NurseLead, ServiceItem, DoctorConsultation, ServiceId } from '../types';
+import { supabase } from '../lib/supabase';
 import { 
   Users, 
   UserCheck, 
@@ -68,7 +69,73 @@ export const DoctorDashboard: React.FC<DoctorDashboardProps> = ({
 
   const partnerId = currentPartner?.id || activePartner?.id || '';
   const partnerPhone = currentPartner?.phone ? currentPartner.phone.replace(/\D/g, '') : (activePartner?.phone ? activePartner.phone.replace(/\D/g, '') : '');
-  const commissionPercent = Number(currentPartner?.commissionPercent !== undefined ? currentPartner.commissionPercent : activePartner?.commissionPercent) || 10;
+
+  // Direct live partner state fetched from Supabase
+  const [liveDbPartner, setLiveDbPartner] = useState<AppUser | null>(null);
+
+  useEffect(() => {
+    let isMounted = true;
+    const fetchPartnerProfile = async () => {
+      const targetId = partnerId;
+      const targetPhone = partnerPhone;
+      if (!targetId && !targetPhone) return;
+
+      try {
+        let q = supabase.from('app_users').select('*');
+        if (targetId) {
+          q = q.eq('id', targetId);
+        } else if (targetPhone) {
+          q = q.eq('phone', targetPhone);
+        }
+        const { data, error } = await q.limit(1).maybeSingle();
+        if (!error && data && isMounted) {
+          const fresh: AppUser = {
+            id: data.id,
+            name: data.name || '',
+            role: data.role || 'doctor',
+            identifier: data.identifier || data.email || data.phone || '',
+            pin: data.pin || '',
+            phone: data.phone || '',
+            email: data.email || '',
+            designation: data.designation || '',
+            serviceArea: data.service_area || 'Hyderabad',
+            avatarUrl: data.avatar_url,
+            status: data.status || 'Active',
+            commissionPercent: data.commission_percent !== undefined && data.commission_percent !== null && !isNaN(Number(data.commission_percent)) ? Number(data.commission_percent) : 10,
+            currentlyWorkingAt: data.currently_working_at || undefined,
+            profession: data.profession || undefined
+          };
+          setLiveDbPartner(fresh);
+        }
+      } catch {}
+    };
+
+    fetchPartnerProfile();
+
+    const handleFocus = () => fetchPartnerProfile();
+    window.addEventListener('focus', handleFocus);
+    document.addEventListener('visibilitychange', handleFocus);
+
+    return () => {
+      isMounted = false;
+      window.removeEventListener('focus', handleFocus);
+      document.removeEventListener('visibilitychange', handleFocus);
+    };
+  }, [partnerId, partnerPhone]);
+
+  // Reactive commission percentage with multi-source fallback
+  const commissionPercent = useMemo(() => {
+    if (liveDbPartner?.commissionPercent !== undefined && !isNaN(Number(liveDbPartner.commissionPercent))) {
+      return Number(liveDbPartner.commissionPercent);
+    }
+    if (currentPartner?.commissionPercent !== undefined && !isNaN(Number(currentPartner.commissionPercent))) {
+      return Number(currentPartner.commissionPercent);
+    }
+    if (activePartner?.commissionPercent !== undefined && !isNaN(Number(activePartner.commissionPercent))) {
+      return Number(activePartner.commissionPercent);
+    }
+    return 10;
+  }, [liveDbPartner?.commissionPercent, currentPartner?.commissionPercent, activePartner?.commissionPercent]);
 
   // Filter leads to ONLY show patients entered by this partner
   const myReferredPatients = useMemo(() => {
@@ -110,9 +177,9 @@ export const DoctorDashboard: React.FC<DoctorDashboardProps> = ({
       if (isAccepted) {
         accepted++;
         billedSum += billed;
-        const patientCommission = Number(p.referralCommissionRupees) > 0 
-          ? Number(p.referralCommissionRupees) 
-          : Math.round((billed * commissionPercent) / 100);
+        const patientCommission = billed > 0 
+          ? Math.round((billed * commissionPercent) / 100) 
+          : (Number(p.referralCommissionRupees) || 0);
         earningsSum += patientCommission;
       } else if (isRejected) {
         rejected++;
@@ -548,11 +615,9 @@ export const DoctorDashboard: React.FC<DoctorDashboardProps> = ({
                     const isRejected = patient.status === 'Rejected';
                     const billed = Number(patient.billedAmount || 0);
                     const effectiveRate = Number(patient.partnerCommissionPercent) || commissionPercent;
-                    const patientCommission = Number(patient.referralCommissionRupees) > 0
-                      ? Number(patient.referralCommissionRupees)
-                      : isAccepted
+                    const patientCommission = billed > 0
                       ? Math.round((billed * effectiveRate) / 100)
-                      : 0;
+                      : (Number(patient.referralCommissionRupees) || 0);
 
                     return (
                       <tr 

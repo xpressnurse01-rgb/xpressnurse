@@ -1026,11 +1026,12 @@ export const App: React.FC = () => {
     }
 
     try {
-      const [remoteBookings, remoteNurses, remoteLeads, remoteConsults] = await Promise.all([
+      const [remoteBookings, remoteNurses, remoteLeads, remoteConsults, remoteAppUsers] = await Promise.all([
         dbFetchBookings(),
         dbFetchNurses(),
         dbFetchLeads(),
-        role === 'admin' || role === 'doctor' ? dbFetchConsultations() : Promise.resolve(null)
+        role === 'admin' || role === 'doctor' ? dbFetchConsultations() : Promise.resolve(null),
+        role === 'admin' || role === 'doctor' ? dbFetchAppUsers() : Promise.resolve(null)
       ]);
 
       if (remoteBookings !== null) {
@@ -1198,6 +1199,27 @@ export const App: React.FC = () => {
           return remoteConsults;
         });
       }
+      if (remoteAppUsers !== null) {
+        setAppUsers(remoteAppUsers);
+        if (role === 'doctor') {
+          const currentId = sessionUser?.id;
+          const currentPhone = sessionUser?.phone ? sessionUser.phone.replace(/\D/g, '') : '';
+          const currentEmail = (sessionUser?.email || sessionUser?.identifier || '').toLowerCase();
+          const freshPartner = remoteAppUsers.find(
+            (u) => (currentId && u.id === currentId) ||
+                   (currentPhone && u.phone && u.phone.replace(/\D/g, '') === currentPhone) ||
+                   (currentEmail && ((u.email && u.email.toLowerCase() === currentEmail) || (u.identifier && u.identifier.toLowerCase() === currentEmail)))
+          );
+          if (freshPartner) {
+            setAuthUser(freshPartner);
+            try {
+              sessionStorage.setItem('xn_auth_user', JSON.stringify(freshPartner));
+              sessionStorage.setItem('xn_auth_user_doctor', JSON.stringify(freshPartner));
+              localStorage.setItem('xn_auth_user_doctor', JSON.stringify(freshPartner));
+            } catch {}
+          }
+        }
+      }
     } catch (e) {
       console.warn('[Realtime Sync] Background sync warning:', e);
     }
@@ -1327,6 +1349,32 @@ export const App: React.FC = () => {
         setCoupons((prev) => prev.filter((c) => c.id !== data.id));
       } else if (type === 'APP_USER_UPDATE' && data?.id) {
         setAppUsers((prev) => prev.map((u) => (u.id === data.id ? { ...u, ...data } : u)));
+        setAuthUser((prev) => {
+          if (prev && (prev.id === data.id || (prev.phone && data.phone && prev.phone.replace(/\D/g, '') === data.phone.replace(/\D/g, '')) || (prev.email && data.email && prev.email.toLowerCase() === data.email.toLowerCase()))) {
+            const next = { ...prev, ...data };
+            try {
+              const roleKey = `xn_auth_user_${next.role}`;
+              sessionStorage.setItem('xn_auth_user', JSON.stringify(next));
+              sessionStorage.setItem(roleKey, JSON.stringify(next));
+              localStorage.setItem(roleKey, JSON.stringify(next));
+              localStorage.setItem('xn_auth_user', JSON.stringify(next));
+            } catch { }
+            return next;
+          }
+          return prev;
+        });
+        try {
+          const docKey = 'xn_auth_user_doctor';
+          const storedDoc = localStorage.getItem(docKey) || sessionStorage.getItem(docKey);
+          if (storedDoc) {
+            const parsedDoc = JSON.parse(storedDoc);
+            if (parsedDoc.id === data.id || (parsedDoc.phone && data.phone && parsedDoc.phone.replace(/\D/g, '') === data.phone.replace(/\D/g, ''))) {
+              const updatedDoc = { ...parsedDoc, ...data };
+              localStorage.setItem(docKey, JSON.stringify(updatedDoc));
+              sessionStorage.setItem(docKey, JSON.stringify(updatedDoc));
+            }
+          }
+        } catch { }
       } else if (type === 'APP_USER_CREATE' && data?.id) {
         setAppUsers((prev) => {
           const exists = prev.some((u) => u.id === data.id);
@@ -1632,6 +1680,77 @@ export const App: React.FC = () => {
               const exists = prev.some((c) => c.id === mapped.id);
               return exists ? prev.map((c) => (c.id === mapped.id ? mapped : c)) : [...prev, mapped];
             });
+          }
+        }
+      )
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'app_users' },
+        async (payload) => {
+          if (payload.new && (payload.eventType === 'UPDATE' || payload.eventType === 'INSERT')) {
+            const raw: any = payload.new;
+            const mappedUser: AppUser = {
+              id: raw.id,
+              name: raw.name || '',
+              role: raw.role || 'doctor',
+              identifier: raw.identifier || raw.email || raw.phone || '',
+              pin: raw.pin || '',
+              phone: raw.phone || '',
+              email: raw.email || '',
+              designation: raw.designation || '',
+              serviceArea: raw.service_area || 'Hyderabad',
+              avatarUrl: raw.avatar_url,
+              status: raw.status || 'Active',
+              specialization: raw.specialization || undefined,
+              certificateUrl: raw.certificate_url || undefined,
+              experienceYears: raw.experience_years !== null && !isNaN(Number(raw.experience_years)) ? Number(raw.experience_years) : undefined,
+              councilRegistrationNumber: raw.council_registration_number || undefined,
+              maritalStatus: raw.marital_status || undefined,
+              city: raw.city || 'Hyderabad',
+              district: raw.district || undefined,
+              mandal: raw.mandal || undefined,
+              village: raw.village || undefined,
+              skills: Array.isArray(raw.skills) ? raw.skills : [],
+              commissionPercent: raw.commission_percent !== undefined && raw.commission_percent !== null && !isNaN(Number(raw.commission_percent)) ? Number(raw.commission_percent) : 10,
+              currentlyWorkingAt: raw.currently_working_at || undefined,
+              profession: raw.profession || undefined,
+              createdAt: raw.created_at
+            };
+            setAppUsers((prev) => {
+              const exists = prev.some((u) => u.id === mappedUser.id);
+              return exists ? prev.map((u) => (u.id === mappedUser.id ? { ...u, ...mappedUser } : u)) : [...prev, mappedUser];
+            });
+            setAuthUser((prev) => {
+              if (prev && (prev.id === mappedUser.id || (prev.phone && mappedUser.phone && prev.phone.replace(/\D/g, '') === mappedUser.phone.replace(/\D/g, '')) || (prev.email && mappedUser.email && prev.email.toLowerCase() === mappedUser.email.toLowerCase()))) {
+                const next = { ...prev, ...mappedUser };
+                try {
+                  const roleKey = `xn_auth_user_${next.role}`;
+                  sessionStorage.setItem('xn_auth_user', JSON.stringify(next));
+                  sessionStorage.setItem(roleKey, JSON.stringify(next));
+                  localStorage.setItem(roleKey, JSON.stringify(next));
+                  localStorage.setItem('xn_auth_user', JSON.stringify(next));
+                } catch { }
+                return next;
+              }
+              return prev;
+            });
+            try {
+              const docKey = 'xn_auth_user_doctor';
+              const storedDoc = localStorage.getItem(docKey) || sessionStorage.getItem(docKey);
+              if (storedDoc) {
+                const parsedDoc = JSON.parse(storedDoc);
+                if (parsedDoc.id === mappedUser.id || (parsedDoc.phone && mappedUser.phone && parsedDoc.phone.replace(/\D/g, '') === mappedUser.phone.replace(/\D/g, ''))) {
+                  const updatedDoc = { ...parsedDoc, ...mappedUser };
+                  localStorage.setItem(docKey, JSON.stringify(updatedDoc));
+                  sessionStorage.setItem(docKey, JSON.stringify(updatedDoc));
+                }
+              }
+            } catch { }
+          } else if (payload.eventType === 'DELETE') {
+            const delId = (payload.old as any)?.id;
+            if (delId) {
+              setAppUsers((prev) => prev.filter((u) => u.id !== delId));
+            }
           }
         }
       )
@@ -2886,7 +3005,7 @@ export const App: React.FC = () => {
   const handleUpdateAppUser = async (id: string, updates: Partial<AppUser>) => {
     setAppUsers((prev) => prev.map((u) => (u.id === id ? { ...u, ...updates } : u)));
     setAuthUser((prev) => {
-      if (prev && prev.id === id) {
+      if (prev && (prev.id === id || (prev.phone && updates.phone && prev.phone.replace(/\D/g, '') === updates.phone.replace(/\D/g, '')))) {
         const next = { ...prev, ...updates };
         try {
           sessionStorage.setItem('xn_auth_user', JSON.stringify(next));
@@ -2897,6 +3016,18 @@ export const App: React.FC = () => {
       }
       return prev;
     });
+    try {
+      const docKey = 'xn_auth_user_doctor';
+      const stored = localStorage.getItem(docKey) || sessionStorage.getItem(docKey);
+      if (stored) {
+        const parsed = JSON.parse(stored);
+        if (parsed.id === id || (parsed.phone && updates.phone && parsed.phone.replace(/\D/g, '') === updates.phone.replace(/\D/g, ''))) {
+          const updatedDoc = { ...parsed, ...updates };
+          localStorage.setItem(docKey, JSON.stringify(updatedDoc));
+          sessionStorage.setItem(docKey, JSON.stringify(updatedDoc));
+        }
+      }
+    } catch {}
     broadcastRealtimeUpdate('APP_USER_UPDATE', { id, ...updates });
     await dbUpdateAppUserById(id, updates);
   };

@@ -547,10 +547,22 @@ export const LoginPage: React.FC<LoginPageProps> = ({
         try {
           const { data: docData } = await supabase
             .from('app_users')
-            .select('id, name, phone, email, designation, role')
+            .select('id, name, phone, email, designation, role, commission_percent, currently_working_at, profession, status')
             .eq('id', matchedUser.id)
             .limit(1)
             .maybeSingle();
+
+          if (docData) {
+            if (docData.commission_percent !== undefined && docData.commission_percent !== null && !isNaN(Number(docData.commission_percent))) {
+              matchedUser.commissionPercent = Number(docData.commission_percent);
+            }
+            if (docData.currently_working_at) {
+              matchedUser.currentlyWorkingAt = docData.currently_working_at;
+            }
+            if (docData.profession) {
+              matchedUser.profession = docData.profession;
+            }
+          }
 
           const des = docData?.designation || matchedUser.designation || '';
           let docStatus = matchedUser.status;
