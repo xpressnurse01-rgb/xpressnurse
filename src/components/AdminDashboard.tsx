@@ -2881,17 +2881,35 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
     setApprovalModalLead(lead);
     setApprovalAssignNurseId(lead.assignedNurseId || '');
 
-    // Calculate 10% of procedure value if it's a patient lead, otherwise 50 rupees for nurse lead
+    const partnerIdSet = new Set(doctorsList.map((d) => d.id));
+    const partnerPhoneSet = new Set(doctorsList.map((d) => (d.phone || '').replace(/\D/g, '')).filter(Boolean));
+    const isPartner = Boolean(
+      lead.partnerId ||
+      (lead.nurseId && partnerIdSet.has(lead.nurseId)) ||
+      (lead.nursePhone && partnerPhoneSet.has(lead.nursePhone.replace(/\D/g, ''))) ||
+      (lead.nurseName && (lead.nurseName.toLowerCase().includes('partner') || lead.nurseName.toLowerCase().includes('doctor')))
+    );
+    const partnerUser = isPartner
+      ? doctorsList.find(d => d.id === lead.partnerId || (lead.nurseId && d.id === lead.nurseId) || (d.phone && lead.nursePhone && d.phone.replace(/\D/g, '') === lead.nursePhone.replace(/\D/g, '')))
+      : null;
+    const commPct = isPartner
+      ? ((partnerUser && partnerUser.commissionPercent !== undefined) ? Number(partnerUser.commissionPercent) : (Number(lead.partnerCommissionPercent) || 10))
+      : 10;
+
+    // Calculate commission: use partner commission rate (e.g. 30%) if partner lead, or 10% for nurses
     let defaultRupees = 50; // Default 50 for nurse referrals
     if (lead.referralType !== 'nurse' && !lead.referredNursePhone) {
       const procedure = services.find(s => s.id === lead.serviceId);
-      const fee = Number(lead.leadValueRupees) || (procedure?.priceNumber || 800);
-      defaultRupees = Math.round(fee * 0.10);
+      const fee = Number(lead.billedAmount) || Number(lead.leadValueRupees) || (procedure?.priceNumber || 800);
+      defaultRupees = Number(lead.referralCommissionRupees) > 0 ? Number(lead.referralCommissionRupees) : Math.round((fee * commPct) / 100);
     }
 
-    setApprovalPoints(50);
+    setApprovalPoints(isPartner ? 0 : 50);
     setApprovalReferralRupees(defaultRupees);
-    setApprovalNotes(lead.adminNotes || `Approved by Office (+50 points credited, ₹${defaultRupees} 10% commission).`);
+    setApprovalNotes(lead.adminNotes || (isPartner
+      ? `Approved Partner Referral for ${partnerUser?.name || 'Partner'} (${commPct}% Commission: ₹${defaultRupees}).`
+      : `Approved by Office (+50 points credited, ₹${defaultRupees} 10% commission).`
+    ));
     setRejectReason('');
     setIsRejectConfirmOpen(false);
   };
@@ -3167,7 +3185,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
     phone: '',
     email: '',
     designation: '',
-    serviceArea: 'Gachibowli',
+    serviceArea: 'Hyderabad',
     status: 'Active' as 'Active' | 'Pending Verification' | 'Rejected',
     commissionPercent: 10
   });
@@ -3183,7 +3201,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
       phone: '',
       email: '',
       designation: 'Registered Nurse',
-      serviceArea: 'Gachibowli',
+      serviceArea: 'Hyderabad',
       status: 'Active',
       commissionPercent: 10
     });
@@ -6087,6 +6105,13 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                         (l.nursePhone && partnerPhoneSet.has(l.nursePhone.replace(/\D/g, ''))) ||
                         (l.nurseName && (l.nurseName.toLowerCase().includes('partner') || l.nurseName.toLowerCase().includes('doctor')))
                       );
+                      const partnerUser = isPartnerRef
+                        ? doctorsList.find(d => d.id === l.partnerId || (l.nurseId && d.id === l.nurseId) || (d.phone && (l.nursePhone || l.referredNursePhone) && d.phone.replace(/\D/g, '') === (l.nursePhone || l.referredNursePhone || '').replace(/\D/g, '')))
+                        : null;
+                      const partnerCommissionRate = (partnerUser && partnerUser.commissionPercent !== undefined)
+                        ? Number(partnerUser.commissionPercent)
+                        : (Number(l.partnerCommissionPercent) || 10);
+                      const partnerDisplayName = partnerUser?.name || l.nurseName || 'Referral Partner';
                       const matchingNurse = isNurseRef ? findMatchingNurseForLead(l, nurses) : undefined;
                       const matchingBooking = !isNurseRef ? findMatchingBookingForPatientLead(l, bookings) : undefined;
 
@@ -6262,9 +6287,11 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                                   (l.patientName && n.name.toLowerCase() === l.patientName.toLowerCase())
                                 )
                                 : null;
-                              const displayArea = (refCandidate?.serviceArea && refCandidate.serviceArea !== 'Hyderabad Central')
-                                ? refCandidate.serviceArea
-                                : (l.area && l.area !== 'Hyderabad Central' ? l.area : (refCandidate?.serviceArea || l.area || 'Gachibowli'));
+                              const displayArea = isPartnerRef
+                                ? (l.area && l.area !== 'Gachibowli' && l.area !== 'Hyderabad Central' ? l.area : (partnerUser?.serviceArea && partnerUser.serviceArea !== 'Gachibowli' ? partnerUser.serviceArea : (partnerUser?.city || 'Hyderabad')))
+                                : ((refCandidate?.serviceArea && refCandidate.serviceArea !== 'Hyderabad Central')
+                                  ? refCandidate.serviceArea
+                                  : (l.area && l.area !== 'Hyderabad Central' && l.area !== 'Gachibowli' ? l.area : (refCandidate?.serviceArea || l.area || 'Hyderabad Central')));
 
                               return (
                                 <div style={{ display: 'flex', alignItems: 'center', gap: '0.3rem' }}>
@@ -6287,9 +6314,9 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                           <td>
                             {isPartnerRef ? (
                               <div>
-                                <div style={{ fontWeight: 600, color: '#0F172A' }}>{l.nurseName || 'Referral Partner'}</div>
-                                <div style={{ fontSize: '0.72rem', color: '#7C3AED', fontWeight: 600 }}>
-                                  Partner ({l.partnerCommissionPercent || 10}%)
+                                <div style={{ fontWeight: 700, color: '#0F172A', fontSize: '0.9rem' }}>{partnerDisplayName}</div>
+                                <div style={{ fontSize: '0.72rem', color: '#7C3AED', fontWeight: 700 }}>
+                                  Partner ({partnerCommissionRate}%)
                                 </div>
                               </div>
                             ) : (
@@ -6309,13 +6336,13 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                             ) : isPartnerRef ? (
                               <div>
                                 <strong style={{ color: '#059669', fontSize: '0.9rem' }}>
-                                  ₹{l.referralCommissionRupees || Math.round(((Number(l.billedAmount) || 0) * (Number(l.partnerCommissionPercent) || 10)) / 100)}
+                                  ₹{(Number(l.referralCommissionRupees) > 0 ? Number(l.referralCommissionRupees) : Math.round(((Number(l.billedAmount) || 0) * partnerCommissionRate) / 100)).toLocaleString('en-IN')}
                                 </strong>
                                 <div style={{ fontSize: '0.72rem', color: '#7C3AED', fontWeight: 600, marginTop: '2px' }}>
-                                  {l.partnerCommissionPercent || 10}% Commission
+                                  {partnerCommissionRate}% Commission
                                 </div>
                                 <div style={{ fontSize: '0.7rem', color: 'var(--neutral-500)' }}>
-                                  Billed: ₹{l.billedAmount || 0}
+                                  {Number(l.billedAmount) > 0 ? `Billed: ₹${Number(l.billedAmount).toLocaleString('en-IN')}` : 'Pending billing'}
                                 </div>
                               </div>
                             ) : (
@@ -6366,8 +6393,10 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                                   onClick={async () => {
                                     if (onUpdateLead) {
                                       const billed = Number(l.billedAmount) || 0;
-                                      const commPct = Number(l.partnerCommissionPercent) || 10;
-                                      const commRupees = Math.round((billed * commPct) / 100);
+                                      const commPct = partnerCommissionRate;
+                                      const commRupees = Number(l.referralCommissionRupees) > 0
+                                        ? Number(l.referralCommissionRupees)
+                                        : Math.round((billed * commPct) / 100);
                                       await onUpdateLead(l.id, {
                                         status: 'Approved',
                                         referralCommissionRupees: commRupees
@@ -7272,7 +7301,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
 
                               <td>
                                 <div style={{ fontWeight: 700, color: '#0F172A' }}>
-                                  {l.nurseName || 'Referral Partner'}
+                                  {partnerUser?.name || l.nurseName || 'Referral Partner'}
                                 </div>
                                 <div style={{ fontSize: '0.74rem', color: '#6D28D9', fontWeight: 600, marginTop: '2px' }}>
                                   Commission: {commPct}%
@@ -7347,7 +7376,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                                     ₹{commRupees.toLocaleString('en-IN')}
                                   </div>
                                   <div style={{ fontSize: '0.72rem', color: '#64748B' }}>
-                                    {commPct}% of ₹{billed.toLocaleString('en-IN')}
+                                    {billed > 0 ? `${commPct}% of ₹${billed.toLocaleString('en-IN')}` : `${commPct}% configured`}
                                   </div>
                                 </div>
                               </td>
@@ -11638,10 +11667,10 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
             </div>
             <div>
               <h3 style={{ fontSize: '1.15rem', fontWeight: 800, color: 'var(--primary-navy-950)', margin: 0 }}>
-                Admin Decision: Points & Referral Earnings
+                {approvalModalLead.partnerId ? 'Approve Partner Referral' : 'Admin Decision: Points & Referral Earnings'}
               </h3>
               <div style={{ fontSize: '0.76rem', color: 'var(--neutral-500)', fontWeight: 500 }}>
-                Decide rewards for Nurse Referral Lead <strong style={{ color: 'var(--primary-navy-900)' }}>{approvalModalLead.id}</strong>
+                Decide rewards for Referral Lead <strong style={{ color: 'var(--primary-navy-900)' }}>{approvalModalLead.id}</strong>
               </div>
             </div>
           </div>
@@ -11656,9 +11685,36 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
         <div className="modal-body" style={{ padding: '1.25rem 1.5rem' }}>
           {/* Lead & Nurse Summary Card */}
           {(() => {
+            const partnerIdSet = new Set(doctorsList.map((d) => d.id));
+            const partnerPhoneSet = new Set(doctorsList.map((d) => (d.phone || '').replace(/\D/g, '')).filter(Boolean));
+            const isModalPartner = Boolean(
+              approvalModalLead.partnerId ||
+              (approvalModalLead.nurseId && partnerIdSet.has(approvalModalLead.nurseId)) ||
+              (approvalModalLead.nursePhone && partnerPhoneSet.has(approvalModalLead.nursePhone.replace(/\D/g, ''))) ||
+              (approvalModalLead.nurseName && (approvalModalLead.nurseName.toLowerCase().includes('partner') || approvalModalLead.nurseName.toLowerCase().includes('doctor')))
+            );
+            const modalPartnerUser = isModalPartner
+              ? doctorsList.find(d => d.id === approvalModalLead.partnerId || (d.phone && approvalModalLead.nursePhone && d.phone.replace(/\D/g, '') === approvalModalLead.nursePhone.replace(/\D/g, '')))
+              : null;
+            const modalCommPct = isModalPartner
+              ? ((modalPartnerUser && modalPartnerUser.commissionPercent !== undefined) ? Number(modalPartnerUser.commissionPercent) : 10)
+              : 10;
             const referringNurse = nurses.find((n) => n.id === approvalModalLead.nurseId);
             const serviceObj = services.find((s) => s.id === approvalModalLead.serviceId);
-            const procedureFee = approvalModalLead.leadValueRupees || serviceObj?.priceNumber || 800;
+            const procedureFee = Number(approvalModalLead.billedAmount) || approvalModalLead.leadValueRupees || serviceObj?.priceNumber || 800;
+
+            const refCandidate = (approvalModalLead.referralType === 'nurse' || approvalModalLead.referredNursePhone)
+              ? nurses.find((n) =>
+                (approvalModalLead.referredNursePhone && n.phone && n.phone.replace(/\D/g, '') === approvalModalLead.referredNursePhone.replace(/\D/g, '')) ||
+                (approvalModalLead.referredNurseName && n.name.toLowerCase() === approvalModalLead.referredNurseName.toLowerCase()) ||
+                (approvalModalLead.patientName && n.name.toLowerCase() === approvalModalLead.patientName.toLowerCase())
+              )
+              : null;
+            const modalArea = isModalPartner
+              ? (approvalModalLead.area && approvalModalLead.area !== 'Gachibowli' && approvalModalLead.area !== 'Hyderabad Central' ? approvalModalLead.area : (modalPartnerUser?.serviceArea && modalPartnerUser.serviceArea !== 'Gachibowli' ? modalPartnerUser.serviceArea : (modalPartnerUser?.city || 'Hyderabad')))
+              : ((refCandidate?.serviceArea && refCandidate.serviceArea !== 'Hyderabad Central')
+                ? refCandidate.serviceArea
+                : (approvalModalLead.area && approvalModalLead.area !== 'Hyderabad Central' && approvalModalLead.area !== 'Gachibowli' ? approvalModalLead.area : (refCandidate?.serviceArea || approvalModalLead.area || 'Hyderabad Central')));
 
             return (
               <>
@@ -11680,24 +11736,10 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                       <div style={{ fontSize: '0.8rem', color: 'var(--neutral-600)' }}>
                         📞 {approvalModalLead.patientPhone}
                       </div>
-                      {(() => {
-                        const refCandidate = (approvalModalLead.referralType === 'nurse' || approvalModalLead.referredNursePhone)
-                          ? nurses.find((n) =>
-                            (approvalModalLead.referredNursePhone && n.phone && n.phone.replace(/\D/g, '') === approvalModalLead.referredNursePhone.replace(/\D/g, '')) ||
-                            (approvalModalLead.referredNurseName && n.name.toLowerCase() === approvalModalLead.referredNurseName.toLowerCase()) ||
-                            (approvalModalLead.patientName && n.name.toLowerCase() === approvalModalLead.patientName.toLowerCase())
-                          )
-                          : null;
-                        const modalArea = (refCandidate?.serviceArea && refCandidate.serviceArea !== 'Hyderabad Central')
-                          ? refCandidate.serviceArea
-                          : (approvalModalLead.area && approvalModalLead.area !== 'Hyderabad Central' ? approvalModalLead.area : (refCandidate?.serviceArea || approvalModalLead.area || 'Gachibowli'));
-                        return (
-                          <div style={{ fontSize: '0.78rem', color: 'var(--neutral-600)', display: 'flex', alignItems: 'center', gap: '0.25rem', marginTop: '0.2rem' }}>
-                            <MapPin size={12} style={{ color: 'var(--neutral-400)' }} />
-                            <span>{modalArea}, Hyderabad</span>
-                          </div>
-                        );
-                      })()}
+                      <div style={{ fontSize: '0.78rem', color: 'var(--neutral-600)', display: 'flex', alignItems: 'center', gap: '0.25rem', marginTop: '0.2rem' }}>
+                        <MapPin size={12} style={{ color: 'var(--neutral-400)' }} />
+                        <span>{modalArea}, Hyderabad</span>
+                      </div>
                     </div>
 
                     <div>
@@ -11726,12 +11768,17 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                     gap: '0.5rem'
                   }}>
                     <div>
-                      <span style={{ fontSize: '0.75rem', color: 'var(--neutral-500)', fontWeight: 600 }}>Referring Nurse: </span>
+                      <span style={{ fontSize: '0.75rem', color: 'var(--neutral-500)', fontWeight: 600 }}>
+                        {isModalPartner ? 'Referring Partner: ' : 'Referring Nurse: '}
+                      </span>
                       <strong style={{ fontSize: '0.85rem', color: 'var(--primary-navy-900)' }}>
-                        {referringNurse?.name || approvalModalLead.nurseId} ({referringNurse?.serviceArea || 'Stationed'})
+                        {isModalPartner
+                          ? `${modalPartnerUser?.name || approvalModalLead.nurseName || 'Partner'} (${modalCommPct}% Commission)`
+                          : `${referringNurse?.name || approvalModalLead.nurseId} (${referringNurse?.serviceArea || 'Stationed'})`
+                        }
                       </strong>
                     </div>
-                    {referringNurse && (() => {
+                    {!isModalPartner && referringNurse && (() => {
                       const refM = calculateNurseMetrics(referringNurse, bookings, leads, services);
                       return (
                         <div style={{ fontSize: '0.75rem', color: 'var(--neutral-600)' }}>
@@ -11742,7 +11789,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                   </div>
                 </div>
 
-                {/* Referral Reward: Plain & Clear 50 Points */}
+                {/* Referral Reward: Plain & Clear */}
                 <div style={{
                   background: 'linear-gradient(135deg, #ECFDF5 0%, #D1FAE5 100%)',
                   border: '1.5px solid #10B981',
@@ -11766,12 +11813,18 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                     </div>
                     <div>
                       <div style={{ fontWeight: 800, color: '#065F46', fontSize: '1rem' }}>
-                        Referral Reward: +50 Points {approvalModalLead.referralType !== 'nurse' && !approvalModalLead.referredNursePhone ? `+ 10% Fee (₹${approvalReferralRupees})` : ''}
+                        {isModalPartner
+                          ? `Partner Commission: ${modalCommPct}% (₹${approvalReferralRupees})`
+                          : `Referral Reward: +50 Points ${approvalModalLead.referralType !== 'nurse' && !approvalModalLead.referredNursePhone ? `+ 10% Fee (₹${approvalReferralRupees})` : ''}`
+                        }
                       </div>
                       <div style={{ fontSize: '0.82rem', color: '#047857', marginTop: '0.15rem' }}>
-                        {approvalModalLead.referralType !== 'nurse' && !approvalModalLead.referredNursePhone
-                          ? `Credited to referring nurse (${referringNurse?.name || 'Nurse'}) after assigned nurse completes the doorstep visit.`
-                          : `Credited directly to ${referringNurse?.name || 'Nurse'} upon certificate verification.`}
+                        {isModalPartner
+                          ? `Credited to partner (${modalPartnerUser?.name || 'Partner'}) upon visit completion.`
+                          : (approvalModalLead.referralType !== 'nurse' && !approvalModalLead.referredNursePhone
+                            ? `Credited to referring nurse (${referringNurse?.name || 'Nurse'}) after assigned nurse completes the doorstep visit.`
+                            : `Credited directly to ${referringNurse?.name || 'Nurse'} upon certificate verification.`)
+                        }
                       </div>
                     </div>
                   </div>

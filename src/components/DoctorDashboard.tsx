@@ -215,6 +215,8 @@ export const DoctorDashboard: React.FC<DoctorDashboardProps> = ({
 
     setIsSubmitting(true);
     try {
+      const partnerArea = currentPartner?.serviceArea || activePartner?.serviceArea || currentPartner?.city || 'Hyderabad';
+      const cleanPartnerArea = (partnerArea && partnerArea !== 'Gachibowli') ? partnerArea : 'Hyderabad';
       const newLead: NurseLead = {
         id: `PT-${Date.now().toString().slice(-6)}`,
         partnerId: partnerId,
@@ -226,6 +228,7 @@ export const DoctorDashboard: React.FC<DoctorDashboardProps> = ({
         notes: notes.trim(),
         status: 'Pending Approval',
         referralType: 'patient',
+        area: cleanPartnerArea,
         billedAmount: 0,
         referralCommissionRupees: 0,
         submittedAt: new Date().toISOString()
@@ -695,7 +698,7 @@ export const DoctorDashboard: React.FC<DoctorDashboardProps> = ({
                                 ₹{patientCommission.toLocaleString('en-IN')}
                               </div>
                               <div style={{ fontSize: '0.72rem', color: '#64748B' }}>
-                                ({effectiveRate}% of billed)
+                                {billed > 0 ? `(${effectiveRate}% of ₹${billed.toLocaleString('en-IN')})` : `(${effectiveRate}% configured)`}
                               </div>
                             </div>
                           ) : isRejected ? (

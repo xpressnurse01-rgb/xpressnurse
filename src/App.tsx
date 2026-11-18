@@ -1086,7 +1086,8 @@ export const App: React.FC = () => {
           );
 
           if (!exists) {
-            const refNurse = effectiveNurses.find((n) => n.id === l.nurseId);
+            const partnerUser = l.partnerId ? appUsers.find((u) => u.id === l.partnerId) : null;
+            const refNurse = l.nurseId ? effectiveNurses.find((n) => n.id === l.nurseId) : null;
             const procedure = services.find((s) => s.id === l.serviceId);
             const fee = Number(l.leadValueRupees) || (procedure?.priceNumber || 800);
             const comm = Number(l.referralCommissionRupees) || Math.round(fee * 0.10);
@@ -1097,7 +1098,7 @@ export const App: React.FC = () => {
               id: deterministicId,
               patientName: l.patientName!,
               patientPhone: l.patientPhone || '',
-              area: l.area || 'Hyderabad Central',
+              area: (l.area && l.area !== 'Gachibowli') ? l.area : (partnerUser?.serviceArea && partnerUser.serviceArea !== 'Gachibowli' ? partnerUser.serviceArea : 'Hyderabad'),
               fullAddress: l.fullAddress || '',
               serviceId: l.serviceId || 'saline-infusion',
               serviceTitle: procedure?.title || l.serviceId || 'Clinical Service',
@@ -1108,10 +1109,10 @@ export const App: React.FC = () => {
               nurseAcceptanceStatus: l.assignedNurseId ? 'Accepted' : undefined,
               createdAt: l.submittedAt || new Date().toISOString(),
               hasPrescription: false,
-              referringNurseId: l.nurseId,
-              referringNurseName: refNurse?.name || 'Referred Nurse',
+              referringNurseId: l.partnerId ? undefined : l.nurseId,
+              referringNurseName: partnerUser ? `${partnerUser.name} (Partner)` : (refNurse?.name || 'Referred Nurse'),
               referralBonusRupees: comm,
-              notes: `${l.notes ? 'Description: ' + l.notes + ' | ' : ''}Patient Referral by ${refNurse?.name || 'Nurse'}. [50 points + ₹${comm} (10%) credited upon visit completion]`
+              notes: `${l.notes ? 'Description: ' + l.notes + ' | ' : ''}Patient Referral by ${partnerUser ? partnerUser.name : (refNurse?.name || 'Nurse')}. [₹${comm} credited upon visit completion]`
             };
 
             cleanMergedBookings.unshift(synthBooking);
@@ -1887,29 +1888,51 @@ export const App: React.FC = () => {
     const isAlreadyApproved = lead.status === 'Approved' || lead.status === 'Converted';
     const pointsToCredit = pointsAwarded > 0 ? pointsAwarded : 50;
     const procedure = services.find((s) => s.id === lead.serviceId);
-    const fee = Number(lead.leadValueRupees) || (procedure?.priceNumber || 800);
+    const fee = Number(lead.billedAmount) || Number(lead.leadValueRupees) || (procedure?.priceNumber || 800);
+
+    const isNurseReferral = lead.referralType === 'nurse' || Boolean(lead.referredNursePhone);
+    const partnerIdSet = new Set(appUsers.filter(u => u.role === 'doctor').map(u => u.id));
+    const partnerPhoneSet = new Set(appUsers.filter(u => u.role === 'doctor').map(u => (u.phone || '').replace(/\D/g, '')).filter(Boolean));
+    const isPartner = Boolean(
+      lead.partnerId ||
+      (lead.nurseId && partnerIdSet.has(lead.nurseId)) ||
+      (lead.nursePhone && partnerPhoneSet.has(lead.nursePhone.replace(/\D/g, '')))
+    );
+    const partnerUser = isPartner
+      ? appUsers.find(u => u.id === lead.partnerId || (lead.nurseId && u.id === lead.nurseId) || (u.phone && lead.nursePhone && u.phone.replace(/\D/g, '') === lead.nursePhone.replace(/\D/g, '')))
+      : null;
+    const partnerCommPct = (partnerUser && partnerUser.commissionPercent !== undefined)
+      ? Number(partnerUser.commissionPercent)
+      : 10;
+
     const commissionRupees: number = referralRupees > 0
       ? referralRupees
       : (lead.referralCommissionRupees && lead.referralCommissionRupees > 0
         ? lead.referralCommissionRupees
-        : (lead.referralType === 'nurse' || lead.referredNursePhone ? 0 : Math.round(fee * 0.10)));
+        : (isNurseReferral ? 0 : Math.round(fee * (isPartner ? (partnerCommPct / 100) : 0.10))));
 
-    const isNurseReferral = lead.referralType === 'nurse' || Boolean(lead.referredNursePhone);
     const assignedNurse = assignToNurseId ? nurses.find((n) => n.id === assignToNurseId) : undefined;
+    const partnerAreaClean = (lead.area && lead.area !== 'Gachibowli' && lead.area !== 'Hyderabad Central')
+      ? lead.area
+      : (partnerUser?.serviceArea && partnerUser.serviceArea !== 'Gachibowli' ? partnerUser.serviceArea : 'Hyderabad');
 
     const approvedLead: NurseLead = {
       ...lead,
       status: 'Approved',
+      area: isPartner ? partnerAreaClean : (lead.area || 'Hyderabad Central'),
+      nurseName: isPartner ? (partnerUser?.name || lead.nurseName || 'Referral Partner') : lead.nurseName,
       assignedNurseId: assignToNurseId || lead.assignedNurseId,
-      pointsAwarded: pointsToCredit,
+      pointsAwarded: isPartner ? 0 : pointsToCredit,
       referralCommissionRupees: commissionRupees,
       approvedAt: lead.approvedAt || new Date().toISOString(),
       approvedBy: 'Admin',
       adminNotes: adminNotes || (isNurseReferral
         ? `Referred nurse approved (+${pointsToCredit} points credited)`
-        : assignToNurseId && assignedNurse
-          ? `Patient approved & assigned to ${assignedNurse.name}. 50 points + ₹${commissionRupees} (10%) credited upon visit completion.`
-          : `Patient approved & booking queued in Assign Nurses. 50 points + 10% commission credited after assigned nurse completes visit.`
+        : isPartner
+          ? `Patient approved for Partner ${partnerUser?.name || 'Partner'}. ₹${commissionRupees} (${partnerCommPct}%) credited upon visit completion.`
+          : assignToNurseId && assignedNurse
+            ? `Patient approved & assigned to ${assignedNurse.name}. 50 points + ₹${commissionRupees} (10%) credited upon visit completion.`
+            : `Patient approved & booking queued in Assign Nurses. 50 points + 10% commission credited after assigned nurse completes visit.`
       )
     };
 
@@ -2005,12 +2028,14 @@ export const App: React.FC = () => {
           assignedNurseName: assignedName,
           nurseAcceptanceStatus: assignToNurseId ? 'Pending' : existingBooking.nurseAcceptanceStatus,
           nursePayoutRupees: assignToNurseId ? Math.round(fee * 0.70) : existingBooking.nursePayoutRupees,
-          referringNurseId: lead.nurseId,
-          referringNurseName: referringNurse?.name || 'Referred Nurse',
+          referringNurseId: isPartner ? undefined : lead.nurseId,
+          referringNurseName: isPartner ? (partnerUser?.name ? `${partnerUser.name} (Partner)` : 'Referral Partner') : (referringNurse?.name || 'Referred Nurse'),
           referralBonusRupees: commissionRupees,
-          area: existingBooking.area || lead.area || 'Hyderabad Central',
+          area: isPartner ? partnerAreaClean : (existingBooking.area || lead.area || 'Hyderabad Central'),
           serviceId: existingBooking.serviceId || lead.serviceId || 'saline-infusion',
-          notes: `${existingBooking.notes || ''} [Approved: 50 points + ₹${commissionRupees} (10%) credited upon visit completion]`.trim()
+          notes: isPartner
+            ? `${existingBooking.notes || ''} [Approved: ₹${commissionRupees} (${partnerCommPct}%) credited upon visit completion]`.trim()
+            : `${existingBooking.notes || ''} [Approved: 50 points + ₹${commissionRupees} (10%) credited upon visit completion]`.trim()
         };
         setBookings((prev) => {
           const next = deduplicateBookings(prev.map((b) => (b.id === existingBooking.id ? updatedB : b)));
@@ -2026,7 +2051,7 @@ export const App: React.FC = () => {
           id: newBookingId,
           patientName: lead.patientName,
           patientPhone: lead.patientPhone || '',
-          area: lead.area || 'Hyderabad Central',
+          area: isPartner ? partnerAreaClean : (lead.area || 'Hyderabad Central'),
           fullAddress: lead.fullAddress || '',
           serviceId: lead.serviceId || 'saline-infusion',
           serviceTitle: services.find((s) => s.id === lead.serviceId)?.title || lead.serviceId || 'Clinical Service',
@@ -2038,10 +2063,12 @@ export const App: React.FC = () => {
           nursePayoutRupees: assignToNurseId ? Math.round(fee * 0.70) : undefined,
           createdAt: new Date().toISOString(),
           hasPrescription: false,
-          referringNurseId: lead.nurseId,
-          referringNurseName: referringNurse?.name || 'Referred Nurse',
+          referringNurseId: isPartner ? undefined : lead.nurseId,
+          referringNurseName: isPartner ? (partnerUser?.name ? `${partnerUser.name} (Partner)` : 'Referral Partner') : (referringNurse?.name || 'Referred Nurse'),
           referralBonusRupees: commissionRupees,
-          notes: `${lead.notes ? 'Description: ' + lead.notes + ' | ' : ''}Patient Referral by ${referringNurse?.name || 'Nurse'}. [50 points + ₹${commissionRupees} (10%) credited upon visit completion]`
+          notes: isPartner
+            ? `${lead.notes ? 'Description: ' + lead.notes + ' | ' : ''}Patient Referral by Partner ${partnerUser?.name || 'Partner'}. [₹${commissionRupees} (${partnerCommPct}%) credited upon visit completion]`
+            : `${lead.notes ? 'Description: ' + lead.notes + ' | ' : ''}Patient Referral by ${referringNurse?.name || 'Nurse'}. [50 points + ₹${commissionRupees} (10%) credited upon visit completion]`
         };
         setBookings((prev) => {
           const next = deduplicateBookings([newBooking, ...prev]);
